@@ -49,11 +49,11 @@ export function AttachmentChip({item:a,error,onChange,onRemove,onPreview,onMenti
  const thumb=canPreview(a)&&onPreview
   ?<button type="button" onClick={onPreview} aria-label={"پیش‌نمایش "+a.name} className="shrink-0 rounded-control hit-area motion-hover not-disabled:hover:opacity-80"><Thumb a={a}/></button>
   :<Thumb a={a}/>;
- return <li id={"attachment-"+a.id} className={"flex flex-col gap-2 rounded-card border bg-surface-subtle p-2 "+(error?"border-destructive ":"border-line-secondary ")+(controls?"basis-full":"max-w-full")}>
+ return <li id={"attachment-"+a.id} className={"flex min-w-0 max-w-full flex-col gap-2 rounded-card border bg-surface-subtle p-2 "+(error?"border-destructive ":"border-line-secondary ")+(controls?"basis-full":"")}>
   <div className="flex items-center gap-2">
    {thumb}
    <span className="flex min-w-0 flex-1 flex-col">
-    <span className="block max-w-56 truncate type-label text-fg-primary" title={a.name}><bdi>{a.name}</bdi></span>
+    <span className="block max-w-full truncate type-label text-fg-primary sm:max-w-56" title={a.name}><bdi>{a.name}</bdi></span>
     <Meta a={a}/>
    </span>
    {onRemove&&<Button type="button" variant="ghost" size="icon" onClick={onRemove} aria-label={"حذف "+a.name}><Icon icon={X} aria-hidden="true"/></Button>}
