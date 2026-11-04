@@ -1,0 +1,10 @@
+"use client";
+import Link from "next/link";
+
+/** Latin wordmark first, Persian name beside it. The Latin part is isolated so bidi never reorders it. */
+export function BrandMark({className=""}:{className?:string}){
+ return <Link href="/" aria-label="هووش، صفحه اصلی" className={"inline-flex min-h-control items-center gap-2 rounded-control text-fg-primary "+className}>
+  <bdi dir="ltr" className="font-heading type-title">whoush</bdi>
+  <span className="type-label text-fg-secondary" aria-hidden="true">هووش</span>
+ </Link>;
+}

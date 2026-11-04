@@ -1,23 +1,30 @@
 "use client";
-import {useEffect,useState} from "react";
+import {useSyncExternalStore} from "react";
+import {Button,Icon} from "@aleeforoughi/feather-react";
 import {Moon,Sun} from "lucide-react";
-export type ThemeMode="dark"|"light";
-export function ThemeToggle(){
- const [mode,setMode]=useState<ThemeMode>("dark");
- useEffect(()=>{
-  const saved=window.localStorage.getItem("whoush-theme");
-  const initial:ThemeMode=saved==="light"?"light":"dark";
-  document.documentElement.dataset.theme=initial;
-  setMode(initial);
- },[]);
- function toggle(){
-  const next:ThemeMode=mode==="dark"?"light":"dark";
-  document.documentElement.dataset.theme=next;
-  window.localStorage.setItem("whoush-theme",next);
-  setMode(next);
- }
- return <button type="button" className="theme-toggle" onClick={toggle} aria-label={mode==="dark"?"تغییر به حالت روشن":"تغییر به حالت تاریک"} title={mode==="dark"?"حالت روشن":"حالت تاریک"} aria-pressed={mode==="light"}>
-  {mode==="dark"?<Sun size={17} aria-hidden="true"/>:<Moon size={17} aria-hidden="true"/>}
-  <span>{mode==="dark"?"روشن":"تاریک"}</span>
- </button>;
+
+export const THEME_STORAGE_KEY="whoush-theme";
+type ThemeMode="dark"|"light";
+
+/** The DOM is the store: the `dark` class on <html> (set before paint by the inline script in app/layout.tsx). */
+function subscribe(onChange:()=>void){
+ const observer=new MutationObserver(onChange);
+ observer.observe(document.documentElement,{attributes:true,attributeFilter:["class"]});
+ return()=>observer.disconnect();
+}
+const getSnapshot=():ThemeMode=>document.documentElement.classList.contains("dark")?"dark":"light";
+const getServerSnapshot=():ThemeMode=>"dark";
+
+function setTheme(next:ThemeMode){
+ document.documentElement.classList.toggle("dark",next==="dark");
+ try{window.localStorage.setItem(THEME_STORAGE_KEY,next);}catch{/* private mode: the choice lasts for this page only */}
+}
+
+export function ThemeToggle({showLabel=false,labelClassName="",className}:{showLabel?:boolean;labelClassName?:string;className?:string}){
+ const mode=useSyncExternalStore(subscribe,getSnapshot,getServerSnapshot);
+ const dark=mode==="dark";
+ return <Button type="button" variant="ghost" size={showLabel?"default":"icon"} className={className} aria-label="حالت تاریک" aria-pressed={dark} onClick={()=>setTheme(dark?"light":"dark")}>
+  <Icon icon={dark?Moon:Sun} aria-hidden="true"/>
+  {showLabel&&<span className={labelClassName}>حالت تاریک</span>}
+ </Button>;
 }
