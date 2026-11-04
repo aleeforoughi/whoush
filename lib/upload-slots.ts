@@ -9,7 +9,7 @@ export type Upload={kind:"image"|"video"|"audio"|"file";role?:AttachmentRole};
  * An empty card. `upload` undefined: the automatic entry (any supported file; Whoush infers the role). `tag` is reserved when the card is made (the automatic card
  * has none until its file arrives, since its kind is unknown), so the card can show `#تصویر-۱` before the upload; like any tag it is never reused.
  */
-export type UploadSlot={id:string;titleFa:string;icon:InsertIconKey;upload?:Upload;tag?:string};
+export type UploadSlot={id:string;titleFa:string;icon:InsertIconKey;upload?:Upload;tag?:string;/** Set once a file filled the card: the card stays in place and shows that file. */attachmentId?:string};
 /** The category a card shows: its kind's icon and Persian word (تصویر، ویدیو، صدا، فایل), or «هر نوع فایل» for the automatic card. */
 export type SlotCategory="image"|"video"|"audio"|"file"|"any";
 export const slotCategory=(s:UploadSlot):SlotCategory=>s.upload?.kind??"any";
@@ -35,11 +35,29 @@ export function slotFor(item:InsertItem,id:string):UploadSlot|undefined{
  const upload:Upload|undefined=a.type==="auto"?undefined:a.type==="file"?{kind:"file"}:{kind:a.kind,role:a.role};
  return {id,titleFa:item.titleFa,icon:item.icon,...(upload?{upload}:{})};
 }
-/** Adds a card when cards plus attached files stay within MAX_ATTACHMENTS; otherwise the list is unchanged and `full` is true. */
+/** Adds a card when empty cards plus attached files stay within MAX_ATTACHMENTS (a filled card is counted as its file); otherwise the list is unchanged and `full` is true. */
 export function addSlot(slots:readonly UploadSlot[],slot:UploadSlot,attachmentCount:number):{slots:UploadSlot[];full:boolean}{
- if(slots.length+attachmentCount>=MAX_ATTACHMENTS)return {slots:[...slots],full:true};
+ if(slots.filter(s=>!s.attachmentId).length+attachmentCount>=MAX_ATTACHMENTS)return {slots:[...slots],full:true};
  return {slots:[...slots,slot],full:false};
 }
 export const removeSlot=(slots:readonly UploadSlot[],id:string):UploadSlot[]=>slots.filter(s=>s.id!==id);
+/** The card was filled: it keeps its place and now shows the file. */
+export const fillSlotWith=(slots:readonly UploadSlot[],id:string,attachmentId:string):UploadSlot[]=>slots.map(s=>s.id===id?{...s,attachmentId}:s);
+/** A file was removed: the card it filled goes with it. */
+export const forgetAttachment=(slots:readonly UploadSlot[],attachmentId:string):UploadSlot[]=>slots.filter(s=>s.attachmentId!==attachmentId);
+export type ComposerCard<A>={type:"slot";slot:UploadSlot}|{type:"file";attachment:A};
+/**
+ * Every card inside the chat input, in order: the «+» cards where they were made (a filled one shows its file), then files added any other way (dropped on the composer,
+ * pasted) in the order they arrived. Every attached file appears exactly once; a card whose file is gone is dropped.
+ */
+export function composerCards<A extends {id:string}>(slots:readonly UploadSlot[],attachments:readonly A[]):ComposerCard<A>[]{
+ const byId=new Map(attachments.map(a=>[a.id,a])),linked=new Set<string>(),out:ComposerCard<A>[]=[];
+ for(const s of slots){
+  if(!s.attachmentId){out.push({type:"slot",slot:s});continue;}
+  const a=byId.get(s.attachmentId);if(a&&!linked.has(a.id)){linked.add(a.id);out.push({type:"file",attachment:a});}
+ }
+ for(const a of attachments)if(!linked.has(a.id))out.push({type:"file",attachment:a});
+ return out;
+}
 /** The accessible name of a card's upload button: «آپلود کاراکتر». */
 export const slotLabelFa=(s:UploadSlot)=>"آپلود "+s.titleFa;

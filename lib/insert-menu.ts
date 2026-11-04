@@ -32,3 +32,36 @@ export const INSERT_MENU:readonly InsertGroup[]=[
 ];
 /** Every (kind, role) pair the menu uploads with, in menu order (the «پرکاربردترین» shortcuts are not counted twice). */
 export const menuRoles=():{kind:AttachmentKind;role:AttachmentRole}[]=>INSERT_MENU.filter(g=>!g.featured).flatMap(g=>g.items.flatMap(i=>i.action.type==="role"?[{kind:i.action.kind,role:i.action.role}]:[]));
+
+/** «پرکاربردترین» is hidden for now (owner, 2026-11-05). Flip to bring it back; `INSERT_MENU` keeps the full definition. */
+export const SHOW_POPULAR=false;
+/** The automatic upload entry, kept at the top of the menu (with no group label) while «پرکاربردترین» is hidden: it is the only way to upload without choosing a role. */
+export const AUTO_ITEM:InsertItem={id:"auto",...AUTO_UPLOAD_FA,icon:"auto",action:{type:"auto"}};
+/** One section of the visible menu; `labelFa` undefined renders its items without a heading. */
+export type MenuSection={id:string;labelFa?:string;items:readonly InsertItem[]};
+/** What the «+» menu shows: «پرکاربردترین» when enabled, otherwise the automatic entry on its own, then the kind groups. */
+export function visibleInsertMenu(showPopular:boolean=SHOW_POPULAR):MenuSection[]{
+ const kinds=INSERT_MENU.filter(g=>!g.featured);
+ return showPopular?INSERT_MENU.map(g=>({id:g.id,labelFa:g.labelFa,items:g.items})):[{id:"auto",items:[AUTO_ITEM]},...kinds.map(g=>({id:g.id,labelFa:g.labelFa,items:g.items}))];
+}
+/**
+ * Search folding: lower case, Arabic ي/ك/ة to Persian, ئ/ؤ/أ/إ/آ variants, ZWNJ and tatweel and diacritics removed, Persian/Arabic digits to ASCII, spaces collapsed.
+ * So «ویدئو», «ويديو» and «ویدیو» match each other, and «لباس‌وکفش» matches «لباس و کفش» once spaces are ignored.
+ */
+export function foldSearch(s:string):string{
+ return s.toLowerCase().normalize("NFC")
+  .replace(/[ً-ْٰـ]/g,"").replace(/‌/g,"")
+  .replace(/ي|ى/g,"ی").replace(/ك/g,"ک").replace(/ة/g,"ه").replace(/[أإآ]/g,"ا").replace(/ؤ/g,"و").replace(/ئ/g,"ی")
+  .replace(/[۰-۹]/g,d=>String(d.charCodeAt(0)-0x06f0)).replace(/[٠-٩]/g,d=>String(d.charCodeAt(0)-0x0660))
+  .replace(/\s+/g," ").trim();
+}
+/**
+ * Filters the menu as the user types: an entry stays when every word of the query appears in its title, its hint or its group's label (so «ویدیو» lists every video
+ * entry). Sections with no remaining entry are dropped. An empty query returns the menu unchanged.
+ */
+export function filterInsertMenu(sections:readonly MenuSection[],query:string):MenuSection[]{
+ const words=foldSearch(query).split(" ").filter(Boolean);
+ if(!words.length)return sections.map(s=>({...s}));
+ const squash=(s:string)=>s.replace(/ /g,"");
+ return sections.map(s=>({...s,items:s.items.filter(i=>{const hay=foldSearch([i.titleFa,i.hintFa,s.labelFa??""].join(" "));return words.every(w=>hay.includes(w)||squash(hay).includes(squash(w)));})})).filter(s=>s.items.length>0);
+}

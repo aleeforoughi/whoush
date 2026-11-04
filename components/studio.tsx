@@ -9,7 +9,8 @@ import {NoModelCard,PastProposalCard,ProposalCard} from "@/components/proposal-c
 import {CharacterDialog} from "@/components/character-dialog";
 import {InsertMenu} from "@/components/insert-menu";
 import {UploadSlotCard} from "@/components/upload-slot";
-import {SLOTS_FULL_FA,addSlot,removeSlot,reserveSlotTag,slotFor,uploadRejection,type Upload,type UploadSlot} from "@/lib/upload-slots";
+import {SLOTS_FULL_FA,addSlot,composerCards,fillSlotWith,forgetAttachment,removeSlot,reserveSlotTag,slotFor,uploadRejection,type Upload,type UploadSlot} from "@/lib/upload-slots";
+import {AttachmentCard} from "@/components/attachment-card";
 import {ModeControl,useMode} from "@/components/mode-control";
 import {StyleControl,useStyleSetting} from "@/components/style-control";
 import {AttachmentChip,type AttachmentPatch} from "@/components/attachment-chip";
@@ -93,6 +94,8 @@ export function Studio(){
  const pendingSlot=useRef<string|undefined>(undefined);
  /** Empty upload cards inside the chat input, one per «+» entry picked. They hold no file and are dropped on send. */
  const [slots,setSlots]=useState<UploadSlot[]>([]);
+ /** Everything for the next message, shown as cards inside the chat input: «+» cards in place (filled ones show their file), then dropped or pasted files. */
+ const cards=composerCards(slots,attachments);
  const promptRef=useRef<HTMLTextAreaElement>(null);
  /** Tags count up for the whole conversation and are never reused after a removal; a project saves them, "new chat" starts over. */
  const tagCounters=useRef(newTagCounters());
@@ -268,8 +271,8 @@ export function Studio(){
  }
  function releaseUrl(a:LocalAttachment){if(a.previewUrl){URL.revokeObjectURL(a.previewUrl);urls.current.delete(a.previewUrl);}}
  /** Verifies the picked files one by one; the good ones join the tray, each rejected one gets its own Persian reason. Returns how many were added. */
- async function addFiles(files:File[],upload?:Upload,reservedTag?:string):Promise<number>{
-  if(!files.length||readingRef.current)return 0;
+ async function addFiles(files:File[],upload?:Upload,reservedTag?:string):Promise<LocalAttachment[]>{
+  if(!files.length||readingRef.current)return [];
   readingRef.current=true;setReading(true);setProblems([]);setAnnounce("");
   const next=[...attachments],added:LocalAttachment[]=[],bad:AttachmentProblem[]=[];
   for(const file of files){
@@ -294,11 +297,12 @@ export function Studio(){
   setAttachments(cur=>[...cur,...added]);setProblems(bad);
   setAnnounce((added.length?fa(added.length)+" فایل اضافه شد. ":"")+(bad.length?fa(bad.length)+" فایل رد شد.":""));
   readingRef.current=false;setReading(false);
-  return added.length;
+  return added;
  }
- /** Fills an upload card with one file (picked or dropped); the card goes away only when the file was accepted, so a rejected file leaves it for another try. */
+ /** Fills an upload card with one file (picked or dropped). The card stays in place and shows the file; a rejected file leaves it empty for another try. */
  async function fillSlot(slot:UploadSlot,files:File[]){
-  if(await addFiles(files.slice(0,1),slot.upload,slot.tag))setSlots(list=>removeSlot(list,slot.id));
+  const [a]=await addFiles(files.slice(0,1),slot.upload,slot.tag);
+  if(a)setSlots(list=>fillSlotWith(list,slot.id,a.id));
  }
  function openSlotPicker(slot:UploadSlot){
   const el=fileInput.current;if(!el)return;
@@ -316,7 +320,7 @@ export function Studio(){
  function removeAttachment(id:string){
   const a=attachments.find(x=>x.id===id);if(a)releaseUrl(a);
   blobs.current.delete(id);
-  setAttachments(list=>list.filter(x=>x.id!==id));
+  setAttachments(list=>list.filter(x=>x.id!==id));setSlots(list=>forgetAttachment(list,id));
  }
  function patchAttachment(id:string,patch:AttachmentPatch){setAttachments(list=>list.map(x=>x.id!==id?x:patch.role===null?withoutRole(x):patch.role?withRole(x,patch.role):{...x,...(patch.speech?{speech:patch.speech}:{})}));}
  /** Puts the Persian tag (`#تصویر-۱ `) into the prompt at the caret (or over the selection) and returns focus to it. */
@@ -525,14 +529,16 @@ export function Studio(){
     {/* The chip tray and the composer scroll together under the chat, so on a short screen the prompt and the send button stay reachable. */}
     <div className="flex max-h-[64dvh] min-h-0 shrink-0 flex-col overflow-y-auto border-t border-line-tertiary bg-surface-base">
     <form ref={formRef} onSubmit={e=>void send(e)} className="flex shrink-0 flex-col gap-3 bg-surface-base p-4">
-     <AttachmentTray items={attachments} problems={problems} reading={reading} onChange={patchAttachment} onRemove={removeAttachment} onPreview={openViewer} onMention={mentionTag} onDismiss={key=>setProblems(list=>list.filter(p=>p.key!==key))}/>
+     <AttachmentTray items={attachments} problems={problems} reading={reading} onDismiss={key=>setProblems(list=>list.filter(p=>p.key!==key))}/>
      <input ref={fileInput} type="file" multiple hidden accept={ATTACHMENT_ACCEPT} data-testid="attachment-input" onChange={e=>{const files=Array.from(e.target.files??[]),upload=pendingUpload.current,slot=pendingSlot.current;pendingUpload.current=undefined;pendingSlot.current=undefined;e.target.value="";e.target.multiple=true;const card=slot?slots.find(x=>x.id===slot):undefined;if(card)void fillSlot(card,files);else void addFiles(files,upload);}}/>
      <Label className="sr-only" htmlFor="whoush-prompt">توضیح تصویر یا ویدیو</Label>
      <MentionTextarea id="whoush-prompt" inputRef={promptRef} value={draft} onValueChange={setDraft} options={conversation} onPaste={onPaste} placeholder="چی می‌خوای بسازیم؟" aria-describedby="prompt-hint" rows={3} maxLength={4000} className="max-h-40 resize-none"
       onSubmitShortcut={()=>{if(draft.trim()&&!busy&&!reading)formRef.current?.requestSubmit();}}
       startAction={<InsertMenu disabled={reading} onPick={pickInsert}/>}
-      top={slots.length>0?<ul aria-label="کارت‌های آپلود" className="flex gap-2 overflow-x-auto pb-1">
-       {slots.map(s=><UploadSlotCard key={s.id} slot={s} disabled={reading} onUpload={()=>openSlotPicker(s)} onDropFiles={f=>void fillSlot(s,f)} onRemove={()=>dropSlot(s.id)}/>)}
+      top={cards.length>0?<ul aria-label="پیوست‌ها" className="flex items-stretch gap-2 overflow-x-auto pb-1">
+       {cards.map(c=>c.type==="slot"
+        ?<UploadSlotCard key={c.slot.id} slot={c.slot} disabled={reading} onUpload={()=>openSlotPicker(c.slot)} onDropFiles={f=>void fillSlot(c.slot,f)} onRemove={()=>dropSlot(c.slot.id)}/>
+        :<AttachmentCard key={c.attachment.id} item={c.attachment} onChange={patch=>patchAttachment(c.attachment.id,patch)} onRemove={()=>removeAttachment(c.attachment.id)} onPreview={()=>openViewer(c.attachment)} onMention={()=>mentionTag(c.attachment.tag)}/>)}
       </ul>:undefined}
       endAction={<Button type="submit" size="icon" disabled={busy||reading||!draft.trim()} aria-busy={busy||undefined} aria-label={busy?"در حال ارسال…":"ارسال"}>
        <Icon icon={busy?LoaderCircle:ArrowUp} aria-hidden="true" className={busy?"animate-spin motion-reduce:animate-none":undefined}/>

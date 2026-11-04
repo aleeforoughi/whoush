@@ -40,3 +40,25 @@ test("INSERT_MENU: style is no longer a menu group (it is the «سبک» setting
  assert.ok(INSERT_MENU.flatMap(g=>g.items).every(i=>["auto","role","file","characters"].includes(i.action.type)));
  assert.equal(menuRoles().length,INSERT_MENU.filter(x=>!x.featured).flatMap(x=>x.items).filter(i=>i.action.type==="role").length,"popular shortcuts are not counted twice");
 });
+test("visible menu: «پرکاربردترین» is hidden for now; the automatic upload stays alone at the top; the kind groups follow",async()=>{
+ const {SHOW_POPULAR,visibleInsertMenu}=await import("../lib/insert-menu");
+ assert.equal(SHOW_POPULAR,false);
+ const v=visibleInsertMenu();
+ assert.deepEqual(v.map(s=>s.labelFa),[undefined,"تصویر","ویدیو","صدا","فایل"]);
+ assert.deepEqual(v[0].items.map(i=>i.action.type),["auto"]);
+ assert.ok(!JSON.stringify(v).includes("پرکاربردترین")&&!v.flatMap(s=>s.items).some(i=>i.id.startsWith("popular:")));
+ assert.equal(visibleInsertMenu(true)[0].labelFa,"پرکاربردترین","the switch brings it back");
+});
+test("menu search: folds Persian letter variants and ZWNJ, matches title, hint or group label, every word must match",async()=>{
+ const {filterInsertMenu,foldSearch,visibleInsertMenu}=await import("../lib/insert-menu");
+ const v=visibleInsertMenu(),ids=(q:string)=>filterInsertMenu(v,q).flatMap(s=>s.items.map(i=>i.id));
+ assert.deepEqual(ids(""),v.flatMap(s=>s.items.map(i=>i.id)),"empty query: everything");
+ assert.deepEqual(ids("کاراکتر"),["image:character","characters"]);
+ assert.deepEqual(ids("ويدئو"),["image:end_frame","video:motion_reference","video:edit_reference","video:continue"],"Arabic ي and ئ fold; the video group label matches, and «فریم آخر» through its hint");
+ assert.deepEqual(ids("لباس‌وکفش"),["image:outfit"],"ZWNJ and spaces ignored");
+ assert.deepEqual(ids("ریش"),["image:hairstyle"],"the hint matches");
+ assert.deepEqual(ids("PDF"),["file"]);
+ assert.deepEqual(ids("تصویر فریم"),["image:start_frame","image:end_frame"],"every word must match");
+ assert.deepEqual(ids("zzz"),[]);assert.equal(filterInsertMenu(v,"zzz").length,0,"empty sections are dropped");
+ assert.equal(foldSearch("  ويديو‌ها ۱٢ "),"ویدیوها 12");
+});

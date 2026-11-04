@@ -5,8 +5,8 @@ import {ATTACHMENT_KINDS,displayTag,isMediaKind,roleLabelFa,rolesFor,type Attach
 import {faBytes,faDimensions,faDuration} from "@/lib/format";
 
 const ICONS:Record<AttachmentKind,LucideIcon>={image:FileIcon,video:FileIcon,audio:FileAudio,pdf:FileIcon,json:FileJson,md:FileText};
-const LANGUAGES=[{value:"fa",label:"فارسی"},{value:"other",label:"زبان دیگر"},{value:"unknown",label:"نامشخص"}];
-const ACCENTS=[{value:"original",label:"حفظ لهجهٔ اصلی"},{value:"tehrani",label:"تهرانی"},{value:"unspecified",label:"نامشخص"}];
+export const LANGUAGES=[{value:"fa",label:"فارسی"},{value:"other",label:"زبان دیگر"},{value:"unknown",label:"نامشخص"}];
+export const ACCENTS=[{value:"original",label:"حفظ لهجهٔ اصلی"},{value:"tehrani",label:"تهرانی"},{value:"unspecified",label:"نامشخص"}];
 /** `role: null` goes back to «انتخاب خودکار هووش» (no role chosen). */
 export type AttachmentPatch=Partial<Pick<LocalAttachment,"speech">>&{role?:AttachmentRole|null};
 export const AUTO_ROLE_FA="انتخاب خودکار هووش";
