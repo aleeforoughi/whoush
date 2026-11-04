@@ -1,0 +1,519 @@
+{
+  "name": "Runway-inspired agent creative workspace",
+  "status": "analysis-derived blueprint, not official Runway code or tokens",
+  "date": "2026-11-01",
+  "sources": [
+    "4 user screenshots",
+    "Runway Help Center: Creating with Runway Agent",
+    "Runway Help Center: Navigating Runway",
+    "Runway Help Center: Building and running Workflows with Agent"
+  ],
+  "architecture": {
+    "product_domains": [
+      "Creative",
+      "Ads",
+      "Dev"
+    ],
+    "shell": {
+      "left_rail": [
+        "ProductSwitch",
+        "NewChatButton",
+        "NavMenu",
+        "ChatSessionToggle",
+        "RecentChats",
+        "ReferralCard",
+        "ProfileMenu"
+      ],
+      "main_workspace": [
+        "MediaTabs",
+        "MediaPreview",
+        "GenerationRail",
+        "GenerationStatus",
+        "TimelineEditor"
+      ],
+      "right_agent": [
+        "ReferenceGrid",
+        "UserMessage",
+        "AgentMessage",
+        "ActionApprovalCard",
+        "Composer",
+        "ModelSelector",
+        "PreferenceSelector"
+      ]
+    },
+    "creative_navigation": [
+      "Home",
+      "Agent",
+      "Tool",
+      "App Studio",
+      "Workflows",
+      "Plugins",
+      "Projects",
+      "Assets",
+      "Brand Kits",
+      "More"
+    ],
+    "conceptual_entities": [
+      "Workspace",
+      "Project",
+      "Session",
+      "Message",
+      "Reference",
+      "GenerationProposal",
+      "GenerationJob",
+      "MediaAsset",
+      "Cut",
+      "Workflow",
+      "BrandKit",
+      "PluginConnection"
+    ]
+  },
+  "design_tokens_approx_screenshot": {
+    "colors": {
+      "app": "#000000",
+      "sidebar": "#141416",
+      "canvas": "#1A1C1F",
+      "selected": "#292A31",
+      "action": "#2800EF",
+      "text": "#FFFFFF"
+    },
+    "spacing_unit_px": 4,
+    "sidebar_capture_width_px": 248,
+    "right_panel_capture_width_px": 366,
+    "notes": "Sampled raster colors and screenshot dimensions. NOT official CSS values or guaranteed layout widths."
+  },
+  "controls": {
+    "reasoning_model": "Separate from media generation model",
+    "generation_model": "Selected by agent or user and displayed on each proposal",
+    "optimization_preference": [
+      "speed",
+      "cost",
+      "quality",
+      "custom"
+    ],
+    "autonomy_mode": [
+      "ask_before_generating",
+      "automatically_generate"
+    ]
+  },
+  "transaction_card": {
+    "action": "generate_image",
+    "model": "gpt-image-2",
+    "aspect_ratio": "16:9",
+    "quality": "high",
+    "credit_cost": 20,
+    "approval_state": "awaiting_approval",
+    "source": "observed screenshot; illustrative typed schema"
+  },
+  "job_states": [
+    "draft",
+    "analyzing_inputs",
+    "planning",
+    "needs_clarification",
+    "awaiting_approval",
+    "queued",
+    "running",
+    "completed",
+    "failed",
+    "canceled",
+    "reviewed",
+    "derived"
+  ],
+  "components": [
+    {
+      "name": "ProductDomainSwitch",
+      "region": "shell",
+      "states": [
+        "default",
+        "active"
+      ]
+    },
+    {
+      "name": "PrimaryNavItem",
+      "region": "shell",
+      "states": [
+        "default",
+        "hover",
+        "active",
+        "focus"
+      ]
+    },
+    {
+      "name": "RecentSessionRow",
+      "region": "shell",
+      "states": [
+        "default",
+        "selected",
+        "hover"
+      ]
+    },
+    {
+      "name": "MediaTab",
+      "region": "workspace",
+      "states": [
+        "default",
+        "active"
+      ]
+    },
+    {
+      "name": "GenerationPreview",
+      "region": "workspace",
+      "states": [
+        "empty",
+        "pending",
+        "ready",
+        "error"
+      ]
+    },
+    {
+      "name": "GenerationThumbnail",
+      "region": "workspace",
+      "states": [
+        "pending",
+        "ready",
+        "selected",
+        "error"
+      ]
+    },
+    {
+      "name": "ProgressStatus",
+      "region": "workspace",
+      "states": [
+        "queued",
+        "running",
+        "done",
+        "failed"
+      ]
+    },
+    {
+      "name": "ReferenceGrid",
+      "region": "agent",
+      "states": [
+        "uploading",
+        "analyzed",
+        "missing"
+      ]
+    },
+    {
+      "name": "MessageBubble",
+      "region": "agent",
+      "states": [
+        "streaming",
+        "complete"
+      ]
+    },
+    {
+      "name": "GenerationActionCard",
+      "region": "agent",
+      "states": [
+        "draft",
+        "awaiting_approval",
+        "running",
+        "done",
+        "failed"
+      ]
+    },
+    {
+      "name": "ApproveButton",
+      "region": "agent",
+      "states": [
+        "enabled",
+        "loading",
+        "disabled"
+      ]
+    },
+    {
+      "name": "ChatComposer",
+      "region": "agent",
+      "states": [
+        "empty",
+        "focused",
+        "typing",
+        "busy"
+      ]
+    },
+    {
+      "name": "AttachmentPicker",
+      "region": "agent",
+      "states": [
+        "closed",
+        "open",
+        "uploading"
+      ]
+    },
+    {
+      "name": "ModelSelector",
+      "region": "agent",
+      "states": [
+        "closed",
+        "open",
+        "selected"
+      ]
+    },
+    {
+      "name": "PreferenceSelector",
+      "region": "agent",
+      "states": [
+        "closed",
+        "open",
+        "changed"
+      ]
+    },
+    {
+      "name": "TimelineEditor",
+      "region": "cut",
+      "states": [
+        "empty",
+        "editing",
+        "exporting"
+      ]
+    }
+  ],
+  "ux_risks": [
+    {
+      "priority": "P0",
+      "issue": "Unclear reasoning versus generation model labels"
+    },
+    {
+      "priority": "P0",
+      "issue": "Credit cost not contextualized against balance"
+    },
+    {
+      "priority": "P1",
+      "issue": "Generation progress lacks operational phase"
+    },
+    {
+      "priority": "P1",
+      "issue": "Chat vs Session scope unclear"
+    },
+    {
+      "priority": "P1",
+      "issue": "Agent panel narrow for complex proposals"
+    },
+    {
+      "priority": "P1",
+      "issue": "Hidden setting semantics"
+    },
+    {
+      "priority": "P2",
+      "issue": "Potential contrast and hit-target accessibility risk pending live testing"
+    }
+  ],
+  "recommended_product_improvements": [
+    "resizable agent panel",
+    "typed editable execution manifest",
+    "budget ceiling and credit reservation",
+    "generation queue/status timeline",
+    "before-after and multi-variant comparison",
+    "per-generation provenance",
+    "version graph",
+    "reliable cancellation and retry handling",
+    "keyboard and screen-reader testing"
+  ],
+  "version": "2.0-research-extension",
+  "evidence_levels": [
+    "OBSERVED",
+    "DOCUMENTED",
+    "INFERRED",
+    "PROPOSED"
+  ],
+  "agent_intelligence": {
+    "disclosure": "functional architecture inferred from documented capabilities, not verified private Runway code",
+    "separate_models": {
+      "reasoning_model_options_documented": [
+        "Sonnet 5.5",
+        "Opus 5.5",
+        "GPT-6 Astra"
+      ],
+      "media_generation_model": "task-specific automatic or user-requested",
+      "reasoning_fee_credits_per_message": {
+        "Opus 5.5": 24,
+        "GPT-6 Astra": 40
+      }
+    },
+    "inputs": [
+      "natural_language",
+      "images",
+      "video",
+      "audio",
+      "pdf",
+      "csv",
+      "json",
+      "text",
+      "markdown",
+      "subtitle_files",
+      "font_files",
+      "saved_asset_references",
+      "brand_kits_enterprise",
+      "skill_commands"
+    ],
+    "pipeline": [
+      {
+        "stage": "intent_compilation",
+        "evidence": "PROPOSED functional reconstruction"
+      },
+      {
+        "stage": "reference_resolution",
+        "evidence": "PROPOSED functional reconstruction"
+      },
+      {
+        "stage": "session_context",
+        "evidence": "PROPOSED functional reconstruction"
+      },
+      {
+        "stage": "creative_planning",
+        "evidence": "PROPOSED functional reconstruction"
+      },
+      {
+        "stage": "capability_filtering",
+        "evidence": "PROPOSED functional reconstruction"
+      },
+      {
+        "stage": "quality_cost_latency_ranking",
+        "evidence": "PROPOSED functional reconstruction"
+      },
+      {
+        "stage": "approval_and_spend_policy",
+        "evidence": "PROPOSED functional reconstruction"
+      },
+      {
+        "stage": "media_job_execution",
+        "evidence": "PROPOSED functional reconstruction"
+      },
+      {
+        "stage": "artifact_storage",
+        "evidence": "PROPOSED functional reconstruction"
+      },
+      {
+        "stage": "visual_review_and_iteration",
+        "evidence": "PROPOSED functional reconstruction"
+      }
+    ],
+    "publicly_confirmed": [
+      "conversational_planning",
+      "clarifying_questions",
+      "multiple_reference_media",
+      "encoded_creative_expertise",
+      "model_strengths_and_weaknesses_knowledge",
+      "skills_layer",
+      "auto_media_model_selection",
+      "optimization_preferences",
+      "ask_or_auto_generation",
+      "workflow_authoring_and_execution",
+      "timeline_editing"
+    ],
+    "not_publicly_disclosed": [
+      "private_system_prompts",
+      "specific_vision_models",
+      "embedding_architecture",
+      "consumer_agent_model_router_backend_equivalence",
+      "ranking_weights",
+      "automatic_QA_or_retry_logic",
+      "private_tool_call_schemas"
+    ],
+    "selection": {
+      "documented_dev_router": {
+        "filter": "capability+access+budget+eligible_models",
+        "optimization_one_of": [
+          "quality",
+          "cost",
+          "latency"
+        ],
+        "quality": "prompt-aware internal creative benchmark assessment",
+        "features": [
+          "allowlist_or_denylist",
+          "new_model_eligibility",
+          "capacity_fallback",
+          "dry_run_no_charge",
+          "routing_explanation_record"
+        ]
+      },
+      "consumer_agent_note": "automatic model choice, preferences and skill knowledge confirmed; identical algorithm not confirmed",
+      "proposed_scoring": "wq*Q(m,t)+wa*A(m,t)+wr*R(m)-wc*C(m,t)-wt*T(m,t), on eligible candidates only",
+      "nonnegotiable_rules": [
+        "hard_constraints_not_softened",
+        "source_immutability_when_requested",
+        "authorized_provider",
+        "cost_ceiling"
+      ]
+    },
+    "engagement": {
+      "commands": {
+        "@": "reference media",
+        "/": "agent skills"
+      },
+      "generation_modes": [
+        "ask_before_generation",
+        "automatically_generate"
+      ],
+      "optimization": [
+        "quality",
+        "speed",
+        "cost",
+        "custom"
+      ],
+      "agent_tasks": [
+        "plan",
+        "analyze",
+        "generate_image",
+        "generate_video",
+        "generate_audio",
+        "edit",
+        "assemble_timeline",
+        "build_workflow",
+        "run_workflow",
+        "create_skill"
+      ]
+    },
+    "proposed_services": [
+      "IntentCompiler",
+      "ReferenceRegistry",
+      "SessionMemory",
+      "CreativePlanner",
+      "CapabilityRouter",
+      "ApprovalLedger",
+      "JobOrchestrator",
+      "QualityEvaluator"
+    ],
+    "proposed_job_states": [
+      "draft",
+      "needs_input",
+      "planned",
+      "quoted",
+      "awaiting_approval",
+      "queued",
+      "running",
+      "succeeded",
+      "failed",
+      "canceled",
+      "reviewed",
+      "accepted"
+    ],
+    "proposed_metrics": [
+      "accepted_task_success",
+      "turns_to_acceptance",
+      "credits_per_accepted_asset",
+      "model_regret",
+      "hard_constraint_adherence",
+      "unexpected_spend_rate",
+      "context_retention",
+      "routing_explainability",
+      "workflow_execution_success"
+    ],
+    "risk_flags": [
+      "output_drift",
+      "long_chat_degradation",
+      "credits_spent_on_unaccepted_output",
+      "soft_preference_vs_hard_requirement_confusion",
+      "source_asset_loss",
+      "preview_final_cost_overrun"
+    ],
+    "source_urls": [
+      "https://runway.com/news/engineering/inside-building-runway-agent",
+      "https://help.runwayml.com/hc/en-us/articles/51601639579667-Creating-with-Runway-Agent",
+      "https://dev.runwayml.com/learn/choosing-the-right-model",
+      "https://help.runwayml.com/hc/en-us/articles/53907039424915-Using-Agent-Skills",
+      "https://help.runwayml.com/hc/en-us/articles/53645211363475-Building-and-running-Workflows-with-Agent"
+    ]
+  }
+}
