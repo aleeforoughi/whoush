@@ -1,5 +1,6 @@
 import "server-only";
 import type { ReasoningTier, MediaKind } from "./types";
+import type {AttachmentRole} from "./attachments";
 import {assertSafeText} from "./safety";
 import {resolveCreativeSkills,compileSkillInstructions,type SkillId} from "./skills";
 import {reasoningTier,detectMediaKind} from "./router";
@@ -13,14 +14,14 @@ export function resolvePrivateRouting(tier:ReasoningTier):PrivateRouting|null{
  * generated system prompt, model/provider identifier or token accounting to consumers.
  * This is a prepared request contract, NOT a live model call; lib/orchestrator.ts runs it. */
 export function preparePrivateCreativeRequest(args:{
- prompt:string;kind?:MediaKind;task?:"generate"|"edit"|"character";hasReferences?:boolean;hasAudioReference?:boolean;hasSpeechAudio?:boolean;speechLanguage?:"fa"|"other"|"unknown";accent?:"tehrani"|"original"|"unspecified";hasCharacterReference?:boolean;characterRef?:{id:string;angles:readonly string[];version:number};visualStyle?:"photoreal"|"stylized"|"auto";
+ prompt:string;kind?:MediaKind;task?:"generate"|"edit"|"character";hasReferences?:boolean;hasAudioReference?:boolean;hasSpeechAudio?:boolean;speechLanguage?:"fa"|"other"|"unknown";accent?:"tehrani"|"original"|"unspecified";hasCharacterReference?:boolean;characterRef?:{id:string;angles:readonly string[];version:number};visualStyle?:"photoreal"|"stylized"|"auto";attachmentRoles?:readonly AttachmentRole[];
 }):{
  systemInstructions:string;userText:string;activeSkillIds:SkillId[];
  privateReasoningTier:ReasoningTier;privateRoute:PrivateRouting|null;
 }{
  assertSafeText(args.prompt); // fail before LLM spend or any media proposal
  const kind=args.kind??detectMediaKind(args.prompt);
- const skillContext={prompt:args.prompt,kind,task:args.task,hasAudioReference:args.hasAudioReference,hasSpeechAudio:args.hasSpeechAudio,speechLanguage:args.speechLanguage,accent:args.accent,hasCharacterReference:args.hasCharacterReference,characterRef:args.characterRef,visualStyle:args.visualStyle};
+ const skillContext={prompt:args.prompt,kind,task:args.task,hasAudioReference:args.hasAudioReference,hasSpeechAudio:args.hasSpeechAudio,speechLanguage:args.speechLanguage,accent:args.accent,hasCharacterReference:args.hasCharacterReference,characterRef:args.characterRef,visualStyle:args.visualStyle,attachmentRoles:args.attachmentRoles};
  const tier=reasoningTier(args.prompt,Boolean(args.hasReferences||args.characterRef));
  return {
   systemInstructions:compileSkillInstructions(skillContext),

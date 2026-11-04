@@ -12,8 +12,12 @@ export interface ModelCapabilities {
   durationsSeconds?: readonly number[]; // video SKU durations
   audio: boolean;
   lipSync: boolean;
+  /** Follows the motion of a reference video (path, speed, timing) without copying its look. Unverified for every model: false. */
+  motionReference: boolean;
+  /** Edits a reference video while preserving its frames, cuts and audio. Unverified for every model: false. */
+  videoReference: boolean;
 }
-export interface MediaRequirements { referenceImages?: number; aspectRatio?: string; durationSeconds?: number; lipSync?: boolean; }
+export interface MediaRequirements { referenceImages?: number; aspectRatio?: string; durationSeconds?: number; lipSync?: boolean; motionReference?: boolean; videoReference?: boolean; }
 export interface MediaModel {
   id: string;
   name: string;

@@ -25,10 +25,10 @@ function readMediaMetadata(url:string,tag:"video"|"audio"):Promise<{durationSeco
 }
 const TEXTISH=/\.(json|md|markdown)$/i;
 /**
- * Verifies a user-chosen file by its bytes, hashes it and reads its metadata. Throws an Error with a Persian message when it
+ * Verifies a user-chosen file by its bytes, hashes it and reads its metadata. The caller assigns the tag; media has no role until the user picks one. Throws an Error with a Persian message when it
  * must be rejected. Nothing is uploaded or stored: the returned `previewUrl` is an object URL the caller must revoke.
  */
-export async function readAttachment(file:File):Promise<LocalAttachment>{
+export async function readAttachment(file:File):Promise<Omit<LocalAttachment,"tag">>{
  const small=file.size<=ATTACHMENT_KINDS.json.maxBytes&&(TEXTISH.test(file.name)||/json|markdown|text\/plain/i.test(file.type));
  let head:Uint8Array;
  try{head=new Uint8Array(await file.slice(0,small?file.size:SNIFF_BYTES).arrayBuffer());}catch{throw new Error(ATTACHMENT_ERRORS_FA.unreadable);}
@@ -37,8 +37,7 @@ export async function readAttachment(file:File):Promise<LocalAttachment>{
  const {kind,mime,textExcerpt}=sniffed;
  let sha256:string;
  try{sha256=await sha256Hex(file);}catch{throw new Error(ATTACHMENT_ERRORS_FA.unreadable);}
- const a:LocalAttachment={id:crypto.randomUUID(),kind,mime,bytes:file.size,sha256,name:file.name||"فایل",role:kind==="image"||kind==="video"?"reference":"context",
-  ...(textExcerpt!==undefined?{textExcerpt}:{}),...(kind==="audio"?{speech:{hasSpeech:false,language:"unknown",accent:"unspecified"}}:{})};
+ const a:Omit<LocalAttachment,"tag">={id:crypto.randomUUID(),kind,mime,bytes:file.size,sha256,name:file.name||"فایل",...(textExcerpt!==undefined?{textExcerpt}:{})};
  if(kind==="image"){
   const {width,height}=await readImageSize(file);
   if(width>MAX_SIDE||height>MAX_SIDE)throw new Error("ابعاد تصویر بیش از حد بزرگ است.");

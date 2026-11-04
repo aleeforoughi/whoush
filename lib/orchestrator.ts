@@ -2,10 +2,10 @@ import "server-only";
 import {createHash,randomUUID} from "node:crypto";
 import {buildProposal,NoCompatibleModelError} from "./agent";
 import {CHARACTER_VIEWS,REQUIRED_CHARACTER_VIEWS} from "./characters";
-import {CreativePlanSchema,CreativeTurnInputSchema,toPublicPlan,PlannerInvalidOutputError,PlannerRefusedError,PlannerUnavailableError,type CreativePlan,type PlannerRequest,type PlannerResult,type PrivatePlanner,type PublicCreativePlan} from "./creative-plan";
+import {CreativePlanSchema,CreativeTurnInputSchema,toPublicPlan,type PublicReference,PlannerInvalidOutputError,PlannerRefusedError,PlannerUnavailableError,type CreativePlan,type PlannerRequest,type PlannerResult,type PrivatePlanner,type PublicCreativePlan} from "./creative-plan";
 import {llmPolicy,preparePrivateCreativeRequest} from "./llm";
 import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./private-audit";
-import {isMediaKind} from "./attachments";
+import {isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole} from "./attachments";
 import {detectMediaKind} from "./router";
 import {evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
 import {SKILLS,SKILL_REGISTRY_VERSION} from "./skills";
@@ -19,6 +19,8 @@ const FA_REFUSED="این درخواست در حال حاضر قابل پرداز
 const FA_NO_REFS="برنامه تولید با کاراکتر انتخاب‌شده آماده است، اما هنوز هیچ مدل تأییدشده‌ای عکس مرجع کاراکتر را نمی‌پذیرد؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 const FA_TEXT_BLOCKED="یکی از فایل‌های متنیِ پیوست‌شده مسدود شد. ";
 const FA_MEDIA_REVIEW="برنامه آماده است، اما بررسی ایمنی فایل‌های تصویری، ویدیویی و صوتی هنوز فعال نیست؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
+const FA_VOICE_CLONE="کلون صدا در هووش پشتیبانی نمی‌شود؛ هووش فقط تصویر و ویدیو می‌سازد و تولید یا شبیه‌سازی صدا ممکن نیست.";
+const faMissing=(tags:readonly string[])=>tags.length===1?"پیوست @"+tags[0]+" در این گفت‌وگو پیدا نشد؛ آن را دوباره اضافه کن یا تگ را اصلاح کن.":"پیوست‌های "+tags.map(t=>"@"+t).join("، ")+" در این گفت‌وگو پیدا نشدند؛ آن‌ها را دوباره اضافه کن یا تگ‌ها را اصلاح کن.";
 const FA_PDF_NOTE="محتوای فایل PDF هنوز خوانده نمی‌شود و در برنامه اثری ندارد";
 const lipsMsg="برنامه لیپ‌سینک آماده است، اما هنوز هیچ مدل تأییدشده‌ای هماهنگی لب را پشتیبانی نمی‌کند؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 // ---- deterministic planner (pure, no network): complete valid plan from the active skills ----
@@ -43,6 +45,37 @@ const missingViews=(angles:readonly string[])=>REQUIRED_CHARACTER_VIEWS.filter(v
 const missingQuestion=(angles:readonly string[])=>{const m=missingViews(angles);return m.length?"زاویه‌های «"+viewTitles(m)+"» هنوز اضافه نشده‌اند و ساخته نمی‌شوند؛ ادامه بدهیم یا اول آن‌ها را اضافه می‌کنی؟":undefined;};
 const fas=(l:readonly Pair[])=>l.map(x=>x.fa);
 const ens=(l:readonly Pair[])=>l.map(x=>x.en);
+// ---- attachment roles ----
+// Each role adds a hard constraint, a continuity lock or a soft preference. Both halves name the attachment as `@tag`: the public Persian
+// text keeps it, and `rewriteMentions` turns it into an English description (`[reference image 1 · character]`) in the provider-facing prompt.
+type Ref={tag:string;kind:AttachmentKind;role?:AttachmentRole};
+const tagMap=(l:readonly Ref[]=[])=>new Map(l.map(a=>[a.tag,a]));
+function roleRule(kind:AttachmentKind,role:AttachmentRole,tag:string):{hard?:Pair;soft?:Pair;lock?:Pair}{
+ const at="@"+tag;
+ switch(role){
+  case "character":return {hard:P(at+": preserve facial identity, hair, skin tone and body proportions exactly as in the reference",at+": هویت چهره، مو، رنگ پوست و تناسب بدن مطابق مرجع حفظ شود")};
+  case "environment":return {lock:P(at+": keep the location, architecture, light direction and time of day of the reference",at+": مکان، معماری، جهت نور و ساعت روز مطابق مرجع ثابت بماند")};
+  case "object":return {hard:P(at+": keep the object's shape, material, color, proportions and logo placement as in the reference",at+": شکل، جنس، رنگ، تناسب و جای لوگوی شیء مطابق مرجع حفظ شود")};
+  case "graphic":return {hard:P(at+": use the graphic, logo or text exactly as provided, with no distortion, recoloring or retyping",at+": گرافیک، لوگو یا متن مرجع بدون اعوجاج، تغییر رنگ یا بازنویسی استفاده شود")};
+  case "edit_reference":return kind==="video"
+   ?{hard:P(at+": preserve the frame rate, frame count, cuts, audio, framing and grade of the source video except for the requested change",at+": نرخ فریم، تعداد فریم، برش‌ها، صدا، کادر و گرید رنگ ویدیوی مبدأ حفظ شود، به‌جز تغییر درخواست‌شده")}
+   :{hard:P(at+": change only the requested region and preserve all remaining pixels, identity, framing and light",at+": فقط بخش درخواست‌شده تغییر کند و بقیهٔ پیکسل‌ها، هویت، کادر و نور حفظ شود")};
+  case "motion_reference":return {hard:P(at+": follow the path, speed, timing and blocking of the motion, but not the appearance of the reference",at+": مسیر، سرعت، زمان‌بندی و بلاکینگ حرکت از مرجع دنبال شود، اما ظاهر مرجع کپی نشود")};
+  case "music":return {soft:P(at+": let its beat, tempo and structure guide the cut rhythm and motion timing; do not generate or alter any music",at+": ضرباهنگ، تمپو و ساختار موسیقی راهنمای ریتم برش‌ها و زمان‌بندی حرکت باشد؛ موسیقی ساخته یا تغییر داده نمی‌شود")};
+  default:return {};
+ }
+}
+export function roleDirectives(refs:readonly Ref[]=[]):{hard:Pair[];soft:Pair[];locks:Pair[]}{
+ const out={hard:[] as Pair[],soft:[] as Pair[],locks:[] as Pair[]};
+ for(const a of refs){
+  if(!a.role)continue;
+  const r=roleRule(a.kind,a.role,a.tag);
+  if(r.hard)out.hard.push(r.hard);
+  if(r.soft)out.soft.push(r.soft);
+  if(r.lock)out.locks.push(r.lock);
+ }
+ return out;
+}
 export function deterministicPlanner(req:PlannerRequest):{plan:CreativePlan}{
  const {input,kind,activeSkillIds:ids}=req;const text=input.text;const p=normalizePersian(text);
  const portrait=has(p,PORTRAIT),night=has(p,NIGHT),vertical=has(p,VERTICAL),photoreal=ids.includes("hyper_realism"),ref=input.characterRef;
@@ -59,29 +92,34 @@ export function deterministicPlanner(req:PlannerRequest):{plan:CreativePlan}{
  const notes=[P("First, middle and last frames share identity, wardrobe, lighting direction and palette","فریم اول، میانی و آخر هویت، لباس، جهت نور و پالت رنگی یکسان دارند"),P("Natural motion blur from the 180 degree shutter; no FPS drift","محوشدگی حرکتی طبیعی از شاتر ۱۸۰ درجه؛ بدون نوسان فریم‌ریت")];
  const shot={shotSize:size.fa,cameraMovement:mv.fa,lens:portrait?"معادل لنز ۵۰ میلی‌متر":"معادل لنز ۲۸ میلی‌متر",targetFps:24,shutterAngle:180,durationSeconds:dur?Math.min(60,Math.max(1,Number(dur[1]))):5,blocking:"حرکت سوژه دلیل مشخص دارد و خوانا است؛ محور دوربین و جهت حرکت روی صفحه ثابت می‌ماند",continuityNotes:fas(notes)};
  const lips=ids.includes("persian_lip_sync_phonetics"),speech=input.audio?.hasSpeech===true;
+ const rd=roleDirectives(req.attachments),byTag=tagMap(req.attachments);
  const hardP:Pair[]=[P("Follow the brief exactly; do not add unrequested subjects, text or logos","دقیقاً مطابق توضیح تو؛ سوژه، متن یا لوگوی اضافه‌ای وارد نمی‌شود"),
   ...(input.task==="edit"?[P("Preserve all unedited source regions: identity, framing, lighting, color and pixels","همهٔ بخش‌های ویرایش‌نشدهٔ تصویر مبدأ حفظ می‌شود: هویت، کادر، نور، رنگ و پیکسل‌ها")]:[]),
   ...(kind==="video"?[P("Keep people and objects continuous; no teleporting, sudden appearance or unintended cuts","افراد و اشیا پیوسته می‌مانند؛ بدون جابه‌جایی ناگهانی، ظاهر یا ناپدید شدن ناگهانی و برش ناخواسته")]:[]),
-  ...(ref?[P("Use only the provided reference angles; never invent missing views","فقط از زاویه‌های مرجع ارائه‌شده استفاده می‌شود؛ نمای ناموجود ساخته نمی‌شود")]:[])];
+  ...(ref?[P("Use only the provided reference angles; never invent missing views","فقط از زاویه‌های مرجع ارائه‌شده استفاده می‌شود؛ نمای ناموجود ساخته نمی‌شود")]:[]),
+  ...rd.hard];
  const directivesP:Pair[]=photoreal
   ?[P("Natural skin microtexture with visible pores, fine hairs and subtle asymmetry where people appear","بافت ریز طبیعی پوست با منافذ قابل‌دیدن، موهای ریز و کمی عدم تقارن، هرجا آدمی دیده می‌شود"),P("No waxy, plastic or over-smoothed skin","پوست مومی، پلاستیکی یا بیش‌ازحد صاف نباشد"),P("Physically accurate materials: fabric weave, metal, glass, wood, stone","مواد با رفتار فیزیکی درست: بافت پارچه، فلز، شیشه، چوب و سنگ"),P("No gratuitous film grain, glow, haze or stylistic filters unless requested","بدون گرین فیلم، درخشش، مه یا فیلتر سبکیِ بی‌دلیل، مگر اینکه خواسته شود"),P("Balanced exposure with natural highlight roll-off","نوردهی متعادل با افت طبیعی نواحی روشن")]
   :[P("Respect the requested stylized look; do not impose photographic textures or lens artifacts","سبک خواسته‌شده رعایت می‌شود؛ بافت عکاسی یا خطاهای لنز تحمیل نمی‌شود"),P("Keep line, palette and shading consistent across the whole frame","خط، پالت رنگی و سایه‌پردازی در کل کادر یکدست می‌ماند")];
  const directives=fas(directivesP);
  const hard=fas(hardP);
  const docs=(req.attachments??[]).filter(a=>a.textExcerpt).length,pdfs=(req.attachments??[]).filter(a=>a.kind==="pdf").length;
- const soft=[kind==="image"?"نسبت تصویر "+faDigits(camera.aspectRatio):"کادر مناسب پلتفرم با جذابیت واضح در ثانیهٔ اول",...(night?["حال‌وهوای کم‌نور با منابع نور واقعی صحنه"]:[]),
+ const soft=[kind==="image"?"نسبت تصویر "+faDigits(camera.aspectRatio):"کادر مناسب پلتفرم با جذابیت واضح در ثانیهٔ اول",...fas(rd.soft),...(night?["حال‌وهوای کم‌نور با منابع نور واقعی صحنه"]:[]),
   ...(docs?[faDigits(String(docs))+" سند متنی به‌عنوان زمینه همراه درخواست ثبت شد؛ برنامهٔ آزمایشی هنوز محتوای آن‌ها را اعمال نمی‌کند"]:[]),...(pdfs?[FA_PDF_NOTE]:[])];
  const direction=kind==="image"?[camera.focalLengthMm+"mm",camera.aperture,camera.shutter,"ISO "+camera.iso,camera.whiteBalanceK+"K",d.framing.en,d.lighting.en]:[size.en,mv.en,shot.targetFps+"fps",shot.shutterAngle+" degree shutter",shot.durationSeconds+"s"];
+ // The user's text gets whatever budget the direction, hard constraints and role lines leave, so the constraints at the end are never cut off.
+ const rest="\nDirection: "+direction.join(", ")+". "+ens(directivesP).join(". ")+". "+ens(hardP).join(". ")+(rd.locks.length||rd.soft.length?". "+ens([...rd.locks,...rd.soft]).join(". "):"");
+ const restEn=rewriteMentions(rest,byTag),prompt=(rewriteMentions(text,byTag).slice(0,Math.max(200,3000-restEn.length))+restEn).slice(0,3000);
  const plan:CreativePlan={
   intentSummaryFa:(kind==="image"?"ساخت تصویر: ":"ساخت ویدیو: ")+text.replace(/\s+/g," ").slice(0,160)+(text.length>160?"…":""),
   mediaKind:kind,
-  mediaPrompt:(text.slice(0,1700)+"\nDirection: "+direction.join(", ")+". "+ens(directivesP).join(". ")+". "+ens(hardP).join(". ")).slice(0,3000),
+  mediaPrompt:prompt,
   hardConstraints:hard,
   softPreferences:soft,
   negative:["extra fingers","distorted anatomy","garbled or misspelled text","watermark",...(photoreal?["waxy or plastic skin","over-smoothing","gratuitous grain, glow or filters"]:[])],
   camera:kind==="image"?camera:undefined,shot:kind==="video"?shot:undefined,
   identityLock:ref?{characterId:ref.id,version:ref.version,providedAngles:[...ref.angles],lockedAttributes:["هندسهٔ چهره","مدل مو و خط رویش مو","رنگ و بافت پوست","تناسب بدن","سن ظاهری","لباس، مگر تغییرش خواسته شود"],allowedChanges:["ژست و حالت چهره","محیط و نور طبق درخواست","زاویهٔ دوربین"]}:undefined,
-  continuity:{locks:["هویت، لباس، مدل مو، وسایل و پالت رنگی در همهٔ فریم‌ها و بازبینی‌ها یکسان می‌ماند","جهت نور و ساعت روز ثابت است، مگر اینکه توضیح تو آن را تغییر بدهد","هر چیزی که درخواست تغییرش نشده، دست‌نخورده می‌ماند"],
+  continuity:{locks:["هویت، لباس، مدل مو، وسایل و پالت رنگی در همهٔ فریم‌ها و بازبینی‌ها یکسان می‌ماند","جهت نور و ساعت روز ثابت است، مگر اینکه توضیح تو آن را تغییر بدهد","هر چیزی که درخواست تغییرش نشده، دست‌نخورده می‌ماند",...fas(rd.locks)],
    antiTeleport:kind==="video"?["هر فرد و شیء پایدار می‌ماند: بدون ظاهر یا ناپدید شدن ناگهانی","تماس دست با اشیا و مسیر حرکت‌ها از نظر فیزیکی قابل‌باور می‌ماند","میان فریم‌های پیاپی پرش ناگهانی در موقعیت وجود ندارد"]:[]},
   realism:{mode:photoreal?"photoreal":"stylized",directives},
   speech:kind==="video"?{lipSync:lips?{status:speech?"planned_from_audio":"needs_audio",notes:speech?["زمان‌بندی دهان از روی صدای ارائه‌شده استخراج می‌شود، نه از زمان‌بندی حدسیِ متن","صدا، کلمات و لهجهٔ فایل اصلی بدون تغییر می‌ماند",...(ids.includes("tehrani_accent")?["لهجهٔ تهرانی فقط هدف خلاقانه برای دیالوگ تازه‌نوشته‌شده است؛ صدای ارائه‌شده هرگز تغییر نمی‌کند"]:[])]:["برای هم‌زمان‌سازی لب، فایل صوتی گفتار را ارائه کن؛ زمان‌بندی هرگز فقط از روی متن حدس زده نمی‌شود"]}:{status:"not_requested",notes:[]},accent:ids.includes("tehrani_accent")?"tehrani":input.audio?.accent==="original"?"original":"unspecified"}:undefined,
@@ -107,6 +145,14 @@ function enforce(raw:CreativePlan,req:PlannerRequest):{plan:CreativePlan;correct
  }
  const photoreal=ids.includes("hyper_realism");
  if(note("realism_mode",p.realism.mode!==(photoreal?"photoreal":"stylized")||!p.realism.directives.length))p.realism=det.realism;
+ // Role directives are hard invariants: a planner that dropped one gets it back (Persian in the plan, English in the prompt).
+ const rd=roleDirectives(req.attachments),lacks=(l:readonly string[])=>(x:Pair)=>!l.includes(x.fa);
+ const lackHard=rd.hard.filter(lacks(p.hardConstraints)),lackLocks=rd.locks.filter(lacks(p.continuity.locks)),lackSoft=rd.soft.filter(lacks(p.softPreferences));
+ if(note("role_directives",lackHard.length+lackLocks.length+lackSoft.length>0)){
+  p.hardConstraints=[...p.hardConstraints,...fas(lackHard)];p.continuity={...p.continuity,locks:[...p.continuity.locks,...fas(lackLocks)]};p.softPreferences=[...p.softPreferences,...fas(lackSoft)];
+  const extra=rewriteMentions(" "+ens([...lackHard,...lackLocks,...lackSoft]).join(". ")+".",tagMap(req.attachments));
+  p.mediaPrompt=p.mediaPrompt.slice(0,Math.max(0,3000-extra.length))+extra;
+ }
  if(kind==="image"){if(note("speech_dropped",Boolean(p.speech)))delete p.speech;}
  else{
   const lips=ids.includes("persian_lip_sync_phonetics"),status=!lips?"not_requested":input.audio?.hasSpeech?"planned_from_audio":"needs_audio";
@@ -128,16 +174,23 @@ function keepPrompt(turnId:string,prompt:string){const m=store();m.set(turnId,pr
 // ---- attachments ----
 type Audio=NonNullable<ReturnType<typeof CreativeTurnInputSchema.parse>["audio"]>;
 /** One set of audio flags from the legacy `audio` field and from audio attachments; the first source that has speech decides language and accent. */
-export function deriveAudio(input:{audio?:Audio;attachments?:readonly {kind:string;speech?:{hasSpeech:boolean;language:Audio["language"];accent:Audio["accent"]}}[]}):Audio|undefined{
+export function deriveAudio(input:{audio?:Audio;attachments?:readonly {kind:string;role?:string;speech?:{hasSpeech:boolean;language:Audio["language"];accent:Audio["accent"]}}[]}):Audio|undefined{
  const a=input.audio,files=(input.attachments??[]).filter(x=>x.kind==="audio");
  if(!a&&!files.length)return undefined;
- const speaker=a?.hasSpeech?a:files.map(f=>f.speech).find(sp=>sp?.hasSpeech);
+ // Only a `lip_sync` audio carries speech, and it implies speech; the language defaults to unknown and the accent to unspecified.
+ const lip=files.filter(f=>f.role==="lip_sync").map(f=>({hasSpeech:true,language:(f.speech?.language??"unknown") as Audio["language"],accent:(f.speech?.accent??"unspecified") as Audio["accent"]}));
+ const speaker=a?.hasSpeech?a:lip[0];
  return {hasAudioReference:Boolean(a?.hasAudioReference)||files.length>0||Boolean(speaker),hasSpeech:Boolean(speaker),language:speaker?.language??a?.language??"unknown",accent:speaker?.accent&&speaker.accent!=="unspecified"?speaker.accent:a?.accent??"unspecified"};
 }
-/** Hard capability requirements. Character angles and reference-role images count as reference images; videos and audio never do. */
-export function mediaRequirements(input:{characterRef?:{angles:readonly string[]};attachments?:readonly {kind:string;role:string}[]},lipSync:boolean):MediaRequirements{
- const images=(input.attachments??[]).filter(a=>a.kind==="image"&&a.role==="reference").length,refs=(input.characterRef?.angles.length??0)+images;
- return {referenceImages:refs||undefined,lipSync:lipSync||undefined};
+/**
+ * Hard capability requirements. Character angles and every attached image (all image roles are references) count as reference images;
+ * a `motion_reference` video needs `motionReference`, an `edit_reference` video `videoReference`, a `lip_sync` audio `lipSync`.
+ */
+export function mediaRequirements(input:{characterRef?:{angles:readonly string[]};attachments?:readonly {kind:string;role?:string}[]},lipSync:boolean):MediaRequirements{
+ const files=input.attachments??[],images=files.filter(a=>a.kind==="image"&&a.role).length,refs=(input.characterRef?.angles.length??0)+images;
+ const lips=lipSync||files.some(a=>a.kind==="audio"&&a.role==="lip_sync");
+ return {referenceImages:refs||undefined,lipSync:lips||undefined,
+  ...(files.some(a=>a.kind==="video"&&a.role==="motion_reference")?{motionReference:true}:{}),...(files.some(a=>a.kind==="video"&&a.role==="edit_reference")?{videoReference:true}:{})};
 }
 // ---- orchestration ----
 export async function orchestrateCreativeTurn(rawInput:unknown,deps:OrchestratorDeps={}):Promise<OrchestratorResult>{
@@ -152,12 +205,18 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   if(r.decision!=="allow")return {status:"restricted",decision:r.decision,category:r.category,message:FA_TEXT_BLOCKED+r.message};
  }
  // Planners see attachments only through `req.attachments` (kinds and excerpts as data); the audio flags are merged into `input.audio`.
- const input={...parsed,audio:deriveAudio(parsed),attachments:undefined};
- const kind=detectMediaKind(input.text),a=input.audio,ref=input.characterRef;
- const prep=preparePrivateCreativeRequest({prompt:input.text,kind,task:input.task,hasReferences:Boolean(ref||a?.hasAudioReference||files.length),hasAudioReference:a?(a.hasAudioReference||a.hasSpeech):undefined,hasSpeechAudio:a?.hasSpeech,speechLanguage:a?.language,accent:a?.accent,characterRef:ref,visualStyle:input.visualStyle});
- const req:PlannerRequest={...prep,privateRoute:prep.privateRoute&&{provider:prep.privateRoute.provider,modelId:prep.privateRoute.modelId},kind,input,...(files.length?{attachments:files.map(f=>({kind:f.kind,...(f.textExcerpt?{textExcerpt:f.textExcerpt}:{})}))}:{})};
+ // An edit_reference (image or video) makes the turn an edit, which brings photo_editor or video_editor.
+ const task=parsed.task!=="character"&&files.some(f=>f.role==="edit_reference")?"edit":parsed.task;
+ const input={...parsed,task,audio:deriveAudio(parsed),attachments:undefined};
+ // A video attachment (every media attachment carries a role) or a lip_sync audio makes the output a video even when the text sounds like
+ // an image request. Such a turn always has media, so it stops at the media-review check below and never reaches `buildProposal`, which re-detects from the text.
+ const kind=files.some(f=>f.kind==="video"||(f.kind==="audio"&&f.role==="lip_sync"))?"video":detectMediaKind(input.text),a=input.audio,ref=input.characterRef;
+ const refs:PublicReference[]=files.flatMap(f=>isMediaKind(f.kind)&&f.role?[{tag:f.tag,kind:f.kind,role:f.role,labelFa:roleLabelFa(f.role)}]:[]);
+ const have=new Set(files.map(f=>f.tag)),missing=parseMentions(input.text).filter(t=>!have.has(t)),byTag=tagMap(files);
+ const prep=preparePrivateCreativeRequest({prompt:input.text,kind,task:input.task,attachmentRoles:files.flatMap(f=>f.role?[f.role]:[]),hasReferences:Boolean(ref||a?.hasAudioReference||files.length),hasAudioReference:a?(a.hasAudioReference||a.hasSpeech):undefined,hasSpeechAudio:a?.hasSpeech,speechLanguage:a?.language,accent:a?.accent,characterRef:ref,visualStyle:input.visualStyle});
+ const req:PlannerRequest={...prep,privateRoute:prep.privateRoute&&{provider:prep.privateRoute.provider,modelId:prep.privateRoute.modelId},kind,input,...(files.length?{attachments:files.map(f=>({tag:f.tag,kind:f.kind,...(f.role?{role:f.role}:{}),...(f.textExcerpt?{textExcerpt:f.textExcerpt}:{})}))}:{})};
  const turnId=randomUUID();
- const rec=(x:Partial<PrivateAuditRecord>)=>audit.record({turnId,at:now().toISOString(),skillRegistryVersion:SKILL_REGISTRY_VERSION,activeSkillIds:[...prep.activeSkillIds],reasoningTier:prep.privateReasoningTier,route:req.privateRoute,planner:"deterministic",promptSha256:createHash("sha256").update(input.text).digest("hex"),...(files.length?{attachments:files.map(f=>({kind:f.kind,bytes:f.bytes,sha256:f.sha256}))}:{}),...x});
+ const rec=(x:Partial<PrivateAuditRecord>)=>audit.record({turnId,at:now().toISOString(),skillRegistryVersion:SKILL_REGISTRY_VERSION,activeSkillIds:[...prep.activeSkillIds],reasoningTier:prep.privateReasoningTier,route:req.privateRoute,planner:"deterministic",promptSha256:createHash("sha256").update(input.text).digest("hex"),...(files.length?{attachments:files.map(f=>({tag:f.tag,...(f.role?{role:f.role}:{}),kind:f.kind,bytes:f.bytes,sha256:f.sha256}))}:{}),...x});
  let planner=deps.planner,label:PrivateAuditRecord["planner"]=planner&&planner!==deterministicPlanner?"live":"deterministic",fallbackReason:string|undefined;
  if(!planner){
   const pol=llmPolicy(prep.privateReasoningTier);
@@ -178,6 +237,9 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  if(!fin.e){label="deterministic";fallbackReason=fin.reason;fin=finalize(deterministicPlanner(req).plan);}
  if(!fin.e)throw new Error("deterministic planner produced an invalid plan");
  const {plan,corrections}=fin.e;
+ // Provider-facing text names attachments by description; the public Persian text keeps the @tag. A missing tag is a question, never a block.
+ plan.mediaPrompt=rewriteMentions(plan.mediaPrompt,byTag).slice(0,3000);
+ if(missing.length)plan.clarifyingQuestionFa=[faMissing(missing),plan.clarifyingQuestionFa].filter(Boolean).join(" ").slice(0,400);
  // plan inspection: LLM output never bypasses the safety layer
  for(const t of [plan.mediaPrompt,...plan.hardConstraints]){
   const r=evaluateTextSafety(t);
@@ -185,20 +247,25 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  }
  // Hard capability requirements: a character reference needs reference-image input, lip sync needs a lip-sync model.
  const requirements=mediaRequirements(input,kind==="video"&&prep.activeSkillIds.includes("persian_lip_sync_phonetics"));
+ // Voice cloning is never offered: Whoush only makes images and videos, and generating or imitating a voice is out of scope.
+ if(files.some(f=>f.role==="voice_clone")){
+  rec({planner:label,fallbackReason:"voice_clone_unsupported",corrections:corrections.length?corrections:undefined});
+  return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs),message:FA_VOICE_CLONE};
+ }
  // TODO(docs/MODERATION_POLICY.md step 4, "Reference inspection"): plug a real multimodal inspector in here. Until one exists, any image, video or
  // audio attachment fails closed: the plan is returned, but no proposal or price, so uninspected media can never reach provider handoff (step 6).
  if(files.some(f=>isMediaKind(f.kind))){
   rec({planner:label,fallbackReason:"media_review_unavailable",corrections:corrections.length?corrections:undefined});
-  return {status:"unsupported",turnId,plan:toPublicPlan(plan),message:FA_MEDIA_REVIEW};
+  return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs),message:FA_MEDIA_REVIEW};
  }
  let proposal:GenerationProposal;
  try{proposal=buildProposal(input.text,input.preference,requirements);}
  catch(e){
   if(!(e instanceof NoCompatibleModelError))throw e;
   rec({planner:label,fallbackReason:"no_compatible_model",corrections:corrections.length?corrections:undefined});
-  return {status:"unsupported",turnId,plan:toPublicPlan(plan),message:ref?FA_NO_REFS:lipsMsg};
+  return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs),message:ref?FA_NO_REFS:lipsMsg};
  }
  keepPrompt(turnId,plan.mediaPrompt);
  rec({planner:label,fallbackReason,corrections:corrections.length?corrections:undefined,usage:label==="live"?result?.usage:undefined});
- return {status:"planned",turnId,proposal,plan:toPublicPlan(plan)};
+ return {status:"planned",turnId,proposal,plan:toPublicPlan(plan,refs)};
 }

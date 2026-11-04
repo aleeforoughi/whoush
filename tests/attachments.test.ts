@@ -1,6 +1,6 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {ATTACHMENT_ACCEPT,ATTACHMENT_KINDS,MAX_ATTACHMENTS,MAX_EXCERPT_CHARS,MAX_TOTAL_ATTACHMENT_BYTES,sniffKind,textExcerpt,toWireAttachment,validateAttachmentSet,type AttachmentKind,type LocalAttachment} from "../lib/attachments";
+import {ATTACHMENT_ACCEPT,ATTACHMENT_KINDS,ATTACHMENT_ROLE_IDS,MAX_ATTACHMENTS,MAX_EXCERPT_CHARS,MAX_TOTAL_ATTACHMENT_BYTES,TAG_PATTERN,allocateTag,describeTagEn,insertMention,mentionTrigger,newTagCounters,parseMentions,rewriteMentions,roleLabelFa,rolesFor,sendBlockers,sniffKind,splitMentions,tagPrefix,textExcerpt,toWireAttachment,validateAttachmentSet,type AttachmentKind,type LocalAttachment} from "../lib/attachments";
 import {CreativeTurnInputSchema} from "../lib/creative-plan";
 import {faDuration} from "../lib/format";
 
@@ -81,41 +81,146 @@ test("text excerpts: first 8000 chars, JSON compact, no half surrogate pair",()=
  const r=sniffKind(enc("# عنوان\nمتن"),"text/markdown","a.md");assert.ok(r.ok&&r.textExcerpt==="# عنوان\nمتن");
 });
 
-const wire=(over:Record<string,unknown>={})=>({id:crypto.randomUUID(),kind:"image",mime:"image/png",bytes:1234,sha256:"a".repeat(64),role:"reference",width:640,height:480,...over});
+const wire=(over:Record<string,unknown>={})=>({id:crypto.randomUUID(),tag:"image1",kind:"image",mime:"image/png",bytes:1234,sha256:"a".repeat(64),role:"character",width:640,height:480,...over});
+const doc=(over:Record<string,unknown>={})=>wire({tag:"file1",kind:"md",mime:"text/markdown",width:undefined,height:undefined,role:undefined,textExcerpt:"# hi",...over});
+const clip=(over:Record<string,unknown>={})=>wire({tag:"video1",kind:"video",mime:"video/mp4",role:"motion_reference",...over});
+const sound=(over:Record<string,unknown>={})=>wire({tag:"audio1",kind:"audio",mime:"audio/mpeg",width:undefined,height:undefined,durationSeconds:30,role:"lip_sync",...over});
 const parse=(attachments:unknown)=>CreativeTurnInputSchema.safeParse({text:"a photo of a lake",attachments});
 test("schema accepts valid attachments of every kind and keeps them optional",()=>{
  assert.equal(CreativeTurnInputSchema.safeParse({text:"x"}).success,true);
- const list=[wire(),wire({kind:"video",mime:"video/mp4",durationSeconds:12.5}),
-  wire({kind:"audio",mime:"audio/mpeg",width:undefined,height:undefined,durationSeconds:30,speech:{hasSpeech:true,language:"fa",accent:"tehrani"}}),
-  wire({kind:"pdf",mime:"application/pdf",width:undefined,height:undefined,role:"context"}),
-  wire({kind:"md",mime:"text/markdown",width:undefined,height:undefined,role:"context",textExcerpt:"# hi"}),
-  wire({kind:"json",mime:"application/json",width:undefined,height:undefined,role:"context",textExcerpt:"{}"})];
+ const list=[wire(),clip({durationSeconds:12.5}),
+  sound({speech:{hasSpeech:true,language:"fa",accent:"tehrani"}}),
+  wire({tag:"audio2",kind:"audio",mime:"audio/wav",width:undefined,height:undefined,role:"music"}),
+  wire({tag:"audio3",kind:"audio",mime:"audio/ogg",width:undefined,height:undefined,role:"voice_clone",consent:true}),
+  doc({tag:"file1",kind:"pdf",mime:"application/pdf",textExcerpt:undefined}),doc({tag:"file2"}),doc({tag:"file3",kind:"json",mime:"application/json",textExcerpt:"{}"})];
  const r=parse(list);assert.equal(r.success,true,JSON.stringify(r.error?.issues));
+ // every role of every media kind is accepted on its own kind and rejected on the others
+ for(const kind of ["image","video","audio"] as const)for(const role of ATTACHMENT_ROLE_IDS){
+  const ok=rolesFor(kind).some(r=>r.id===role);
+  const base=kind==="image"?wire():kind==="video"?clip():sound();
+  assert.equal(parse([{...base,role,...(role==="voice_clone"?{consent:true}:{}),speech:undefined}]).success,ok,kind+" "+role);
+ }
 });
 test("schema rejects names, misplaced fields, bad ids/hashes/mimes, oversize and too many attachments",()=>{
  const bad:Array<[string,unknown]>=[
   ["name",[wire({name:"secret-photo.png"})]],
   ["excerpt on image",[wire({textExcerpt:"hi"})]],
-  ["speech on video",[wire({kind:"video",mime:"video/mp4",width:undefined,height:undefined,speech:{hasSpeech:true,language:"fa",accent:"unspecified"}})]],
-  ["dimensions on audio",[wire({kind:"audio",mime:"audio/mpeg"})]],
+  ["speech on video",[clip({width:undefined,height:undefined,speech:{hasSpeech:true,language:"fa",accent:"unspecified"}})]],
+  ["dimensions on audio",[sound({width:640})]],
   ["duration on image",[wire({durationSeconds:3})]],
-  ["11 attachments",Array.from({length:11},()=>wire())],
-  ["excerpt over 8000",[wire({kind:"md",mime:"text/markdown",width:undefined,height:undefined,role:"context",textExcerpt:"x".repeat(8001)})]],
+  ["11 attachments",Array.from({length:11},(_,i)=>wire({tag:"image"+(i+1)}))],
+  ["excerpt over 8000",[doc({textExcerpt:"x".repeat(8001)})]],
   ["id not a uuid",[wire({id:"nope"})]],["short hash",[wire({sha256:"abc"})]],["uppercase hash",[wire({sha256:"A".repeat(64)})]],
   ["zero bytes",[wire({bytes:0})]],["fractional bytes",[wire({bytes:1.5})]],["mime of another kind",[wire({mime:"video/mp4"})]],["long mime",[wire({mime:"image/"+"x".repeat(100)})]],
-  ["image over cap",[wire({bytes:20*1024*1024+1})]],["json over cap",[wire({kind:"json",mime:"application/json",width:undefined,height:undefined,bytes:1024*1024+1,textExcerpt:"{}"})]],
-  ["total over 200 MB",Array.from({length:3},()=>wire({kind:"video",mime:"video/mp4",width:undefined,height:undefined,bytes:100*1024*1024}))],
-  ["bad role",[wire({role:"other"})]],["extra key",[wire({url:"blob:x"})]],["width too large",[wire({width:20001})]],["duration too long",[wire({kind:"video",mime:"video/mp4",width:undefined,height:undefined,durationSeconds:3601})]]
+  ["image over cap",[wire({bytes:20*1024*1024+1})]],["json over cap",[doc({kind:"json",mime:"application/json",bytes:1024*1024+1,textExcerpt:"{}"})]],
+  ["total over 200 MB",Array.from({length:3},(_,i)=>clip({tag:"video"+(i+1),width:undefined,height:undefined,bytes:100*1024*1024}))],
+  ["unknown role",[wire({role:"other"})]],["old role reference",[wire({role:"reference"})]],["old role context",[wire({role:"context"})]],
+  ["extra key",[wire({url:"blob:x"})]],["width too large",[wire({width:20001})]],["duration too long",[clip({width:undefined,height:undefined,durationSeconds:3601})]]
  ];
  for(const [label,list] of bad)assert.equal(parse(list).success,false,label);
 });
+test("tags: prefix must match the kind, be unique, and stay within 1 to 99",()=>{
+ for(const tag of ["image1","image9","image10","image99"])assert.equal(parse([wire({tag})]).success,true,tag);
+ const bad:Array<[string,unknown]>=[
+  ["image0",[wire({tag:"image0"})]],["image100",[wire({tag:"image100"})]],["image01",[wire({tag:"image01"})]],["uppercase",[wire({tag:"Image1"})]],["no number",[wire({tag:"image"})]],
+  ["unknown prefix",[wire({tag:"pic1"})]],["missing tag",[wire({tag:undefined})]],["leading @",[wire({tag:"@image1"})]],
+  ["image tag on video",[clip({tag:"image1"})]],["video tag on image",[wire({tag:"video1"})]],["audio tag on image",[wire({tag:"audio1"})]],
+  ["file tag on image",[wire({tag:"file1"})]],["image tag on md",[doc({tag:"image1"})]],["file tag on audio",[sound({tag:"file1"})]],
+  ["duplicate tags",[wire(),wire()]],["duplicate across kinds",[doc({tag:"file1"}),doc({tag:"file1",kind:"json",mime:"application/json",textExcerpt:"{}"})]]
+ ];
+ for(const [label,list] of bad)assert.equal(parse(list).success,false,label);
+ for(const t of ["image1","video12","audio5","file99"])assert.ok(TAG_PATTERN.test(t),t);
+ for(const t of ["image0","image100","file","document1"])assert.ok(!TAG_PATTERN.test(t),t);
+ assert.deepEqual((["image","video","audio","pdf","json","md"] as AttachmentKind[]).map(tagPrefix),["image","video","audio","file","file","file"]);
+});
+test("roles: media needs one that fits its kind, files have none, voice_clone needs consent, speech only rides with lip_sync",()=>{
+ const bad:Array<[string,unknown]>=[
+  ["image without role",[wire({role:undefined})]],["video without role",[clip({role:undefined})]],["audio without role",[sound({role:undefined})]],
+  ["image with a video role",[wire({role:"motion_reference"})]],["video with an image role",[clip({role:"character"})]],["audio with an image role",[sound({role:"object"})]],
+  ["image with an audio role",[wire({role:"lip_sync"})]],["md with a role",[doc({role:"object"})]],["pdf with a role",[doc({kind:"pdf",mime:"application/pdf",textExcerpt:undefined,role:"music"})]],
+  ["voice_clone without consent",[sound({role:"voice_clone"})]],["voice_clone with consent false",[sound({role:"voice_clone",consent:false})]],
+  ["consent on lip_sync",[sound({consent:true})]],["consent on an image",[wire({consent:true})]],
+  ["speech on music",[sound({role:"music",speech:{hasSpeech:true,language:"fa",accent:"unspecified"}})]],
+  ["speech on voice_clone",[sound({role:"voice_clone",consent:true,speech:{hasSpeech:true,language:"fa",accent:"unspecified"}})]]
+ ];
+ for(const [label,list] of bad)assert.equal(parse(list).success,false,label);
+ assert.equal(parse([sound({role:"voice_clone",consent:true})]).success,true);
+ assert.equal(parse([sound({speech:{hasSpeech:true,language:"unknown",accent:"unspecified"}})]).success,true);
+ assert.equal(roleLabelFa("character"),"کاراکتر");assert.equal(roleLabelFa("edit_reference"),"مرجع ادیت");assert.equal(roleLabelFa("lip_sync"),"الگوی حرکت لب");
+ assert.deepEqual(rolesFor("pdf"),[]);assert.deepEqual(rolesFor("image").map(r=>r.id),["character","environment","object","graphic","edit_reference"]);
+});
+
+test("the tag allocator counts up per prefix, never reuses a removed number, and resets with a new chat",()=>{
+ let c=newTagCounters();const got:string[]=[];
+ const take=(k:AttachmentKind)=>{const r=allocateTag(c,k)!;c=r.counters;got.push(r.tag);return r.tag;};
+ take("image");take("image");take("video");take("audio");take("pdf");take("md");take("json");take("image");
+ assert.deepEqual(got,["image1","image2","video1","audio1","file1","file2","file3","image3"]);
+ // removing image2 and image3 from the tray changes nothing: the counters live outside the attachment list
+ assert.equal(take("image"),"image4");
+ assert.equal(allocateTag(newTagCounters(),"image")!.tag,"image1");
+ // the original counters object is not mutated
+ const before=newTagCounters();allocateTag(before,"audio");assert.deepEqual(before,newTagCounters());
+ // 99 numbers per prefix, then none
+ let full=newTagCounters();for(let i=0;i<99;i++)full=allocateTag(full,"video")!.counters;
+ assert.equal(full.video,99);assert.equal(allocateTag(full,"video"),undefined);assert.equal(allocateTag(full,"image")!.tag,"image1");
+ for(const t of got)assert.ok(TAG_PATTERN.test(t),t);
+});
+
+test("mentions: word-boundary, case-insensitive, never inside an email address or a longer number",()=>{
+ assert.deepEqual(parseMentions("use @Image1, and @VIDEO2."),["image1","video2"]);
+ assert.deepEqual(parseMentions("@image1"),["image1"]);assert.deepEqual(parseMentions("(@audio3)"),["audio3"]);assert.deepEqual(parseMentions("@file12\n@file12"),["file12"]);
+ assert.deepEqual(parseMentions("کاراکتر @image1 را در محیط @image2 بگذار"),["image1","image2"]);
+ for(const no of ["email@image1.com","a@image1","@image100","@image0","@image","@@image1","x@video1","@images1","_@image1","@image1x","@image12a","@image1_"])assert.deepEqual(parseMentions(no),[],no);
+ assert.deepEqual(parseMentions("متن@image1"),[],"a letter right before the @ blocks it");
+ assert.deepEqual(splitMentions("a @Image1, b @audio2"),[{text:"a "},{tag:"image1",raw:"@Image1"},{text:", b "},{tag:"audio2",raw:"@audio2"}]);
+ assert.deepEqual(splitMentions("plain"),[{text:"plain"}]);assert.deepEqual(splitMentions(""),[]);
+});
+test("rewriteMentions describes each mention in English and marks a missing tag",()=>{
+ const m=new Map([["image1",{tag:"image1",kind:"image" as const,role:"character" as const}],["video1",{tag:"video1",kind:"video" as const,role:"motion_reference" as const}],
+  ["audio2",{tag:"audio2",kind:"audio" as const,role:"music" as const}],["file1",{tag:"file1",kind:"md" as const}]]);
+ assert.equal(rewriteMentions("@Image1 walks like @video1, to @audio2, per @file1; @image3 and a@image1.com",m),
+  "[reference image 1 · character] walks like [motion reference video 1], to [music reference audio 2], per [attached document 1]; [missing attachment] and a@image1.com");
+ assert.equal(describeTagEn({tag:"image12",kind:"image",role:"edit_reference"}),"[reference image 12 · edit reference]");
+ assert.equal(describeTagEn({tag:"video2",kind:"video",role:"edit_reference"}),"[edit reference video 2]");
+ assert.equal(describeTagEn({tag:"audio1",kind:"audio",role:"lip_sync"}),"[lip sync audio 1]");
+});
+test("composer helpers: insertMention keeps spacing and the caret, mentionTrigger finds an open @query",()=>{
+ assert.deepEqual(insertMention("",0,0,"image1"),{text:"@image1 ",caret:8});
+ assert.deepEqual(insertMention("hello",5,5,"image1"),{text:"hello @image1 ",caret:14});
+ assert.deepEqual(insertMention("hello ",6,6,"image1"),{text:"hello @image1 ",caret:14});
+ assert.deepEqual(insertMention("hi @im there",3,6,"image1"),{text:"hi @image1 there",caret:11});
+ assert.deepEqual(insertMention("a @im",2,5,"video1"),{text:"a @video1 ",caret:10});
+ assert.deepEqual(mentionTrigger("@",1),{start:0,query:""});assert.deepEqual(mentionTrigger("see @Im",7),{start:4,query:"im"});
+ assert.deepEqual(mentionTrigger("x\n@image1",9),{start:2,query:"image1"});assert.deepEqual(mentionTrigger("سلام @aud",9),{start:5,query:"aud"});
+ assert.equal(mentionTrigger("email@im",8),undefined);assert.equal(mentionTrigger("@im ",4),undefined);assert.equal(mentionTrigger("hello",5),undefined);
+ assert.deepEqual(mentionTrigger("@image1 and more",3),{start:0,query:"im"});
+});
+
+test("send blockers: media without a role, and voice_clone without consent",()=>{
+ const a=(tag:string,kind:AttachmentKind,over:Partial<LocalAttachment>={})=>({id:tag,tag,kind,...over});
+ assert.deepEqual(sendBlockers([a("image1","image"),a("video1","video",{role:"motion_reference"}),a("audio1","audio"),a("file1","md"),a("file2","pdf")]),
+  [{id:"image1",tag:"image1",reason:"role"},{id:"audio1",tag:"audio1",reason:"role"}]);
+ assert.deepEqual(sendBlockers([a("audio1","audio",{role:"voice_clone"})]),[{id:"audio1",tag:"audio1",reason:"consent"}]);
+ assert.deepEqual(sendBlockers([a("audio1","audio",{role:"voice_clone",consent:true}),a("image1","image",{role:"object"})]),[]);
+});
 
 test("the wire payload carries metadata only: no name, no object URL, no bytes",()=>{
- const local:LocalAttachment={id:crypto.randomUUID(),kind:"md",mime:"text/markdown",bytes:12,sha256:"b".repeat(64),name:"private-notes.md",role:"context",textExcerpt:"# hi",previewUrl:"blob:http://x/1"};
+ const local:LocalAttachment={id:crypto.randomUUID(),tag:"file1",kind:"md",mime:"text/markdown",bytes:12,sha256:"b".repeat(64),name:"private-notes.md",textExcerpt:"# hi",previewUrl:"blob:http://x/1"};
  const w=toWireAttachment(local);
- assert.deepEqual(Object.keys(w).sort(),["bytes","id","kind","mime","role","sha256","textExcerpt"]);
+ assert.deepEqual(Object.keys(w).sort(),["bytes","id","kind","mime","sha256","tag","textExcerpt"]);
  assert.ok(!JSON.stringify(w).includes("private-notes")&&!JSON.stringify(w).includes("blob:"));
  assert.equal(CreativeTurnInputSchema.safeParse({text:"x",attachments:[w]}).success,true);
+});
+test("the wire payload carries role, consent and speech only where they belong",()=>{
+ const base={id:crypto.randomUUID(),mime:"audio/mpeg",bytes:99,sha256:"e".repeat(64),name:"voice.mp3",speech:{hasSpeech:true,language:"fa" as const,accent:"unspecified" as const}};
+ const lip=toWireAttachment({...base,tag:"audio1",kind:"audio",role:"lip_sync"});
+ assert.equal(lip.role,"lip_sync");assert.deepEqual(lip.speech,base.speech);assert.ok(!("consent" in lip));
+ const music=toWireAttachment({...base,tag:"audio2",kind:"audio",role:"music",consent:true});
+ assert.ok(!("speech" in music)&&!("consent" in music),"speech is for lip_sync only, consent for voice_clone only");
+ const clone=toWireAttachment({...base,tag:"audio3",kind:"audio",role:"voice_clone",consent:true});assert.equal(clone.consent,true);
+ const unconsented=toWireAttachment({...base,tag:"audio4",kind:"audio",role:"voice_clone"});assert.ok(!("consent" in unconsented));
+ assert.equal(CreativeTurnInputSchema.safeParse({text:"x",attachments:[lip,music,clone]}).success,true);
+ assert.equal(CreativeTurnInputSchema.safeParse({text:"x",attachments:[unconsented]}).success,false,"the schema is the backstop for a missing consent");
 });
 
 test("Persian duration formatting",()=>{assert.equal(faDuration(65),"۱:۰۵");assert.equal(faDuration(7),"۰:۰۷");});

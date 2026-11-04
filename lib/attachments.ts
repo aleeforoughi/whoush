@@ -1,7 +1,7 @@
 /** Chat attachment contract: kinds, limits, magic-byte sniffing and wire shape. Pure; safe in the browser and on the server. */
 import {faPlain} from "./format";
 export type AttachmentKind="image"|"video"|"audio"|"pdf"|"json"|"md";
-export type AttachmentRole="reference"|"context";
+export type AttachmentRole="character"|"environment"|"object"|"graphic"|"edit_reference"|"motion_reference"|"lip_sync"|"music"|"voice_clone";
 export type AttachmentSpeech={hasSpeech:boolean;language:"fa"|"other"|"unknown";accent:"tehrani"|"original"|"unspecified"};
 const MB=1024*1024;
 export const ATTACHMENT_KINDS={
@@ -20,6 +20,76 @@ export const MAX_DURATION_SECONDS=3600;
 /** Bytes read for magic-number sniffing of binary files. */
 export const SNIFF_BYTES=64*1024;
 export const isMediaKind=(k:AttachmentKind)=>k==="image"||k==="video"||k==="audio";
+/**
+ * Roles per media kind: English ids on the wire, Persian labels in the UI. Files (pdf, json, md) have no role. Media has NO default role:
+ * the user must choose one before sending. `en` is the provider-facing phrase used when a mention is rewritten for the media prompt.
+ */
+export const ATTACHMENT_ROLES={
+ image:[{id:"character",labelFa:"کاراکتر",en:"character"},{id:"environment",labelFa:"محیط",en:"environment"},{id:"object",labelFa:"اشیا",en:"object"},{id:"graphic",labelFa:"گرافیک",en:"graphic"},{id:"edit_reference",labelFa:"مرجع ادیت",en:"edit reference"}],
+ video:[{id:"motion_reference",labelFa:"الگوی حرکت",en:"motion reference"},{id:"edit_reference",labelFa:"مرجع ادیت",en:"edit reference"}],
+ audio:[{id:"lip_sync",labelFa:"الگوی حرکت لب",en:"lip sync"},{id:"music",labelFa:"موسیقی",en:"music reference"},{id:"voice_clone",labelFa:"کلون صدا",en:"voice reference"}]
+} as const satisfies Record<"image"|"video"|"audio",readonly {id:AttachmentRole;labelFa:string;en:string}[]>;
+export const ATTACHMENT_ROLE_IDS=["character","environment","object","graphic","edit_reference","motion_reference","lip_sync","music","voice_clone"] as const satisfies readonly AttachmentRole[];
+/** The roles a kind may carry; empty for files. */
+export const rolesFor=(kind:AttachmentKind):readonly {id:AttachmentRole;labelFa:string;en:string}[]=>isMediaKind(kind)?ATTACHMENT_ROLES[kind as "image"|"video"|"audio"]:[];
+export const roleLabelFa=(role:AttachmentRole)=>ATTACHMENT_ROLES.image.find(r=>r.id===role)?.labelFa??ATTACHMENT_ROLES.video.find(r=>r.id===role)?.labelFa??ATTACHMENT_ROLES.audio.find(r=>r.id===role)?.labelFa??role;
+export const roleAllowed=(kind:AttachmentKind,role:AttachmentRole)=>rolesFor(kind).some(r=>r.id===role);
+export const VOICE_CLONE_CONSENT_FA="صاحب این صدا هستم یا اجازهٔ کتبی صاحب صدا را دارم";
+
+// ---- tags: image1, video1, audio1, file1 (pdf, json, md) ----
+export type TagPrefix="image"|"video"|"audio"|"file";
+export const TAG_PATTERN=/^(image|video|audio|file)[1-9]\d?$/;
+export const tagPrefix=(kind:AttachmentKind):TagPrefix=>kind==="image"||kind==="video"||kind==="audio"?kind:"file";
+export type TagCounters=Record<TagPrefix,number>;
+export const newTagCounters=():TagCounters=>({image:0,video:0,audio:0,file:0});
+/**
+ * Pure allocator for the next tag of a kind. Counters only ever count up, so a removed attachment's number is never reused;
+ * "new chat" starts from `newTagCounters()`. Undefined when the conversation has used all 99 numbers of that prefix.
+ */
+export function allocateTag(counters:TagCounters,kind:AttachmentKind):{tag:string;counters:TagCounters}|undefined{
+ const prefix=tagPrefix(kind),n=counters[prefix]+1;
+ return n>99?undefined:{tag:prefix+n,counters:{...counters,[prefix]:n}};
+}
+/** Mention syntax: `@image1` at the start or after anything but a letter, digit, underscore or `@` (so `email@image1.com` is not a mention). */
+const mentionRe=()=>/(?<![\p{L}\p{N}_@])@((?:image|video|audio|file)[1-9]\d?)(?![A-Za-z0-9_])/giu;
+/** Distinct lowercase tags mentioned in the text, in order of first use. */
+export function parseMentions(text:string):string[]{
+ return [...new Set([...text.matchAll(mentionRe())].map(m=>m[1].toLowerCase()))];
+}
+/** The text cut into plain runs and mentions (`raw` as typed, `tag` lowercase). */
+export function splitMentions(text:string):Array<{text:string}|{tag:string;raw:string}>{
+ const out:Array<{text:string}|{tag:string;raw:string}>=[];let at=0;
+ for(const m of text.matchAll(mentionRe())){
+  if(m.index>at)out.push({text:text.slice(at,m.index)});
+  out.push({tag:m[1].toLowerCase(),raw:m[0]});at=m.index+m[0].length;
+ }
+ if(at<text.length)out.push({text:text.slice(at)});
+ return out;
+}
+const tagNumber=(tag:string)=>tag.replace(/\D/g,"");
+/** Provider-facing English description of a tagged attachment, e.g. `[reference image 1 · character]` or `[motion reference video 1]`. */
+export function describeTagEn(a:{tag:string;kind:AttachmentKind;role?:AttachmentRole}):string{
+ const n=tagNumber(a.tag),en=a.role?rolesFor(a.kind).find(r=>r.id===a.role)?.en:undefined;
+ if(a.kind==="image")return "[reference image "+n+(en?" · "+en:"")+"]";
+ if(a.kind==="video")return "["+(en??"reference")+" video "+n+"]";
+ if(a.kind==="audio")return "["+(en??"reference")+" audio "+n+"]";
+ return "[attached document "+n+"]";
+}
+/** Replaces every mention with its English description; a tag with no attachment becomes `[missing attachment]`. */
+export function rewriteMentions(text:string,byTag:ReadonlyMap<string,{tag:string;kind:AttachmentKind;role?:AttachmentRole}>):string{
+ return text.replace(mentionRe(),(_m,t:string)=>{const a=byTag.get(t.toLowerCase());return a?describeTagEn(a):"[missing attachment]";});
+}
+/** Inserts `@tag ` over the range [start,end), adding a leading space when the previous character is not whitespace; returns the new text and caret. */
+export function insertMention(text:string,start:number,end:number,tag:string):{text:string;caret:number}{
+ const before=text.slice(0,start),after=text.slice(end);
+ const lead=before===""||/\s$/.test(before)?"":" ",ins=lead+"@"+tag+(/^\s/.test(after)?"":" ");
+ return {text:before+ins+after,caret:before.length+lead.length+1+tag.length+1};
+}
+/** The open `@query` token right before the caret (at the start or after whitespace), if any. */
+export function mentionTrigger(text:string,caret:number):{start:number;query:string}|undefined{
+ const m=/(^|\s)@([A-Za-z0-9]*)$/.exec(text.slice(0,caret));
+ return m?{start:caret-m[2].length-1,query:m[2].toLowerCase()}:undefined;
+}
 const EXT_MIMES:Record<string,readonly string[]>={
  jpg:["image/jpeg"],jpeg:["image/jpeg"],png:["image/png"],webp:["image/webp"],
  mp4:["video/mp4","video/quicktime"],m4v:["video/mp4"],mov:["video/quicktime","video/mp4"],webm:["video/webm","audio/webm"],weba:["audio/webm"],
@@ -119,15 +189,26 @@ export function validateAttachmentSet(list:readonly {bytes:number}[]):{ok:true}|
  if(list.reduce((n,a)=>n+a.bytes,0)>MAX_TOTAL_ATTACHMENT_BYTES)return {ok:false,error:totalTooLargeFa()};
  return {ok:true};
 }
-/** What the browser knows about one attached file. `name`, `previewUrl` and the File itself never leave the browser. */
+/** What the browser knows about one attached file. `name`, `previewUrl` and the File itself never leave the browser. Media has no `role` until the user picks one. */
 export type LocalAttachment={
- id:string;kind:AttachmentKind;mime:string;bytes:number;sha256:string;name:string;role:AttachmentRole;
+ id:string;tag:string;kind:AttachmentKind;mime:string;bytes:number;sha256:string;name:string;role?:AttachmentRole;consent?:boolean;
  width?:number;height?:number;durationSeconds?:number;textExcerpt?:string;speech?:AttachmentSpeech;previewUrl?:string;
 };
-/** The request payload: metadata and text excerpts only. No bytes, no file name, no object URL. */
+/** A media attachment that cannot be sent yet: no role chosen, or `voice_clone` without the consent box. */
+export type SendBlocker={id:string;tag:string;reason:"role"|"consent"};
+export function sendBlockers(list:readonly Pick<LocalAttachment,"id"|"tag"|"kind"|"role"|"consent">[]):SendBlocker[]{
+ const out:SendBlocker[]=[];
+ for(const a of list){
+  if(!isMediaKind(a.kind))continue;
+  if(!a.role)out.push({id:a.id,tag:a.tag,reason:"role"});
+  else if(a.role==="voice_clone"&&a.consent!==true)out.push({id:a.id,tag:a.tag,reason:"consent"});
+ }
+ return out;
+}
+/** The request payload: metadata and text excerpts only. No bytes, no file name, no object URL. Speech details travel only with the `lip_sync` role. */
 export function toWireAttachment(a:LocalAttachment){
- return {id:a.id,kind:a.kind,mime:a.mime,bytes:a.bytes,sha256:a.sha256,role:a.role,
+ return {id:a.id,tag:a.tag,kind:a.kind,mime:a.mime,bytes:a.bytes,sha256:a.sha256,...(a.role?{role:a.role}:{}),...(a.role==="voice_clone"&&a.consent===true?{consent:true as const}:{}),
   ...(a.width!==undefined?{width:a.width}:{}),...(a.height!==undefined?{height:a.height}:{}),
   ...(a.durationSeconds!==undefined?{durationSeconds:a.durationSeconds}:{}),
-  ...(a.textExcerpt!==undefined?{textExcerpt:a.textExcerpt}:{}),...(a.speech?{speech:a.speech}:{})};
+  ...(a.textExcerpt!==undefined?{textExcerpt:a.textExcerpt}:{}),...(a.speech&&a.role==="lip_sync"?{speech:a.speech}:{})};
 }
