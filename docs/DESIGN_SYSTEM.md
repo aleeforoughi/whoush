@@ -36,9 +36,9 @@ Use accessible contrast, not just brand fidelity. Blue accents are for meaningfu
 - `brand/tokens.json` (light) and `brand/tokens.dark.json` (dark) → `npm run brand` → `app/styles/brand.css`, `app/styles/brand-fonts.css` (committed, tested for drift).
 - `app/globals.css`, `app/fonts.css`, `app/feather-rtl.css`: stylesheet entry, font stacks, temporary RTL overrides.
 - `components/theme-toggle.tsx`: dark/light toggle on the `dark` class of `<html>` (`localStorage["whoush-theme"]`, default dark, applied before paint by the inline script in `app/layout.tsx`).
-- `app/characters/page.tsx` + `components/character-studio.tsx`: six-angle Persian Character Studio.
+- `app/characters/page.tsx` + `components/character-studio.tsx` (+ `character-parts.tsx`): six-angle Persian Character Studio with consent v1.0, per-angle metadata, duplicate/quality checks, PNG sheet and JSON manifest export. `components/character-picker.tsx`: character selection in the Studio agent panel.
 - `lib/skills.ts` + `lib/advanced-skills.ts`: 22 professional skills, routed privately.
-- `lib/characters.ts` + `lib/character-store.ts`: browser-local reference data only; not yet a server-side identity asset graph.
+- `lib/characters.ts` (pure: consent, metadata, coverage, versioning, manifest, tests in `tests/characters.test.ts`), `lib/character-store.ts` (IndexedDB), `lib/character-files.ts`, `lib/character-export.ts`: browser-local reference data only. Server-side authenticated storage, provider reference upload and a verified reference-capable model are pending; a character in chat yields 422 `no_compatible_model` with a plan.
 
 ## Claude acceptance criteria
 1. Refactor prototype CSS to tokens, remove purple hardcoded values and inconsistent spacings; dark/light coverage on **every** page.

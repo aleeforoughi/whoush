@@ -53,3 +53,6 @@ Haiku-tier private reasoning for brief triage / simple tool classification, Sonn
 
 ## Test fixtures
 Use `tests/skills-safety.test.ts` and expand with 100+ representative Persian prompts, including spelling variants, slang, ambiguous words, code-switching, fashion, local traditions, photography, masking, celebrity names and culturally specific references. Unit tests check instruction activation; separately evaluate live LLM planning outputs against camera/cultural/technical rubrics before launch.
+
+## Plan language
+Customer-visible plan fields (summary, constraints, camera/shot descriptions, continuity, identity lock lists, speech notes, QA checklist) are natural Persian in both the deterministic planner and the live planner instructions. `mediaPrompt` and `negative` are provider-facing, private and English.
