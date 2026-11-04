@@ -9,7 +9,7 @@ export type Upload={kind:"image"|"video"|"audio"|"file";role?:AttachmentRole};
 export type UploadSlot={id:string;titleFa:string;icon:InsertIconKey;upload?:Upload};
 
 export const UPLOAD_KIND_FA={image:"تصویر",video:"ویدیو",audio:"صدا",file:"سند (PDF، JSON یا Markdown)"} as const;
-export const SLOT_HINT_FA="برای آپلود بزن یا فایل رو اینجا رها کن";
+export const SLOT_DROP_FA="یا فایل رو اینجا رها کن";
 export const SLOTS_FULL_FA="حداکثر "+fa(MAX_ATTACHMENTS)+" پیوست در هر پیام ممکن است.";
 
 /** The Persian reason a file does not fit an upload, or undefined when it fits. */
