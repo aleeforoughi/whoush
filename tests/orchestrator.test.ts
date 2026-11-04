@@ -7,6 +7,7 @@ import {llmPolicy,preparePrivateCreativeRequest} from "../lib/llm";
 import {detectMediaKind} from "../lib/router";
 import {SKILLS,SKILL_REGISTRY_VERSION,resolveCreativeSkills,compileSkillInstructions,type SkillContext,type SkillId} from "../lib/skills";
 import {POST} from "../app/api/agent/route";
+import {describeTagEn} from "../lib/attachments";
 
 const ENV_KEYS=["LLM_PROVIDER_AUTHORIZED","ALLOW_LIVE_LLM","LLM_FAST_MODEL","LLM_BALANCED_MODEL","LLM_DEEP_MODEL","ANTHROPIC_API_KEY"];
 let saved:Record<string,string|undefined>={};
@@ -597,7 +598,7 @@ test("roles: video edit_reference makes a video edit with video_editor and prese
  const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("video",{role:"edit_reference"})]}));
  assert.equal(r.plan.mediaKind,"video","a video attachment overrides an image-sounding text");assert.ok(r.plan.shot&&!r.plan.camera);
  assert.ok(skillsOf().includes("video_editor")&&skillsOf().includes("cinematographer")&&skillsOf().includes("videographer")&&skillsOf().includes("anti_teleport")&&!skillsOf().includes("photo_editor"));
- assert.ok(r.plan.hardConstraints.includes(CONSTRAINT.videoEdit));assert.deepEqual(r.plan.references,[{tag:"video1",kind:"video",role:"edit_reference",roleSource:"user",labelFa:"مرجع ادیت"}]);
+ assert.ok(r.plan.hardConstraints.includes(CONSTRAINT.videoEdit));assert.deepEqual(r.plan.references,[{tag:"video1",kind:"video",role:"edit_reference",roleSource:"user",labelFa:"ادیت ویدیو"}]);
 });
 test("roles: video motion_reference makes the output a video and follows motion, not appearance",async()=>{
  const r=unsupported(await orchestrateCreativeTurn({text:"a photo of a dancer",attachments:[att("video",{role:"motion_reference"})]}));
@@ -620,7 +621,7 @@ test("roles: audio lip_sync makes a video, implies speech, and activates Tehrani
  await orchestrateCreativeTurn({text,attachments:[att("audio",{role:"lip_sync",speech:speech("other","unspecified")})]});assert.ok(!skillsOf().includes("tehrani_accent"));
  await orchestrateCreativeTurn({text,attachments:[att("audio",{role:"lip_sync",speech:speech("unknown","tehrani")})]});assert.ok(skillsOf().includes("tehrani_accent"),"an explicit Tehrani choice");
  assert.equal(last().fallbackReason,"media_review_unavailable");
- assert.deepEqual(base.plan.references,[{tag:"audio1",kind:"audio",role:"lip_sync",roleSource:"user",labelFa:"الگوی حرکت لب"}]);
+ assert.deepEqual(base.plan.references,[{tag:"audio1",kind:"audio",role:"lip_sync",roleSource:"user",labelFa:"الگوی گفتار"}]);
 });
 test("roles: audio music brings audiographer and a soft rhythm preference, with no lip sync and no generated music",async()=>{
  const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("audio",{role:"music"})]}));
@@ -730,7 +731,7 @@ test("public plan: references carry tag, kind, role and labelFa only, files-only
  const files=[att("image",{role:"character"}),att("video",{role:"motion_reference"}),att("audio",{role:"lip_sync",speech:{hasSpeech:true,language:"fa",accent:"unspecified"}}),att("md"),att("pdf")];
  const r=unsupported(await orchestrateCreativeTurn({text:"a presenter walking, see @image1 and @file1",attachments:files}));
  assert.deepEqual(r.plan.references,[
-  {tag:"image1",kind:"image",role:"character",roleSource:"user",labelFa:"کاراکتر"},{tag:"video1",kind:"video",role:"motion_reference",roleSource:"user",labelFa:"الگوی حرکت"},{tag:"audio1",kind:"audio",role:"lip_sync",roleSource:"user",labelFa:"الگوی حرکت لب"}]);
+  {tag:"image1",kind:"image",role:"character",roleSource:"user",labelFa:"کاراکتر"},{tag:"video1",kind:"video",role:"motion_reference",roleSource:"user",labelFa:"الگوی حرکت"},{tag:"audio1",kind:"audio",role:"lip_sync",roleSource:"user",labelFa:"الگوی گفتار"}]);
  for(const ref of r.plan.references)assert.deepEqual(Object.keys(ref).sort(),["kind","labelFa","role","roleSource","tag"]);
  const json=JSON.stringify(r);assertNoLeak(json,"references");
  for(const f of files)assert.ok(!json.includes(f.id)&&!json.includes(f.sha256),"no ids or hashes in the public plan");
@@ -777,4 +778,62 @@ test("P5: voice clone gets no suggestion; mediaRequirements sees attachments and
  assert.equal(mediaRequirements({attachments:[{kind:"audio",role:"lip_sync"},{kind:"image",role:"character"}]},false).operation,"lip_sync");
  assert.equal(mediaRequirements({attachments:[{kind:"video",role:"edit_reference"},{kind:"image",role:"object"}]},false).operation,"replace");
  assert.equal(mediaRequirements({attachments:[{kind:"video",role:"edit_reference"}]},false).operation,undefined);
+});
+test("curated roles: start_frame makes a video with the first-frame constraint and a start-image requirement",async()=>{
+ const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("image",{role:"start_frame"})]}));
+ assert.equal(r.plan.mediaKind,"video","a start frame is image-to-video");assert.ok(r.plan.shot&&!r.plan.camera);
+ assert.ok(r.plan.hardConstraints.includes("#تصویر-۱ فریم اول ویدیوست؛ ترکیب‌بندی، سوژه و نور همین عکس نقطهٔ شروع است"),JSON.stringify(r.plan.hardConstraints));
+ assert.ok(skillsOf().includes("anti_drift")&&skillsOf().includes("continuity")&&skillsOf().includes("cinematographer"));
+ assert.deepEqual(r.plan.references,[{tag:"image1",kind:"image",role:"start_frame",roleSource:"user",labelFa:"فریم اول"}]);
+ assert.equal(r.suggestedModel,undefined);
+ assert.deepEqual(mediaRequirements({attachments:[{kind:"image",role:"start_frame"}]},false),{referenceImages:1,lipSync:undefined,startImage:true});
+ assert.equal(getPrivateMediaPrompt(r.turnId),undefined);
+ assert.equal(describeTagEn({tag:"image1",kind:"image",role:"start_frame"}),"[start frame image 1]");
+});
+test("curated roles: continue makes a video that continues from the last frame",async()=>{
+ const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("video",{role:"continue"})]}));
+ assert.equal(r.plan.mediaKind,"video");
+ assert.ok(r.plan.hardConstraints.includes("امتداد #ویدیو-۱ از آخرین فریم؛ سوژه، نور، حرکت دوربین و رنگ پیوسته می‌مانند"),JSON.stringify(r.plan.hardConstraints));
+ assert.ok(skillsOf().includes("anti_teleport")&&skillsOf().includes("continuity"));assert.equal(r.plan.references[0].labelFa,"امتداد ویدیو");
+ assert.equal(r.suggestedModel,undefined);
+ assert.deepEqual(mediaRequirements({attachments:[{kind:"video",role:"continue"}]},false),{referenceImages:undefined,lipSync:undefined,videoContinuation:true});
+});
+test("curated roles: outfit, hairstyle and makeup add their constraints, count as reference images and get no model suggestion",async()=>{
+ const want:Array<[string,string,string,string[]]>=[
+  ["outfit","لباس و کفش","لباس و کفش #تصویر-۱ (طرح، رنگ، جنس و برش) روی سوژه اعمال می‌شود؛ چهره و بدن مدلِ عکس مرجع کپی نمی‌شود",["پوشش مطابق سیاست محتوای هووش، پوشیده و غیرتحریک‌آمیز"]],
+  ["hairstyle","پیرایش","مدل مو و فرم ریش و سبیل #تصویر-۱ (در صورت وجود) اعمال می‌شود؛ چهره، رنگ پوست و هویت سوژه تغییر نمی‌کند",[]],
+  ["makeup","آرایش","آرایش #تصویر-۱ (رنگ‌ها و شدت) اعمال می‌شود؛ بافت طبیعی پوست حفظ می‌شود و پوست پلاستیکی یا صاف‌شده نمی‌شود",[]]
+ ];
+ for(const [role,label,hard,soft] of want){
+  const r=unsupported(await orchestrateCreativeTurn({text:"a portrait of a woman",attachments:[att("image",{role})]}));
+  assert.ok(r.plan.hardConstraints.includes(hard),role+": "+JSON.stringify(r.plan.hardConstraints));
+  for(const x of soft)assert.ok(r.plan.softPreferences.includes(x),role);
+  assert.equal(r.plan.references[0].labelFa,label);assert.equal(r.plan.mediaKind,"image");assert.equal(r.suggestedModel,undefined);
+  assert.ok(skillsOf().includes("anti_drift")&&skillsOf().includes("continuity"));
+  assert.equal(mediaRequirements({attachments:[{kind:"image",role}]},false).referenceImages,1);
+ }
+ for(const [role,en] of [["outfit","[outfit reference image 1]"],["hairstyle","[hairstyle and beard reference image 1]"],["makeup","[makeup reference image 1]"]])assert.equal(describeTagEn({tag:"image1",kind:"image",role:role as never}),en);
+});
+test("curated roles: the provider-facing prompt describes the new references in English",async()=>{
+ let seen="";
+ const planner:PrivatePlanner=r=>{seen=r.input.text;return {plan:deterministicPlanner(r).plan};};
+ const out=await orchestrateCreativeTurn({text:"apply #تصویر-۱ and #تصویر-۲ to her",attachments:[att("image",{tag:"image1",role:"outfit"}),att("image",{tag:"image2",role:"makeup"})]},{planner});
+ const o=unsupported(out);assert.ok(o.plan.hardConstraints.some(c=>c.includes("#تصویر-۲")&&c.startsWith("آرایش")));assert.ok(seen.length>0);
+});
+test("curated roles: the server still refuses voice_clone without consent and answers unsupported with it",async()=>{
+ const wire={...att("audio",{role:"voice_clone"})};
+ assert.equal(CreativeTurnInputSchema.safeParse({text:"x",attachments:[wire]}).success,false);
+ const r=await orchestrateCreativeTurn({text:"x",attachments:[{...wire,consent:true}]});
+ assert.equal(r.status,"unsupported");assert.equal(last().fallbackReason,"voice_clone_unsupported");assert.equal((r as {suggestedModel?:unknown}).suggestedModel,undefined);
+});
+test("curated roles: end_frame makes a video that ends on the image; start and end frames can be combined",async()=>{
+ const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("image",{role:"end_frame"})]}));
+ assert.equal(r.plan.mediaKind,"video");
+ assert.ok(r.plan.hardConstraints.includes("#تصویر-۱ فریم آخر ویدیوست؛ ویدیو با همین ترکیب‌بندی، سوژه و نور تمام می‌شود"),JSON.stringify(r.plan.hardConstraints));
+ assert.equal(r.plan.references[0].labelFa,"فریم آخر");assert.equal(r.suggestedModel,undefined);
+ assert.deepEqual(mediaRequirements({attachments:[{kind:"image",role:"start_frame"},{kind:"image",role:"end_frame"}]},false),{referenceImages:2,lipSync:undefined,startImage:true,endImage:true});
+ assert.equal(describeTagEn({tag:"image2",kind:"image",role:"end_frame"}),"[end frame image 2]");
+ const both=unsupported(await orchestrateCreativeTurn({text:"از #تصویر-۱ شروع کن و به #تصویر-۲ برسه",attachments:[att("image",{tag:"image1",role:undefined}),att("image",{tag:"image2",role:undefined})]}));
+ assert.deepEqual(both.plan.references.map(x=>[x.tag,x.role,x.roleSource]),[["image1","start_frame","inferred"],["image2","end_frame","inferred"]]);
+ assert.equal(both.plan.mediaKind,"video");
 });

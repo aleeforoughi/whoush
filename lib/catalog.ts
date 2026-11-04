@@ -2,7 +2,7 @@ import { isPriced, type MediaModel } from "./types";
 /** Bump on ANY change to ids, capabilities or Neuron prices; quotes are bound to it. */
 export const MEDIA_CATALOG_VERSION = "2026-11-04.3";
 const SOUL_STANDARD_RATIOS = ["1:1","4:3","3:4","3:2","2:3","5:4","4:5","16:9","9:16","21:9"] as const;
-const unverified = { verified:false, referenceImages:{supported:false,max:0}, aspectRatios:[], audio:false, lipSync:false, motionReference:false, videoReference:false } as const;
+const unverified = { verified:false, referenceImages:{supported:false,max:0}, aspectRatios:[], audio:false, lipSync:false, motionReference:false, videoReference:false, startImage:false, endImage:false, videoContinuation:false } as const;
 const INTONE_RATIOS = ["21:9","16:9","9:16","1:1","4:3","3:4"] as const;
 // Capability facts for intone / genjutsu-* come from the provider's agent platform catalogue (docs/HIGGSFIELD_EVIDENCE.md#mcp-intone etc.), NOT from the API docs:
 // their API paths and input schemas are unverified, no Neuron price is approved, and none of them can be quoted or proposed.
@@ -11,7 +11,7 @@ const INTONE_RATIOS = ["21:9","16:9","9:16","1:1","4:3","3:4"] as const;
 export const MEDIA_CATALOG: readonly MediaModel[] = [
   {id:"nano-banana-pro-2k",name:"Nano Banana Pro · 2K",kind:"image",description:"Detailed, realistic image generation",tags:["quality","realistic","portrait"],aliases:["nano banana","nanobanana","نانو بنانا"],neurons:10,resolution:"2K",operations:["generate"],evidenceSource:"api_docs",capabilities:{...unverified}},
   {id:"soul-image",name:"Soul",kind:"image",description:"Fast creative image exploration",tags:["speed","cost","creative"],aliases:["soul","higgsfield soul","سول ایمیج"],neurons:4,resolution:"Standard",operations:["generate"],evidenceSource:"api_docs",verifiedApiPath:"/higgsfield-ai/soul/standard",
-    capabilities:{verified:true,evidence:"docs/HIGGSFIELD_EVIDENCE.md#soul-standard",referenceImages:{supported:false,max:0},aspectRatios:SOUL_STANDARD_RATIOS,audio:false,lipSync:false,motionReference:false,videoReference:false}},
+    capabilities:{verified:true,evidence:"docs/HIGGSFIELD_EVIDENCE.md#soul-standard",referenceImages:{supported:false,max:0},aspectRatios:SOUL_STANDARD_RATIOS,audio:false,lipSync:false,motionReference:false,videoReference:false,startImage:false,endImage:false,videoContinuation:false}},
   {id:"seedance-2-5-5s",name:"Seedance 2.5 · 5s",kind:"video",description:"Motion-rich short video",tags:["quality","motion"],aliases:["seedance 2.5","seedance","سیدنس"],neurons:42,resolution:"1080p",durationSeconds:5,operations:["generate"],evidenceSource:"api_docs",capabilities:{...unverified,durationsSeconds:[5]}},
   {id:"seedance-2-5-10s",name:"Seedance 2.5 · 10s",kind:"video",description:"Longer cinematic generation",tags:["quality","motion"],aliases:["seedance 10s","seedance ten"],neurons:80,resolution:"1080p",durationSeconds:10,operations:["generate"],evidenceSource:"api_docs",capabilities:{...unverified,durationsSeconds:[10]}},
   {id:"kling-4-0-5s",name:"Kling 4.0 · 5s",kind:"video",description:"Alternative video model",tags:["speed","quality"],aliases:["kling 4","kling","کلینگ"],neurons:50,resolution:"1080p",durationSeconds:5,operations:["generate"],evidenceSource:"api_docs",capabilities:{...unverified,durationsSeconds:[5]}},

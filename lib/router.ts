@@ -26,6 +26,9 @@ export function modelIneligibility(m:MediaModel,r:MediaRequirements={},opts:{ass
  if(r.lipSync&&!c.lipSync) return "این مدل همگام‌سازی لب را پشتیبانی نمی‌کند.";
  if(r.motionReference&&!c.motionReference) return "این مدل الگوی حرکت از ویدیوی مرجع را پشتیبانی نمی‌کند.";
  if(r.videoReference&&!c.videoReference) return "این مدل ادیت روی ویدیوی مرجع را پشتیبانی نمی‌کند.";
+ if(r.startImage&&!c.startImage) return "این مدل ساخت ویدیو از روی فریم اول را پشتیبانی نمی‌کند.";
+ if(r.endImage&&!c.endImage) return "این مدل پایان ویدیو روی فریم آخر را پشتیبانی نمی‌کند.";
+ if(r.videoContinuation&&!c.videoContinuation) return "این مدل ادامهٔ ویدیوی موجود را پشتیبانی نمی‌کند.";
  return undefined;
 }
 /** A model can be proposed and quoted only with an approved Neuron SKU and for plain generation. Operation models (lip sync, replace, motion transfer) are suggestions only. */

@@ -55,6 +55,13 @@ function roleRule(kind:AttachmentKind,role:AttachmentRole,tag:string):{hard?:Pai
  const at="@"+tag,fa=displayTag(tag);
  switch(role){
   case "character":return {hard:P(at+": preserve facial identity, hair, skin tone and body proportions exactly as in the reference",fa+": هویت چهره، مو، رنگ پوست و تناسب بدن مطابق مرجع حفظ شود")};
+  case "start_frame":return {hard:P(at+": this image is the first frame of the video; its composition, subject and lighting are the starting point",fa+" فریم اول ویدیوست؛ ترکیب‌بندی، سوژه و نور همین عکس نقطهٔ شروع است")};
+  case "end_frame":return {hard:P(at+": this image is the last frame of the video; the video ends on its composition, subject and lighting",fa+" فریم آخر ویدیوست؛ ویدیو با همین ترکیب‌بندی، سوژه و نور تمام می‌شود")};
+  case "outfit":return {hard:P(at+": apply this outfit (design, color, fabric and cut) to the subject; do not copy the face or body of the model in the outfit photo","لباس و کفش "+fa+" (طرح، رنگ، جنس و برش) روی سوژه اعمال می‌شود؛ چهره و بدن مدلِ عکس مرجع کپی نمی‌شود"),
+   soft:P("Clothing stays modest and non-provocative, in line with the content policy","پوشش مطابق سیاست محتوای هووش، پوشیده و غیرتحریک‌آمیز")};
+  case "hairstyle":return {hard:P(at+": apply the hairstyle and, where present, the beard and moustache shape; the subject's face, skin tone and identity do not change","مدل مو و فرم ریش و سبیل "+fa+" (در صورت وجود) اعمال می‌شود؛ چهره، رنگ پوست و هویت سوژه تغییر نمی‌کند")};
+  case "makeup":return {hard:P(at+": apply this makeup (colors and intensity); keep natural skin texture, never plastic or over-smoothed skin","آرایش "+fa+" (رنگ‌ها و شدت) اعمال می‌شود؛ بافت طبیعی پوست حفظ می‌شود و پوست پلاستیکی یا صاف‌شده نمی‌شود")};
+  case "continue":return {hard:P(at+": continue this video from its last frame; subject, light, camera movement and color stay continuous","امتداد "+fa+" از آخرین فریم؛ سوژه، نور، حرکت دوربین و رنگ پیوسته می‌مانند")};
   case "environment":return {lock:P(at+": keep the location, architecture, light direction and time of day of the reference",fa+": مکان، معماری، جهت نور و ساعت روز مطابق مرجع ثابت بماند")};
   case "object":return {hard:P(at+": keep the object's shape, material, color, proportions and logo placement as in the reference",fa+": شکل، جنس، رنگ، تناسب و جای لوگوی شیء مطابق مرجع حفظ شود")};
   case "graphic":return {hard:P(at+": use the graphic, logo or text exactly as provided, with no distortion, recoloring or retyping",fa+": گرافیک، لوگو یا متن مرجع بدون اعوجاج، تغییر رنگ یا بازنویسی استفاده شود")};
@@ -190,7 +197,7 @@ export function deriveAudio(input:{audio?:Audio;attachments?:readonly {kind:stri
 }
 /**
  * Hard capability requirements. Character angles and every attached image (all image roles are references) count as reference images;
- * a `motion_reference` video needs `motionReference`, an `edit_reference` video `videoReference`, a `lip_sync` audio `lipSync`.
+ * a `motion_reference` video needs `motionReference`, an `edit_reference` video `videoReference`, a `lip_sync` audio `lipSync`, a `start_frame` image `startImage`, a `continue` video `videoContinuation`.
  * `operation` names the specialised work the attachments describe (checked in this order): a lip_sync audio is `lip_sync`; an edit_reference video with a
  * character or object image is `replace`; a motion_reference video with an image that is not a graphic is `motion_transfer`.
  */
@@ -202,7 +209,8 @@ export function mediaRequirements(input:{characterRef?:{angles:readonly string[]
   :video("edit_reference")&&images.some(a=>a.role==="character"||a.role==="object")?"replace"
   :video("motion_reference")&&images.some(a=>a.role!=="graphic")?"motion_transfer":undefined;
  return {...(operation?{operation}:{}),referenceImages:refs||undefined,lipSync:lips||undefined,
-  ...(video("motion_reference")?{motionReference:true}:{}),...(video("edit_reference")?{videoReference:true}:{})};
+  ...(video("motion_reference")?{motionReference:true}:{}),...(video("edit_reference")?{videoReference:true}:{}),
+  ...(files.some(a=>a.kind==="image"&&a.role==="start_frame")?{startImage:true}:{}),...(files.some(a=>a.kind==="image"&&a.role==="end_frame")?{endImage:true}:{}),...(video("continue")?{videoContinuation:true}:{})};
 }
 // ---- orchestration ----
 export async function orchestrateCreativeTurn(rawInput:unknown,deps:OrchestratorDeps={}):Promise<OrchestratorResult>{
@@ -223,10 +231,10 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // An edit_reference (image or video) makes the turn an edit, which brings photo_editor or video_editor.
  const task=parsed.task!=="character"&&files.some(f=>f.role==="edit_reference")?"edit":parsed.task;
  const input={...parsed,task,audio:deriveAudio({...parsed,attachments:files}),attachments:undefined};
- // A video attachment (every media attachment carries a role) or a lip_sync audio makes the output a video even when the text sounds like
+ // A video attachment (every media attachment carries a role), a lip_sync audio or a start_frame or end_frame image makes the output a video even when the text sounds like
  // an image request. Such a turn always has media, so it stops at the media-review check below and never reaches `buildProposal`, which re-detects from the text.
- const kind=files.some(f=>f.kind==="video"||(f.kind==="audio"&&f.role==="lip_sync"))?"video":detectMediaKind(input.text),a=input.audio,ref=input.characterRef;
- const refs:PublicReference[]=files.flatMap(f=>isMediaKind(f.kind)&&f.role?[{tag:f.tag,kind:f.kind,role:f.role,roleSource:f.roleSource??"user",labelFa:roleLabelFa(f.role)}]:[]);
+ const kind=files.some(f=>f.kind==="video"||(f.kind==="audio"&&f.role==="lip_sync")||(f.kind==="image"&&(f.role==="start_frame"||f.role==="end_frame")))?"video":detectMediaKind(input.text),a=input.audio,ref=input.characterRef;
+ const refs:PublicReference[]=files.flatMap(f=>isMediaKind(f.kind)&&f.role?[{tag:f.tag,kind:f.kind,role:f.role,roleSource:f.roleSource??"user",labelFa:roleLabelFa(f.role,f.kind)}]:[]);
  const have=new Set(files.map(f=>f.tag)),missing=parseMentions(input.text).filter(t=>!have.has(t)),byTag=tagMap(files);
  const prep=preparePrivateCreativeRequest({prompt:input.text,kind,task:input.task,attachmentRoles:files.flatMap(f=>f.role?[f.role]:[]),hasReferences:Boolean(ref||a?.hasAudioReference||files.length),hasAudioReference:a?(a.hasAudioReference||a.hasSpeech):undefined,hasSpeechAudio:a?.hasSpeech,speechLanguage:a?.language,accent:a?.accent,characterRef:ref,visualStyle:input.visualStyle});
  const req:PlannerRequest={...prep,privateRoute:prep.privateRoute&&{provider:prep.privateRoute.provider,modelId:prep.privateRoute.modelId},kind,input,...(files.length?{attachments:files.map(f=>({tag:f.tag,kind:f.kind,...(f.role?{role:f.role,roleSource:f.roleSource??"user"}:{}),...(f.textExcerpt?{textExcerpt:f.textExcerpt}:{})}))}:{})};

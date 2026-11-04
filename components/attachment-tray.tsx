@@ -2,14 +2,14 @@
 import {CircleAlert,X} from "lucide-react";
 import {Alert,AlertDescription,Button,Icon} from "@aleeforoughi/feather-react";
 import {AttachmentChip,type AttachmentPatch} from "@/components/attachment-chip";
-import {MAX_ATTACHMENTS,type LocalAttachment,type SendBlocker} from "@/lib/attachments";
+import {MAX_ATTACHMENTS,type LocalAttachment} from "@/lib/attachments";
 import {fa} from "@/lib/format";
 
 export type AttachmentProblem={key:string;name:string;message:string};
 export const ATTACHMENT_NOTE="فایل‌ها فقط در همین مرورگر نگه داشته می‌شوند و فعلاً به سرویس تولید ارسال نمی‌شوند.";
 
-/** Chips for the files picked for the next message, a running count, per-file problems (`blockers` are the roles or consents still missing after a send attempt) and the privacy note. */
-export function AttachmentTray({items,problems,blockers,reading,onChange,onRemove,onPreview,onMention,onDismiss}:{items:LocalAttachment[];problems:AttachmentProblem[];blockers:readonly SendBlocker[];reading:boolean;onChange:(id:string,patch:AttachmentPatch)=>void;onRemove:(id:string)=>void;onPreview:(item:LocalAttachment)=>void;onMention:(tag:string)=>void;onDismiss:(key:string)=>void}){
+/** Chips for the files picked for the next message, a running count, per-file problems and the privacy note. */
+export function AttachmentTray({items,problems,reading,onChange,onRemove,onPreview,onMention,onDismiss}:{items:LocalAttachment[];problems:AttachmentProblem[];reading:boolean;onChange:(id:string,patch:AttachmentPatch)=>void;onRemove:(id:string)=>void;onPreview:(item:LocalAttachment)=>void;onMention:(tag:string)=>void;onDismiss:(key:string)=>void}){
  if(!items.length&&!problems.length&&!reading)return null;
  return <div className="flex max-h-[45dvh] flex-col gap-2 overflow-y-auto">
   {problems.map(p=><Alert key={p.key} variant="destructive" role="alert" className="flex items-center gap-2">
@@ -18,7 +18,7 @@ export function AttachmentTray({items,problems,blockers,reading,onChange,onRemov
    <Button type="button" variant="ghost" size="icon" onClick={()=>onDismiss(p.key)} aria-label={"بستن پیام "+p.name}><Icon icon={X} aria-hidden="true"/></Button>
   </Alert>)}
   {items.length>0&&<ul aria-label="پیوست‌ها" className="flex flex-wrap gap-2">
-   {items.map(a=><AttachmentChip key={a.id} item={a} error={blockers.find(b=>b.id===a.id)?.reason} onChange={patch=>onChange(a.id,patch)} onRemove={()=>onRemove(a.id)} onPreview={()=>onPreview(a)} onMention={()=>onMention(a.tag)}/>)}
+   {items.map(a=><AttachmentChip key={a.id} item={a} onChange={patch=>onChange(a.id,patch)} onRemove={()=>onRemove(a.id)} onPreview={()=>onPreview(a)} onMention={()=>onMention(a.tag)}/>)}
   </ul>}
   <p className="type-caption text-fg-secondary">
    {items.length>0&&<span>{fa(items.length)} از {fa(MAX_ATTACHMENTS)} پیوست</span>}

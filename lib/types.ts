@@ -20,8 +20,14 @@ export interface ModelCapabilities {
   motionReference: boolean;
   /** Edits a reference video while preserving its frames, cuts and audio. Unverified for every model: false. */
   videoReference: boolean;
+  /** Takes a still image as the first frame of the video (image-to-video start frame). No API-docs evidence for our ids: false everywhere. */
+  startImage: boolean;
+  /** Ends the video on a still image (end frame). No API-docs evidence for our ids: false everywhere. */
+  endImage: boolean;
+  /** Continues a supplied video from its last frame. No API-docs evidence for our ids: false everywhere. */
+  videoContinuation: boolean;
 }
-export interface MediaRequirements { operation?: Exclude<MediaOperation, "generate">; referenceImages?: number; aspectRatio?: string; durationSeconds?: number; lipSync?: boolean; motionReference?: boolean; videoReference?: boolean; }
+export interface MediaRequirements { operation?: Exclude<MediaOperation, "generate">; referenceImages?: number; aspectRatio?: string; durationSeconds?: number; lipSync?: boolean; motionReference?: boolean; videoReference?: boolean; startImage?: boolean; endImage?: boolean; videoContinuation?: boolean; }
 export interface MediaModel {
   id: string;
   name: string;
