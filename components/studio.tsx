@@ -9,7 +9,7 @@ import {NoModelCard,PastProposalCard,ProposalCard} from "@/components/proposal-c
 import {CharacterDialog} from "@/components/character-dialog";
 import {InsertMenu} from "@/components/insert-menu";
 import {UploadSlotCard} from "@/components/upload-slot";
-import {SLOTS_FULL_FA,addSlot,removeSlot,slotFor,uploadRejection,type Upload,type UploadSlot} from "@/lib/upload-slots";
+import {SLOTS_FULL_FA,addSlot,removeSlot,reserveSlotTag,slotFor,uploadRejection,type Upload,type UploadSlot} from "@/lib/upload-slots";
 import {ModeControl,useMode} from "@/components/mode-control";
 import {StyleControl,useStyleSetting} from "@/components/style-control";
 import {AttachmentChip,type AttachmentPatch} from "@/components/attachment-chip";
@@ -268,7 +268,7 @@ export function Studio(){
  }
  function releaseUrl(a:LocalAttachment){if(a.previewUrl){URL.revokeObjectURL(a.previewUrl);urls.current.delete(a.previewUrl);}}
  /** Verifies the picked files one by one; the good ones join the tray, each rejected one gets its own Persian reason. Returns how many were added. */
- async function addFiles(files:File[],upload?:Upload):Promise<number>{
+ async function addFiles(files:File[],upload?:Upload,reservedTag?:string):Promise<number>{
   if(!files.length||readingRef.current)return 0;
   readingRef.current=true;setReading(true);setProblems([]);setAnnounce("");
   const next=[...attachments],added:LocalAttachment[]=[],bad:AttachmentProblem[]=[];
@@ -281,7 +281,8 @@ export function Studio(){
     // A file added through a + menu entry must be of that entry's kind; the check runs before a tag is spent.
     const rejection=upload?uploadRejection(upload,read.kind):undefined;
     if(rejection){if(read.previewUrl)URL.revokeObjectURL(read.previewUrl);fail(rejection);continue;}
-    const tagged=allocateTag(tagCounters.current,read.kind);
+    // An upload card reserved its tag when it was made (the card already shows it); the kind check above guarantees the prefix matches.
+    const tagged=reservedTag&&!added.length?{tag:reservedTag,counters:tagCounters.current}:allocateTag(tagCounters.current,read.kind);
     if(!tagged){if(read.previewUrl)URL.revokeObjectURL(read.previewUrl);fail(ATTACHMENT_ERRORS_FA.tagsExhausted);continue;}
     tagCounters.current=tagged.counters;
     const tagged1:LocalAttachment={...read,tag:tagged.tag},a=upload?.role?withRole(tagged1,upload.role):tagged1;
@@ -296,8 +297,8 @@ export function Studio(){
   return added.length;
  }
  /** Fills an upload card with one file (picked or dropped); the card goes away only when the file was accepted, so a rejected file leaves it for another try. */
- async function fillSlot(id:string,files:File[],upload?:Upload){
-  if(await addFiles(files.slice(0,1),upload))setSlots(list=>removeSlot(list,id));
+ async function fillSlot(slot:UploadSlot,files:File[]){
+  if(await addFiles(files.slice(0,1),slot.upload,slot.tag))setSlots(list=>removeSlot(list,slot.id));
  }
  function openSlotPicker(slot:UploadSlot){
   const el=fileInput.current;if(!el)return;
@@ -331,6 +332,12 @@ export function Studio(){
   if(!slot){setCharactersOpen(true);return;}
   const r=addSlot(slots,slot,attachments.length);
   if(r.full){setProblems([{key:crypto.randomUUID(),name:item.titleFa,message:SLOTS_FULL_FA}]);return;}
+  // Reserve the tag now so the card can show it (#تصویر-۱) before the upload; the automatic card gets its tag when its file arrives.
+  if(slot.upload){
+   const t=reserveSlotTag(tagCounters.current,slot.upload);
+   if(!t){setProblems([{key:crypto.randomUUID(),name:item.titleFa,message:ATTACHMENT_ERRORS_FA.tagsExhausted}]);return;}
+   tagCounters.current=t.counters;r.slots[r.slots.length-1]={...slot,tag:t.tag};
+  }
   setSlots(r.slots);setAnnounce("کارت آپلود "+slot.titleFa+" اضافه شد.");
   requestAnimationFrame(()=>document.querySelector<HTMLButtonElement>('[data-slot-id="'+slot.id+'"]')?.focus());
  }
@@ -519,13 +526,13 @@ export function Studio(){
     <div className="flex max-h-[64dvh] min-h-0 shrink-0 flex-col overflow-y-auto border-t border-line-tertiary bg-surface-base">
     <form ref={formRef} onSubmit={e=>void send(e)} className="flex shrink-0 flex-col gap-3 bg-surface-base p-4">
      <AttachmentTray items={attachments} problems={problems} reading={reading} onChange={patchAttachment} onRemove={removeAttachment} onPreview={openViewer} onMention={mentionTag} onDismiss={key=>setProblems(list=>list.filter(p=>p.key!==key))}/>
-     <input ref={fileInput} type="file" multiple hidden accept={ATTACHMENT_ACCEPT} data-testid="attachment-input" onChange={e=>{const files=Array.from(e.target.files??[]),upload=pendingUpload.current,slot=pendingSlot.current;pendingUpload.current=undefined;pendingSlot.current=undefined;e.target.value="";e.target.multiple=true;if(slot)void fillSlot(slot,files,upload);else void addFiles(files,upload);}}/>
+     <input ref={fileInput} type="file" multiple hidden accept={ATTACHMENT_ACCEPT} data-testid="attachment-input" onChange={e=>{const files=Array.from(e.target.files??[]),upload=pendingUpload.current,slot=pendingSlot.current;pendingUpload.current=undefined;pendingSlot.current=undefined;e.target.value="";e.target.multiple=true;const card=slot?slots.find(x=>x.id===slot):undefined;if(card)void fillSlot(card,files);else void addFiles(files,upload);}}/>
      <Label className="sr-only" htmlFor="whoush-prompt">توضیح تصویر یا ویدیو</Label>
      <MentionTextarea id="whoush-prompt" inputRef={promptRef} value={draft} onValueChange={setDraft} options={conversation} onPaste={onPaste} placeholder="چی می‌خوای بسازیم؟" aria-describedby="prompt-hint" rows={3} maxLength={4000} className="max-h-40 resize-none"
       onSubmitShortcut={()=>{if(draft.trim()&&!busy&&!reading)formRef.current?.requestSubmit();}}
       startAction={<InsertMenu disabled={reading} onPick={pickInsert}/>}
       top={slots.length>0?<ul aria-label="کارت‌های آپلود" className="flex gap-2 overflow-x-auto pb-1">
-       {slots.map(s=><UploadSlotCard key={s.id} slot={s} disabled={reading} onUpload={()=>openSlotPicker(s)} onDropFiles={f=>void fillSlot(s.id,f,s.upload)} onRemove={()=>dropSlot(s.id)}/>)}
+       {slots.map(s=><UploadSlotCard key={s.id} slot={s} disabled={reading} onUpload={()=>openSlotPicker(s)} onDropFiles={f=>void fillSlot(s,f)} onRemove={()=>dropSlot(s.id)}/>)}
       </ul>:undefined}
       endAction={<Button type="submit" size="icon" disabled={busy||reading||!draft.trim()} aria-busy={busy||undefined} aria-label={busy?"در حال ارسال…":"ارسال"}>
        <Icon icon={busy?LoaderCircle:ArrowUp} aria-hidden="true" className={busy?"animate-spin motion-reduce:animate-none":undefined}/>

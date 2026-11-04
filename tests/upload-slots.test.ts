@@ -1,8 +1,8 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {INSERT_MENU} from "../lib/insert-menu";
-import {MAX_ATTACHMENTS} from "../lib/attachments";
-import {SLOTS_FULL_FA,addSlot,removeSlot,slotFor,slotLabelFa,uploadRejection} from "../lib/upload-slots";
+import {MAX_ATTACHMENTS,displayTag,newTagCounters} from "../lib/attachments";
+import {SLOTS_FULL_FA,SLOT_CATEGORY_FA,addSlot,removeSlot,reserveSlotTag,slotCategory,slotFor,slotLabelFa,uploadRejection} from "../lib/upload-slots";
 
 const item=(id:string)=>INSERT_MENU.flatMap(g=>g.items).find(i=>i.id===id)!;
 
@@ -30,4 +30,17 @@ test("a card accepts only its kind",()=>{
  assert.match(uploadRejection({kind:"image",role:"character"},"video")!,/تصویر/);
  for(const k of ["pdf","json","md"] as const)assert.equal(uploadRejection({kind:"file"},k),undefined);
  assert.ok(uploadRejection({kind:"file"},"image"));assert.ok(uploadRejection({kind:"audio",role:"music"},"video"));
+});
+
+test("a card shows its category (kind), not its role, as icon and subtitle",()=>{
+ const cat=(id:string)=>{const c=slotCategory(slotFor(item(id),"x")!);return [c,SLOT_CATEGORY_FA[c]];};
+ assert.deepEqual(cat("image:character"),["image","تصویر"]);assert.deepEqual(cat("image:outfit"),["image","تصویر"]);
+ assert.deepEqual(cat("video:motion_reference"),["video","ویدیو"]);assert.deepEqual(cat("audio:music"),["audio","صدا"]);
+ assert.deepEqual(cat("file"),["file","فایل"]);assert.deepEqual(cat("auto"),["any","هر نوع فایل"]);
+});
+test("cards reserve the next tag of their kind; documents share the file prefix; the automatic card reserves none",()=>{
+ let c=newTagCounters();
+ const take=(id:string)=>{const r=reserveSlotTag(c,slotFor(item(id),"x")!.upload);if(r)c=r.counters;return r&&displayTag(r.tag);};
+ assert.deepEqual([take("image:character"),take("image:outfit"),take("video:continue"),take("file"),take("auto"),take("image:makeup")],["#تصویر-۱","#تصویر-۲","#ویدیو-۱","#فایل-۱",undefined,"#تصویر-۳"]);
+ assert.equal(reserveSlotTag({...newTagCounters(),image:99},{kind:"image",role:"character"}),undefined,"exhausted");
 });
