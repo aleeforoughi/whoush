@@ -2,7 +2,7 @@ import {test} from "node:test";
 import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
 import {MEDIA_CATALOG,MEDIA_CATALOG_VERSION,assertValidCatalog,findMediaModel,priceFor} from "../lib/catalog";
-import {modelIneligibility,recommendMediaModels} from "../lib/router";
+import {bestModelFor,modelIneligibility,recommendMediaModels,suggestModel} from "../lib/router";
 import {buildProposal,NoCompatibleModelError} from "../lib/agent";
 import {generationGate} from "../lib/policy";
 import {ReservationLedger} from "../lib/ledger";
@@ -12,6 +12,7 @@ import {HiggsfieldMediaProvider,MockMediaProvider,NotCancelableError,type MediaP
 import {evaluateOutputQA} from "../lib/output-qa";
 import {orchestrateCreativeTurn} from "../lib/orchestrator";
 import {GET as publicCatalog} from "../app/api/public/catalog/route";
+import {POST as quoteRoute} from "../app/api/generation/quote/route";
 const GATE_ENV=["PROVIDER_END_USER_AUTHORIZED","PROVIDER_RESELLER_AUTHORIZED","ALLOW_LIVE_GENERATION","HIGGSFIELD_API_KEY","PRODUCTION_MODERATION_VERIFIED","BILLING_LEDGER_VERIFIED","QUOTE_SIGNING_SECRET","DEMO_FX_TOMAN_PER_USD"];
 async function withEnv<T>(vars:Record<string,string|undefined>,fn:()=>Promise<T>|T):Promise<T>{
  const saved:Record<string,string|undefined>={};
@@ -242,8 +243,8 @@ test("router: ineligible explicit model is rejected with reason and compatible a
  assert.equal(p.selectedModelId,"seedance-2-5-10s");assert.equal(p.explicitRejected?.modelId,"kling-4-0-5s");assert.ok(p.suggestions.length>=1&&p.suggestions.length<=3);
  assert.throws(()=>buildProposal("video with seedance lip sync","quality",{lipSync:true}),NoCompatibleModelError);
 });
-test("router: motion-reference and video-reference are unverified for every model, so they are never satisfied",()=>{
- assert.ok(MEDIA_CATALOG.every(m=>m.capabilities.motionReference===false&&m.capabilities.videoReference===false));
+test("router: motion-reference and video-reference are unverified for every generation model, so they are never satisfied",()=>{
+ assert.ok(MEDIA_CATALOG.filter(m=>m.operations.includes("generate")).every(m=>m.capabilities.motionReference===false&&m.capabilities.videoReference===false));
  for(const req of [{motionReference:true},{videoReference:true}]){
   const r=recommendMediaModels("a video of a horse","quality",req);assert.equal(r.ranked.length,0);
   assert.throws(()=>buildProposal("a video of a horse","quality",req),NoCompatibleModelError);
@@ -261,10 +262,10 @@ test("catalog: capability sanity, integer FX-independent prices, only the doc-re
  assertValidCatalog();
  assert.ok(MEDIA_CATALOG_VERSION);
  assert.deepEqual(MEDIA_CATALOG.filter(m=>m.capabilities.verified).map(m=>m.id),["soul-image"]);
- const base=MEDIA_CATALOG.map(m=>priceFor(m));
+ const priced=MEDIA_CATALOG.filter(m=>!m.pricePending),base=priced.map(m=>priceFor(m));
  for(const n of base)assert.ok(Number.isSafeInteger(n)&&n>0);
  for(const fx of ["150000","250000","900000"])await withEnv({DEMO_FX_TOMAN_PER_USD:fx},async()=>{
-  assert.deepEqual(MEDIA_CATALOG.map(m=>priceFor(m)),base);
+  assert.deepEqual(priced.map(m=>priceFor(m)),base);
   assert.equal(createQuote({modelId:"seedance-2-5-5s",turnId:await turn()}).neurons,42);
  });
  assert.throws(()=>priceFor(findMediaModel("soul-image")!,{aspectRatio:"1:7"}));
@@ -299,4 +300,61 @@ test("output QA: metadata checks only; identity/continuity/lip-sync/text are nev
  assert.equal(evaluateOutputQA(live,[out({mime:"application/x-evil",width:100,height:100,durationSeconds:60})]).status,"failed_checks");
  assert.equal(evaluateOutputQA(live,[]).status,"failed_checks");
  assert.deepEqual(evaluateOutputQA({mode:"demo",configuration:{}},[]),{status:"not_applicable",checks:[]});
+});
+test("P5 router: bestModelFor maps specialised work to the catalogue model with Persian blockers, and nothing for plain generation",()=>{
+ const ids={lip_sync:"intone",replace:"genjutsu-replace",motion_transfer:"genjutsu-motion"} as const;
+ const req={lip_sync:{operation:"lip_sync",lipSync:true,referenceImages:1},replace:{operation:"replace",videoReference:true,referenceImages:2},motion_transfer:{operation:"motion_transfer",motionReference:true,referenceImages:1}} as const;
+ for(const op of ["lip_sync","replace","motion_transfer"] as const){
+  const b=bestModelFor(req[op],"video");assert.equal(b?.model.id,ids[op],op);assert.equal(b?.active,false);
+  assert.deepEqual(b?.blockersFa,["مسیر API تأیید نشده","قیمت نورون هنوز تأیید نشده","بررسی ایمنی رسانه هنوز فعال نیست"]);
+  assert.ok(b!.blockersFa.every(x=>/[؀-ۿ]/.test(x)));
+ }
+ assert.equal(bestModelFor({},"image"),undefined);assert.equal(bestModelFor({referenceImages:1},"image"),undefined);assert.equal(bestModelFor({},"video"),undefined);
+ assert.equal(bestModelFor(req.lip_sync,"image"),undefined,"wrong kind");
+ assert.equal(bestModelFor({lipSync:true},"video")?.model.id,"intone","lip sync without audio still names the model");
+ assert.equal(bestModelFor({operation:"lip_sync",lipSync:true,referenceImages:3},"video"),undefined,"more than two characters exceeds the stated limit");
+ assert.deepEqual(suggestModel(req.replace,"video"),{name:"Genjutsu",active:false,blockersFa:bestModelFor(req.replace,"video")!.blockersFa});
+});
+test("P5 router: price-pending and operation models are never proposed, even when a requirement matches them",()=>{
+ const lip=recommendMediaModels("talking video with intone","quality",{operation:"lip_sync",lipSync:true});
+ assert.deepEqual(lip.ranked,[]);assert.equal(lip.explicitRejected?.id,"intone");
+ assert.throws(()=>buildProposal("talking video","quality",{operation:"lip_sync",lipSync:true}),NoCompatibleModelError);
+ assert.throws(()=>buildProposal("a video of a horse","quality",{lipSync:true}),NoCompatibleModelError);
+ const named=recommendMediaModels("a video with genjutsu");assert.equal(named.explicitRejected?.id,"genjutsu-replace");assert.ok(named.ranked.length>0&&named.ranked.every(m=>m.operations.includes("generate")&&!m.pricePending));
+ assert.equal(buildProposal("a video with intone","quality").selectedModelId.startsWith("seedance"),true);
+ assert.ok(modelIneligibility(findMediaModel("intone")!,{referenceImages:1}),"an operation model is not a generation model");
+ assert.ok(modelIneligibility(findMediaModel("genjutsu-replace")!,{operation:"replace",referenceImages:1,videoReference:true}),"unknown max never satisfies a hard requirement");
+});
+test("P5 quotes: price-pending models are refused with 409 price_pending (quote route and library)",async()=>{
+ const turnId=await turn();
+ for(const id of ["intone","genjutsu-replace","genjutsu-motion"])rejects(()=>createQuote({modelId:id,turnId}),"price_pending");
+ assert.equal(new QuoteError("price_pending").status,409);
+ const res=await quoteRoute(new Request("http://x/api/generation/quote",{method:"POST",body:JSON.stringify({modelId:"intone",turnId})}));
+ assert.equal(res.status,409);const j=await res.json();assert.equal(j.error,"price_pending");assert.match(j.message,/[؀-ۿ]/);
+ assert.equal((await quoteRoute(new Request("http://x/api/generation/quote",{method:"POST",body:JSON.stringify({modelId:"soul-image",turnId})}))).status,200);
+ assert.throws(()=>priceFor(findMediaModel("intone")!));
+});
+test("P5 catalog: price-pending models need no neurons, priced ones need a positive integer, agent-catalogue models stay unverified",()=>{
+ assertValidCatalog();
+ const soul=findMediaModel("soul-image")!,intone=findMediaModel("intone")!;
+ assertValidCatalog([intone]);
+ assert.throws(()=>assertValidCatalog([{...intone,neurons:5}]),/price-pending/i);
+ for(const n of [undefined,0,-1,1.5,Number.NaN])assert.throws(()=>assertValidCatalog([{...soul,neurons:n}]),/Neuron SKU/);
+ assert.throws(()=>assertValidCatalog([{...intone,pricePending:undefined}]),/Neuron SKU/);
+ assert.throws(()=>assertValidCatalog([{...intone,operations:[]}]),/operation/);
+ assert.throws(()=>assertValidCatalog([{...intone,capabilities:{...intone.capabilities,lipSync:false}}]),/lip/i);
+ assert.throws(()=>assertValidCatalog([{...intone,audioSecondsRange:[30,2]}]),/range/);
+ assert.throws(()=>assertValidCatalog([{...findMediaModel("genjutsu-motion")!,capabilities:{...findMediaModel("genjutsu-motion")!.capabilities,referenceImages:{supported:false,max:null}}}]),/reference/i);
+ assert.deepEqual(MEDIA_CATALOG.filter(m=>m.evidenceSource==="agent_catalogue").map(m=>m.id),["intone","genjutsu-replace","genjutsu-motion"]);
+ assert.ok(MEDIA_CATALOG.filter(m=>m.evidenceSource==="agent_catalogue").every(m=>!m.capabilities.verified&&!m.verifiedApiPath&&m.pricePending&&m.neurons===undefined));
+ assert.deepEqual(MEDIA_CATALOG.filter(m=>m.capabilities.verified).map(m=>m.id),["soul-image"]);
+ assert.equal(intone.characterImagesMax,2);assert.equal(intone.audioClipsMax,6);assert.deepEqual(intone.audioSecondsRange,[2,30]);assert.equal(findMediaModel("genjutsu-replace")!.capabilities.referenceImages.max,null);
+ for(const m of MEDIA_CATALOG.filter(x=>x.evidenceSource==="agent_catalogue"))assert.ok(m.capabilities.verified===false&&generationGate(m).blockers.includes("model_unverified"));
+});
+test("P5 public catalog: pending models are listed available:false with no price and no internals",async()=>{
+ const j=await (await publicCatalog()).json() as {models:Array<{id:string;name:string;available:boolean;neurons?:number}>};
+ const intone=j.models.find(m=>m.id==="intone")!;assert.equal(intone.name,"Intone");assert.equal(intone.available,false);assert.equal(intone.neurons,undefined);
+ assert.equal(j.models.find(m=>m.id==="soul-image")!.available,true);
+ const raw=JSON.stringify(j);
+ for(const t of ["evidence","evidenceSource","verifiedApiPath","pricePending","agent_catalogue","higgsfield"])assert.equal(raw.toLowerCase().includes(t.toLowerCase()),false,t);
 });

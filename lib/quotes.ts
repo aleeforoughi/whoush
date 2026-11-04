@@ -4,8 +4,10 @@ import {z} from "zod";
 import {MEDIA_CATALOG_VERSION,configurationProblem,findMediaModel,priceFor,type MediaConfiguration} from "./catalog";
 import {getPrivateMediaPrompt} from "./orchestrator";
 import {generationGate} from "./policy";
-export type QuoteErrorCode="unsupported_model"|"unknown_turn"|"invalid_configuration"|"invalid_quote"|"expired_quote"|"stale_quote"|"signing_unavailable";
-const STATUS:Record<QuoteErrorCode,number>={unsupported_model:422,unknown_turn:410,invalid_configuration:422,invalid_quote:400,expired_quote:410,stale_quote:409,signing_unavailable:503};
+export type QuoteErrorCode="unsupported_model"|"unknown_turn"|"invalid_configuration"|"invalid_quote"|"expired_quote"|"stale_quote"|"signing_unavailable"|"price_pending";
+const STATUS:Record<QuoteErrorCode,number>={unsupported_model:422,unknown_turn:410,invalid_configuration:422,invalid_quote:400,expired_quote:410,stale_quote:409,signing_unavailable:503,price_pending:409};
+/** Persian explanation for `price_pending` (409): the model is known but has no approved Neuron price yet. */
+export const FA_PRICE_PENDING="قیمت نورونی این مدل هنوز تأیید نشده است؛ فعلاً امکان قیمت‌گذاری یا تولید با آن وجود ندارد.";
 export class QuoteError extends Error{readonly status:number;constructor(readonly code:QuoteErrorCode){super(code);this.name="QuoteError";this.status=STATUS[code];}}
 export const QUOTE_TTL_MS=5*60*1000;
 export type CharacterRefDigest={id:string;version:number;angles:readonly string[]};
@@ -37,6 +39,7 @@ const eq=(a:string,b:string)=>{const x=Buffer.from(a),y=Buffer.from(b);return x.
 export function createQuote(i:{modelId:string;configuration?:MediaConfiguration;turnId:string;characterRef?:CharacterRefDigest;now?:Date}):IssuedQuote{
  const now=i.now??new Date(),configuration=i.configuration??{};
  const model=findMediaModel(i.modelId);if(!model)throw new QuoteError("unsupported_model");
+ if(model.pricePending)throw new QuoteError("price_pending"); // a suggested-only model is never quoted
  const prompt=getPrivateMediaPrompt(i.turnId);if(prompt===undefined)throw new QuoteError("unknown_turn"); // never a client-supplied prompt
  if(configurationProblem(model,configuration))throw new QuoteError("invalid_configuration");
  const mode=generationGate(model).live?"live":"demo",secret=envSecret()??(mode==="demo"?demoSecret():undefined);
@@ -64,6 +67,7 @@ export function verifyQuote(token:string,now:Date=new Date()):SignedQuote{
  const p=verifyQuoteSignature(token).quote;
  if(!(now.getTime()<Date.parse(p.expiresAt)))throw new QuoteError("expired_quote");
  const model=findMediaModel(p.modelId);
+ if(model?.pricePending)throw new QuoteError("price_pending");
  if(p.catalogVersion!==MEDIA_CATALOG_VERSION||!model||configurationProblem(model,p.configuration)||priceFor(model,p.configuration)!==p.neurons)throw new QuoteError("stale_quote");
  if(p.mode!==(generationGate(model).live?"live":"demo"))throw new QuoteError("stale_quote");
  const prompt=getPrivateMediaPrompt(p.turnId);if(prompt===undefined)throw new QuoteError("unknown_turn");
