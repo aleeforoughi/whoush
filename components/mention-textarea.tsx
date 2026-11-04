@@ -11,10 +11,11 @@ const NAV_KEYS=["ArrowUp","ArrowDown","Enter","Tab","Escape"];
  * active option is announced through aria-activedescendant. Typing `#` (at the start or after whitespace) opens every conversation
  * attachment; more characters filter by tag word (Persian or English, either digit set, hyphen or not). Choosing one writes the canonical `#تصویر-۱`. An ordinary
  * hashtag such as `#نوروز` is not the start of any tag word, so the list closes. ArrowUp/ArrowDown move, Enter or Tab insert, Escape closes.
- * The field looks like one input: the border, radius and focus ring belong to the container, the textarea is borderless inside it, and `startAction`
- * (the paperclip) is pinned to the top of the inline-start edge; the textarea reserves that space with start padding on every line.
+ * The field looks like one input: the border, radius and focus ring belong to the container, the textarea is borderless inside it. `startAction` (the «+» menu) and
+ * `endAction` (the send button) are pinned to the bottom corners of the inline-start and inline-end edges, so they stay put as the textarea grows; the textarea reserves
+ * both with padding on every line. Ctrl/Cmd+Enter calls `onSubmitShortcut`, but never while the mention list is open (there Enter and Tab insert a mention).
  */
-export function MentionTextarea({value,onValueChange,options,inputRef,startAction,className,...props}:Omit<ComponentProps<"textarea">,"value"|"onChange"|"ref">&{value:string;onValueChange:(v:string)=>void;options:readonly MentionOption[];inputRef:RefObject<HTMLTextAreaElement|null>;startAction?:ReactNode}){
+export function MentionTextarea({value,onValueChange,options,inputRef,startAction,endAction,onSubmitShortcut,className,...props}:Omit<ComponentProps<"textarea">,"value"|"onChange"|"ref">&{value:string;onValueChange:(v:string)=>void;options:readonly MentionOption[];inputRef:RefObject<HTMLTextAreaElement|null>;startAction?:ReactNode;endAction?:ReactNode;onSubmitShortcut?:()=>void}){
  const listId=useId(),optionId=(i:number)=>listId+"-"+i;
  const [trigger,setTrigger]=useState<{start:number;query:string}|null>(null);
  const [active,setActive]=useState(0);
@@ -40,14 +41,19 @@ export function MentionTextarea({value,onValueChange,options,inputRef,startActio
  }
  return <div className="relative">
   <div className={"relative rounded-control border border-line-primary bg-transparent motion-state has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-offset-2 has-[textarea:focus-visible]:outline-ring"}>
-  {startAction&&<div className="absolute start-1 top-1 z-10">{startAction}</div>}
-  <Textarea {...props} className={"rounded-none border-0 focus-visible:outline-hidden "+(startAction?"ps-14 ":"")+(className??"")} ref={inputRef} value={value} role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-controls={listId} aria-expanded={open} aria-activedescendant={open?optionId(current):undefined}
+  {startAction&&<div className="absolute bottom-1 start-1 z-10">{startAction}</div>}
+  {endAction&&<div className="absolute bottom-1 end-1 z-10">{endAction}</div>}
+  <Textarea {...props} className={"rounded-none border-0 focus-visible:outline-hidden "+(startAction?"ps-14 ":"")+(endAction?"pe-14 ":"")+(className??"")} ref={inputRef} value={value} role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-controls={listId} aria-expanded={open} aria-activedescendant={open?optionId(current):undefined}
    onChange={e=>{onValueChange(e.target.value);sync(e.target);}}
    onClick={e=>sync(e.currentTarget)}
    onKeyUp={e=>{if(!NAV_KEYS.includes(e.key))sync(e.currentTarget);}}
    onBlur={()=>setTrigger(null)}
    onKeyDown={e=>{
-    if(!open||e.nativeEvent.isComposing)return;
+    if(e.nativeEvent.isComposing)return;
+    if(!open){
+     if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)&&onSubmitShortcut){e.preventDefault();onSubmitShortcut();}
+     return;
+    }
     if(e.key==="ArrowDown"){e.preventDefault();setActive((current+1)%matches.length);}
     else if(e.key==="ArrowUp"){e.preventDefault();setActive((current-1+matches.length)%matches.length);}
     else if(e.key==="Enter"||(e.key==="Tab"&&!e.shiftKey)){e.preventDefault();pick(matches[current]);}
@@ -60,7 +66,7 @@ export function MentionTextarea({value,onValueChange,options,inputRef,startActio
     className={"flex min-h-control cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 rounded-control px-3 py-2 "+(i===current?"bg-surface-hover":"")}>
     <bdi className="type-label text-fg-primary">{displayTag(o.tag)}</bdi>
     <Badge variant="outline">{ATTACHMENT_KINDS[o.kind].labelFa}</Badge>
-    {isMediaKind(o.kind)&&<span className="type-caption text-fg-secondary">{o.role?roleLabelFa(o.role):"انتخاب خودکار هووش"}</span>}
+    {isMediaKind(o.kind)&&<span className="type-caption text-fg-secondary">{o.role?roleLabelFa(o.role,o.kind):"انتخاب خودکار هووش"}</span>}
    </div>)}
   </Card>
  </div>;

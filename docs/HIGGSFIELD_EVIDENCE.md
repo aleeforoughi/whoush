@@ -73,3 +73,27 @@ quick-start shows `POST /bytedance/seedance-2.0/text-to-video` with `prompt`, `r
 
 ## Provider prices
 Provider USD prices appear on explore/playground pages and are intentionally NOT copied into code or any consumer response (cited above only where needed to record a conflict). Neuron SKU prices in `lib/catalog.ts` are illustrative seeds, not derived from or certified against these.
+
+## Higgsfield agent (MCP) catalogue, 2026-11-04
+Source: the `models_explore` tool of the Higgsfield MCP connector (Higgsfield's agent platform), retrieved by the lead on **2026-11-04**. This is **NOT** the public API documentation.
+
+**What this does and does not verify.** The public API index (https://docs.higgsfield.ai/docs/llms.txt, fetched 2026-11-04) lists **no per-model pages** and says to find models at https://console.higgsfield.ai and in each model's own documentation. Therefore the `api.higgsfield.ai` paths and input schemas for the three models below are **NOT verified**, and the MCP ids (`intone`, `hf_mult_replace_object`, `hf_mult_motion_control`) are **not API paths**. No max counts were given for image or video references (only Intone's text says "one or two characters" and "one to six voice recordings"). **No prices were given.** In `lib/catalog.ts` all three are `capabilities.verified:false`, have no `verifiedApiPath`, are `pricePending: true` with `evidenceSource: "agent_catalogue"`, and can be suggested as "coming soon" but never proposed, quoted or submitted.
+
+| MCP id | name | description | output | params | media roles | aspect ratios | tags |
+|---|---|---|---|---|---|---|---|
+| `intone` | Higgsfield Intone | Talking-head video: one or two characters speak one to six voice recordings, alone to the camera or to each other, in the room of a location image or one the prompt names; as long as the voices (2 to 30 seconds in total, pauses between files not counted) | video | resolution 480p/720p/1080p (default 1080p); bitrate_mode high/standard (default high) | character_images, location_image, image_references, audio_references | 21:9, 16:9, 9:16, 1:1, 4:3, 3:4 | talking-head, lip-sync, dialogue, image-to-video, audio-reference |
+| `hf_mult_replace_object` | Genjutsu | Replace objects in a source video using reference images | video | resolution 480p/720p/1080p (default 720p) | image_references, video_references | none listed | video-edit, object-replacement, reference |
+| `hf_mult_motion_control` | Genjutsu | Transfer motion from a reference video to subjects in reference images | video | resolution 480p/720p/1080p (default 720p) | image_references, video_references | none listed | motion-control, image-to-video, video-reference |
+
+### Intone <a id="mcp-intone"></a>
+- Catalog id `intone` (display name "Intone"). Operation `lip_sync`. Recorded from the row above: `characterImagesMax: 2` ("one or two characters"), `audioClipsMax: 6`, `audioSecondsRange: [2, 30]`, `locationImage: true`, resolutions 480p/720p/1080p, the six aspect ratios listed, `referenceImages {supported:true, max:2}` (derived from "one or two characters").
+- `bitrate_mode` is recorded here but not modelled. API path, input field names, billing unit and price: **not verified**.
+
+### Genjutsu, replace object <a id="mcp-genjutsu-replace"></a>
+- Catalog id `genjutsu-replace` (display name "Genjutsu"), MCP id `hf_mult_replace_object`. Operation `replace`; `videoReference: true`; `referenceImages {supported:true, max:null}` (supported, count not listed). No aspect ratios listed, so `aspectRatios: []`. Resolutions 480p/720p/1080p. Path, schema, price: **not verified**.
+
+### Genjutsu, motion control <a id="mcp-genjutsu-motion"></a>
+- Catalog id `genjutsu-motion` (display name "Genjutsu"), MCP id `hf_mult_motion_control`. Operation `motion_transfer`; `motionReference: true`; `referenceImages {supported:true, max:null}`. No aspect ratios listed. Resolutions 480p/720p/1080p. Path, schema, price: **not verified**.
+
+### Before any of these can be enabled
+API path and input schema read from the model's own documentation; a fixed integer Neuron SKU approved; media inspection and moderation in place (`docs/MODERATION_POLICY.md` step 4); provider authorization (`docs/LAUNCH_GATES.md` gate 1). See `docs/CAPABILITY_SCOUT.md`.

@@ -1,7 +1,7 @@
 import {NextResponse} from "next/server";
 import {z} from "zod";
 import {CHARACTER_VIEWS} from "@/lib/characters";
-import {createQuote,QuoteError} from "@/lib/quotes";
+import {createQuote,FA_PRICE_PENDING,QuoteError} from "@/lib/quotes";
 const headers={"Cache-Control":"no-store"};
 const VIEW_IDS=CHARACTER_VIEWS.map(v=>v.id) as [string,...string[]];
 // The prompt is NEVER accepted from the client: it is looked up server-side by turnId.
@@ -15,7 +15,7 @@ export async function POST(request:Request){
  const parsed=schema.safeParse(payload);if(!parsed.success)return NextResponse.json({error:"invalid_request"},{status:400,headers});
  try{return NextResponse.json(createQuote(parsed.data),{headers});}
  catch(e){
-  if(e instanceof QuoteError)return NextResponse.json({error:e.code},{status:e.status,headers});
+  if(e instanceof QuoteError)return NextResponse.json(e.code==="price_pending"?{error:e.code,message:FA_PRICE_PENDING}:{error:e.code},{status:e.status,headers});
   return NextResponse.json({error:"internal_error"},{status:500,headers});
  }
 }

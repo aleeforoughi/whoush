@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "seeded": true,
+  "capturedAt": "2026-11-04T15:07:28.771Z",
+  "higgsfield": {
+    "docsIndex": {
+      "links": [
+        "https://docs.higgsfield.ai/docs/api-reference/headers.md",
+        "https://docs.higgsfield.ai/docs/api-reference/overview.md",
+        "https://docs.higgsfield.ai/docs/api-reference/requests/cancel-a-queued-request.md",
+        "https://docs.higgsfield.ai/docs/api-reference/requests/delete-request-data.md",
+        "https://docs.higgsfield.ai/docs/api-reference/requests/get-request-status.md",
+        "https://docs.higgsfield.ai/docs/authentication.md",
+        "https://docs.higgsfield.ai/docs/concepts/billing-and-retention.md",
+        "https://docs.higgsfield.ai/docs/concepts/errors.md",
+        "https://docs.higgsfield.ai/docs/concepts/file-uploads.md",
+        "https://docs.higgsfield.ai/docs/concepts/polling.md",
+        "https://docs.higgsfield.ai/docs/concepts/rate-limits.md",
+        "https://docs.higgsfield.ai/docs/concepts/requests.md",
+        "https://docs.higgsfield.ai/docs/enterprise/access-control.md",
+        "https://docs.higgsfield.ai/docs/enterprise/capacity.md",
+        "https://docs.higgsfield.ai/docs/enterprise/data-retention.md",
+        "https://docs.higgsfield.ai/docs/enterprise/model-training.md",
+        "https://docs.higgsfield.ai/docs/enterprise/organizations.md",
+        "https://docs.higgsfield.ai/docs/enterprise/overview.md",
+        "https://docs.higgsfield.ai/docs/enterprise/reliability-and-support.md",
+        "https://docs.higgsfield.ai/docs/enterprise/usage-and-billing.md",
+        "https://docs.higgsfield.ai/docs/enterprise/webhook-security.md",
+        "https://docs.higgsfield.ai/docs/help/faq.md",
+        "https://docs.higgsfield.ai/docs/help/support.md",
+        "https://docs.higgsfield.ai/docs/how-to/introduction.md",
+        "https://docs.higgsfield.ai/docs/how-to/sdk.md",
+        "https://docs.higgsfield.ai/docs/how-to/webhooks.md",
+        "https://docs.higgsfield.ai/docs/index.md",
+        "https://docs.higgsfield.ai/docs/openapi.json",
+        "https://docs.higgsfield.ai/docs/organizations.md",
+        "https://docs.higgsfield.ai/docs/organizations/managing-members.md",
+        "https://docs.higgsfield.ai/docs/quickstart.md"
+      ]
+    },
+    "openapi": {
+      "version": "2.0.0",
+      "paths": [
+        "/higgsfield-ai/soul/standard",
+        "/kling-video/v2.5-turbo/pro/image-to-video",
+        "/kling-video/v2.5-turbo/pro/text-to-video",
+        "/kling-video/v2.5-turbo/standard/image-to-video",
+        "/minimax/hailuo-2.3/standard/image-to-video",
+        "/minimax/hailuo-2.3/standard/text-to-video",
+        "/requests/{request_id}",
+        "/requests/{request_id}/cancel",
+        "/requests/{request_id}/status"
+      ]
+    },
+    "terms": {
+      "sha256": "3add8614d763824c01c9b9782fe1eafd88f95f4dca805b53b345380e847e8c0a",
+      "chars": 31586
+    }
+  },
+  "llms": {
+    "skipped": true
+  }
+}

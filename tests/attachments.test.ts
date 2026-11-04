@@ -1,6 +1,6 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {ATTACHMENT_ACCEPT,ATTACHMENT_KINDS,ATTACHMENT_ROLE_IDS,MAX_ATTACHMENTS,MAX_EXCERPT_CHARS,MAX_TOTAL_ATTACHMENT_BYTES,TAG_PATTERN,allocateTag,describeTagEn,displayTag,insertMention,mentionTrigger,newTagCounters,parseMentions,rewriteMentions,roleLabelFa,rolesFor,sendBlockers,sniffKind,splitMentions,tagMatchesQuery,tagPrefix,textExcerpt,toWireAttachment,validateAttachmentSet,withRole,withoutRole,inferAttachmentRoles,type AttachmentKind,type AttachmentRole,type LocalAttachment} from "../lib/attachments";
+import {ATTACHMENT_ACCEPT,acceptFor,roleAllowed,ATTACHMENT_KINDS,ATTACHMENT_ROLE_IDS,MAX_ATTACHMENTS,MAX_EXCERPT_CHARS,MAX_TOTAL_ATTACHMENT_BYTES,TAG_PATTERN,allocateTag,describeTagEn,displayTag,insertMention,mentionTrigger,newTagCounters,parseMentions,rewriteMentions,roleLabelFa,rolesFor,sniffKind,splitMentions,tagMatchesQuery,tagPrefix,textExcerpt,toWireAttachment,validateAttachmentSet,withRole,withoutRole,inferAttachmentRoles,type AttachmentKind,type AttachmentRole,type LocalAttachment} from "../lib/attachments";
 import {CreativeTurnInputSchema} from "../lib/creative-plan";
 import {faDuration} from "../lib/format";
 
@@ -96,7 +96,7 @@ test("schema accepts valid attachments of every kind and keeps them optional",()
  const r=parse(list);assert.equal(r.success,true,JSON.stringify(r.error?.issues));
  // every role of every media kind is accepted on its own kind and rejected on the others
  for(const kind of ["image","video","audio"] as const)for(const role of ATTACHMENT_ROLE_IDS){
-  const ok=rolesFor(kind).some(r=>r.id===role);
+  const ok=roleAllowed(kind,role);
   const base=kind==="image"?wire():kind==="video"?clip():sound();
   assert.equal(parse([{...base,role,...(role==="voice_clone"?{consent:true}:{}),speech:undefined}]).success,ok,kind+" "+role);
  }
@@ -147,9 +147,9 @@ test("roles: media may have none, a role must fit its kind, files have none, voi
  for(const [label,list] of [["image","wire"],["video","clip"],["audio","sound"]].map(([l,f])=>[l,[({wire,clip,sound} as Record<string,typeof wire>)[f]({role:undefined})]] as const))assert.equal(parse(list).success,true,label+" without a role is valid: Whoush infers it");
  assert.equal(parse([sound({role:"voice_clone",consent:true})]).success,true);
  assert.equal(parse([sound({speech:{hasSpeech:true,language:"unknown",accent:"unspecified"}})]).success,true);
- assert.equal(roleLabelFa("character"),"کاراکتر");assert.equal(roleLabelFa("edit_reference"),"مرجع ادیت");assert.equal(roleLabelFa("lip_sync"),"الگوی حرکت لب");
- assert.equal(roleLabelFa("general"),"مرجع کلی");assert.ok(!ATTACHMENT_ROLE_IDS.includes("general" as never)&&!rolesFor("image").some(r=>r.id==="general")&&!rolesFor("audio").some(r=>r.id==="voice_clone"&&false),"general is never offered or accepted");
- assert.deepEqual(rolesFor("pdf"),[]);assert.deepEqual(rolesFor("image").map(r=>r.id),["character","environment","object","graphic","edit_reference"]);
+ assert.equal(roleLabelFa("character"),"کاراکتر");assert.equal(roleLabelFa("edit_reference"),"ادیت عکس");assert.equal(roleLabelFa("edit_reference","video"),"ادیت ویدیو");assert.equal(roleLabelFa("lip_sync"),"الگوی گفتار");assert.equal(roleLabelFa("music"),"موزیک");assert.equal(roleLabelFa("environment"),"محیط");assert.equal(roleLabelFa("object"),"اشیا");assert.equal(roleLabelFa("motion_reference"),"الگوی حرکت");assert.equal(roleLabelFa("voice_clone"),"کلون صدا");
+ assert.equal(roleLabelFa("general"),"مرجع کلی");assert.ok(!ATTACHMENT_ROLE_IDS.includes("general" as never)&&!rolesFor("image").some(r=>r.id==="general")&&!rolesFor("audio").some(r=>r.id==="voice_clone"),"general is never offered or accepted");
+ assert.deepEqual(rolesFor("pdf"),[]);assert.deepEqual(rolesFor("image").map(r=>r.id),["character","start_frame","end_frame","environment","object","outfit","hairstyle","makeup","graphic","edit_reference"]);assert.deepEqual(rolesFor("video").map(r=>r.id),["motion_reference","edit_reference","continue"]);assert.deepEqual(rolesFor("audio").map(r=>r.id),["lip_sync","music"]);assert.ok(!ATTACHMENT_ROLE_IDS.includes("style" as never));
 });
 
 test("the tag allocator counts up per prefix, never reuses a removed number, and resets with a new chat",()=>{
@@ -241,24 +241,18 @@ test("tagMatchesQuery filters by Persian or English word, either digit set, with
  assert.ok(tagMatchesQuery("audio1","صدا")&&tagMatchesQuery("audio1","صدا-")&&tagMatchesQuery("audio1","au")&&tagMatchesQuery("video2","ویدئو-")&&tagMatchesQuery("video2","ویدیو-۲")&&tagMatchesQuery("file12","فا")&&tagMatchesQuery("file12","fi")&&tagMatchesQuery("file12","فایل-۱")&&tagMatchesQuery("file12","فایل۱۲"));
 });
 
-test("send blockers: a role is optional, only voice_clone without consent blocks",()=>{
- const a=(tag:string,kind:AttachmentKind,over:Partial<LocalAttachment>={})=>({id:tag,tag,kind,...over});
- assert.deepEqual(sendBlockers([a("image1","image"),a("video1","video"),a("audio1","audio"),a("file1","md"),a("file2","pdf")]),[],"media without a role is fine");
- assert.deepEqual(sendBlockers([a("audio1","audio",{role:"voice_clone"})]),[{id:"audio1",tag:"audio1",reason:"consent"}]);
- assert.deepEqual(sendBlockers([a("audio1","audio",{role:"voice_clone",consent:true}),a("image1","image",{role:"object"})]),[]);
-});
 const media=(tag:string,over:Partial<{role:AttachmentRole}>={})=>({tag,kind:(tag.replace(/\d+$/,"")==="file"?"md":tag.replace(/\d+$/,"")) as AttachmentKind,...over});
 const inferOf=(text:string,...tags:string[])=>inferAttachmentRoles(text,tags.map(t=>media(t))).map(r=>r.role);
 test("inferAttachmentRoles: keywords in Persian and English, first match wins in the documented order",()=>{
  const cases:Array<[string,string,AttachmentRole]>=[
-  // image: edit_reference > character > graphic > object > environment > general
+  // image: edit_reference > start_frame > outfit > hairstyle > makeup > character > graphic > object > environment > general
   ["ویرایش","این عکس را ویرایش کن","edit_reference"],["ادیت","یک ادیت ساده","edit_reference"],["حذف کن","پسزمینه را حذف کن","edit_reference"],["پاک کن","لکه را پاک کن","edit_reference"],["جایگزین","جایگزین کن","edit_reference"],["عوض کن","رنگ را عوض کن","edit_reference"],["تغییر بده","تغییر بده","edit_reference"],["رتوش","رتوش پوست","edit_reference"],
   ["edit","edit the photo","edit_reference"],["remove","remove the car","edit_reference"],["replace","replace the sky","edit_reference"],["retouch","retouch skin","edit_reference"],
   ["کاراکتر","کاراکتر داستان","character"],["شخصیت","این شخصیت","character"],["چهره","چهره او","character"],["صورت","صورت من","character"],["پرتره","یک پرتره","character"],["این آدم","این آدم در پارک","character"],["این فرد","این فرد","character"],["خودم","من خودم","character"],
   ["character","keep this character","character"],["face","same face","character"],["portrait","a portrait","character"],["person","this person","character"],
   ["لوگو","لوگوی برند","graphic"],["پوستر","پوستر فیلم","graphic"],["گرافیک","گرافیک","graphic"],["تایپوگرافی","تایپوگرافی","graphic"],["فونت","همین فونت","graphic"],["متن روی","متن روی تصویر","graphic"],["بنر","بنر سایت","graphic"],
   ["logo","the logo","graphic"],["poster","a poster","graphic"],["graphic","graphic","graphic"],["typography","typography","graphic"],["banner","banner","graphic"],
-  ["محصول","محصول ما","object"],["شیء","یک شیء","object"],["اشیا","اشیا","object"],["کالا","کالا","object"],["لباس","لباس قرمز","object"],["کیف","کیف چرمی","object"],["کفش","کفش ورزشی","object"],["بطری","بطری آب","object"],
+  ["محصول","محصول ما","object"],["شیء","یک شیء","object"],["اشیا","اشیا","object"],["کالا","کالا","object"],["لباس","لباس قرمز","outfit"],["کیف","کیف چرمی","object"],["کفش","کفش ورزشی","outfit"],["بطری","بطری آب","object"],
   ["product","the product","object"],["object","an object","object"],["item","this item","object"],
   ["محیط","محیط جنگلی","environment"],["فضا","فضا","environment"],["مکان","مکان","environment"],["لوکیشن","لوکیشن","environment"],["پسزمینه","پس\u200cزمینه","environment"],["اتاق","اتاق","environment"],["خیابان","خیابان","environment"],["منظره","منظره","environment"],
   ["location","the location","environment"],["background","background","environment"],["scene","scene","environment"],["room","a room","environment"],
@@ -267,7 +261,7 @@ test("inferAttachmentRoles: keywords in Persian and English, first match wins in
  ];
  for(const [label,text,role] of cases)assert.deepEqual(inferOf(text,"image1"),[role],label+": "+text);
  assert.deepEqual(inferOf("not a keyword: facetime, objective, backgrounds","image1"),["general"],"whole words only");
- assert.deepEqual(inferOf("کفش‌ها و چهره‌ام","image1"),["character"],"a Persian keyword may take a plural or possessive suffix");assert.deepEqual(inferOf("لوگوی برند","image1"),["graphic"]);
+ assert.deepEqual(inferOf("کیف‌ها و چهره‌ام","image1"),["character"],"a Persian keyword may take a plural or possessive suffix");assert.deepEqual(inferOf("لوگوی برند","image1"),["graphic"]);
 });
 test("inferAttachmentRoles: video and audio keywords",()=>{
  for(const [text,role] of [["این ویدیو را ادیت کن","edit_reference"],["remove the logo","edit_reference"],["مثل این حرکت","motion_reference"],["رقص","motion_reference"],["الگوی حرکت","motion_reference"],["motion","motion_reference"],["dance","motion_reference"],["movement","motion_reference"],["یک دریاچه آرام","general"],["a calm lake","general"],["edit the dance","edit_reference"]] as const)assert.deepEqual(inferOf(text,"video1"),[role],text);
@@ -296,11 +290,10 @@ test("inferAttachmentRoles: a chosen role wins, files get none, voice_clone is n
  assert.deepEqual(inferAttachmentRoles("clone this voice",[media("audio1")]),[{tag:"audio1",role:"general",roleSource:"inferred"}]);
  assert.deepEqual(inferAttachmentRoles("x",[]),[]);
 });
-test("withoutRole goes back to automatic and drops speech details and consent",()=>{
+test("withoutRole goes back to automatic and drops speech details",()=>{
  const audio:LocalAttachment={id:"a",tag:"audio1",kind:"audio",mime:"audio/mpeg",bytes:1,sha256:"a".repeat(64),name:"x.mp3"};
- const cleared=withoutRole(withRole(audio,"lip_sync"));assert.ok(!("role" in cleared)&&!("speech" in cleared)&&!("consent" in cleared));
- const clone=withoutRole({...withRole(audio,"voice_clone"),consent:true});assert.ok(!("role" in clone)&&!("consent" in clone));
- assert.deepEqual(toWireAttachment(cleared),{id:"a",tag:"audio1",kind:"audio",mime:"audio/mpeg",bytes:1,sha256:"a".repeat(64)});
+ const cleared=withoutRole(withRole(audio,"lip_sync"));assert.ok(!("role" in cleared)&&!("speech" in cleared));
+  assert.deepEqual(toWireAttachment(cleared),{id:"a",tag:"audio1",kind:"audio",mime:"audio/mpeg",bytes:1,sha256:"a".repeat(64)});
 });
 
 test("choosing a role drops what belongs to another role and ignores roles the kind cannot have",()=>{
@@ -308,8 +301,7 @@ test("choosing a role drops what belongs to another role and ignores roles the k
  const lip=withRole(audio,"lip_sync");assert.deepEqual(lip.speech,{hasSpeech:true,language:"unknown",accent:"unspecified"});
  const tuned=withRole({...lip,speech:{hasSpeech:true,language:"fa",accent:"original"}},"lip_sync");assert.equal(tuned.speech?.language,"fa","re-picking the same role keeps the choices");
  const music=withRole(tuned,"music");assert.equal(music.role,"music");assert.ok(!("speech" in music));
- const clone=withRole(music,"voice_clone");assert.equal(clone.role,"voice_clone");assert.ok(!("consent" in clone)&&sendBlockers([clone])[0].reason==="consent");
- assert.equal(withRole({...clone,consent:true},"voice_clone").consent,true);assert.ok(!("consent" in withRole({...clone,consent:true},"music")));
+ assert.equal(withRole(music,"voice_clone"),music,"the UI never sets voice_clone");
  assert.equal(withRole(audio,"character"),audio,"an image role on audio is ignored");
  assert.equal(withRole({...audio,kind:"md"},"music").role,undefined);
 });
@@ -320,16 +312,45 @@ test("the wire payload carries metadata only: no name, no object URL, no bytes",
  assert.ok(!JSON.stringify(w).includes("private-notes")&&!JSON.stringify(w).includes("blob:"));
  assert.equal(CreativeTurnInputSchema.safeParse({text:"x",attachments:[w]}).success,true);
 });
-test("the wire payload carries role, consent and speech only where they belong",()=>{
+test("the wire payload carries role and speech only where they belong; the schema still guards voice_clone",()=>{
  const base={id:crypto.randomUUID(),mime:"audio/mpeg",bytes:99,sha256:"e".repeat(64),name:"voice.mp3",speech:{hasSpeech:true,language:"fa" as const,accent:"unspecified" as const}};
  const lip=toWireAttachment({...base,tag:"audio1",kind:"audio",role:"lip_sync"});
- assert.equal(lip.role,"lip_sync");assert.deepEqual(lip.speech,base.speech);assert.ok(!("consent" in lip));
- const music=toWireAttachment({...base,tag:"audio2",kind:"audio",role:"music",consent:true});
- assert.ok(!("speech" in music)&&!("consent" in music),"speech is for lip_sync only, consent for voice_clone only");
- const clone=toWireAttachment({...base,tag:"audio3",kind:"audio",role:"voice_clone",consent:true});assert.equal(clone.consent,true);
- const unconsented=toWireAttachment({...base,tag:"audio4",kind:"audio",role:"voice_clone"});assert.ok(!("consent" in unconsented));
- assert.equal(CreativeTurnInputSchema.safeParse({text:"x",attachments:[lip,music,clone]}).success,true);
- assert.equal(CreativeTurnInputSchema.safeParse({text:"x",attachments:[unconsented]}).success,false,"the schema is the backstop for a missing consent");
+ assert.equal(lip.role,"lip_sync");assert.deepEqual(lip.speech,base.speech);
+ const music=toWireAttachment({...base,tag:"audio2",kind:"audio",role:"music"});
+ assert.ok(!("speech" in music),"speech is for lip_sync only");
+ assert.equal(CreativeTurnInputSchema.safeParse({text:"x",attachments:[lip,music]}).success,true);
+ const clone={...toWireAttachment({...base,tag:"audio3",kind:"audio",role:"voice_clone"})};
+ assert.equal(CreativeTurnInputSchema.safeParse({text:"x",attachments:[clone]}).success,false,"the server still refuses voice_clone without consent");
+ assert.equal(CreativeTurnInputSchema.safeParse({text:"x",attachments:[{...clone,consent:true}]}).success,true,"and accepts it with consent, only to answer unsupported");
 });
 
+
 test("Persian duration formatting",()=>{assert.equal(faDuration(65),"۱:۰۵");assert.equal(faDuration(7),"۰:۰۷");});
+test("inferAttachmentRoles: the curated roles in Persian and English, in the documented order",()=>{
+ const cases:Array<[string,string,AttachmentRole]>=[
+  ["متحرکش کن","این عکس رو متحرکش کن","start_frame"],["زنده‌اش کن","زنده‌اش کن","start_frame"],["جون بده","بهش جون بده","start_frame"],["انیمیت","انیمیت کن","start_frame"],["متحرک کن","متحرک کن","start_frame"],["تبدیل به ویدیو","تبدیل به ویدیو","start_frame"],
+  ["animate","animate this","start_frame"],["bring to life","bring to life","start_frame"],["make it move","make it move","start_frame"],["شروع کن","شروع کن","start_frame"],["start from","start from this","start_frame"],
+  ["فریم آخر","فریم آخر باشه","end_frame"],["آخر ویدیو","آخر ویدیو","end_frame"],["تهش","تهش این باشه","end_frame"],["پایان ویدیو","پایان ویدیو","end_frame"],["ختم بشه به","ختم بشه به این","end_frame"],
+  ["end frame","end frame","end_frame"],["last frame","last frame","end_frame"],["ending","the ending","end_frame"],
+  ["لباس","لباس قرمز","outfit"],["مانتو","مانتو","outfit"],["کت","کت و شلوار","outfit"],["پیراهن","پیراهن","outfit"],["دامن","دامن","outfit"],["پوشش","پوشش","outfit"],["ست لباس","ست لباس","outfit"],["outfit","the outfit","outfit"],["dress","a dress","outfit"],["clothes","clothes","outfit"],["wardrobe","wardrobe","outfit"],
+  ["مدل مو","مدل مو","hairstyle"],["مو","مو","hairstyle"],["رنگ مو","رنگ مو","hairstyle"],["کوتاهی مو","کوتاهی مو","hairstyle"],["ریش","ریش","hairstyle"],["سبیل","سبیل","hairstyle"],["فرم ریش","فرم ریش","hairstyle"],["پیرایش","پیرایش","hairstyle"],["اصلاح","اصلاح","hairstyle"],
+  ["hairstyle","the hairstyle","hairstyle"],["haircut","haircut","hairstyle"],["hair","her hair","hairstyle"],["beard","a beard","hairstyle"],["moustache","moustache","hairstyle"],["grooming","grooming","hairstyle"],
+  ["آرایش","آرایش","makeup"],["میکاپ","میکاپ","makeup"],["رژ","رژ","makeup"],["رژ لب","رژ لب","makeup"],["سایه چشم","سایه چشم","makeup"],["خط چشم","خط چشم","makeup"],["ریمل","ریمل","makeup"],["ابرو","ابرو","makeup"],["makeup","makeup","makeup"],["lipstick","lipstick","makeup"],["eyebrow","eyebrow","makeup"],
+  ["makeup beats character","آرایش این عکس روی چهره‌ام","makeup"],["outfit beats character","dress on this person","outfit"],["end beats start","last frame, make it move","end_frame"],["edit beats outfit","edit the dress","edit_reference"]
+ ];
+ for(const [label,text,role] of cases)assert.deepEqual(inferOf(text,"image1"),[role],label+": "+text);
+ assert.deepEqual(inferOf("از #تصویر-۱ شروع کن و به #تصویر-۲ برسه","image1","image2"),["start_frame","end_frame"],"clauses are shared between two mentions");
+ assert.deepEqual(inferOf("آرایش نود مثل #تصویر-۲","image2"),["makeup"],"a nude cosmetic color is a makeup reference");
+ for(const [text,role] of [["امتداد","continue"],["ادامه بده","continue"],["ادامهٔ ویدیو","continue"],["طولانی‌ترش کن","continue"],["ادامه‌اش","continue"],["extend","continue"],["continue","continue"],["edit the clip","edit_reference"],["مثل این حرکت","motion_reference"]] as const)assert.deepEqual(inferOf(text,"video1"),[role],text);
+ for(const [text,role] of [["لیپ‌سینک","lip_sync"],["لیپ سینک","lip_sync"],["موزیک","music"],["موسیقی","music"]] as const)assert.deepEqual(inferOf(text,"audio1"),[role],text);
+});
+test("accept lists follow the kind, and the role labels are the curated Persian copy",()=>{
+ assert.equal(acceptFor("image"),".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp");
+ assert.ok(acceptFor("video").includes(".mp4")&&acceptFor("video").includes("video/webm")&&!acceptFor("video").includes(".mp3"));
+ assert.ok(acceptFor("audio").includes(".mp3")&&acceptFor("audio").includes("audio/mpeg")&&!acceptFor("audio").includes(".mp4,"));
+ assert.equal(acceptFor("file"),".pdf,.json,.md,.markdown,application/pdf,application/json,text/markdown,text/x-markdown,text/plain");
+ const labels=(k:"image"|"video"|"audio")=>rolesFor(k).map(r=>r.labelFa);
+ assert.deepEqual(labels("image"),["کاراکتر","فریم اول","فریم آخر","محیط","اشیا","لباس و کفش","پیرایش","آرایش","لوگو و گرافیک","ادیت عکس"]);
+ assert.deepEqual(labels("video"),["الگوی حرکت","ادیت ویدیو","امتداد ویدیو"]);assert.deepEqual(labels("audio"),["الگوی گفتار","موزیک"]);
+ assert.equal(rolesFor("image").find(r=>r.id==="hairstyle")!.hintFa,"مدل مو و فرم ریش");
+});

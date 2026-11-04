@@ -1,7 +1,7 @@
 "use client";
 import type {ReactNode} from "react";
-import {Accordion,AccordionContent,AccordionItem,AccordionTrigger} from "@aleeforoughi/feather-react";
-import type {PublicCreativePlan} from "@/lib/creative-plan";
+import {Accordion,AccordionContent,AccordionItem,AccordionTrigger,Badge} from "@aleeforoughi/feather-react";
+import {STYLE_LABEL_FA,type PublicCreativePlan} from "@/lib/creative-plan";
 import {CHARACTER_VIEWS} from "@/lib/characters";
 import {displayTag} from "@/lib/attachments";
 import {fa} from "@/lib/format";
@@ -28,6 +28,17 @@ function Bullets({title,items}:{title:string;items:readonly string[]}){
  </section>;
 }
 
+/** On an unsupported turn: the model that fits the work but is not active yet. Raw name, «به‌زودی» and the reasons; never a price or an approve action. */
+export function SuggestedModelNote({model}:{model:NonNullable<PublicCreativePlan["suggestedModel"]>}){
+ return <section aria-label="مدل پیشنهادی" className="flex flex-col gap-2 rounded-card border border-line-tertiary bg-surface-subtle p-3">
+  <div className="flex flex-wrap items-center gap-2">
+   <span className="type-label text-fg-primary">مدل پیشنهادی: <bdi>{model.name}</bdi></span>
+   {!model.active&&<Badge variant="outline">به‌زودی</Badge>}
+  </div>
+  {model.blockersFa.length>0&&<ul className="list-disc ps-5 type-body-sm text-fg-secondary marker:text-fg-secondary">{model.blockersFa.map(b=><li key={b}>{b}</li>)}</ul>}
+ </section>;
+}
+
 /** The collapsible «جزئیات برنامه»: camera or shot design, constraints, continuity, QA. All of it is a proposal, not verified model settings. */
 export function PlanDetails({plan,defaultOpen=false}:{plan:PublicCreativePlan;defaultOpen?:boolean}){
  const {camera,shot,identityLock,speech,references}=plan;
@@ -37,7 +48,7 @@ export function PlanDetails({plan,defaultOpen=false}:{plan:PublicCreativePlan;de
    <AccordionContent>
     <div className="flex flex-col gap-5">
      <p className="type-caption text-fg-secondary">این‌ها پیشنهاد کارگردانی هووش است، نه تنظیمات تأییدشدهٔ مدل.</p>
-     <Facts title="کلیات" rows={[["نوع خروجی",plan.mediaKind==="video"?"ویدیو":"تصویر"],["سبک",plan.realism.mode==="photoreal"?"واقع‌گرایانه":"سبک‌دار"]]}/>
+     <Facts title="کلیات" rows={[["نوع خروجی",plan.mediaKind==="video"?"ویدیو":"تصویر"],["سبک",plan.realism.mode==="photoreal"?"واقع‌گرایانه":"سبک‌دار"],...(plan.style?[["سبک انتخاب‌شده",STYLE_LABEL_FA[plan.style]] as const]:[])]}/>
      {references.length>0&&<section className="flex flex-col gap-2">
       <h4 className="type-label text-fg-primary">مراجع</h4>
       <ul className="flex flex-col gap-1 type-body-sm text-fg-primary">{references.map(r=><li key={r.tag}><bdi>{displayTag(r.tag)}</bdi> · {r.labelFa}{r.roleSource==="inferred"&&" (انتخاب هووش)"}</li>)}</ul>

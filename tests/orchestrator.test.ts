@@ -7,6 +7,7 @@ import {llmPolicy,preparePrivateCreativeRequest} from "../lib/llm";
 import {detectMediaKind} from "../lib/router";
 import {SKILLS,SKILL_REGISTRY_VERSION,resolveCreativeSkills,compileSkillInstructions,type SkillContext,type SkillId} from "../lib/skills";
 import {POST} from "../app/api/agent/route";
+import {describeTagEn} from "../lib/attachments";
 
 const ENV_KEYS=["LLM_PROVIDER_AUTHORIZED","ALLOW_LIVE_LLM","LLM_FAST_MODEL","LLM_BALANCED_MODEL","LLM_DEEP_MODEL","ANTHROPIC_API_KEY"];
 let saved:Record<string,string|undefined>={};
@@ -438,10 +439,10 @@ test("attachments: the audit keeps only tag, role, kind, size and sha256",async(
 });
 test("attachments: every image counts as a reference image, video and audio roles raise their own requirements",()=>{
  const refs={attachments:[{kind:"image",role:"character"},{kind:"image",role:"environment"},{kind:"image",role:"edit_reference"},{kind:"video",role:"edit_reference"},{kind:"audio",role:"music"},{kind:"md"}]};
- assert.deepEqual(mediaRequirements(refs,false),{referenceImages:3,lipSync:undefined,videoReference:true});
- assert.deepEqual(mediaRequirements({...refs,characterRef:{angles:["front","profile_left"]}},true),{referenceImages:5,lipSync:true,videoReference:true});
+ assert.deepEqual(mediaRequirements(refs,false),{operation:"replace",referenceImages:3,lipSync:undefined,videoReference:true});
+ assert.deepEqual(mediaRequirements({...refs,characterRef:{angles:["front","profile_left"]}},true),{operation:"replace",referenceImages:5,lipSync:true,videoReference:true});
  assert.deepEqual(mediaRequirements({attachments:[{kind:"video",role:"motion_reference"}]},false),{referenceImages:undefined,lipSync:undefined,motionReference:true});
- assert.deepEqual(mediaRequirements({attachments:[{kind:"audio",role:"lip_sync"}]},false),{referenceImages:undefined,lipSync:true});
+ assert.deepEqual(mediaRequirements({attachments:[{kind:"audio",role:"lip_sync"}]},false),{operation:"lip_sync",referenceImages:undefined,lipSync:true});
  assert.deepEqual(mediaRequirements({attachments:[{kind:"audio",role:"voice_clone"},{kind:"audio",role:"music"}]},false),{referenceImages:undefined,lipSync:undefined});
  assert.deepEqual(mediaRequirements({},false),{referenceImages:undefined,lipSync:undefined});
 });
@@ -597,7 +598,7 @@ test("roles: video edit_reference makes a video edit with video_editor and prese
  const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("video",{role:"edit_reference"})]}));
  assert.equal(r.plan.mediaKind,"video","a video attachment overrides an image-sounding text");assert.ok(r.plan.shot&&!r.plan.camera);
  assert.ok(skillsOf().includes("video_editor")&&skillsOf().includes("cinematographer")&&skillsOf().includes("videographer")&&skillsOf().includes("anti_teleport")&&!skillsOf().includes("photo_editor"));
- assert.ok(r.plan.hardConstraints.includes(CONSTRAINT.videoEdit));assert.deepEqual(r.plan.references,[{tag:"video1",kind:"video",role:"edit_reference",roleSource:"user",labelFa:"مرجع ادیت"}]);
+ assert.ok(r.plan.hardConstraints.includes(CONSTRAINT.videoEdit));assert.deepEqual(r.plan.references,[{tag:"video1",kind:"video",role:"edit_reference",roleSource:"user",labelFa:"ادیت ویدیو"}]);
 });
 test("roles: video motion_reference makes the output a video and follows motion, not appearance",async()=>{
  const r=unsupported(await orchestrateCreativeTurn({text:"a photo of a dancer",attachments:[att("video",{role:"motion_reference"})]}));
@@ -620,7 +621,7 @@ test("roles: audio lip_sync makes a video, implies speech, and activates Tehrani
  await orchestrateCreativeTurn({text,attachments:[att("audio",{role:"lip_sync",speech:speech("other","unspecified")})]});assert.ok(!skillsOf().includes("tehrani_accent"));
  await orchestrateCreativeTurn({text,attachments:[att("audio",{role:"lip_sync",speech:speech("unknown","tehrani")})]});assert.ok(skillsOf().includes("tehrani_accent"),"an explicit Tehrani choice");
  assert.equal(last().fallbackReason,"media_review_unavailable");
- assert.deepEqual(base.plan.references,[{tag:"audio1",kind:"audio",role:"lip_sync",roleSource:"user",labelFa:"الگوی حرکت لب"}]);
+ assert.deepEqual(base.plan.references,[{tag:"audio1",kind:"audio",role:"lip_sync",roleSource:"user",labelFa:"الگوی گفتار"}]);
 });
 test("roles: audio music brings audiographer and a soft rhythm preference, with no lip sync and no generated music",async()=>{
  const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("audio",{role:"music"})]}));
@@ -730,7 +731,7 @@ test("public plan: references carry tag, kind, role and labelFa only, files-only
  const files=[att("image",{role:"character"}),att("video",{role:"motion_reference"}),att("audio",{role:"lip_sync",speech:{hasSpeech:true,language:"fa",accent:"unspecified"}}),att("md"),att("pdf")];
  const r=unsupported(await orchestrateCreativeTurn({text:"a presenter walking, see @image1 and @file1",attachments:files}));
  assert.deepEqual(r.plan.references,[
-  {tag:"image1",kind:"image",role:"character",roleSource:"user",labelFa:"کاراکتر"},{tag:"video1",kind:"video",role:"motion_reference",roleSource:"user",labelFa:"الگوی حرکت"},{tag:"audio1",kind:"audio",role:"lip_sync",roleSource:"user",labelFa:"الگوی حرکت لب"}]);
+  {tag:"image1",kind:"image",role:"character",roleSource:"user",labelFa:"کاراکتر"},{tag:"video1",kind:"video",role:"motion_reference",roleSource:"user",labelFa:"الگوی حرکت"},{tag:"audio1",kind:"audio",role:"lip_sync",roleSource:"user",labelFa:"الگوی گفتار"}]);
  for(const ref of r.plan.references)assert.deepEqual(Object.keys(ref).sort(),["kind","labelFa","role","roleSource","tag"]);
  const json=JSON.stringify(r);assertNoLeak(json,"references");
  for(const f of files)assert.ok(!json.includes(f.id)&&!json.includes(f.sha256),"no ids or hashes in the public plan");
@@ -741,4 +742,148 @@ test("public plan: references carry tag, kind, role and labelFa only, files-only
  const docs=planned(await orchestrateCreativeTurn({text:LAKE,attachments:[att("md"),att("json"),att("pdf")]}));
  assert.deepEqual(docs.plan.references,[]);assert.ok(docs.proposal.fixedNeurons>0);
  assert.deepEqual(planned(await orchestrateCreativeTurn({text:LAKE})).plan.references,[]);
+});
+const SUGGEST=(name:string)=>"مدل مناسب این کار: "+name+"؛ پس از تأیید فعال می‌شود.";
+test("P5: lip-sync audio with a character image fails closed and suggests Intone (not active, no price)",async()=>{
+ const body={text:"a presenter greeting the audience",attachments:[att("audio",{tag:"audio1",role:"lip_sync"}),att("image",{tag:"image1",role:"character"})]};
+ const r=await orchestrateCreativeTurn(body);
+ assert.equal(r.status,"unsupported");const u=r as Extract<OrchestratorResult,{status:"unsupported"}>;
+ assert.equal(u.suggestedModel?.name,"Intone");assert.equal(u.suggestedModel?.active,false);assert.ok(u.suggestedModel!.blockersFa.length>=3);
+ assert.ok(u.message.endsWith(SUGGEST("Intone")),u.message);assert.deepEqual(u.plan.suggestedModel,u.suggestedModel);
+ const res=await POST(new Request("http://x/api/agent",{method:"POST",body:JSON.stringify(body)}));
+ assert.equal(res.status,422);const j=await res.json();assert.equal(j.suggestedModel.name,"Intone");assert.equal(j.plan.suggestedModel.name,"Intone");assert.ok(j.message.endsWith(SUGGEST("Intone")));
+ assertNoLeak(JSON.stringify(j),"intone");assert.deepEqual(Object.keys(j.suggestedModel).sort(),["active","blockersFa","name"],"no price or id");
+ // audio alone is enough
+ const audioOnly=await orchestrateCreativeTurn({text:"a presenter speaking",attachments:[att("audio",{role:"lip_sync"})]});
+ assert.equal((audioOnly as {suggestedModel?:{name:string}}).suggestedModel?.name,"Intone");
+});
+test("P5: video edit_reference + character/object image suggests Genjutsu; motion_reference + image suggests Genjutsu",async()=>{
+ for(const role of ["character","object"]){
+  const r=await orchestrateCreativeTurn({text:"swap the person in the clip",attachments:[att("video",{role:"edit_reference"}),att("image",{role})]}) as Extract<OrchestratorResult,{status:"unsupported"}>;
+  assert.equal(r.status,"unsupported");assert.equal(r.suggestedModel?.name,"Genjutsu");assert.ok(r.message.endsWith(SUGGEST("Genjutsu")));
+ }
+ const m=await orchestrateCreativeTurn({text:"make her dance like the clip",attachments:[att("video",{role:"motion_reference"}),att("image",{role:"character"})]}) as Extract<OrchestratorResult,{status:"unsupported"}>;
+ assert.equal(m.suggestedModel?.name,"Genjutsu");assert.ok(m.message.endsWith(SUGGEST("Genjutsu")));
+ assert.deepEqual(mediaRequirements({attachments:[{kind:"video",role:"motion_reference"},{kind:"image",role:"graphic"}]},false),{referenceImages:1,lipSync:undefined,motionReference:true});
+ // an environment image does not make an edit a replacement
+ const env=await orchestrateCreativeTurn({text:"change the sky in the clip",attachments:[att("video",{role:"edit_reference"}),att("image",{role:"environment"})]}) as Extract<OrchestratorResult,{status:"unsupported"}>;
+ assert.equal(env.suggestedModel,undefined);assert.ok(!env.message.includes("مدل مناسب این کار"));
+ // plain media-review (a reference image only) has no suggestion
+ const plain=await orchestrateCreativeTurn({text:"a photo of a lake",attachments:[att("image")]}) as Extract<OrchestratorResult,{status:"unsupported"}>;
+ assert.equal(plain.suggestedModel,undefined);assert.equal("suggestedModel" in plain.plan,false);
+});
+test("P5: voice clone gets no suggestion; mediaRequirements sees attachments and names the operation",async()=>{
+ const v=await orchestrateCreativeTurn({text:"clone this voice",attachments:[att("audio",{role:"voice_clone",consent:true}),att("image",{role:"character"})]}) as Extract<OrchestratorResult,{status:"unsupported"}>;
+ assert.equal(v.status,"unsupported");assert.equal(v.suggestedModel,undefined);assert.ok(!v.message.includes("مدل مناسب این کار"));assert.equal(last().fallbackReason,"voice_clone_unsupported");
+ assert.equal(mediaRequirements({attachments:[{kind:"audio",role:"lip_sync"},{kind:"image",role:"character"}]},false).operation,"lip_sync");
+ assert.equal(mediaRequirements({attachments:[{kind:"video",role:"edit_reference"},{kind:"image",role:"object"}]},false).operation,"replace");
+ assert.equal(mediaRequirements({attachments:[{kind:"video",role:"edit_reference"}]},false).operation,undefined);
+});
+test("curated roles: start_frame makes a video with the first-frame constraint and a start-image requirement",async()=>{
+ const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("image",{role:"start_frame"})]}));
+ assert.equal(r.plan.mediaKind,"video","a start frame is image-to-video");assert.ok(r.plan.shot&&!r.plan.camera);
+ assert.ok(r.plan.hardConstraints.includes("#تصویر-۱ فریم اول ویدیوست؛ ترکیب‌بندی، سوژه و نور همین عکس نقطهٔ شروع است"),JSON.stringify(r.plan.hardConstraints));
+ assert.ok(skillsOf().includes("anti_drift")&&skillsOf().includes("continuity")&&skillsOf().includes("cinematographer"));
+ assert.deepEqual(r.plan.references,[{tag:"image1",kind:"image",role:"start_frame",roleSource:"user",labelFa:"فریم اول"}]);
+ assert.equal(r.suggestedModel,undefined);
+ assert.deepEqual(mediaRequirements({attachments:[{kind:"image",role:"start_frame"}]},false),{referenceImages:1,lipSync:undefined,startImage:true});
+ assert.equal(getPrivateMediaPrompt(r.turnId),undefined);
+ assert.equal(describeTagEn({tag:"image1",kind:"image",role:"start_frame"}),"[start frame image 1]");
+});
+test("curated roles: continue makes a video that continues from the last frame",async()=>{
+ const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("video",{role:"continue"})]}));
+ assert.equal(r.plan.mediaKind,"video");
+ assert.ok(r.plan.hardConstraints.includes("امتداد #ویدیو-۱ از آخرین فریم؛ سوژه، نور، حرکت دوربین و رنگ پیوسته می‌مانند"),JSON.stringify(r.plan.hardConstraints));
+ assert.ok(skillsOf().includes("anti_teleport")&&skillsOf().includes("continuity"));assert.equal(r.plan.references[0].labelFa,"امتداد ویدیو");
+ assert.equal(r.suggestedModel,undefined);
+ assert.deepEqual(mediaRequirements({attachments:[{kind:"video",role:"continue"}]},false),{referenceImages:undefined,lipSync:undefined,videoContinuation:true});
+});
+test("curated roles: outfit, hairstyle and makeup add their constraints, count as reference images and get no model suggestion",async()=>{
+ const want:Array<[string,string,string,string[]]>=[
+  ["outfit","لباس و کفش","لباس و کفش #تصویر-۱ (طرح، رنگ، جنس و برش) روی سوژه اعمال می‌شود؛ چهره و بدن مدلِ عکس مرجع کپی نمی‌شود",["پوشش مطابق سیاست محتوای هووش، پوشیده و غیرتحریک‌آمیز"]],
+  ["hairstyle","پیرایش","مدل مو و فرم ریش و سبیل #تصویر-۱ (در صورت وجود) اعمال می‌شود؛ چهره، رنگ پوست و هویت سوژه تغییر نمی‌کند",[]],
+  ["makeup","آرایش","آرایش #تصویر-۱ (رنگ‌ها و شدت) اعمال می‌شود؛ بافت طبیعی پوست حفظ می‌شود و پوست پلاستیکی یا صاف‌شده نمی‌شود",[]]
+ ];
+ for(const [role,label,hard,soft] of want){
+  const r=unsupported(await orchestrateCreativeTurn({text:"a portrait of a woman",attachments:[att("image",{role})]}));
+  assert.ok(r.plan.hardConstraints.includes(hard),role+": "+JSON.stringify(r.plan.hardConstraints));
+  for(const x of soft)assert.ok(r.plan.softPreferences.includes(x),role);
+  assert.equal(r.plan.references[0].labelFa,label);assert.equal(r.plan.mediaKind,"image");assert.equal(r.suggestedModel,undefined);
+  assert.ok(skillsOf().includes("anti_drift")&&skillsOf().includes("continuity"));
+  assert.equal(mediaRequirements({attachments:[{kind:"image",role}]},false).referenceImages,1);
+ }
+ for(const [role,en] of [["outfit","[outfit reference image 1]"],["hairstyle","[hairstyle and beard reference image 1]"],["makeup","[makeup reference image 1]"]])assert.equal(describeTagEn({tag:"image1",kind:"image",role:role as never}),en);
+});
+test("curated roles: the provider-facing prompt describes the new references in English",async()=>{
+ let seen="";
+ const planner:PrivatePlanner=r=>{seen=r.input.text;return {plan:deterministicPlanner(r).plan};};
+ const out=await orchestrateCreativeTurn({text:"apply #تصویر-۱ and #تصویر-۲ to her",attachments:[att("image",{tag:"image1",role:"outfit"}),att("image",{tag:"image2",role:"makeup"})]},{planner});
+ const o=unsupported(out);assert.ok(o.plan.hardConstraints.some(c=>c.includes("#تصویر-۲")&&c.startsWith("آرایش")));assert.ok(seen.length>0);
+});
+test("curated roles: the server still refuses voice_clone without consent and answers unsupported with it",async()=>{
+ const wire={...att("audio",{role:"voice_clone"})};
+ assert.equal(CreativeTurnInputSchema.safeParse({text:"x",attachments:[wire]}).success,false);
+ const r=await orchestrateCreativeTurn({text:"x",attachments:[{...wire,consent:true}]});
+ assert.equal(r.status,"unsupported");assert.equal(last().fallbackReason,"voice_clone_unsupported");assert.equal((r as {suggestedModel?:unknown}).suggestedModel,undefined);
+});
+test("curated roles: end_frame makes a video that ends on the image; start and end frames can be combined",async()=>{
+ const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("image",{role:"end_frame"})]}));
+ assert.equal(r.plan.mediaKind,"video");
+ assert.ok(r.plan.hardConstraints.includes("#تصویر-۱ فریم آخر ویدیوست؛ ویدیو با همین ترکیب‌بندی، سوژه و نور تمام می‌شود"),JSON.stringify(r.plan.hardConstraints));
+ assert.equal(r.plan.references[0].labelFa,"فریم آخر");assert.equal(r.suggestedModel,undefined);
+ assert.deepEqual(mediaRequirements({attachments:[{kind:"image",role:"start_frame"},{kind:"image",role:"end_frame"}]},false),{referenceImages:2,lipSync:undefined,startImage:true,endImage:true});
+ assert.equal(describeTagEn({tag:"image2",kind:"image",role:"end_frame"}),"[end frame image 2]");
+ const both=unsupported(await orchestrateCreativeTurn({text:"از #تصویر-۱ شروع کن و به #تصویر-۲ برسه",attachments:[att("image",{tag:"image1",role:undefined}),att("image",{tag:"image2",role:undefined})]}));
+ assert.deepEqual(both.plan.references.map(x=>[x.tag,x.role,x.roleSource]),[["image1","start_frame","inferred"],["image2","end_frame","inferred"]]);
+ assert.equal(both.plan.mediaKind,"video");
+});
+const AUDIT_STYLE_TEXT="یک عکس واقعی از یک دختر در پارک";
+test("style: the schema accepts the three styles and rejects anything else",()=>{
+ for(const style of ["realistic","three_d","cartoon"])assert.equal(CreativeTurnInputSchema.safeParse({text:"x",style}).success,true,style);
+ for(const style of ["anime","photoreal","","REALISTIC",1,null])assert.equal(CreativeTurnInputSchema.safeParse({text:"x",style}).success,false,String(style));
+ assert.equal(CreativeTurnInputSchema.safeParse({text:"x"}).success,true);
+});
+test("style: it wins over visualStyle and over the words of the text, and the audit records it",async()=>{
+ const cartoon=planned(await orchestrateCreativeTurn({text:AUDIT_STYLE_TEXT,style:"cartoon"}));
+ assert.ok(!skillsOf().includes("hyper_realism"),"cartoon turns hyper_realism off even for «یک عکس واقعی»");assert.equal(cartoon.plan.realism.mode,"stylized");assert.equal(last().style,"cartoon");
+ await orchestrateCreativeTurn({text:AUDIT_STYLE_TEXT,style:"three_d",visualStyle:"photoreal"});assert.ok(!skillsOf().includes("hyper_realism"),"style beats visualStyle");
+ const real=planned(await orchestrateCreativeTurn({text:"an anime girl in a park",style:"realistic"}));
+ assert.ok(skillsOf().includes("hyper_realism"));assert.equal(real.plan.realism.mode,"photoreal");assert.equal(last().style,"realistic");
+ // with neither set the text detection is unchanged
+ const anime=planned(await orchestrateCreativeTurn({text:"an anime girl in a park"}));assert.equal(anime.plan.realism.mode,"stylized");assert.equal(last().style,undefined);
+ assert.equal(planned(await orchestrateCreativeTurn({text:AUDIT_STYLE_TEXT})).plan.realism.mode,"photoreal");
+ assert.equal(planned(await orchestrateCreativeTurn({text:"an anime girl in a park",visualStyle:"photoreal"})).plan.realism.mode,"photoreal","visualStyle still beats the words");
+});
+test("style: Persian directives in the plan, English in the provider prompt, and the public plan carries the style",async()=>{
+ let seen:CreativePlan|undefined;
+ const spy:PrivatePlanner=r=>{const out=deterministicPlanner(r);seen=out.plan as CreativePlan;return out;};
+ const t=planned(await orchestrateCreativeTurn({text:"a toy robot on a desk",style:"three_d"},{planner:spy}));
+ assert.ok(seen!.realism.directives.includes("رندر سه‌بعدی تمیز با متریال فیزیکی، نور نرم و سایهٔ طبیعی؛ بدون بافت پوست عکاسی یا نویز"));assert.equal(t.plan.style,"three_d");
+ assert.ok(getPrivateMediaPrompt(t.turnId)!.includes("3D render style: physically based materials, soft global illumination, clean shading"));
+ const c=planned(await orchestrateCreativeTurn({text:"a fox in the snow",style:"cartoon"},{planner:spy}));
+ assert.ok(seen!.realism.directives.includes("سبک کارتونی: خطوط تمیز، فرم‌های ساده و پالت رنگی هماهنگ"));
+ assert.ok(getPrivateMediaPrompt(c.turnId)!.includes("cartoon style: clean outlines, simplified shapes, harmonious vivid palette"));
+ const r=planned(await orchestrateCreativeTurn({text:"a lake at dawn",style:"realistic"}));
+ assert.ok(r.plan.softPreferences.includes("سبک واقع‌گرایانه: بافت، نور و رنگ طبیعی"));assert.equal(r.plan.style,"realistic");
+ assert.ok(getPrivateMediaPrompt(r.turnId)!.includes("realistic style: natural texture, light and color"));
+ assert.equal("style" in planned(await orchestrateCreativeTurn({text:"a lake at dawn"})).plan,false);
+ const res=await POST(new Request("http://x/api/agent",{method:"POST",body:JSON.stringify({text:"a toy robot",style:"cartoon"})}));
+ const j=await res.json();assert.equal(j.plan.style,"cartoon");assertNoLeak(JSON.stringify(j),"style");
+ assert.equal((await POST(new Request("http://x/api/agent",{method:"POST",body:JSON.stringify({text:"a toy robot",style:"oil"})}))).status,400);
+});
+test("style: a character reference in a stylized look keeps its identity recognizable",async()=>{
+ const ref={id:"char-abcdef12",name:"Sara",angles:["front","profile_left"],version:1};
+ const IDENT="هویت کاراکتر در سبک انتخاب‌شده قابل تشخیص می‌ماند";
+ for(const style of ["cartoon","three_d"] as const){
+  const r=planOf(await orchestrateCreativeTurn({text:"a girl in a garden",characterRef:ref,style}));
+  assert.ok(r.plan.hardConstraints.includes(IDENT),style);
+ }
+ assert.ok(!planOf(await orchestrateCreativeTurn({text:"a girl in a garden",characterRef:ref,style:"realistic"})).plan.hardConstraints.includes(IDENT));
+ assert.ok(!planOf(await orchestrateCreativeTurn({text:"a girl in a garden",style:"cartoon"})).plan.hardConstraints.includes(IDENT),"no character, no identity line");
+ const withRole=unsupported(await orchestrateCreativeTurn({text:"a girl in a garden",style:"cartoon",attachments:[att("image",{role:"character"})]}));
+ assert.ok(withRole.plan.hardConstraints.includes(IDENT));assert.equal(withRole.plan.style,"cartoon");
+ // a planner that drops the style lines gets them back
+ const dropper:PrivatePlanner=r=>{const p=deterministicPlanner(r).plan;return {plan:{...p,hardConstraints:p.hardConstraints.filter(h=>h!==IDENT),realism:{...p.realism,directives:["x"]}}};};
+ const fixed=planOf(await orchestrateCreativeTurn({text:"a girl in a garden",characterRef:ref,style:"cartoon"},{planner:dropper}));
+ assert.ok(fixed.plan.hardConstraints.includes(IDENT));assert.ok(last().corrections?.includes("style_directives"));
 });

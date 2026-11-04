@@ -1,9 +1,8 @@
 /** Chat attachment contract: kinds, limits, magic-byte sniffing and wire shape. Pure; safe in the browser and on the server. */
 import {faPlain} from "./format";
 import {normalizePersian} from "./safety";
-import type {SlotId} from "./reference-slots";
 export type AttachmentKind="image"|"video"|"audio"|"pdf"|"json"|"md";
-export type AttachmentRole="character"|"environment"|"object"|"graphic"|"edit_reference"|"motion_reference"|"lip_sync"|"music"|"voice_clone"|"general";
+export type AttachmentRole="character"|"start_frame"|"end_frame"|"environment"|"object"|"outfit"|"hairstyle"|"makeup"|"graphic"|"edit_reference"|"motion_reference"|"continue"|"lip_sync"|"music"|"voice_clone"|"general";
 export type AttachmentSpeech={hasSpeech:boolean;language:"fa"|"other"|"unknown";accent:"tehrani"|"original"|"unspecified"};
 const MB=1024*1024;
 export const ATTACHMENT_KINDS={
@@ -22,23 +21,53 @@ export const MAX_DURATION_SECONDS=3600;
 /** Bytes read for magic-number sniffing of binary files. */
 export const SNIFF_BYTES=64*1024;
 export const isMediaKind=(k:AttachmentKind)=>k==="image"||k==="video"||k==="audio";
+type RoleDef={id:AttachmentRole;labelFa:string;hintFa:string;en:string};
 /**
- * Roles per media kind: English ids on the wire, Persian labels in the UI. Files (pdf, json, md) have no role. Choosing a role is OPTIONAL:
- * without one, Whoush infers it from the brief (`inferAttachmentRoles`). `en` is the provider-facing phrase used when a mention is rewritten for the media prompt.
- * `general` is an internal inferred role only: it is not in these lists, never offered in the UI and rejected on the wire.
+ * The roles the UI offers per media kind, in menu order (most used first): English ids on the wire, Persian labels and one-line hints in the UI. Files (pdf, json, md) have no role.
+ * Choosing a role is OPTIONAL: without one, Whoush infers it from the brief (`inferAttachmentRoles`). `en` is the provider-facing phrase used when a mention is rewritten for the media prompt.
+ * `general` is an internal inferred role only. `voice_clone` is NOT offered anywhere in the UI; the server still accepts it (with consent) only to refuse it, see `WIRE_ONLY_ROLES`.
  */
 export const ATTACHMENT_ROLES={
- image:[{id:"character",labelFa:"کاراکتر",en:"character"},{id:"environment",labelFa:"محیط",en:"environment"},{id:"object",labelFa:"اشیا",en:"object"},{id:"graphic",labelFa:"گرافیک",en:"graphic"},{id:"edit_reference",labelFa:"مرجع ادیت",en:"edit reference"}],
- video:[{id:"motion_reference",labelFa:"الگوی حرکت",en:"motion reference"},{id:"edit_reference",labelFa:"مرجع ادیت",en:"edit reference"}],
- audio:[{id:"lip_sync",labelFa:"الگوی حرکت لب",en:"lip sync"},{id:"music",labelFa:"موسیقی",en:"music reference"},{id:"voice_clone",labelFa:"کلون صدا",en:"voice reference"}]
-} as const satisfies Record<"image"|"video"|"audio",readonly {id:AttachmentRole;labelFa:string;en:string}[]>;
-export const ATTACHMENT_ROLE_IDS=["character","environment","object","graphic","edit_reference","motion_reference","lip_sync","music","voice_clone"] as const satisfies readonly AttachmentRole[];
-/** The roles a kind may carry and the UI offers (never `general`); empty for files. */
-export const rolesFor=(kind:AttachmentKind):readonly {id:AttachmentRole;labelFa:string;en:string}[]=>isMediaKind(kind)?ATTACHMENT_ROLES[kind as "image"|"video"|"audio"]:[];
+ image:[
+  {id:"character",labelFa:"کاراکتر",hintFa:"چهره و هویت ثابت می‌مونه",en:"character"},
+  {id:"start_frame",labelFa:"فریم اول",hintFa:"همین عکس متحرک می‌شه",en:"start frame"},
+  {id:"end_frame",labelFa:"فریم آخر",hintFa:"ویدیو به همین عکس ختم می‌شه",en:"end frame"},
+  {id:"environment",labelFa:"محیط",hintFa:"فضا، پس‌زمینه و نور",en:"environment"},
+  {id:"object",labelFa:"اشیا",hintFa:"شیء، محصول یا اکسسوری دقیق می‌مونه",en:"object"},
+  {id:"outfit",labelFa:"لباس و کفش",hintFa:"لباس، کفش و استایل پوشش روی سوژه",en:"outfit reference"},
+  {id:"hairstyle",labelFa:"پیرایش",hintFa:"مدل مو و فرم ریش",en:"hairstyle and beard reference"},
+  {id:"makeup",labelFa:"آرایش",hintFa:"آرایش صورت با همین رنگ‌ها",en:"makeup reference"},
+  {id:"graphic",labelFa:"لوگو و گرافیک",hintFa:"لوگو، متن یا طرح بدون تغییر",en:"graphic"},
+  {id:"edit_reference",labelFa:"ادیت عکس",hintFa:"فقط همون بخشی که می‌گی عوض می‌شه",en:"edit reference"}
+ ],
+ video:[
+  {id:"motion_reference",labelFa:"الگوی حرکت",hintFa:"حرکت و ریتم این ویدیو با ظاهر جدید",en:"motion reference"},
+  {id:"edit_reference",labelFa:"ادیت ویدیو",hintFa:"همین ویدیو با تغییری که می‌خوای",en:"edit reference"},
+  {id:"continue",labelFa:"امتداد ویدیو",hintFa:"از آخر همین ویدیو امتداد پیدا می‌کنه",en:"video to continue"}
+ ],
+ audio:[
+  {id:"lip_sync",labelFa:"الگوی گفتار",hintFa:"لب‌ها با این صدا هم‌زمان می‌شن",en:"lip sync"},
+  {id:"music",labelFa:"موزیک",hintFa:"ریتم کات‌ها با موزیک",en:"music reference"}
+ ]
+} as const satisfies Record<"image"|"video"|"audio",readonly RoleDef[]>;
+/** The «فایل» group of the + menu: documents carry no role. */
+export const FILE_MENU_FA={labelFa:"فایل",hintFa:"PDF، JSON یا Markdown برای زمینه"} as const;
+/** Roles the wire accepts but the UI never offers. `voice_clone` needs `consent: true` and always ends in an `unsupported` result (`voice_clone_unsupported`). */
+const WIRE_ONLY_ROLES={audio:[{id:"voice_clone",labelFa:"کلون صدا",hintFa:"",en:"voice reference"}]} as const satisfies Partial<Record<"image"|"video"|"audio",readonly RoleDef[]>>;
+export const ATTACHMENT_ROLE_IDS=["character","start_frame","end_frame","environment","object","outfit","hairstyle","makeup","graphic","edit_reference","motion_reference","continue","lip_sync","music","voice_clone"] as const satisfies readonly AttachmentRole[];
+/** The roles a kind may carry and the UI offers (never `general`, never `voice_clone`); empty for files. */
+export const rolesFor=(kind:AttachmentKind):readonly RoleDef[]=>isMediaKind(kind)?ATTACHMENT_ROLES[kind as "image"|"video"|"audio"]:[];
+const wireRolesFor=(kind:AttachmentKind):readonly RoleDef[]=>kind==="audio"?[...ATTACHMENT_ROLES.audio,...WIRE_ONLY_ROLES.audio]:rolesFor(kind);
 export const GENERAL_ROLE_LABEL_FA="مرجع کلی";
-export const roleLabelFa=(role:AttachmentRole)=>role==="general"?GENERAL_ROLE_LABEL_FA:ATTACHMENT_ROLES.image.find(r=>r.id===role)?.labelFa??ATTACHMENT_ROLES.video.find(r=>r.id===role)?.labelFa??ATTACHMENT_ROLES.audio.find(r=>r.id===role)?.labelFa??role;
-export const roleAllowed=(kind:AttachmentKind,role:AttachmentRole)=>rolesFor(kind).some(r=>r.id===role);
-export const VOICE_CLONE_CONSENT_FA="صاحب این صدا هستم یا اجازهٔ کتبی صاحب صدا را دارم";
+/** The Persian label of a role. `edit_reference` reads «ادیت عکس» or «ادیت ویدیو» by kind; without a kind the image label is used. */
+export function roleLabelFa(role:AttachmentRole,kind?:AttachmentKind):string{
+ if(role==="general")return GENERAL_ROLE_LABEL_FA;
+ const kinds:AttachmentKind[]=kind&&isMediaKind(kind)?[kind]:["image","video","audio"];
+ for(const k of kinds){const r=wireRolesFor(k).find(x=>x.id===role);if(r)return r.labelFa;}
+ return role;
+}
+/** Whether the wire accepts this role on this kind (the UI offers `rolesFor`; `voice_clone` is accepted only to be refused). */
+export const roleAllowed=(kind:AttachmentKind,role:AttachmentRole)=>wireRolesFor(kind).some(r=>r.id===role);
 
 // ---- tags: image1, video1, audio1, file1 (pdf, json, md) stay English on the wire; users see #تصویر۱, #ویدیو۱, #صدا۱, #فایل۱ ----
 export type TagPrefix="image"|"video"|"audio"|"file";
@@ -99,7 +128,11 @@ export function splitMentions(text:string):Array<{text:string}|{tag:string;raw:s
 const tagNumber=(tag:string)=>tag.replace(/\D/g,"");
 /** Provider-facing English description of a tagged attachment, e.g. `[reference image 1 · character]` or `[motion reference video 1]`. */
 export function describeTagEn(a:{tag:string;kind:AttachmentKind;role?:AttachmentRole}):string{
- const n=tagNumber(a.tag),en=a.role?rolesFor(a.kind).find(r=>r.id===a.role)?.en:undefined;
+ const n=tagNumber(a.tag),en=a.role?wireRolesFor(a.kind).find(r=>r.id===a.role)?.en:undefined;
+ if(a.kind==="image"&&a.role==="start_frame")return "[start frame image "+n+"]";
+ if(a.kind==="image"&&a.role==="end_frame")return "[end frame image "+n+"]";
+ if(a.kind==="video"&&a.role==="continue")return "[video to continue "+n+"]";
+ if(a.kind==="image"&&(a.role==="outfit"||a.role==="hairstyle"||a.role==="makeup"))return "["+en+" image "+n+"]";
  if(a.kind==="image")return "[reference image "+n+(en?" · "+en:"")+"]";
  if(a.kind==="video")return "["+(en??"reference")+" video "+n+"]";
  if(a.kind==="audio")return "["+(en??"reference")+" audio "+n+"]";
@@ -151,18 +184,24 @@ const wordsRe=(l:readonly string[])=>new RegExp("(?<![\\p{L}\\p{N}])(?:"+l.map(w
 const INFER_RULES={
  image:[
   ["edit_reference",wordsRe(["ویرایش","ادیت","حذف کن","پاک کن","جایگزین","عوض کن","تغییر بده","رتوش","edit","remove","replace","retouch"])],
+  ["end_frame",wordsRe(["فریم آخر","آخر ویدیو","تهش","پایان ویدیو","ختم بشه به","برسه","برسد","تمام بشه","end frame","last frame","ending"])],
+  ["start_frame",wordsRe(["شروع کن","شروع کن از","شروع از","شروع بشه","start from","starts from","متحرکش کن","زنده‌اش کن","جون بده","انیمیت","متحرک کن","تبدیل به ویدیو","animate","bring to life","make it move"])],
+  ["outfit",wordsRe(["لباس","مانتو","کت","شلوار","پیراهن","دامن","کفش","پوشش","ست لباس","استایل لباس","outfit","dress","clothes","wardrobe"])],
+  ["hairstyle",wordsRe(["مدل مو","مو","رنگ مو","کوتاهی مو","ریش","سبیل","فرم ریش","پیرایش","اصلاح","hairstyle","haircut","hair","beard","moustache","grooming"])],
+  ["makeup",wordsRe(["آرایش","میکاپ","رژ لب","رژ","سایه چشم","خط چشم","ریمل","ابرو","makeup","lipstick","eyebrow"])],
   ["character",wordsRe(["کاراکتر","شخصیت","چهره","صورت","پرتره","این آدم","این فرد","خودم","character","face","portrait","person"])],
   ["graphic",wordsRe(["لوگو","پوستر","گرافیک","تایپوگرافی","فونت","متن روی","بنر","logo","poster","graphic","typography","banner"])],
-  ["object",wordsRe(["محصول","شیء","اشیا","کالا","لباس","کیف","کفش","بطری","product","object","item"])],
+  ["object",wordsRe(["محصول","شیء","اشیا","کالا","کیف","بطری","product","object","item"])],
   ["environment",wordsRe(["محیط","فضا","مکان","لوکیشن","پس‌زمینه","اتاق","خیابان","منظره","location","background","scene","room"])]
  ],
  video:[
   ["edit_reference",wordsRe(["ویرایش","ادیت","حذف کن","پاک کن","جایگزین","عوض کن","تغییر بده","رتوش","edit","remove","replace","retouch"])],
-  ["motion_reference",wordsRe(["حرکت","رقص","الگوی حرکت","مثل این حرکت","motion","dance","movement"])]
+  ["continue",wordsRe(["امتداد","ادامه بده","ادامه ویدیو","ادامهٔ ویدیو","طولانی‌ترش کن","ادامه‌اش","extend","continue"])],
+  ["motion_reference",wordsRe(["حرکت","رقص","الگوی حرکت","کپی حرکت","مثل این حرکت","motion","dance","movement"])]
  ],
  audio:[
-  ["lip_sync",wordsRe(["لب","لیپ سینک","دیالوگ","گفتار","صحبت","حرف بزند","lip sync","lipsync","speech","talk"])],
-  ["music",wordsRe(["موسیقی","آهنگ","ریتم","بیت","ملودی","music","song","beat"])]
+  ["lip_sync",wordsRe(["لب","لیپ سینک","لیپ‌سینک","دیالوگ","گفتار","صحبت","حرف بزند","lip sync","lipsync","speech","talk"])],
+  ["music",wordsRe(["موسیقی","موزیک","آهنگ","ریتم","بیت","ملودی","music","song","beat"])]
  ]
 } as const satisfies Record<"image"|"video"|"audio",readonly (readonly [AttachmentRole,RegExp])[]>;
 const withoutMentions=(s:string)=>{let out="",at=0;for(const m of scanMentions(s)){out+=s.slice(at,m.index)+" ";at=m.index+m.raw.length;}return out+s.slice(at);};
@@ -205,6 +244,12 @@ const EXT_MIMES:Record<string,readonly string[]>={
  mp3:["audio/mpeg"],wav:["audio/wav"],m4a:["audio/mp4"],m4b:["audio/mp4"],ogg:["audio/ogg"],oga:["audio/ogg"],
  pdf:["application/pdf"],json:["application/json"],md:["text/markdown"],markdown:["text/markdown"]
 };
+const KIND_EXTS:Record<AttachmentKind,readonly string[]>={image:["jpg","jpeg","png","webp"],video:["mp4","mov","webm"],audio:["mp3","wav","m4a","ogg"],pdf:["pdf"],json:["json"],md:["md","markdown"]};
+/** The `accept` list for a file input restricted to one kind (`file` = PDF, JSON and Markdown): its extensions plus its mime types. */
+export function acceptFor(kind:AttachmentKind|"file"):string{
+ const kinds:AttachmentKind[]=kind==="file"?["pdf","json","md"]:[kind];
+ return [...new Set([...kinds.flatMap(k=>KIND_EXTS[k].map(e=>"."+e)),...kinds.flatMap(k=>ATTACHMENT_KINDS[k].mimes)])].join(",");
+}
 /** The `accept` list for the file input. */
 export const ATTACHMENT_ACCEPT=[...Object.keys(EXT_MIMES).filter(e=>e!=="m4v"&&e!=="weba").map(e=>"."+e),...new Set(Object.values(ATTACHMENT_KINDS).flatMap(k=>k.mimes))].join(",");
 
@@ -301,33 +346,26 @@ export function validateAttachmentSet(list:readonly {bytes:number}[]):{ok:true}|
 }
 /** What the browser knows about one attached file. `name`, `previewUrl` and the File itself never leave the browser. A media `role` is optional: without one the server infers it. */
 export type LocalAttachment={
- id:string;tag:string;kind:AttachmentKind;mime:string;bytes:number;sha256:string;name:string;role?:AttachmentRole;consent?:boolean;
+ id:string;tag:string;kind:AttachmentKind;mime:string;bytes:number;sha256:string;name:string;role?:AttachmentRole;
  width?:number;height?:number;durationSeconds?:number;textExcerpt?:string;speech?:AttachmentSpeech;previewUrl?:string;
- /** The reference slot card the file was added through (browser only, never sent). */slot?:SlotId;
 };
-/** Goes back to "Whoush picks automatically": no role, and no speech details or consent that belonged to one. */
+/** Goes back to "Whoush picks automatically": no role, and no speech details that belonged to one. */
 export function withoutRole(a:LocalAttachment):LocalAttachment{
  const next={...a};
- delete next.role;delete next.speech;delete next.consent;
+ delete next.role;delete next.speech;
  return next;
 }
-/** Sets the role and drops what belongs to another role: speech details ride only with `lip_sync`, consent only with `voice_clone`. A role the kind cannot have is ignored. */
+/** Sets the role and drops what belongs to another role: speech details ride only with `lip_sync`. A role the UI does not offer for the kind is ignored. */
 export function withRole(a:LocalAttachment,role:AttachmentRole):LocalAttachment{
- if(!roleAllowed(a.kind,role))return a;
+ if(!rolesFor(a.kind).some(r=>r.id===role))return a;
  const next:LocalAttachment={...a,role};
- delete next.speech;delete next.consent;
+ delete next.speech;
  if(role==="lip_sync")next.speech=a.role==="lip_sync"&&a.speech?a.speech:{hasSpeech:true,language:"unknown",accent:"unspecified"};
- if(role==="voice_clone"&&a.role==="voice_clone"&&a.consent!==undefined)next.consent=a.consent;
  return next;
-}
-/** A media attachment that cannot be sent yet. A role is optional, so the only blocker is `voice_clone` without the consent box. */
-export type SendBlocker={id:string;tag:string;reason:"consent"};
-export function sendBlockers(list:readonly Pick<LocalAttachment,"id"|"tag"|"kind"|"role"|"consent">[]):SendBlocker[]{
- return list.filter(a=>isMediaKind(a.kind)&&a.role==="voice_clone"&&a.consent!==true).map(a=>({id:a.id,tag:a.tag,reason:"consent" as const}));
 }
 /** The request payload: metadata and text excerpts only. No bytes, no file name, no object URL. Speech details travel only with the `lip_sync` role. */
 export function toWireAttachment(a:LocalAttachment){
- return {id:a.id,tag:a.tag,kind:a.kind,mime:a.mime,bytes:a.bytes,sha256:a.sha256,...(a.role?{role:a.role}:{}),...(a.role==="voice_clone"&&a.consent===true?{consent:true as const}:{}),
+ return {id:a.id,tag:a.tag,kind:a.kind,mime:a.mime,bytes:a.bytes,sha256:a.sha256,...(a.role?{role:a.role}:{}),
   ...(a.width!==undefined?{width:a.width}:{}),...(a.height!==undefined?{height:a.height}:{}),
   ...(a.durationSeconds!==undefined?{durationSeconds:a.durationSeconds}:{}),
   ...(a.textExcerpt!==undefined?{textExcerpt:a.textExcerpt}:{}),...(a.speech&&a.role==="lip_sync"?{speech:a.speech}:{})};
