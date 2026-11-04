@@ -13,14 +13,14 @@ export function resolvePrivateRouting(tier:ReasoningTier):PrivateRouting|null{
  * generated system prompt, model/provider identifier or token accounting to consumers.
  * This is a prepared request contract, NOT a live model call. */
 export function preparePrivateCreativeRequest(args:{
- prompt:string;kind?:MediaKind;task?:"generate"|"edit";hasReferences?:boolean;hasAudioReference?:boolean;
+ prompt:string;kind?:MediaKind;task?:"generate"|"edit"|"character";hasReferences?:boolean;hasAudioReference?:boolean;hasSpeechAudio?:boolean;speechLanguage?:"fa"|"other"|"unknown";accent?:"tehrani"|"original"|"unspecified";hasCharacterReference?:boolean;visualStyle?:"photoreal"|"stylized"|"auto";
 }):{
  systemInstructions:string;userText:string;activeSkillIds:SkillId[];
  privateReasoningTier:ReasoningTier;privateRoute:PrivateRouting|null;
 }{
  assertSafeText(args.prompt); // fail before LLM spend or any media proposal
  const kind=args.kind??detectMediaKind(args.prompt);
- const skillContext={prompt:args.prompt,kind,task:args.task,hasAudioReference:args.hasAudioReference};
+ const skillContext={prompt:args.prompt,kind,task:args.task,hasAudioReference:args.hasAudioReference,hasSpeechAudio:args.hasSpeechAudio,speechLanguage:args.speechLanguage,accent:args.accent,hasCharacterReference:args.hasCharacterReference,visualStyle:args.visualStyle};
  const tier=reasoningTier(args.prompt,Boolean(args.hasReferences));
  return {
   systemInstructions:compileSkillInstructions(skillContext),
