@@ -1,5 +1,6 @@
 /** Private creative-profession knowledge layer, injected only into LLM prompts on server. */
 import {normalizePersian} from "./safety";
+import {ADVANCED_SKILLS} from "./advanced-skills";
 import type {MediaKind} from "./types";
 type Skill={title:string;objective:string;checks:readonly string[]};
 export const SKILLS={
@@ -17,15 +18,24 @@ export const SKILLS={
  visual_designer:{title:"Graphic Designer, Visual Designer, Typography and Color Specialist",objective:"Apply layout grids, spacing, typography, Persian font knowledge, hierarchy, accessibility and coherent palettes.",checks:["Legible Farsi typography, correct glyph joining and text proofreading.","Intentional hierarchy, color combinations, contrast and brand consistency.","Avoid assuming AI-generated text is correctly spelled without postproduction QA."]},
  creative_copywriter:{title:"Professional Creative Copywriter",objective:"Write catchy, effective, culturally authentic nonpolitical Persian/English copy and brand messaging.",checks:["Hook, slogan, CTA and tone reflect the audience and product.","No misleading advertising, fake claims or misattributed poetry.","Proofread Persian idioms, spelling, rhymes and brevity."]},
  qa:{title:"Professional Media QA",objective:"Evaluate deliverables against the brief and technical constraints; never approve uninspected results.",checks:["Object count, identity, anatomy, geometry, text accuracy, consistency and violations.","Resolution, duration, frame-rate and colorimetry only when actual media measured.","Check originality, provider policy, safe content and explicit user acceptance."]},
- iranian_geography:{title:"Iran Geography, Cities, Idioms, Local Languages, Poems and Celebrities Specialist",objective:"Represent nonpolitical Iranian regions, everyday language, landmarks, art and celebrities accurately.",checks:["Validate distinctive city architecture, local names and era details.","Do not invent poem attribution, dialect fluency or celebrity facts.","Political figures are forbidden under Whoush policy regardless of regional significance."]}
+ iranian_geography:{title:"Iran Geography, Cities, Idioms, Local Languages, Poems and Celebrities Specialist",objective:"Represent nonpolitical Iranian regions, everyday language, landmarks, art and celebrities accurately.",checks:["Validate distinctive city architecture, local names and era details.","Do not invent poem attribution, dialect fluency or celebrity facts.","Political figures are forbidden under Whoush policy regardless of regional significance."]},
+ ...ADVANCED_SKILLS
 } as const satisfies Record<string,Skill>;
 export type SkillId=keyof typeof SKILLS;
-export type SkillContext={prompt:string;kind:MediaKind;task?:"generate"|"edit";hasAudioReference?:boolean};
+export type SkillContext={prompt:string;kind:MediaKind;task?:"generate"|"edit"|"character";hasAudioReference?:boolean;hasSpeechAudio?:boolean;speechLanguage?:"fa"|"other"|"unknown";accent?:"tehrani"|"original"|"unspecified";hasCharacterReference?:boolean;visualStyle?:"photoreal"|"stylized"|"auto"};
 const contains=(p:string,term:string)=>(" "+p+" ").includes(" "+normalizePersian(term)+" ");
 const has=(p:string,words:readonly string[])=>words.some(w=>contains(p,w));
 export function resolveCreativeSkills(context:SkillContext):SkillId[]{
  const p=normalizePersian(context.prompt);
- const ids=new Set<SkillId>(["prompt_engineer","creative_director","persian_language","qa"]);
+ const ids=new Set<SkillId>(["prompt_engineer","creative_director","persian_language","qa","anti_drift","continuity"]);
+ const stylized=context.visualStyle==="stylized"||(context.visualStyle!=="photoreal"&&has(p,["cartoon","anime","illustration","flat vector","کارتونی","انیمه","نقاشی دیجیتال","وکتور"]));
+ if(!stylized)ids.add("hyper_realism");
+ const lips=has(p,["lip sync","lipsync","lip-sync","mouth sync","viseme","phoneme","phonetics","لیپ سینک","لب سینک","هماهنگی لب","همخوانی لب","حرکت لب","فونتیک","واج"]);
+ if(context.kind==="video"&&(lips||context.hasSpeechAudio))ids.add("persian_lip_sync_phonetics");
+ if(context.accent==="tehrani"||has(p,["tehrani accent","tehran accent","تهرونی","لهجه تهرانی","تلفظ تهرانی"])||
+   ((lips||context.hasSpeechAudio)&&context.speechLanguage==="fa"&&context.accent!=="original"))ids.add("tehrani_accent");
+ if(context.kind==="video")ids.add("anti_teleport");
+ if(context.task==="character"||context.hasCharacterReference||has(p,["character profile","character sheet","face lock","character lock","consistent character","کاراکتر","شخصیت ثابت","شیت کاراکتر","قفل چهره","چهره ثابت","شخصیت سازی"]))ids.add("character_creation");
  if(context.kind==="image"){
   ids.add("photographer");
   if(context.task==="edit"||has(p,["edit","replace","retouch","mask","remove","ویرایش","ادیت","حذف","جایگزین","ماسک","تغییر"]))ids.add("photo_editor");
@@ -50,6 +60,10 @@ export function compileSkillInstructions(context:SkillContext):string{
   "For new images always include proposed camera body/look, focal length, aperture, ISO, shutter, white balance, lighting, framing and focus. Do not claim actual EXIF.",
   "For video include movement, frame continuity, target FPS/shutter, exposure, duration and edits as supported by the verified model.",
   "For edits preserve source pixels, identity, framing, motion, PTS, FPS, audio and color unless explicitly requested otherwise.",
+  "Apply anti-drift and continuity locks to all media; for video enforce object permanence and anti-teleport motion.",
+  "For photoreal scenes require content-specific microtextures, realistic skin pores when humans are visible, credible material response, balanced exposure and restrained/no filters; respect explicitly stylized work.",
+  "For Farsi lip sync rely on real audio timing and contextual phonetic/viseme analysis, not text-only timestamp estimates.",
+  "For character references use only consented images; build front/three-quarter/side/full-body contact sheets without inventing missing viewpoints.",
   "Reasoning model identity and costs must never be customer facing. Only present eligible Higgsfield media model names, options and fixed whole-Neuron rates.",
   ...resolveCreativeSkills(context).map(id=>{
    const s=SKILLS[id];return "## "+s.title+" v1.0.0\n"+s.objective+"\n"+s.checks.map(x=>"- "+x).join("\n");
