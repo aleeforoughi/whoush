@@ -86,7 +86,7 @@ test("unrelated skills not loaded for plain product photo",()=>{
  assert.equal(ids.includes("audiographer"),false);
 });
 test("core skill registry is complete",()=>{
- assert.equal(Object.keys(SKILLS).length,15);
+ assert.equal(Object.keys(SKILLS).length,22);
  for(const [id,skill] of Object.entries(SKILLS)){
   assert.ok(skill.title&&skill.objective&&skill.checks.length,id);
  }
