@@ -115,19 +115,19 @@ The API docs publish no price list (usage-and-billing.md: invoice pricing "agree
 | Seedance 2.5 text-to-video | per output second | ~$0.2056 | ~$0.4622 | ~$1.1372 | "roughly", token-based (1,000 video tokens $0.0214 at 480p/720p, $0.0234 at 1080p), 16:9 estimate. The page's own table range is $0.144-$0.7961/s, about 0.7x of these; audio and bitrate effects not stated |
 | Genjutsu object swap / motion transfer | per input-video second, rounded up | $0.318 | $0.681 | $1.632 | the related-models table shows $0.159-$0.816/s, exactly half: **conflict**, the higher figure is used below |
 
-### Proposed Neuron SKUs (not applied; owner decision)
+### Neuron SKUs: approved by the owner, 2026-11-04 (applied in `lib/catalog.ts`, catalog version `2026-11-04.5`)
 Method, from `docs/NEURON_PRICING.md`: provider plus planner cost per Neuron must stay at or below `c = V(1-0.20)/(1+b) = $0.128` for the development example `V = $0.176`, `b = 10%`. SKU = ceil((provider price + $0.05 planner allowance) / $0.128), integer, using the higher price where sources conflict. `V` is a development example, not a production margin certification.
 
-| SKU | Today (illustrative) | Proposed | Margin of today's price at the higher cost |
+| SKU | Before (illustrative) | Approved | Margin of the old price at the higher cost |
 |---|---|---|---|
 | `soul-image` (720p) | 4 | 2 | about 78% |
 | `seedance-2-5-5s` (1080p) | 42 | 45 | about 15%: **below the 20% target** |
 | `seedance-2-5-10s` (1080p) | 80 | 90 | about 11%: **below the 20% target** |
-| Genjutsu 720p, source up to 5 / 10 / 15 / 30 s | price pending | 27 / 54 / 81 / 160 | |
-| Genjutsu 480p, up to 5 / 10 / 15 / 30 s | | 13 / 26 / 38 / 75 | |
-| Genjutsu 1080p, up to 5 / 10 / 15 / 30 s | | 65 / 128 / 192 / 383 | |
+| Genjutsu 720p (`genjutsu-replace`, `genjutsu-motion`), source up to 5 / 10 / 15 / 30 s | price pending | 27 / 54 / 81 / 160 | |
+| Genjutsu 480p, up to 5 / 10 / 15 / 30 s | | 13 / 26 / 38 / 75 (approved; no 480p SKU in the catalog yet) | |
+| Genjutsu 1080p, up to 5 / 10 / 15 / 30 s | | 65 / 128 / 192 / 383 (approved; no 1080p SKU in the catalog yet) | |
 
-Genjutsu is billed per input second, so a fixed SKU needs the source length known server-side before the quote (a duration band, each band one integer SKU). That needs hosted, inspected media first.
+Genjutsu is billed per input second (rounded up), so each source-length band is one integer SKU (`sourceSecondsSkus`). A quote needs `sourceVideoSeconds` measured server-side from the hosted source video; the public quote route does not accept it from the client, so Genjutsu cannot be quoted until hosted, inspected media exists. Re-derive every SKU when a provider price changes, as a new catalog version (`docs/NEURON_PRICING.md`).
 
 ## Higgsfield agent (MCP) catalogue, 2026-11-04
 Source: the `models_explore` tool of the Higgsfield MCP connector (Higgsfield's agent platform), retrieved by the lead on **2026-11-04**. This is **NOT** the public API documentation.

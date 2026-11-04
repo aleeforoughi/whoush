@@ -1,5 +1,5 @@
 import { MEDIA_CATALOG } from "./catalog";
-import { isPriced, type AgentPreference, type MediaKind, type MediaModel, type MediaRequirements, type PricedMediaModel, type ReasoningTier, type SuggestedModel } from "./types";
+import { hasApprovedPrice, isPriced, type AgentPreference, type MediaKind, type MediaModel, type MediaRequirements, type PricedMediaModel, type ReasoningTier, type SuggestedModel } from "./types";
 import {needsHostedMedia} from "./policy";
 const videoWords=["video","animate","animation","motion","clip","ویدیو","فیلم","متحرک","انیمیشن","حرکت"];
 const imageWords=["image","photo","picture","portrait","عکس","تصویر","پوستر"];
@@ -66,7 +66,7 @@ export const FA_BLOCKER_HOSTING="بارگذاری رسانه روی سرور ه�
 export function bestModelFor(r:MediaRequirements,kind:MediaKind):{model:MediaModel;active:boolean;blockersFa:string[]}|undefined {
  const operation=r.operation??(r.lipSync?"lip_sync":undefined);
  if(!operation) return undefined;
- const blockers=(m:MediaModel)=>[...(m.capabilities.verified?[]:[FA_BLOCKER_API]),...(isPriced(m)?[]:[FA_BLOCKER_PRICE]),...(MEDIA_REVIEW_ACTIVE?[]:[FA_BLOCKER_REVIEW]),...(HOSTED_MEDIA_ACTIVE||!needsHostedMedia(m)?[]:[FA_BLOCKER_HOSTING])];
+ const blockers=(m:MediaModel)=>[...(m.capabilities.verified?[]:[FA_BLOCKER_API]),...(hasApprovedPrice(m)?[]:[FA_BLOCKER_PRICE]),...(MEDIA_REVIEW_ACTIVE?[]:[FA_BLOCKER_REVIEW]),...(HOSTED_MEDIA_ACTIVE||!needsHostedMedia(m)?[]:[FA_BLOCKER_HOSTING])];
  const fits=MEDIA_CATALOG.filter(m=>m.kind===kind&&!modelIneligibility(m,{...r,operation},{assumeUnknownMax:true}));
  const ranked=fits.map(model=>({model,blockersFa:blockers(model)})).sort((a,b)=>a.blockersFa.length-b.blockersFa.length);
  const best=ranked[0];

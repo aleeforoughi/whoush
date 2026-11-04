@@ -184,9 +184,9 @@ test("live path: lexical moderation is not enough; settle exactly once on verifi
   status={state:"running",outputs:[]};assert.equal((await pollJob(job.id,"o",d1))!.state,"running");
   status={state:"completed",outputs:[{kind:"image",url:"https://cdn.example/x.png",needsMirroring:true}]};
   const done=(await pollJob(job.id,"o",d1))!;
-  assert.equal(done.state,"completed");assert.equal(done.chargedNeurons,4);assert.equal(d1.ledger.get(job.id)?.state,"settled");
+  assert.equal(done.state,"completed");assert.equal(done.chargedNeurons,2);assert.equal(d1.ledger.get(job.id)?.state,"settled");
   assert.equal(done.qa.status,"pending_inspection");
-  assert.equal((await pollJob(job.id,"o",d1))!.chargedNeurons,4); // no double settle
+  assert.equal((await pollJob(job.id,"o",d1))!.chargedNeurons,2); // no double settle
   assert.equal(toPublicJob(done).outputs.length,1);
   // completed without usable output is a failure, never a charge
   for(const s of [{state:"completed",outputs:[]},{state:"completed",outputs:[{kind:"image",url:"http://insecure/x.png",needsMirroring:true}]},{state:"failed",outputs:[]},{state:"nsfw",outputs:[]},{state:"canceled",outputs:[]}] as ProviderStatus[]){
@@ -273,11 +273,12 @@ test("catalog: capability sanity, integer FX-independent prices, only models wit
  assertValidCatalog();
  assert.ok(MEDIA_CATALOG_VERSION);
  assert.deepEqual(MEDIA_CATALOG.filter(m=>m.capabilities.verified).map(m=>m.id),["soul-image","seedance-2-5-5s","seedance-2-5-10s","genjutsu-replace","genjutsu-motion"]);
- const priced=MEDIA_CATALOG.filter(m=>!m.pricePending),base=priced.map(m=>priceFor(m));
+ const priced=MEDIA_CATALOG.filter(m=>!m.pricePending&&!m.sourceSecondsSkus),base=priced.map(m=>priceFor(m));
  for(const n of base)assert.ok(Number.isSafeInteger(n)&&n>0);
  for(const fx of ["150000","250000","900000"])await withEnv({DEMO_FX_TOMAN_PER_USD:fx},async()=>{
   assert.deepEqual(priced.map(m=>priceFor(m)),base);
-  assert.equal(createQuote({modelId:"seedance-2-5-5s",turnId:await turn()}).neurons,42);
+  assert.equal(createQuote({modelId:"seedance-2-5-5s",turnId:await turn()}).neurons,45);
+  assert.equal(priceFor(findMediaModel("genjutsu-replace")!,{sourceVideoSeconds:12}),81);
  });
  assert.throws(()=>priceFor(findMediaModel("soul-image")!,{aspectRatio:"1:7"}));
 });
@@ -317,7 +318,7 @@ test("P5 router: bestModelFor maps specialised work to the catalogue model with 
  const req={lip_sync:{operation:"lip_sync",lipSync:true,referenceImages:1},replace:{operation:"replace",videoReference:true,referenceImages:2},motion_transfer:{operation:"motion_transfer",motionReference:true,referenceImages:1}} as const;
  for(const op of ["lip_sync","replace","motion_transfer"] as const){
   const b=bestModelFor(req[op],"video");assert.equal(b?.model.id,ids[op],op);assert.equal(b?.active,false);
-  assert.deepEqual(b?.blockersFa,[...(op==="lip_sync"?["مسیر API تأیید نشده"]:[]),"قیمت نورون هنوز تأیید نشده","بررسی ایمنی رسانه هنوز فعال نیست","بارگذاری رسانه روی سرور هنوز فعال نیست"],op);
+  assert.deepEqual(b?.blockersFa,[...(op==="lip_sync"?["مسیر API تأیید نشده","قیمت نورون هنوز تأیید نشده"]:[]),"بررسی ایمنی رسانه هنوز فعال نیست","بارگذاری رسانه روی سرور هنوز فعال نیست"],op);
   assert.ok(b!.blockersFa.every(x=>/[؀-ۿ]/.test(x)));
  }
  assert.equal(bestModelFor({},"image"),undefined);assert.equal(bestModelFor({referenceImages:1},"image"),undefined);assert.equal(bestModelFor({},"video"),undefined);
@@ -341,7 +342,11 @@ test("P5 router: price-pending and operation models are never proposed, even whe
 });
 test("P5 quotes: price-pending models are refused with 409 price_pending (quote route and library)",async()=>{
  const turnId=await turn();
- for(const id of ["intone","genjutsu-replace","genjutsu-motion"])rejects(()=>createQuote({modelId:id,turnId}),"price_pending");
+ rejects(()=>createQuote({modelId:"intone",turnId}),"price_pending");
+ // Genjutsu has approved length bands, but no quote without a server-measured source length (and the route never accepts one from the client)
+ for(const id of ["genjutsu-replace","genjutsu-motion"])rejects(()=>createQuote({modelId:id,turnId}),"invalid_configuration");
+ const gq=await quoteRoute(new Request("http://x/api/generation/quote",{method:"POST",body:JSON.stringify({modelId:"genjutsu-replace",turnId,configuration:{sourceVideoSeconds:5}})}));
+ assert.equal(gq.status,400,"a client-supplied source length is rejected by the route schema");
  assert.equal(new QuoteError("price_pending").status,409);
  const res=await quoteRoute(new Request("http://x/api/generation/quote",{method:"POST",body:JSON.stringify({modelId:"intone",turnId})}));
  assert.equal(res.status,409);const j=await res.json();assert.equal(j.error,"price_pending");assert.match(j.message,/[؀-ۿ]/);
@@ -361,7 +366,8 @@ test("P5 catalog: price-pending models need no neurons, priced ones need a posit
  assert.throws(()=>assertValidCatalog([{...findMediaModel("genjutsu-motion")!,capabilities:{...findMediaModel("genjutsu-motion")!.capabilities,referenceImages:{supported:false,max:null}}}]),/reference/i);
  assert.deepEqual(MEDIA_CATALOG.filter(m=>m.evidenceSource==="agent_catalogue").map(m=>m.id),["intone"],"only Intone lacks an API reference page");
  assert.ok(MEDIA_CATALOG.filter(m=>m.evidenceSource==="agent_catalogue").every(m=>!m.capabilities.verified&&!m.verifiedApiPath&&m.pricePending&&m.neurons===undefined));
- assert.ok(MEDIA_CATALOG.filter(m=>m.pricePending).every(m=>m.neurons===undefined)&&["genjutsu-replace","genjutsu-motion"].every(id=>findMediaModel(id)!.pricePending),"Genjutsu stays price pending until the owner approves SKUs");
+ assert.ok(MEDIA_CATALOG.filter(m=>m.pricePending).every(m=>m.neurons===undefined&&!m.sourceSecondsSkus));
+ assert.deepEqual(MEDIA_CATALOG.filter(m=>m.pricePending).map(m=>m.id),["intone"],"Genjutsu has owner-approved length bands");
  assert.equal(intone.characterImagesMax,2);assert.equal(intone.audioClipsMax,6);assert.deepEqual(intone.audioSecondsRange,[2,30]);assert.equal(findMediaModel("genjutsu-replace")!.capabilities.referenceImages.max,8);
  assert.deepEqual(findMediaModel("genjutsu-motion")!.sourceVideoSecondsRange,[4,30]);
  for(const m of MEDIA_CATALOG.filter(x=>x.evidenceSource==="agent_catalogue"))assert.ok(m.capabilities.verified===false&&generationGate(m).blockers.includes("model_unverified"));
@@ -389,4 +395,25 @@ test("payload builder and path rule: documented paths only, Genjutsu never gets 
    assert.equal(urls.length,3);
   }finally{globalThis.fetch=realFetch;}
  });
+});
+
+test("owner-approved SKUs (2026-11-04) and Genjutsu source-length bands",()=>{
+ const n=(id:string)=>findMediaModel(id)!;
+ assert.deepEqual(["soul-image","seedance-2-5-5s","seedance-2-5-10s"].map(id=>priceFor(n(id))),[2,45,90]);
+ const g=n("genjutsu-replace");
+ assert.deepEqual([4,5,6,10,11,15,16,30].map(s=>priceFor(g,{sourceVideoSeconds:s})),[27,27,54,54,81,81,160,160]);
+ assert.deepEqual(priceFor(n("genjutsu-motion"),{sourceVideoSeconds:8}),54);
+ for(const bad of [{},{sourceVideoSeconds:3},{sourceVideoSeconds:31},{sourceVideoSeconds:4.5}])assert.throws(()=>priceFor(g,bad),/configuration/,JSON.stringify(bad));
+ assert.throws(()=>priceFor(n("soul-image"),{sourceVideoSeconds:5}),/configuration/,"a model without a source video refuses one");
+ const bad=(over:Record<string,unknown>)=>assert.throws(()=>assertValidCatalog([{...g,...over} as never]),/band|Neuron/i);
+ bad({neurons:27});bad({sourceSecondsSkus:[{upToSeconds:5,neurons:27}]});bad({sourceSecondsSkus:[{upToSeconds:10,neurons:54},{upToSeconds:5,neurons:27},{upToSeconds:30,neurons:160}]});
+ bad({sourceSecondsSkus:[{upToSeconds:5,neurons:27.5},{upToSeconds:30,neurons:160}]});bad({sourceSecondsSkus:[{upToSeconds:5,neurons:60},{upToSeconds:30,neurons:50}]});
+ assert.throws(()=>assertValidCatalog([{...g,pricePending:true} as never]),/price-pending/i);
+});
+test("public catalog: Genjutsu is listed unavailable with no price; priced generation models show their fixed price",async()=>{
+ const j=await (await publicCatalog()).json() as {models:Array<{id:string;available:boolean;neurons?:number}>};
+ const by=(id:string)=>j.models.find(m=>m.id===id)!;
+ for(const id of ["genjutsu-replace","genjutsu-motion","intone"]){assert.equal(by(id).available,false,id);assert.equal(by(id).neurons,undefined,id);}
+ assert.deepEqual([by("soul-image").neurons,by("seedance-2-5-5s").neurons,by("seedance-2-5-10s").neurons],[2,45,90]);
+ assert.ok(!JSON.stringify(j).includes("sourceSecondsSkus"));
 });

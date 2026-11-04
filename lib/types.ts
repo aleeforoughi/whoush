@@ -52,12 +52,16 @@ export interface MediaModel {
   locationImage?: boolean;
   /** Accepted source-video length in seconds for edit models that take a video (documented limits). */
   sourceVideoSecondsRange?: readonly [number, number];
+  /** Fixed integer SKUs by source-video length (ascending `upToSeconds`, the last equal to the range maximum), for models billed per input second. Mutually exclusive with `neurons`. */
+  sourceSecondsSkus?: readonly { upToSeconds: number; neurons: number }[];
   capabilities: ModelCapabilities;
   verifiedApiPath?: string; // absent until schema is verified; private, never serialized to consumers
 }
 /** A model with an approved fixed Neuron SKU. */
 export type PricedMediaModel = MediaModel & { neurons: number };
 export const isPriced = (m: MediaModel): m is PricedMediaModel => !m.pricePending && Number.isSafeInteger(m.neurons) && (m.neurons as number) > 0;
+/** A model with any approved fixed SKU: one Neuron price, or a band table by source-video length. */
+export const hasApprovedPrice = (m: MediaModel): boolean => isPriced(m) || (!m.pricePending && Boolean(m.sourceSecondsSkus?.length));
 /** A model Whoush recommends for the work but cannot offer yet. Never carries a price. */
 export interface SuggestedModel { name: string; active: boolean; blockersFa: string[]; }
 export interface MediaSuggestion {

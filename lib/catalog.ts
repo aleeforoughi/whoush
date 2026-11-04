@@ -1,6 +1,6 @@
-import { isPriced, type MediaModel } from "./types";
+import { hasApprovedPrice, isPriced, type MediaModel } from "./types";
 /** Bump on ANY change to ids, capabilities or Neuron prices; quotes are bound to it. */
-export const MEDIA_CATALOG_VERSION = "2026-11-04.4";
+export const MEDIA_CATALOG_VERSION = "2026-11-04.5";
 // Per-model API reference pages (docs.higgsfield.ai/docs/models/**), read 2026-11-04: see docs/HIGGSFIELD_EVIDENCE.md.
 const SOUL_STANDARD_RATIOS = ["9:16","16:9","4:3","3:4","1:1","2:3","3:2"] as const;
 const SEEDANCE_2_5_RATIOS = ["16:9","4:3","1:1","3:4","9:16","21:9"] as const;
@@ -9,48 +9,64 @@ const INTONE_RATIOS = ["21:9","16:9","9:16","1:1","4:3","3:4"] as const;
 // Verified from the per-model API reference: soul-image, seedance-2-5-*, genjutsu-replace, genjutsu-motion (paths and input schemas).
 // Intone's facts still come only from the provider's agent platform catalogue (docs/HIGGSFIELD_EVIDENCE.md#mcp-intone): it has no API reference page, so it stays unverified.
 // Nano Banana Pro and Kling 4.0 have no API reference page either: unverified, never submitted live.
-// Genjutsu takes a source video and reference images as public URLs; Whoush has no hosted media yet, so policy blocks it (needs_hosted_media) and it stays price pending.
-// Neuron prices are ILLUSTRATIVE seed SKUs (fixed integers, FX-independent) until the owner approves SKUs from provider prices (docs/HIGGSFIELD_EVIDENCE.md#provider-prices).
+// Genjutsu takes a source video and reference images as public URLs; Whoush has no hosted media yet, so policy blocks it (needs_hosted_media). Its price needs a server-measured source length.
+// Neuron SKUs for soul-image, seedance-2-5-* and genjutsu-* were approved by the owner on 2026-11-04 from provider list prices (docs/HIGGSFIELD_EVIDENCE.md#provider-prices):
+// ceil((provider + $0.05 planner allowance) / $0.128). The other SKUs are illustrative seeds. Fixed integers, FX-independent.
+// Genjutsu 720p is billed per input-video second, so it has one SKU per source-length band.
+const GENJUTSU_720P_SKUS = [{upToSeconds:5,neurons:27},{upToSeconds:10,neurons:54},{upToSeconds:15,neurons:81},{upToSeconds:30,neurons:160}] as const;
 export const MEDIA_CATALOG: readonly MediaModel[] = [
   {id:"nano-banana-pro-2k",name:"Nano Banana Pro · 2K",kind:"image",description:"Detailed, realistic image generation",tags:["quality","realistic","portrait"],aliases:["nano banana","nanobanana","نانو بنانا"],neurons:10,resolution:"2K",operations:["generate"],evidenceSource:"api_docs",capabilities:{...unverified}},
-  {id:"soul-image",name:"Soul",kind:"image",description:"Fast creative image exploration",tags:["speed","cost","creative"],aliases:["soul","higgsfield soul","سول ایمیج"],neurons:4,resolution:"720p",operations:["generate"],evidenceSource:"api_docs",verifiedApiPath:"/higgsfield-ai/soul/standard",
+  {id:"soul-image",name:"Soul",kind:"image",description:"Fast creative image exploration",tags:["speed","cost","creative"],aliases:["soul","higgsfield soul","سول ایمیج"],neurons:2,resolution:"720p",operations:["generate"],evidenceSource:"api_docs",verifiedApiPath:"/higgsfield-ai/soul/standard",
     capabilities:{verified:true,evidence:"docs/HIGGSFIELD_EVIDENCE.md#soul-standard",referenceImages:{supported:false,max:0},aspectRatios:SOUL_STANDARD_RATIOS,audio:false,lipSync:false,motionReference:false,videoReference:false,startImage:false,endImage:false,videoContinuation:false}},
   // Text-to-video only (no media inputs). Audio generation is sent as false: generated audio is not inspected by moderation yet.
-  {id:"seedance-2-5-5s",name:"Seedance 2.5 · 5s",kind:"video",description:"Motion-rich short video",tags:["quality","motion"],aliases:["seedance 2.5","seedance","سیدنس"],neurons:42,resolution:"1080p",durationSeconds:5,operations:["generate"],evidenceSource:"api_docs",verifiedApiPath:"/bytedance/seedance-2.5/text-to-video",
+  {id:"seedance-2-5-5s",name:"Seedance 2.5 · 5s",kind:"video",description:"Motion-rich short video",tags:["quality","motion"],aliases:["seedance 2.5","seedance","سیدنس"],neurons:45,resolution:"1080p",durationSeconds:5,operations:["generate"],evidenceSource:"api_docs",verifiedApiPath:"/bytedance/seedance-2.5/text-to-video",
     capabilities:{verified:true,evidence:"docs/HIGGSFIELD_EVIDENCE.md#seedance-2-5",referenceImages:{supported:false,max:0},aspectRatios:SEEDANCE_2_5_RATIOS,audio:false,lipSync:false,motionReference:false,videoReference:false,startImage:false,endImage:false,videoContinuation:false,durationsSeconds:[5]}},
-  {id:"seedance-2-5-10s",name:"Seedance 2.5 · 10s",kind:"video",description:"Longer cinematic generation",tags:["quality","motion"],aliases:["seedance 10s","seedance ten"],neurons:80,resolution:"1080p",durationSeconds:10,operations:["generate"],evidenceSource:"api_docs",verifiedApiPath:"/bytedance/seedance-2.5/text-to-video",
+  {id:"seedance-2-5-10s",name:"Seedance 2.5 · 10s",kind:"video",description:"Longer cinematic generation",tags:["quality","motion"],aliases:["seedance 10s","seedance ten"],neurons:90,resolution:"1080p",durationSeconds:10,operations:["generate"],evidenceSource:"api_docs",verifiedApiPath:"/bytedance/seedance-2.5/text-to-video",
     capabilities:{verified:true,evidence:"docs/HIGGSFIELD_EVIDENCE.md#seedance-2-5",referenceImages:{supported:false,max:0},aspectRatios:SEEDANCE_2_5_RATIOS,audio:false,lipSync:false,motionReference:false,videoReference:false,startImage:false,endImage:false,videoContinuation:false,durationsSeconds:[10]}},
   {id:"kling-4-0-5s",name:"Kling 4.0 · 5s",kind:"video",description:"Alternative video model",tags:["speed","quality"],aliases:["kling 4","kling","کلینگ"],neurons:50,resolution:"1080p",durationSeconds:5,operations:["generate"],evidenceSource:"api_docs",capabilities:{...unverified,durationsSeconds:[5]}},
   {id:"intone",name:"Intone",kind:"video",description:"Talking-head video from supplied voice recordings, with one or two characters",tags:["talking-head","lip-sync","dialogue"],aliases:["intone","اینتون","اینتن"],pricePending:true,resolution:"1080p",resolutions:["480p","720p","1080p"],
     operations:["lip_sync"],evidenceSource:"agent_catalogue",characterImagesMax:2,audioClipsMax:6,audioSecondsRange:[2,30],locationImage:true,
     capabilities:{...unverified,referenceImages:{supported:true,max:2},aspectRatios:INTONE_RATIOS,audio:true,lipSync:true}},
   // Source video 4-30 s (longer is trimmed to 30 s; output length follows it), each frame at least 409,600 pixels, 1-8 reference images. Billed per input-video second.
-  {id:"genjutsu-replace",name:"Genjutsu",kind:"video",description:"Replace a character or object in a supplied video using reference images",tags:["video-edit","object-replacement"],aliases:["genjutsu","گنجوتسو","جنجوتسو"],pricePending:true,resolution:"720p",resolutions:["480p","720p","1080p"],
+  {id:"genjutsu-replace",name:"Genjutsu",kind:"video",description:"Replace a character or object in a supplied video using reference images",tags:["video-edit","object-replacement"],aliases:["genjutsu","گنجوتسو","جنجوتسو"],sourceSecondsSkus:GENJUTSU_720P_SKUS,resolution:"720p",resolutions:["480p","720p","1080p"],
     operations:["replace"],evidenceSource:"api_docs",verifiedApiPath:"/higgsfield/genjutsu/object-swap/v1.0",sourceVideoSecondsRange:[4,30],
     capabilities:{...unverified,verified:true,evidence:"docs/HIGGSFIELD_EVIDENCE.md#genjutsu",referenceImages:{supported:true,max:8},videoReference:true}},
-  {id:"genjutsu-motion",name:"Genjutsu",kind:"video",description:"Transfer the motion of a reference video onto subjects in reference images",tags:["motion-control","video-reference"],aliases:["genjutsu motion","genjutsu-motion"],pricePending:true,resolution:"720p",resolutions:["480p","720p","1080p"],
+  {id:"genjutsu-motion",name:"Genjutsu",kind:"video",description:"Transfer the motion of a reference video onto subjects in reference images",tags:["motion-control","video-reference"],aliases:["genjutsu motion","genjutsu-motion"],sourceSecondsSkus:GENJUTSU_720P_SKUS,resolution:"720p",resolutions:["480p","720p","1080p"],
     operations:["motion_transfer"],evidenceSource:"api_docs",verifiedApiPath:"/higgsfield/genjutsu/motion-transfer/v1.0",sourceVideoSecondsRange:[4,30],
     capabilities:{...unverified,verified:true,evidence:"docs/HIGGSFIELD_EVIDENCE.md#genjutsu",referenceImages:{supported:true,max:8},motionReference:true}}
 ] as const;
 export function findMediaModel(id: string): MediaModel | undefined { return MEDIA_CATALOG.find(x => x.id===id); }
-export type MediaConfiguration = { aspectRatio?: string; durationSeconds?: number };
+/** `sourceVideoSeconds` is the source video's length, rounded up to whole seconds. It must come from server-side media inspection, never from the client. */
+export type MediaConfiguration = { aspectRatio?: string; durationSeconds?: number; sourceVideoSeconds?: number };
 /** Returns a Persian reason when the configuration is not offered by this SKU, else undefined. */
 export function configurationProblem(m: MediaModel, c: MediaConfiguration = {}): string | undefined {
   if (c.aspectRatio !== undefined && !m.capabilities.aspectRatios.includes(c.aspectRatio)) return "نسبت تصویر درخواستی برای این مدل در دسترس نیست.";
   if (c.durationSeconds !== undefined && !(m.capabilities.durationsSeconds ?? []).includes(c.durationSeconds)) return "مدت‌زمان درخواستی برای این مدل در دسترس نیست.";
+  if (m.sourceSecondsSkus) {
+    const s = c.sourceVideoSeconds, [min, max] = m.sourceVideoSecondsRange ?? [1, 0];
+    if (s === undefined) return "طول ویدیوی منبع باید پیش از قیمت‌گذاری مشخص شود.";
+    if (!Number.isSafeInteger(s) || s < min || s > max) return "طول ویدیوی منبع برای این مدل مجاز نیست.";
+  } else if (c.sourceVideoSeconds !== undefined) return "این مدل ویدیوی منبع نمی‌پذیرد.";
   return undefined;
 }
 /** Fixed integer SKU price for model+configuration. FX-independent by construction: no FX input exists here. Throws for a model with no approved price. */
 export function priceFor(m: MediaModel, c: MediaConfiguration = {}): number {
-  if (!isPriced(m)) throw new Error("Price pending: no approved Neuron SKU");
+  if (!hasApprovedPrice(m)) throw new Error("Price pending: no approved Neuron SKU");
   const problem = configurationProblem(m, c);
   if (problem) throw new Error("Unsupported configuration: " + problem);
-  return m.neurons;
+  if (isPriced(m)) return m.neurons;
+  return m.sourceSecondsSkus!.find(b => c.sourceVideoSeconds! <= b.upToSeconds)!.neurons;
 }
 export function assertValidCatalog(models: readonly MediaModel[] = MEDIA_CATALOG): void {
   const ids = new Set<string>();
   for(const m of models) {
-    if(m.pricePending) { if(m.neurons !== undefined) throw new Error("A price-pending model cannot carry a Neuron price"); }
+    if(m.pricePending) { if(m.neurons !== undefined || m.sourceSecondsSkus) throw new Error("A price-pending model cannot carry a Neuron price"); }
+    else if(m.sourceSecondsSkus) {
+      const b = m.sourceSecondsSkus, r = m.sourceVideoSecondsRange;
+      if(m.neurons !== undefined) throw new Error("A banded model cannot also carry a single Neuron price");
+      if(!r || !b.length || b[b.length-1].upToSeconds !== r[1] || b[0].upToSeconds < r[0]) throw new Error("Source-length SKU bands must end at the source range maximum");
+      if(b.some((x,i) => !Number.isSafeInteger(x.neurons) || x.neurons<=0 || !Number.isSafeInteger(x.upToSeconds) || (i>0 && (x.upToSeconds<=b[i-1].upToSeconds || x.neurons<b[i-1].neurons)))) throw new Error("Invalid integer Neuron SKU band");
+    }
     else if(!Number.isSafeInteger(m.neurons) || (m.neurons as number)<=0) throw new Error("Invalid integer Neuron SKU");
     if(!m.operations.length) throw new Error("Model needs at least one operation");
     if(m.evidenceSource==="agent_catalogue" && (m.capabilities.verified || !m.pricePending)) throw new Error("Agent-catalogue models are unverified and price-pending until their API docs and SKU are approved");

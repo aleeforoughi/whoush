@@ -13,7 +13,7 @@ test("chat agents do not disclose LLM models",()=>{
 test("model change updates displayed integer fixed charge",()=>{
  const a=createDemoProposal("generate an image");
  const b=selectProposalModel(a,"soul-image");
- assert.equal(b.fixedNeurons,4);
+ assert.equal(b.fixedNeurons,2);
  assert.throws(()=>selectProposalModel(a,"unknown"));
 });
 test("internal reasoning tier remains private",()=>{
