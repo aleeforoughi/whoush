@@ -354,3 +354,15 @@ test("accept lists follow the kind, and the role labels are the curated Persian 
  assert.deepEqual(labels("video"),["الگوی حرکت","ادیت ویدیو","امتداد ویدیو"]);assert.deepEqual(labels("audio"),["الگوی گفتار","موزیک"]);
  assert.equal(rolesFor("image").find(r=>r.id==="hairstyle")!.hintFa,"مدل مو و فرم ریش");
 });
+
+test("lowestFreeTag: the lowest number not in use, so a number freed by a removal comes back; sent tags stay taken",async()=>{
+ const {lowestFreeTag,bumpTagCounters}=await import("../lib/attachments");
+ assert.equal(lowestFreeTag([],"image"),"image1");
+ assert.equal(lowestFreeTag(["image1","image2"],"image"),"image3");
+ assert.equal(lowestFreeTag(["image1"],"image"),"image2","photo-2 removed: the next photo is photo-2 again");
+ assert.equal(lowestFreeTag(["image2","image3"],"image"),"image1");
+ assert.equal(lowestFreeTag(["file1","image1"],"md"),"file2","documents share the file prefix");
+ assert.equal(lowestFreeTag(Array.from({length:99},(_,i)=>"video"+(i+1)),"video"),undefined);
+ assert.deepEqual(bumpTagCounters({image:1,video:0,audio:0,file:0},"image4"),{image:4,video:0,audio:0,file:0});
+ assert.deepEqual(bumpTagCounters({image:5,video:0,audio:0,file:0},"image2"),{image:5,video:0,audio:0,file:0},"never lowered");
+});

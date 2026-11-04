@@ -65,3 +65,8 @@ export function filterInsertMenu(sections:readonly MenuSection[],query:string):M
  const squash=(s:string)=>s.replace(/ /g,"");
  return sections.map(s=>({...s,items:s.items.filter(i=>{const hay=foldSearch([i.titleFa,i.hintFa,s.labelFa??""].join(" "));return words.every(w=>hay.includes(w)||squash(hay).includes(squash(w)));})})).filter(s=>s.items.length>0);
 }
+/** The icon of a role, as in the «+» menu (`auto` for no role, `document` for documents), so a card shows the same icon as the entry that made it. */
+export function roleIconKey(kind:AttachmentKind,role?:AttachmentRole):InsertIconKey{
+ if(kind==="pdf"||kind==="json"||kind==="md")return "document";
+ return (role&&ROLE_ICON[kind+":"+role])||"auto";
+}

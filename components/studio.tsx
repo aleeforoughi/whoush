@@ -9,7 +9,7 @@ import {NoModelCard,PastProposalCard,ProposalCard} from "@/components/proposal-c
 import {CharacterDialog} from "@/components/character-dialog";
 import {InsertMenu} from "@/components/insert-menu";
 import {UploadSlotCard} from "@/components/upload-slot";
-import {SLOTS_FULL_FA,addSlot,composerCards,fillSlotWith,forgetAttachment,removeSlot,reserveSlotTag,slotFor,uploadRejection,type Upload,type UploadSlot} from "@/lib/upload-slots";
+import {SLOTS_FULL_FA,addSlot,composerCards,fillSlotWith,forgetAttachment,removeSlot,reserveSlotTag,slotFor,tagsInUse,uploadRejection,type Upload,type UploadSlot} from "@/lib/upload-slots";
 import {AttachmentCard} from "@/components/attachment-card";
 import {ModeControl,useMode} from "@/components/mode-control";
 import {StyleControl,useStyleSetting} from "@/components/style-control";
@@ -27,7 +27,7 @@ import {STORAGE_FULL_FA,getProject,listAssets,saveAsset,saveProject} from "@/lib
 import {MAX_MESSAGES,assetToAttachment,attachmentToAsset,autoTitle,jobStateFa,type Project,type StoredMessage} from "@/lib/projects";
 import type {GenerationStyle} from "@/lib/creative-plan";
 import type {AgentPreference} from "@/lib/types";
-import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,acceptFor,allocateTag,insertMention,newTagCounters,parseMentions,tooManyFa,toWireAttachment,validateAttachmentSet,withRole,withoutRole,type AttachmentKind,type AttachmentRole,type LocalAttachment} from "@/lib/attachments";
+import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,acceptFor,bumpTagCounters,insertMention,lowestFreeTag,newTagCounters,parseMentions,tooManyFa,toWireAttachment,validateAttachmentSet,withRole,withoutRole,type AttachmentKind,type AttachmentRole,type LocalAttachment} from "@/lib/attachments";
 import {readAttachment} from "@/lib/attachment-files";
 import type {InsertItem} from "@/lib/insert-menu";
 
@@ -285,10 +285,11 @@ export function Studio(){
     const rejection=upload?uploadRejection(upload,read.kind):undefined;
     if(rejection){if(read.previewUrl)URL.revokeObjectURL(read.previewUrl);fail(rejection);continue;}
     // An upload card reserved its tag when it was made (the card already shows it); the kind check above guarantees the prefix matches.
-    const tagged=reservedTag&&!added.length?{tag:reservedTag,counters:tagCounters.current}:allocateTag(tagCounters.current,read.kind);
-    if(!tagged){if(read.previewUrl)URL.revokeObjectURL(read.previewUrl);fail(ATTACHMENT_ERRORS_FA.tagsExhausted);continue;}
-    tagCounters.current=tagged.counters;
-    const tagged1:LocalAttachment={...read,tag:tagged.tag},a=upload?.role?withRole(tagged1,upload.role):tagged1;
+    // Otherwise the lowest free number of the kind: a number freed by a removal is used again, one used in a sent message never is.
+    const tag=reservedTag&&!added.length?reservedTag:lowestFreeTag([...tagsInUse(messages.flatMap(m=>m.attachments??[]),slots),...next.map(x=>x.tag)],read.kind);
+    if(!tag){if(read.previewUrl)URL.revokeObjectURL(read.previewUrl);fail(ATTACHMENT_ERRORS_FA.tagsExhausted);continue;}
+    tagCounters.current=bumpTagCounters(tagCounters.current,tag);
+    const tagged1:LocalAttachment={...read,tag},a=upload?.role?withRole(tagged1,upload.role):tagged1;
     if(a.previewUrl)urls.current.add(a.previewUrl);
     blobs.current.set(a.id,file);
     next.push(a);added.push(a);
@@ -338,9 +339,9 @@ export function Studio(){
   if(r.full){setProblems([{key:crypto.randomUUID(),name:item.titleFa,message:SLOTS_FULL_FA}]);return;}
   // Reserve the tag now so the card can show it (#تصویر-۱) before the upload; the automatic card gets its tag when its file arrives.
   if(slot.upload){
-   const t=reserveSlotTag(tagCounters.current,slot.upload);
+   const t=reserveSlotTag(tagsInUse(conversation,slots),slot.upload);
    if(!t){setProblems([{key:crypto.randomUUID(),name:item.titleFa,message:ATTACHMENT_ERRORS_FA.tagsExhausted}]);return;}
-   tagCounters.current=t.counters;r.slots[r.slots.length-1]={...slot,tag:t.tag};
+   tagCounters.current=bumpTagCounters(tagCounters.current,t);r.slots[r.slots.length-1]={...slot,tag:t};
   }
   setSlots(r.slots);setAnnounce("کارت آپلود "+slot.titleFa+" اضافه شد.");
   requestAnimationFrame(()=>document.querySelector<HTMLButtonElement>('[data-slot-id="'+slot.id+'"]')?.focus());

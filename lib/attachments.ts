@@ -76,12 +76,27 @@ export const tagPrefix=(kind:AttachmentKind):TagPrefix=>kind==="image"||kind==="
 export type TagCounters=Record<TagPrefix,number>;
 export const newTagCounters=():TagCounters=>({image:0,video:0,audio:0,file:0});
 /**
- * Pure allocator for the next tag of a kind. Counters only ever count up, so a removed attachment's number is never reused;
+ * Legacy counter-based allocator (counts up, never reuses); the studio now uses `lowestFreeTag`, and the counters are kept only in the saved project format;
  * "new chat" starts from `newTagCounters()`. Undefined when the conversation has used all 99 numbers of that prefix.
  */
 export function allocateTag(counters:TagCounters,kind:AttachmentKind):{tag:string;counters:TagCounters}|undefined{
  const prefix=tagPrefix(kind),n=counters[prefix]+1;
  return n>99?undefined:{tag:prefix+n,counters:{...counters,[prefix]:n}};
+}
+/**
+ * The tag a new file gets: the LOWEST free number of its kind's prefix, given every tag in use in the conversation (sent messages, files in the composer and
+ * numbers reserved by empty upload cards). So removing `#تصویر-۲` from the composer and adding another photo gives `#تصویر-۲` again, while a number used in a
+ * sent message is never handed to another file. Undefined when all 99 numbers of that prefix are in use.
+ */
+export function lowestFreeTag(used:Iterable<string>,kind:AttachmentKind):string|undefined{
+ const p=tagPrefix(kind),taken=new Set(used);
+ for(let n=1;n<=99;n++)if(!taken.has(p+n))return p+n;
+ return undefined;
+}
+/** Keeps the saved counters (project format) at least at the highest number in use; allocation itself uses `lowestFreeTag`. */
+export function bumpTagCounters(c:TagCounters,tag:string):TagCounters{
+ const m=/^(image|video|audio|file)(\d+)$/.exec(tag);if(!m)return c;
+ const k=m[1] as TagPrefix;return {...c,[k]:Math.max(c[k],Number(m[2]))};
 }
 /** The Persian word shown in a tag: `image1` is `#تصویر-۱`. The internal/wire tag stays English. */
 export const TAG_WORD_FA={image:"تصویر",video:"ویدیو",audio:"صدا",file:"فایل"} as const satisfies Record<TagPrefix,string>;

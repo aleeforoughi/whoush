@@ -1,8 +1,8 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {INSERT_MENU} from "../lib/insert-menu";
-import {MAX_ATTACHMENTS,displayTag,newTagCounters} from "../lib/attachments";
-import {SLOTS_FULL_FA,SLOT_CATEGORY_FA,addSlot,composerCards,fillSlotWith,forgetAttachment,removeSlot,reserveSlotTag,slotCategory,slotFor,slotLabelFa,uploadRejection} from "../lib/upload-slots";
+import {MAX_ATTACHMENTS,displayTag} from "../lib/attachments";
+import {SLOTS_FULL_FA,SLOT_CATEGORY_FA,addSlot,composerCards,fillSlotWith,forgetAttachment,removeSlot,reserveSlotTag,slotCategory,slotFor,slotLabelFa,tagsInUse,uploadRejection} from "../lib/upload-slots";
 
 const item=(id:string)=>INSERT_MENU.flatMap(g=>g.items).find(i=>i.id===id)!;
 
@@ -38,13 +38,18 @@ test("a card shows its category (kind), not its role, as icon and subtitle",()=>
  assert.deepEqual(cat("video:motion_reference"),["video","ویدیو"]);assert.deepEqual(cat("audio:music"),["audio","صدا"]);
  assert.deepEqual(cat("file"),["file","فایل"]);assert.deepEqual(cat("auto"),["any","هر نوع فایل"]);
 });
-test("cards reserve the next tag of their kind; documents share the file prefix; the automatic card reserves none",()=>{
- let c=newTagCounters();
- const take=(id:string)=>{const r=reserveSlotTag(c,slotFor(item(id),"x")!.upload);if(r)c=r.counters;return r&&displayTag(r.tag);};
+test("cards reserve the lowest free tag of their kind; documents share the file prefix; the automatic card reserves none",()=>{
+ const used:string[]=[];
+ const take=(id:string)=>{const t=reserveSlotTag(used,slotFor(item(id),"x")!.upload);if(t)used.push(t);return t&&displayTag(t);};
  assert.deepEqual([take("image:character"),take("image:outfit"),take("video:continue"),take("file"),take("auto"),take("image:makeup")],["#تصویر-۱","#تصویر-۲","#ویدیو-۱","#فایل-۱",undefined,"#تصویر-۳"]);
- assert.equal(reserveSlotTag({...newTagCounters(),image:99},{kind:"image",role:"character"}),undefined,"exhausted");
+ used.splice(used.indexOf("image2"),1);
+ assert.equal(take("image:environment"),"#تصویر-۲","a removed card's number is used again");
+ assert.equal(reserveSlotTag(Array.from({length:99},(_,i)=>"image"+(i+1)),{kind:"image",role:"character"}),undefined,"exhausted");
 });
-
+test("tags in use: every file of the conversation plus numbers reserved by empty cards (a filled card's tag is its file's)",()=>{
+ const s=(id:string,tag:string,attachmentId?:string)=>({...slotFor(item("image:outfit"),id)!,tag,...(attachmentId?{attachmentId}:{})});
+ assert.deepEqual(tagsInUse([{tag:"image1"},{tag:"image3"}],[s("a","image2"),s("b","image3","f3")]).sort(),["image1","image2","image3"]);
+});
 test("a filled card keeps its place and shows its file; other files follow; a filled card counts once toward the limit",()=>{
  const s=(id:string)=>slotFor(item("image:outfit"),id)!;
  let slots=[s("a"),s("b"),s("c")];

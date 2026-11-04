@@ -1,5 +1,5 @@
 /** Upload cards: picking a «+» entry adds an empty card inside the chat input, which then takes one file of that entry's kind and role. Pure; safe in the browser and on the server. */
-import {MAX_ATTACHMENTS,TAG_WORD_FA,allocateTag,type AttachmentKind,type AttachmentRole,type TagCounters} from "./attachments";
+import {MAX_ATTACHMENTS,TAG_WORD_FA,lowestFreeTag,type AttachmentKind,type AttachmentRole} from "./attachments";
 import {fa} from "./format";
 import type {InsertIconKey,InsertItem} from "./insert-menu";
 
@@ -7,7 +7,7 @@ import type {InsertIconKey,InsertItem} from "./insert-menu";
 export type Upload={kind:"image"|"video"|"audio"|"file";role?:AttachmentRole};
 /**
  * An empty card. `upload` undefined: the automatic entry (any supported file; Whoush infers the role). `tag` is reserved when the card is made (the automatic card
- * has none until its file arrives, since its kind is unknown), so the card can show `#تصویر-۱` before the upload; like any tag it is never reused.
+ * has none until its file arrives, since its kind is unknown), so the card can show `#تصویر-۱` before the upload. Removing the card frees the number again.
  */
 export type UploadSlot={id:string;titleFa:string;icon:InsertIconKey;upload?:Upload;tag?:string;/** Set once a file filled the card: the card stays in place and shows that file. */attachmentId?:string};
 /** The category a card shows: its kind's icon and Persian word (تصویر، ویدیو، صدا، فایل), or «هر نوع فایل» for the automatic card. */
@@ -16,10 +16,12 @@ export const slotCategory=(s:UploadSlot):SlotCategory=>s.upload?.kind??"any";
 export const SLOT_CATEGORY_FA:Record<SlotCategory,string>={...TAG_WORD_FA,any:"هر نوع فایل"};
 /** The attachment kind a card's tag is counted under (documents share the `file` prefix). */
 const tagKind=(u:Upload):AttachmentKind=>u.kind==="file"?"pdf":u.kind;
-/** Reserves the next tag of the card's kind. Undefined for the automatic card (no kind yet) or when the 99 numbers of that kind are used up. */
-export function reserveSlotTag(counters:TagCounters,u:Upload|undefined):{tag:string;counters:TagCounters}|undefined{
- return u?allocateTag(counters,tagKind(u)):undefined;
+/** Reserves the lowest free tag of the card's kind (`used`: every tag in the conversation and on other cards). Undefined for the automatic card (no kind yet) or when all 99 are in use. */
+export function reserveSlotTag(used:Iterable<string>,u:Upload|undefined):string|undefined{
+ return u?lowestFreeTag(used,tagKind(u)):undefined;
 }
+/** Every tag in use: the conversation's files (sent and in the composer) and the numbers reserved by cards. */
+export const tagsInUse=(files:readonly {tag:string}[],slots:readonly UploadSlot[]):string[]=>[...files.map(f=>f.tag),...slots.flatMap(s=>s.tag&&!s.attachmentId?[s.tag]:[])];
 
 export const UPLOAD_KIND_FA={image:"تصویر",video:"ویدیو",audio:"صدا",file:"سند (PDF، JSON یا Markdown)"} as const;
 export const SLOT_DROP_FA="یا فایل رو اینجا رها کن";
