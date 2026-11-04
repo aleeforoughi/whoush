@@ -13,6 +13,10 @@ jobs:
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
+        env:
+          # Feather (@aleeforoughi/*) installs from GitHub Packages; needs a read:packages token secret.
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: npm run lint
       - run: npm run test
       - run: npm run typecheck
       - run: npm run build
