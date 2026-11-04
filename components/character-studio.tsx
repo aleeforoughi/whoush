@@ -2,6 +2,7 @@
 import {useEffect,useState} from "react";
 import {useRouter} from "next/navigation";
 import Link from "next/link";
+import {ThemeToggle} from "@/components/theme-toggle";
 import {Camera,Check,CheckCircle2,Download,ImagePlus,LockKeyhole,Plus,ShieldCheck,Trash2,UserRound,WandSparkles,ArrowLeft} from "lucide-react";
 import {ALLOWED_CHARACTER_IMAGE_TYPES,MAX_CHARACTER_IMAGE_BYTES,CHARACTER_VIEWS,characterCoverage,type CharacterProfile,type CharacterView,type CharacterReferences} from "@/lib/characters";
 import {deleteLocalCharacter,getLocalCharacter,listLocalCharacters,saveLocalCharacter} from "@/lib/character-store";
@@ -120,7 +121,7 @@ export function CharacterStudio(){
  return <main className="characters-page" dir="rtl">
   <header className="characters-header">
    <Link href="/studio" className="characters-back"><ArrowLeft size={16}/> بازگشت به استودیو</Link>
-   <Link href="/" className="brand">✳ <strong>whoush</strong></Link>
+   <div style={{display:"flex",alignItems:"center",gap:"16px"}}><ThemeToggle/><Link href="/" className="brand">✳ <strong>whoush</strong></Link></div>
   </header>
   <section className="characters-hero">
    <div className="characters-hero-text"><div className="character-eyebrow"><UserRound size={15}/> CHARACTER STUDIO / استودیوی کاراکتر</div>
