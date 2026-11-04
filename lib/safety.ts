@@ -76,8 +76,19 @@ const NEGATE_BEFORE=new Set(["no","not","without","avoid","avoiding","avoids","n
 const NEGATE_AFTER=new Set(["نباشد","نباشند","نشود","نشوند","ممنوع","نیست","نیستند","نمی","نداشته","ندارد"]);
 const PLACE_NAMES=["enghelab square","revolution square","enghelab street","enghelab avenue","میدان انقلاب","خیابان انقلاب"];
 const WINDOW=4;
+/** Persian is verb-final: a clause ending in a negative or avoidance verb («… اضافه نشود», «… پرهیز شود») negates every item listed before it. */
+const FA_CLAUSE_NEGATION=new Set(["نشود","نشوند","نباشد","نباشند","نباید","ممنوع","پرهیز","اجتناب","نکنید","نکن","نگذارید","نیاید","نیایند","نداشته","ندارد","ندارند","نیست","نیستند","نباشه","نشه","نکنه","عاری"]);
+const FA_TERMS=new Set(NEUTRALIZABLE.filter(t=>/[\u0600-\u06ff]/.test(t)).map(t=>normalizePersian(t)));
 export function neutralizeNegatedCategories(raw:string):string{
- let text=" "+normalizePersian(raw)+" ";
+ // Clause pass (Persian only): split on sentence punctuation, not on «،», so a list «… سیاسی، … سیاسی یا … سیاسی … نشود» stays one clause.
+ const clauses=raw.split(/[.؛;!?\n]+/).map(c=>{
+  const toks=normalizePersian(c).split(" ").filter(Boolean);
+  if(!toks.some(w=>FA_CLAUSE_NEGATION.has(w)||w.startsWith("نمی")))return toks.join(" ");
+  // Neutralize single-word and two-word Persian generic terms; never English words, figure names or explicit terms outside the list.
+  for(let i=0;i<toks.length;i++){const two=toks[i]+" "+(toks[i+1]??"");if(FA_TERMS.has(two)){toks[i]=toks[i+1]="x";i++;}else if(FA_TERMS.has(toks[i]))toks[i]="x";}
+  return toks.join(" ");
+ });
+ let text=" "+clauses.join(" ")+" ";
  for(const place of PLACE_NAMES)text=text.replaceAll(" "+normalizePersian(place)+" "," place ");
  const tokens=text.trim().split(" ").filter(Boolean);
  const terms=NEUTRALIZABLE.map(t=>normalizePersian(t).split(" ")).sort((a,b)=>b.length-a.length);

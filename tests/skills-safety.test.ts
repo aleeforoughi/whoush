@@ -96,9 +96,10 @@ test("plan text: negated generic categories are compliance, named figures and ex
  // Seen live: planners obeying the no-politics rule wrote these and were blocked by the lexical scan.
  for(const t of ["Wide eye-level photograph of Enghelab Square in central Tehran on a calm spring morning, no political banners or slogans visible",
   "هیچ تابلوی سیاسی یا نماد سیاسی قابل خواندن نباشد.","هیچ شعار، بنر، پرچم سیاسی یا چهره سیاسی در تصویر نباشد","بدون هیچ نماد سیاسی",
-  "Enghelab (Revolution) Square at sunrise","modest evening dress, nothing revealing, no lingerie","پوشش کامل و بدون لباس بدن نما"])
+  "Enghelab (Revolution) Square at sunrise","modest evening dress, nothing revealing, no lingerie","پوشش کامل و بدون لباس بدن نما",
+  "صحنه زندگی روزمره شهری باشد؛ چهره سیاسی، تجمع سیاسی یا نماد سیاسی به تصویر اضافه نشود.","از نمایش چهره‌های سیاسی، تصاویر سیاسی برجسته و شعارهای سیاسی پرهیز شود.","در تصویر هیچ پرچم یا پوستر تبلیغات سیاسی وجود نداشته باشد","تصویر عاری از نماد سیاسی است"])
   assert.equal(evaluatePlanTextSafety(t).decision,"allow",t);
- for(const t of ["no political banners, a portrait of Khamenei","a political rally poster","پوستر سیاسی برای انتخابات","protest crowd with no police","bikini model on the beach","تصویر عریان","election campaign poster without logos"])
+ for(const t of ["no political banners, a portrait of Khamenei","a political rally poster","پوستر سیاسی برای انتخابات","protest crowd with no police","bikini model on the beach","تصویر عریان","election campaign poster without logos","تجمع سیاسی بزرگ در میدان","یک چهره سیاسی معروف را نشان بده؛ پس‌زمینه شلوغ نباشد","خامنه ای در تصویر باشد و شعار سیاسی نباشد"])
   assert.notEqual(evaluatePlanTextSafety(t).decision,"allow",t);
  // User input keeps the strict check: the exemption is for planner output only.
  assert.equal(evaluateTextSafety("no political banners").decision,"block");
