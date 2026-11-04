@@ -28,7 +28,7 @@ Use accessible contrast, not just brand fidelity. Blue accents are for meaningfu
 
 ## Status (P0 design foundation)
 - The UI is built from the owner's **Feather 1.17.0** design system (`@aleeforoughi/feather-react`, `@aleeforoughi/feather-tokens`) on Tailwind CSS v4. Whoush brands Feather only through tokens; no Feather component is edited or forked.
-- **Font: PENDING owner files.** IRANSansX is declared in `app/fonts.css` (`local()` first, then `/fonts/iransans/IRANSansX-{Regular,Medium,Bold}.woff2`), but no font file is committed. Until the owner places licensed WOFF2 files in `public/fonts/iransans/`, text falls back to Inter Variable and Tahoma. Font integration is not complete.
+- **Font: IRANSans v5.00, owner-supplied, local only.** `app/fonts.css` declares six weights (200–900, WOFF2 + WOFF) from `public/fonts/iransans/`. The binaries are git-ignored because this repo is public, so CI and other machines fall back to Inter Variable and Tahoma. Before production: confirm the fontiran license covers Whoush and serve the files from private storage or the deploy's static assets.
 - RTL: Feather 1.17.0 still uses some physical left/right classes. `app/feather-rtl.css` holds temporary scoped overrides for the parts Whoush renders (remove when aleeforoughi/feather#1 ships logical properties).
 - Light and dark brands are two token files because Feather's brand CLI themes one file; `scripts/brand.mjs` merges them (see feather#1).
 

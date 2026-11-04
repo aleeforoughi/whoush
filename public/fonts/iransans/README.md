@@ -1,14 +1,21 @@
-# IRANSansX fonts — integration PENDING
+# IRANSans font files (licensed, not committed)
 
-Whoush's primary typeface is IRANSans / IRANSansX, which is commercially licensed. The font files are **not** in this
-repository and must never be downloaded from unofficial sources or committed without a verified license.
+Whoush's primary typeface is **IRANSans v5.00** (fontiran.com, Moslem Ebrahimi), a commercially licensed font. This
+repository is public, so the font binaries are **git-ignored** and must never be committed or redistributed.
 
-The project owner must place the licensed WOFF2 files here:
+`app/fonts.css` expects these files in this folder:
 
-- `IRANSansX-Regular.woff2` (400)
-- `IRANSansX-Medium.woff2` (500)
-- `IRANSansX-Bold.woff2` (700)
+| Weight | Files |
+|---|---|
+| 200 | `IRANSansWeb_UltraLight.woff2`, `.woff` |
+| 300 | `IRANSansWeb_Light.woff2`, `.woff` |
+| 400 | `IRANSansWeb.woff2`, `.woff` |
+| 500 | `IRANSansWeb_Medium.woff2`, `.woff` |
+| 700 | `IRANSansWeb_Bold.woff2`, `.woff` |
+| 900 | `IRANSansWeb_Black.woff2`, `.woff` |
 
-`app/fonts.css` already declares them (`font-display: swap`), with `local("IRANSansX")` / `local("IRANSans")` first.
-Until the files exist the interface falls back to Inter Variable (Latin) and Tahoma (Persian), and the browser logs 404s
-for these URLs. Font integration is PENDING; do not describe it as complete.
+The owner keeps a local copy here. CI and any build without the files fall back to Inter Variable (Latin) and Tahoma
+(Persian), and the browser logs 404s for these URLs.
+
+Before production: confirm the IRANSans license covers the Whoush website/app (fontiran licenses are typically issued
+per website or project), then serve the files from private storage or the deployment's static assets, never from Git.

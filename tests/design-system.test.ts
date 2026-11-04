@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import {execFileSync} from "node:child_process";
 import {buildTheme} from "@aleeforoughi/feather-tokens";
 import {generateBrand} from "../scripts/brand.mjs";
 
@@ -68,8 +69,12 @@ test("Whoush TSX uses logical Tailwind utilities, never physical directions",()=
 
 test("fonts are declared but never committed",()=>{
  const fonts=read("app/fonts.css");
- assert.match(fonts,/font-family: "IRANSansX"/);assert.match(fonts,/font-display: swap/);
+ assert.match(fonts,/font-family: "IRANSans"/);assert.match(fonts,/font-display: swap/);
+ for(const w of [200,300,400,500,700,900])assert.match(fonts,new RegExp("font-weight: "+w+";"));
  const dir=path.join(root,"public/fonts/iransans");
  assert.ok(fs.existsSync(path.join(dir,"README.md")));
- assert.deepEqual(fs.readdirSync(dir).filter(f=>/\.(woff2?|ttf|otf)$/i.test(f)),[],"licensed font binaries must not be committed");
+ // The owner keeps licensed binaries here locally; they are git-ignored and must never be tracked in this public repo.
+ const tracked=execFileSync("git",["ls-files","public/fonts"],{cwd:root,encoding:"utf8"}).split("\n").filter(f=>/\.(woff2?|ttf|otf|eot)$/i.test(f));
+ assert.deepEqual(tracked,[],"licensed font binaries must not be committed");
+ assert.equal(execFileSync("git",["check-ignore","-q","public/fonts/iransans/IRANSansWeb.woff2"],{cwd:root}).length,0);
 });
