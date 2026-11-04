@@ -37,8 +37,9 @@ test("generated brand CSS is identical to a fresh regeneration",()=>{
  assert.equal(read("app/styles/brand.css"),fresh["brand.css"],"run `npm run brand` and commit app/styles/brand.css");
  assert.equal(read("app/styles/brand-fonts.css"),fresh["brand-fonts.css"],"run `npm run brand` and commit app/styles/brand-fonts.css");
  const css=fresh["brand.css"];
- assert.match(css,/:root:root \{/);assert.match(css,/:root:root\.dark \{/);
- assert.equal((css.match(/^:root:root\.dark \{/gm)??[]).length,1,"only the dark variable block is appended");
+ assert.match(css,/:root:root \{/);
+ // The dark block also targets nested always-dark surfaces (the full-screen viewer) so they get the Whoush dark brand, not Feather's default.
+ assert.equal((css.match(/^:root:root\.dark,\n\.dark\.dark\.dark \{/gm)??[]).length,1,"only the dark variable block is appended");
 });
 
 test("no old prototype purple, no hardcoded hex colors in TSX, and the old stylesheets are gone",()=>{
