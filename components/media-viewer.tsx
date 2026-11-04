@@ -1,5 +1,5 @@
 "use client";
-import {useCallback,useEffect,useRef,useState,type KeyboardEvent,type PointerEvent,type RefObject} from "react";
+import {useCallback,useEffect,useLayoutEffect,useRef,useState,type KeyboardEvent,type PointerEvent,type RefObject} from "react";
 import Link from "next/link";
 import {AudioLines,ChevronLeft,ChevronRight,Download,FileJson,FileQuestion,FileText,FolderOpen,Images,Film,X,type LucideIcon} from "lucide-react";
 import {Dialog as DialogPrimitive} from "@base-ui/react/dialog";
@@ -199,18 +199,23 @@ export function MediaViewer({items,index,onIndexChange,onClose,projectTitleOf,re
  const stageRef=useRef<HTMLDivElement>(null);
  const current=index!==null?items[index]:undefined;
  const open=current!==undefined;
- // The item that opened the viewer and the one shown last, kept for the focus return after it has closed.
- const was=useRef({open:false,opened:undefined as ViewerItem|undefined,last:undefined as ViewerItem|undefined});
- useEffect(()=>{
+ // The item that opened the viewer, the element that had focus when it opened, and the item shown last: kept for the focus return after it has closed.
+ const was=useRef({open:false,opened:undefined as ViewerItem|undefined,opener:null as HTMLElement|null,last:undefined as ViewerItem|undefined});
+ // A layout effect runs before the dialog moves focus into itself, so the opener is still the active element.
+ useLayoutEffect(()=>{
   const w=was.current;
-  if(current){if(!w.open)w.opened=current;w.last=current;}
+  if(current){
+   if(!w.open){w.opened=current;w.opener=document.activeElement instanceof HTMLElement?document.activeElement:null;}
+   w.last=current;
+  }
   w.open=current!==undefined;
  });
  const finalFocus=useCallback(()=>{
-  const {opened,last}=was.current;
+  const {opened,opener,last}=was.current;
   // Back to the element that opened the viewer, unless the person moved on to another item: then to that item's own opener.
   if(last&&opened&&last.id!==opened.id)return restoreFocusTo?.(last)??true;
-  return true;
+  if(opener&&opener!==document.body&&opener.isConnected)return opener;
+  return (opened&&restoreFocusTo?.(opened))??true;
  },[restoreFocusTo]);
  return <Dialog open={open} onOpenChange={o=>{if(!o)onClose();}}>
   <DialogPortal>
