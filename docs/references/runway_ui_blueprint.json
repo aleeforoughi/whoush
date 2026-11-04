@@ -1,0 +1,313 @@
+{
+  "name": "Runway-inspired agent creative workspace",
+  "status": "analysis-derived blueprint, not official Runway code or tokens",
+  "date": "2026-11-01",
+  "sources": [
+    "4 user screenshots",
+    "Runway Help Center: Creating with Runway Agent",
+    "Runway Help Center: Navigating Runway",
+    "Runway Help Center: Building and running Workflows with Agent"
+  ],
+  "architecture": {
+    "product_domains": [
+      "Creative",
+      "Ads",
+      "Dev"
+    ],
+    "shell": {
+      "left_rail": [
+        "ProductSwitch",
+        "NewChatButton",
+        "NavMenu",
+        "ChatSessionToggle",
+        "RecentChats",
+        "ReferralCard",
+        "ProfileMenu"
+      ],
+      "main_workspace": [
+        "MediaTabs",
+        "MediaPreview",
+        "GenerationRail",
+        "GenerationStatus",
+        "TimelineEditor"
+      ],
+      "right_agent": [
+        "ReferenceGrid",
+        "UserMessage",
+        "AgentMessage",
+        "ActionApprovalCard",
+        "Composer",
+        "ModelSelector",
+        "PreferenceSelector"
+      ]
+    },
+    "creative_navigation": [
+      "Home",
+      "Agent",
+      "Tool",
+      "App Studio",
+      "Workflows",
+      "Plugins",
+      "Projects",
+      "Assets",
+      "Brand Kits",
+      "More"
+    ],
+    "conceptual_entities": [
+      "Workspace",
+      "Project",
+      "Session",
+      "Message",
+      "Reference",
+      "GenerationProposal",
+      "GenerationJob",
+      "MediaAsset",
+      "Cut",
+      "Workflow",
+      "BrandKit",
+      "PluginConnection"
+    ]
+  },
+  "design_tokens_approx_screenshot": {
+    "colors": {
+      "app": "#000000",
+      "sidebar": "#141416",
+      "canvas": "#1A1C1F",
+      "selected": "#292A31",
+      "action": "#2800EF",
+      "text": "#FFFFFF"
+    },
+    "spacing_unit_px": 4,
+    "sidebar_capture_width_px": 248,
+    "right_panel_capture_width_px": 366,
+    "notes": "Sampled raster colors and screenshot dimensions. NOT official CSS values or guaranteed layout widths."
+  },
+  "controls": {
+    "reasoning_model": "Separate from media generation model",
+    "generation_model": "Selected by agent or user and displayed on each proposal",
+    "optimization_preference": [
+      "speed",
+      "cost",
+      "quality",
+      "custom"
+    ],
+    "autonomy_mode": [
+      "ask_before_generating",
+      "automatically_generate"
+    ]
+  },
+  "transaction_card": {
+    "action": "generate_image",
+    "model": "gpt-image-2",
+    "aspect_ratio": "16:9",
+    "quality": "high",
+    "credit_cost": 20,
+    "approval_state": "awaiting_approval",
+    "source": "observed screenshot; illustrative typed schema"
+  },
+  "job_states": [
+    "draft",
+    "analyzing_inputs",
+    "planning",
+    "needs_clarification",
+    "awaiting_approval",
+    "queued",
+    "running",
+    "completed",
+    "failed",
+    "canceled",
+    "reviewed",
+    "derived"
+  ],
+  "components": [
+    {
+      "name": "ProductDomainSwitch",
+      "region": "shell",
+      "states": [
+        "default",
+        "active"
+      ]
+    },
+    {
+      "name": "PrimaryNavItem",
+      "region": "shell",
+      "states": [
+        "default",
+        "hover",
+        "active",
+        "focus"
+      ]
+    },
+    {
+      "name": "RecentSessionRow",
+      "region": "shell",
+      "states": [
+        "default",
+        "selected",
+        "hover"
+      ]
+    },
+    {
+      "name": "MediaTab",
+      "region": "workspace",
+      "states": [
+        "default",
+        "active"
+      ]
+    },
+    {
+      "name": "GenerationPreview",
+      "region": "workspace",
+      "states": [
+        "empty",
+        "pending",
+        "ready",
+        "error"
+      ]
+    },
+    {
+      "name": "GenerationThumbnail",
+      "region": "workspace",
+      "states": [
+        "pending",
+        "ready",
+        "selected",
+        "error"
+      ]
+    },
+    {
+      "name": "ProgressStatus",
+      "region": "workspace",
+      "states": [
+        "queued",
+        "running",
+        "done",
+        "failed"
+      ]
+    },
+    {
+      "name": "ReferenceGrid",
+      "region": "agent",
+      "states": [
+        "uploading",
+        "analyzed",
+        "missing"
+      ]
+    },
+    {
+      "name": "MessageBubble",
+      "region": "agent",
+      "states": [
+        "streaming",
+        "complete"
+      ]
+    },
+    {
+      "name": "GenerationActionCard",
+      "region": "agent",
+      "states": [
+        "draft",
+        "awaiting_approval",
+        "running",
+        "done",
+        "failed"
+      ]
+    },
+    {
+      "name": "ApproveButton",
+      "region": "agent",
+      "states": [
+        "enabled",
+        "loading",
+        "disabled"
+      ]
+    },
+    {
+      "name": "ChatComposer",
+      "region": "agent",
+      "states": [
+        "empty",
+        "focused",
+        "typing",
+        "busy"
+      ]
+    },
+    {
+      "name": "AttachmentPicker",
+      "region": "agent",
+      "states": [
+        "closed",
+        "open",
+        "uploading"
+      ]
+    },
+    {
+      "name": "ModelSelector",
+      "region": "agent",
+      "states": [
+        "closed",
+        "open",
+        "selected"
+      ]
+    },
+    {
+      "name": "PreferenceSelector",
+      "region": "agent",
+      "states": [
+        "closed",
+        "open",
+        "changed"
+      ]
+    },
+    {
+      "name": "TimelineEditor",
+      "region": "cut",
+      "states": [
+        "empty",
+        "editing",
+        "exporting"
+      ]
+    }
+  ],
+  "ux_risks": [
+    {
+      "priority": "P0",
+      "issue": "Unclear reasoning versus generation model labels"
+    },
+    {
+      "priority": "P0",
+      "issue": "Credit cost not contextualized against balance"
+    },
+    {
+      "priority": "P1",
+      "issue": "Generation progress lacks operational phase"
+    },
+    {
+      "priority": "P1",
+      "issue": "Chat vs Session scope unclear"
+    },
+    {
+      "priority": "P1",
+      "issue": "Agent panel narrow for complex proposals"
+    },
+    {
+      "priority": "P1",
+      "issue": "Hidden setting semantics"
+    },
+    {
+      "priority": "P2",
+      "issue": "Potential contrast and hit-target accessibility risk pending live testing"
+    }
+  ],
+  "recommended_product_improvements": [
+    "resizable agent panel",
+    "typed editable execution manifest",
+    "budget ceiling and credit reservation",
+    "generation queue/status timeline",
+    "before-after and multi-variant comparison",
+    "per-generation provenance",
+    "version graph",
+    "reliable cancellation and retry handling",
+    "keyboard and screen-reader testing"
+  ]
+}
