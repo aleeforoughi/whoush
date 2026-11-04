@@ -1,6 +1,6 @@
 # Whoush UI & Design System Contract v1.0
 
-**Status:** implementation contract for Claude. The existing foundation and Character Studio are scaffolds; screenshot fidelity, accessibility and production workflows need verification. Inspired by the user's Runway UI/UX research, not copied Runway source or assets.
+**Status:** implementation contract for Claude. The foundation is built on Feather; Character Studio works browser-local only (server storage and provider upload pending); screenshot fidelity, accessibility and production workflows need verification. Inspired by the user's Runway UI/UX research, not copied Runway source or assets.
 
 ## Brand, localization and type
 - Product: **Whoush / هووش**. Website and interface **Persian Farsi**, RTL-first. English permitted only for product names, international model names, file extensions and technical terms where needed.
@@ -28,7 +28,7 @@ Use accessible contrast, not just brand fidelity. Blue accents are for meaningfu
 
 ## Status (P0 design foundation)
 - The UI is built from the owner's **Feather 1.17.0** design system (`@aleeforoughi/feather-react`, `@aleeforoughi/feather-tokens`) on Tailwind CSS v4. Whoush brands Feather only through tokens; no Feather component is edited or forked.
-- **Font: PENDING owner files.** IRANSansX is declared in `app/fonts.css` (`local()` first, then `/fonts/iransans/IRANSansX-{Regular,Medium,Bold}.woff2`), but no font file is committed. Until the owner places licensed WOFF2 files in `public/fonts/iransans/`, text falls back to Inter Variable and Tahoma. Font integration is not complete.
+- **Font: IRANSans v5.00, owner-supplied, local only.** `app/fonts.css` declares six weights (200–900, WOFF2 + WOFF) from `public/fonts/iransans/`. The binaries are git-ignored because this repo is public, so CI and other machines fall back to Inter Variable and Tahoma. The owner confirmed the license covers Whoush (2026-11-04); production still needs the files delivered to the deploy from private storage, never from this public repo.
 - RTL: Feather 1.17.0 still uses some physical left/right classes. `app/feather-rtl.css` holds temporary scoped overrides for the parts Whoush renders (remove when aleeforoughi/feather#1 ships logical properties).
 - Light and dark brands are two token files because Feather's brand CLI themes one file; `scripts/brand.mjs` merges them (see feather#1).
 
@@ -36,9 +36,9 @@ Use accessible contrast, not just brand fidelity. Blue accents are for meaningfu
 - `brand/tokens.json` (light) and `brand/tokens.dark.json` (dark) → `npm run brand` → `app/styles/brand.css`, `app/styles/brand-fonts.css` (committed, tested for drift).
 - `app/globals.css`, `app/fonts.css`, `app/feather-rtl.css`: stylesheet entry, font stacks, temporary RTL overrides.
 - `components/theme-toggle.tsx`: dark/light toggle on the `dark` class of `<html>` (`localStorage["whoush-theme"]`, default dark, applied before paint by the inline script in `app/layout.tsx`).
-- `app/characters/page.tsx` + `components/character-studio.tsx`: six-angle Persian Character Studio.
+- `app/characters/page.tsx` + `components/character-studio.tsx` (+ `character-parts.tsx`): six-angle Persian Character Studio with consent v1.0, per-angle metadata, duplicate/quality checks, PNG sheet and JSON manifest export. `components/character-picker.tsx`: character selection in the Studio agent panel.
 - `lib/skills.ts` + `lib/advanced-skills.ts`: 22 professional skills, routed privately.
-- `lib/characters.ts` + `lib/character-store.ts`: browser-local reference data only; not yet a server-side identity asset graph.
+- `lib/characters.ts` (pure: consent, metadata, coverage, versioning, manifest, tests in `tests/characters.test.ts`), `lib/character-store.ts` (IndexedDB), `lib/character-files.ts`, `lib/character-export.ts`: browser-local reference data only. Server-side authenticated storage, provider reference upload and a verified reference-capable model are pending; a character in chat yields 422 `no_compatible_model` with a plan.
 
 ## Claude acceptance criteria
 1. Refactor prototype CSS to tokens, remove purple hardcoded values and inconsistent spacings; dark/light coverage on **every** page.

@@ -1,25 +1,33 @@
 "use client";
 import {useEffect,useRef,useState,type FormEvent} from "react";
 import Link from "next/link";
+import {useRouter} from "next/navigation";
 import {ArrowUp,CircleAlert,Clapperboard,Info,Menu,UserRound,X} from "lucide-react";
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Select,SelectContent,SelectItem,SelectTrigger,SelectValue,Sheet,SheetClose,SheetContent,SheetDescription,SheetTitle,SheetTrigger,Tabs,TabsContent,TabsList,TabsTrigger,Textarea,Label} from "@aleeforoughi/feather-react";
 import {BrandMark} from "@/components/brand-mark";
 import {JobSteps} from "@/components/job-steps";
 import {NoModelCard,ProposalCard} from "@/components/proposal-card";
+import {CharacterPicker} from "@/components/character-picker";
 import {RailContent} from "@/components/studio-rail";
 import type {AgentPreference} from "@/lib/types";
 import type {AgentProposal,JobView,NoModelResult} from "@/lib/studio-types";
-import {getLocalCharacter} from "@/lib/character-store";
-import {characterCoverage,type CharacterProfile} from "@/lib/characters";
+import {getLocalCharacter,listLocalCharacters} from "@/lib/character-store";
+import {characterCoverage,characterUsability,type CharacterProfile} from "@/lib/characters";
 import {fa} from "@/lib/format";
 
 type TranscriptItem={role:"user"|"agent";text:string};
 type StudioView="chat"|"canvas";
 const opening="سلام! دوست داری چه تصویر یا ویدیویی بسازیم؟ می‌تونی مدل موردعلاقه‌ات رو هم توی پیام بنویسی.";
 const idlePreview="شروع کن: ایده‌ات رو در چت بنویس.";
+const CHARACTER_KEY="whoush-character";
 const PREFERENCES=[{value:"quality",label:"کیفیت"},{value:"speed",label:"سرعت"},{value:"cost",label:"اقتصادی"}] as const;
 
+/** sessionStorage can throw (private windows, blocked storage); the selection then simply does not persist. */
+const rememberCharacter=(id:string|null)=>{try{if(id)window.sessionStorage.setItem(CHARACTER_KEY,id);else window.sessionStorage.removeItem(CHARACTER_KEY);}catch{ /* not persisted */ }};
+const rememberedCharacter=()=>{try{return window.sessionStorage.getItem(CHARACTER_KEY);}catch{return null;}};
+
 export function Studio(){
+ const router=useRouter();
  const [messages,setMessages]=useState<TranscriptItem[]>([{role:"agent",text:opening}]);
  const [draft,setDraft]=useState("");
  const [preference,setPreference]=useState<AgentPreference>("quality");
@@ -32,11 +40,40 @@ export function Studio(){
  const [job,setJob]=useState<JobView|null>(null);
  const [activeTab,setActiveTab]=useState<"generations"|"cuts">("generations");
  const [error,setError]=useState("");
- const [character,setCharacter]=useState<CharacterProfile|null>(null);
+ const [characters,setCharacters]=useState<CharacterProfile[]>([]);
+ const [charactersLoaded,setCharactersLoaded]=useState(false);
+ const [characterId,setCharacterId]=useState<string|null>(null);
+ const [characterNote,setCharacterNote]=useState("");
  const [view,setView]=useState<StudioView>("chat");
  const [menuOpen,setMenuOpen]=useState(false);
  const endRef=useRef<HTMLDivElement>(null);
- useEffect(()=>{const id=new URLSearchParams(window.location.search).get("character");if(id){void getLocalCharacter(id).then(profile=>{if(profile)setCharacter(profile);}).catch(()=>{});}},[]);
+ const character=characters.find(c=>c.id===characterId)??null;
+ /** Keep ?character=<id> in step with the selection without reloading or adding history entries. */
+ function syncUrl(id:string|null){
+  const query=new URLSearchParams(window.location.search);
+  if(id)query.set("character",id);else query.delete("character");
+  const qs=query.toString();
+  router.replace("/studio"+(qs?"?"+qs:""),{scroll:false});
+ }
+ function pickCharacter(id:string|null){
+  setCharacterId(id);setCharacterNote("");rememberCharacter(id);syncUrl(id);
+ }
+ // The ?character= deep link wins over the remembered selection; either must name a usable character.
+ useEffect(()=>{
+  let alive=true;
+  const fromUrl=new URLSearchParams(window.location.search).get("character");
+  listLocalCharacters().then(items=>{
+   if(!alive)return;
+   setCharacters(items);setCharactersLoaded(true);
+   const wanted=fromUrl??rememberedCharacter();
+   if(!wanted)return;
+   const found=items.find(c=>c.id===wanted),usable=found&&characterUsability(found);
+   if(found&&usable?.ok){setCharacterId(found.id);rememberCharacter(found.id);if(!fromUrl)syncUrl(found.id);}
+   else if(fromUrl)setCharacterNote(found&&usable&&!usable.ok?"«"+found.name+"» هنوز قابل انتخاب نیست: "+usable.reason:"کاراکتر این پیوند در این مرورگر پیدا نشد.");
+  }).catch(()=>{if(alive)setCharactersLoaded(true);});
+  return()=>{alive=false;};
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount; syncUrl only needs the router, which is stable
+ },[]);
  useEffect(()=>{endRef.current?.scrollIntoView({block:"end"});},[messages,proposal,noModel,restricted,error]);
  function newChat(){
   setMessages([{role:"agent",text:opening}]);setProposal(null);setNoModel(null);setRestricted("");setJob(null);
@@ -44,9 +81,20 @@ export function Studio(){
  }
  async function send(e:FormEvent){
   e.preventDefault();const text=draft.trim();if(!text||busy)return;
+  // The profile may have been edited or withdrawn in another tab: send what is stored now, and only if it is still usable.
+  let current=character;
+  if(character){
+   setBusy(true);
+   current=await getLocalCharacter(character.id).catch(()=>undefined)??null;
+   if(!current||!characterUsability(current).ok){
+    setBusy(false);setCharacters(await listLocalCharacters().catch(()=>[]));pickCharacter(null);
+    setError("کاراکتر انتخاب‌شده دیگر آمادهٔ استفاده نیست (حذف شده یا رضایتش نیاز به تأیید دارد). درخواستت ارسال نشد؛ دوباره انتخاب کن یا بدون کاراکتر بفرست.");return;
+   }
+   const fresh=current;setCharacters(list=>list.map(c=>c.id===fresh.id?fresh:c));
+  }
   setDraft("");setError("");setRestricted("");setBusy(true);setProposal(null);setNoModel(null);
   setMessages(m=>[...m,{role:"user",text}]);
-  const characterRef=character?{id:character.id,name:character.name,angles:characterCoverage(character.references).uploaded,version:character.version}:undefined;
+  const characterRef=current?{id:current.id,name:current.name,angles:characterCoverage(current.references).uploaded,version:current.version}:undefined;
   try{
    const r=await fetch("/api/agent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,preference,...(characterRef&&characterRef.angles.length>0?{characterRef}:{})})});
    if(!r.ok){
@@ -151,10 +199,11 @@ export function Studio(){
      <h2 className="type-title text-fg-primary">دستیار هووش</h2>
      <p className="type-body-sm text-fg-secondary">ساخت تصویر و ویدیو با گفت‌وگو</p>
     </div>
+    {characterNote&&<div className="border-b border-line-tertiary px-4 py-3"><Alert role="status"><Icon icon={Info} aria-hidden="true"/><AlertDescription>{characterNote}</AlertDescription></Alert></div>}
     {character&&<div className="flex flex-col gap-1 border-b border-line-tertiary px-4 py-3">
      <div className="flex flex-wrap items-center gap-2">
       <Badge variant="secondary"><Icon icon={UserRound} size={16} aria-hidden="true"/><span className="sr-only">کاراکتر انتخاب‌شده: </span>{character.name}</Badge>
-      <Button variant="link" size="sm" render={<Link href="/characters"/>} nativeButton={false}>ویرایش</Button>
+      <Button variant="ghost" render={<Link href="/characters"/>} nativeButton={false}>ویرایش</Button>
      </div>
      <p className="type-caption text-fg-secondary">{fa(characterCoverage(character.references).count)} عکس مرجع · فقط در این مرورگر. مشخصات کاراکتر همراه درخواست برای برنامه‌ریزی ارسال می‌شود؛ خود عکس‌ها هنوز به سرویس تولید فرستاده نمی‌شوند.</p>
     </div>}
@@ -181,11 +230,14 @@ export function Studio(){
     <form onSubmit={e=>void send(e)} className="flex shrink-0 flex-col gap-3 border-t border-line-tertiary bg-surface-base p-4">
      <Label className="sr-only" htmlFor="whoush-prompt">توضیح تصویر یا ویدیو</Label>
      <Textarea id="whoush-prompt" value={draft} onChange={e=>setDraft(e.target.value)} placeholder="چی دوست داری بسازیم؟" rows={3} maxLength={4000} className="max-h-40 resize-none"/>
-     <div className="flex items-center justify-between gap-2">
-      <Select value={preference} onValueChange={v=>setPreference(v as AgentPreference)} items={PREFERENCES as unknown as {value:string;label:string}[]}>
-       <SelectTrigger aria-label="اولویت ساخت"><span className="text-fg-secondary">اولویت</span><SelectValue/></SelectTrigger>
-       <SelectContent>{PREFERENCES.map(p=><SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}</SelectContent>
-      </Select>
+     <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+       <CharacterPicker characters={characters} value={characterId} onChange={pickCharacter} loaded={charactersLoaded}/>
+       <Select value={preference} onValueChange={v=>setPreference(v as AgentPreference)} items={PREFERENCES as unknown as {value:string;label:string}[]}>
+        <SelectTrigger aria-label="اولویت ساخت"><span className="text-fg-secondary">اولویت</span><SelectValue/></SelectTrigger>
+        <SelectContent>{PREFERENCES.map(p=><SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}</SelectContent>
+       </Select>
+      </div>
       <Button type="submit" disabled={busy||!draft.trim()}>{busy?"در حال بررسی…":"ارسال"}<Icon icon={ArrowUp} aria-hidden="true"/></Button>
      </div>
     </form>

@@ -7,3 +7,6 @@ coverage/
 !.env.example
 .DS_Store
 *.tsbuildinfo
+# Licensed IRANSans font binaries: kept locally, never committed to this public repo (see public/fonts/iransans/README.md).
+public/fonts/iransans/*
+!public/fonts/iransans/README.md

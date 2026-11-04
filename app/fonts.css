@@ -1,32 +1,53 @@
-/* IRANSansX is commercially licensed and NOT bundled. The owner must place licensed WOFF2 files in
-   public/fonts/iransans/ (see the README there). Until then `local()` finds an installed copy and everything else
-   falls back to Inter Variable (Latin) and Tahoma (Persian). Font integration is PENDING. */
+/* IRANSans (fontiran.com, v5.00) is commercially licensed. The WOFF2/WOFF files live in public/fonts/iransans/ on the
+   owner's machine and are git-ignored: this repository is public, so the binaries are never committed. Builds without
+   the files fall back to Inter Variable (Latin) and Tahoma (Persian); see public/fonts/iransans/README.md. */
 @font-face {
-  font-family: "IRANSansX";
+  font-family: "IRANSans";
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/iransans/IRANSansWeb_UltraLight.woff2") format("woff2"), url("/fonts/iransans/IRANSansWeb_UltraLight.woff") format("woff");
+}
+@font-face {
+  font-family: "IRANSans";
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/iransans/IRANSansWeb_Light.woff2") format("woff2"), url("/fonts/iransans/IRANSansWeb_Light.woff") format("woff");
+}
+@font-face {
+  font-family: "IRANSans";
   font-weight: 400;
   font-style: normal;
   font-display: swap;
-  src: local("IRANSansX"), local("IRANSans"), url("/fonts/iransans/IRANSansX-Regular.woff2") format("woff2");
+  src: url("/fonts/iransans/IRANSansWeb.woff2") format("woff2"), url("/fonts/iransans/IRANSansWeb.woff") format("woff");
 }
 @font-face {
-  font-family: "IRANSansX";
+  font-family: "IRANSans";
   font-weight: 500;
   font-style: normal;
   font-display: swap;
-  src: local("IRANSansX Medium"), local("IRANSans Medium"), local("IRANSansX"), local("IRANSans"), url("/fonts/iransans/IRANSansX-Medium.woff2") format("woff2");
+  src: url("/fonts/iransans/IRANSansWeb_Medium.woff2") format("woff2"), url("/fonts/iransans/IRANSansWeb_Medium.woff") format("woff");
 }
 @font-face {
-  font-family: "IRANSansX";
+  font-family: "IRANSans";
   font-weight: 700;
   font-style: normal;
   font-display: swap;
-  src: local("IRANSansX Bold"), local("IRANSans Bold"), local("IRANSansX"), local("IRANSans"), url("/fonts/iransans/IRANSansX-Bold.woff2") format("woff2");
+  src: url("/fonts/iransans/IRANSansWeb_Bold.woff2") format("woff2"), url("/fonts/iransans/IRANSansWeb_Bold.woff") format("woff");
+}
+@font-face {
+  font-family: "IRANSans";
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+  src: url("/fonts/iransans/IRANSansWeb_Black.woff2") format("woff2"), url("/fonts/iransans/IRANSansWeb_Black.woff") format("woff");
 }
 
 /* Overrides the Inter-only stacks written by brand.css. Same specificity as the generated light and dark blocks and
-   later in the cascade. */
+   later in the cascade. Feather has no token for a licensed custom font yet (aleeforoughi/feather#1). */
 :root:root,
 :root:root.dark {
-  --brand-font-body: "IRANSansX", "IRANSans", "Inter Variable", Tahoma, sans-serif;
-  --brand-font-display: "IRANSansX", "IRANSans", "Inter Variable", Tahoma, sans-serif;
+  --brand-font-body: "IRANSans", "Inter Variable", Tahoma, sans-serif;
+  --brand-font-display: "IRANSans", "Inter Variable", Tahoma, sans-serif;
 }
