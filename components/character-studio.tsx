@@ -5,7 +5,7 @@ import Link from "next/link";
 import {ThemeToggle} from "@/components/theme-toggle";
 import {Camera,Check,CheckCircle2,Download,ImagePlus,LockKeyhole,Plus,ShieldCheck,Trash2,UserRound,WandSparkles,ArrowLeft} from "lucide-react";
 import {ALLOWED_CHARACTER_IMAGE_TYPES,MAX_CHARACTER_IMAGE_BYTES,CHARACTER_VIEWS,characterCoverage,type CharacterProfile,type CharacterView,type CharacterReferences} from "@/lib/characters";
-import {deleteLocalCharacter,getLocalCharacter,listLocalCharacters,saveLocalCharacter} from "@/lib/character-store";
+import {deleteLocalCharacter,listLocalCharacters,saveLocalCharacter} from "@/lib/character-store";
 const fa=(n:number)=>n.toLocaleString("fa-IR");
 function checkImage(file:File):Promise<void>{
  return new Promise((resolve,reject)=>{
