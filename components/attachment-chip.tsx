@@ -86,12 +86,13 @@ export function AttachmentPreview({item,onClose}:{item:LocalAttachment|null;onCl
     <DialogTitle className="break-all"><bdi>{item?.name}</bdi></DialogTitle>
     <DialogDescription>{item&&<>{tagText(item.tag)}{item.role&&<> · {roleLabelFa(item.role,item.kind)}</>} · <Meta a={item}/></>}</DialogDescription>
    </DialogHeader>
-   {item?.previewUrl&&(item.kind==="image"||item.kind==="video")&&<DialogBody>
+   {item?.previewUrl&&(item.kind==="image"||item.kind==="video"||item.kind==="audio")&&<DialogBody>
     <div className="flex max-h-[60vh] items-center justify-center overflow-hidden rounded-card border border-line-secondary bg-surface-subtle">
      {item.kind==="image"
       // eslint-disable-next-line @next/next/no-img-element -- a local blob: URL; next/image cannot optimize it
       ?<img src={item.previewUrl} alt={item.name} className="max-h-[60vh] w-auto max-w-full object-contain"/>
-      :<video src={item.previewUrl} controls playsInline className="max-h-[60vh] w-full"/>}
+      :item.kind==="video"?<video src={item.previewUrl} controls playsInline className="max-h-[60vh] w-full"/>
+      :<audio src={item.previewUrl} controls className="m-4 w-full"/>}
     </div>
    </DialogBody>}
    <DialogFooter><DialogClose render={<Button variant="outline"/>}>بستن</DialogClose></DialogFooter>
