@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint .",
     "test": "node --conditions=react-server --import tsx --test tests/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "brand": "node scripts/brand.mjs"
   },
   "dependencies": {
     "@aleeforoughi/feather-react": "^1.17.0",
