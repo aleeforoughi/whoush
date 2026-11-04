@@ -26,5 +26,6 @@ Higgsfield API facts as of Nov 2026: USD prepaid API billing (separate from its 
 - Attachments are verified in the browser by magic bytes (not by name or declared type) and again as strict metadata on the server. Only metadata and text excerpts of Markdown and JSON files are sent; bytes and file names never leave the browser.
 - Markdown and JSON excerpts pass the lexical safety preflight before any planner and reach the planner only as untrusted `<attachment>` data.
 - Image, video and audio attachments are NOT inspected (no multimodal inspector exists, `docs/MODERATION_POLICY.md` step 4), so they fail closed: the plan is shown, no proposal or price is produced, and the audit records `media_review_unavailable`. This must stay until a verified inspector is wired in at the marked TODO in `lib/orchestrator.ts`.
+- Voice cloning (`voice_clone` role) is never supported: the turn returns `unsupported` before media review, audit reason `voice_clone_unsupported`, and the schema requires the owner/permission consent flag. Do not add a provider for it without a separate policy decision.
 - PDF files are accepted and counted but not read (no parser dependency yet); the plan says so.
 - Open: upload storage, signed URLs, retention and rate limits for attachments (`docs/IMPLEMENTATION_PLAN.md` Security QA) are not built because nothing is uploaded yet.
