@@ -12,7 +12,7 @@ const TARGET_ICONS:Record<ShareTarget,typeof Share2>={story:CircleFadingPlus,pos
 const GENERIC_STEPS=["فایل را دانلود کن","اینستاگرام را باز کن و + را بزن","پست، ریلز یا استوری را انتخاب کن و فایل را از گالری بردار"];
 
 const fileName=(f:ShareFile)=>downloadFileName({projectTitle:f.projectTitle,tag:f.tag,mime:f.mime});
-function triggerDownload(f:ShareFile){
+export function triggerDownload(f:ShareFile){
  if(!f.blob)return;
  const url=URL.createObjectURL(f.blob),a=document.createElement("a");
  a.href=url;a.download=fileName(f);a.rel="noopener";a.hidden=true;
@@ -29,8 +29,10 @@ function shareableFile(f:ShareFile):File|undefined{
 /**
  * «دانلود» and «اشتراک‌گذاری» for one file, plus the Instagram dialog. Nothing is uploaded and nothing is posted: sharing is the device's share sheet
  * (where Instagram appears when installed) or a download. `reason` disables the buttons and says why (no stored file, or generated outputs that are not available yet).
+ * `overlay` is for buttons laid over media: only icon buttons (secondary variant, legible on any picture), no notes; a share that cannot finish opens the dialog, which says why.
+ * `instagram` shows the Instagram button (on by default, except on a card's overlay where only download and share fit).
  */
-export function ShareActions({file,compact=false,reason}:{file:ShareFile;compact?:boolean;reason?:string}){
+export function ShareActions({file,compact=false,reason,overlay=false,instagram=!overlay}:{file:ShareFile;compact?:boolean;reason?:string;overlay?:boolean;instagram?:boolean}){
  const [open,setOpen]=useState(false);
  const [target,setTarget]=useState<ShareTarget|null>(null);
  const [message,setMessage]=useState("");
@@ -46,7 +48,7 @@ export function ShareActions({file,compact=false,reason}:{file:ShareFile;compact
   try{await navigator.share({files:[f],title:"هووش"});setMessage("");}
   catch(err){
    if(err instanceof DOMException&&err.name==="AbortError")setMessage("");
-   else setMessage("اشتراک‌گذاری انجام نشد. فایل را دانلود کن و از گالری بفرست.");
+   else{setMessage("اشتراک‌گذاری انجام نشد. فایل را دانلود کن و از گالری بفرست.");if(overlay)setOpen(true);}
   }
   return true;
  }
@@ -66,10 +68,10 @@ export function ShareActions({file,compact=false,reason}:{file:ShareFile;compact
   try{await navigator.clipboard.writeText(caption);setCopied("متن کپی شد.");}
   catch{setCopied("کپی انجام نشد؛ متن را انتخاب و دستی کپی کن.");}
  }
- const sized=compact?"icon":"default";
+ const iconOnly=compact||overlay,sized=iconOnly?"icon":"default";
  const btn=(label:string,icon:typeof Share2,onClick:()=>void,visible:string)=>
-  <Button type="button" variant="outline" size={sized} disabled={blocked} aria-label={label+" "+tag} aria-describedby={blocked?fitId+"-why":undefined} onClick={onClick}>
-   <Icon icon={icon} aria-hidden="true"/>{!compact&&visible}
+  <Button type="button" variant={overlay?"secondary":"outline"} size={sized} disabled={blocked} aria-label={label+" "+tag} aria-describedby={blocked&&!overlay?fitId+"-why":undefined} onClick={onClick}>
+   <Icon icon={icon} aria-hidden="true"/>{!iconOnly&&visible}
   </Button>;
  const chosen=target?SHARE_TARGETS.find(t=>t.id===target):undefined;
  const canShareHere=open&&Boolean(shareableFile(file));
@@ -112,16 +114,16 @@ export function ShareActions({file,compact=false,reason}:{file:ShareFile;compact
   </DialogBody>
   <DialogFooter><DialogClose render={<Button type="button" variant="outline"/>}>بستن</DialogClose></DialogFooter>
  </>;
- return <div className={compact?"flex min-w-0 flex-col gap-1":"flex min-w-0 flex-col gap-2"}>
-  <div className="flex flex-wrap items-center gap-2">
+ return <div className={compact||overlay?"flex min-w-0 flex-col gap-1":"flex min-w-0 flex-col gap-2"}>
+  <div className={overlay?"flex items-center gap-2":"flex flex-wrap items-center gap-2"}>
    {btn("دانلود",Download,()=>triggerDownload(file),"دانلود")}
    {btn("اشتراک‌گذاری",Share2,()=>void share(),"اشتراک‌گذاری")}
-   {btn("اشتراک‌گذاری در اینستاگرام",Instagram,()=>setOpen(true),"اینستاگرام")}
+   {instagram&&btn("اشتراک‌گذاری در اینستاگرام",Instagram,()=>setOpen(true),"اینستاگرام")}
   </div>
-  {blocked
+  {!overlay&&(blocked
    ?<p id={fitId+"-why"} className="type-caption text-fg-secondary">{blockedReason}</p>
-   :<p id={fitId+"-note"} className="type-caption text-fg-secondary">{fit.noteFa}</p>}
-  {message&&!open&&<p role="status" className="type-caption text-fg-secondary">{message}</p>}
+   :<p id={fitId+"-note"} className="type-caption text-fg-secondary">{fit.noteFa}</p>)}
+  {!overlay&&message&&!open&&<p role="status" className="type-caption text-fg-secondary">{message}</p>}
   <Dialog open={open} onOpenChange={o=>{setOpen(o);if(!o){setTarget(null);setMessage("");setCopied("");}}}>
    <DialogContent showCloseButton={false} className="sm:max-w-lg">{body}</DialogContent>
   </Dialog>
