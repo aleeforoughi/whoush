@@ -6,7 +6,7 @@ export interface SafetyResult{decision:SafetyDecision;category:SafetyCategory;me
 export function normalizePersian(text:string):string {
  return text.normalize("NFKC").toLowerCase().replace(/[يى]/g,"ی").replace(/ك/g,"ک")
   .replace(/[أإ]/g,"ا").replace(/[\u064b-\u065f\u0670\u06d6-\u06ed]/g,"")
-  .replace(/[\u200c\u200d\u0640]/g," ").replace(/[^a-z0-9\u0600-\u06ff]+/g," ")
+  .replace(/\u0640/g,"").replace(/[\u200c\u200d]/g," ").replace(/[^a-z0-9\u0600-\u06ff]+/g," ")
   .replace(/\s+/g," ").trim();
 }
 const POLITICAL_TERMS=[
