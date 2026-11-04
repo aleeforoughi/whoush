@@ -203,7 +203,7 @@ export function Studio(){
     {character&&<div className="flex flex-col gap-1 border-b border-line-tertiary px-4 py-3">
      <div className="flex flex-wrap items-center gap-2">
       <Badge variant="secondary"><Icon icon={UserRound} size={16} aria-hidden="true"/><span className="sr-only">کاراکتر انتخاب‌شده: </span>{character.name}</Badge>
-      <Button variant="link" size="sm" render={<Link href="/characters"/>} nativeButton={false}>ویرایش</Button>
+      <Button variant="ghost" render={<Link href="/characters"/>} nativeButton={false}>ویرایش</Button>
      </div>
      <p className="type-caption text-fg-secondary">{fa(characterCoverage(character.references).count)} عکس مرجع · فقط در این مرورگر. مشخصات کاراکتر همراه درخواست برای برنامه‌ریزی ارسال می‌شود؛ خود عکس‌ها هنوز به سرویس تولید فرستاده نمی‌شوند.</p>
     </div>}

@@ -28,6 +28,6 @@ export function CharacterPicker({characters,value,onChange,loaded}:{characters:C
     })}
    </SelectContent>
   </Select>
-  <Button variant="link" size="sm" render={<Link href="/characters"/>} nativeButton={false}><Icon icon={Plus} aria-hidden="true"/>{loaded&&characters.length===0?"ساخت کاراکتر":"مدیریت کاراکترها"}</Button>
+  <Button variant="ghost" render={<Link href="/characters"/>} nativeButton={false}><Icon icon={Plus} aria-hidden="true"/>{loaded&&characters.length===0?"ساخت کاراکتر":"مدیریت کاراکترها"}</Button>
  </div>;
 }
