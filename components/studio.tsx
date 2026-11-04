@@ -1,21 +1,25 @@
 "use client";
-import {useEffect,useRef,useState,type FormEvent} from "react";
+import {useEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
 import Link from "next/link";
 import {useRouter} from "next/navigation";
-import {ArrowUp,CircleAlert,Clapperboard,Info,Menu,UserRound,X} from "lucide-react";
+import {ArrowUp,CircleAlert,Clapperboard,Info,Menu,Paperclip,Upload,UserRound,X} from "lucide-react";
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Select,SelectContent,SelectItem,SelectTrigger,SelectValue,Sheet,SheetClose,SheetContent,SheetDescription,SheetTitle,SheetTrigger,Tabs,TabsContent,TabsList,TabsTrigger,Textarea,Label} from "@aleeforoughi/feather-react";
 import {BrandMark} from "@/components/brand-mark";
 import {JobSteps} from "@/components/job-steps";
 import {NoModelCard,ProposalCard} from "@/components/proposal-card";
 import {CharacterPicker} from "@/components/character-picker";
+import {AttachmentChip,AttachmentPreview,type AttachmentPatch} from "@/components/attachment-chip";
+import {AttachmentTray,type AttachmentProblem} from "@/components/attachment-tray";
 import {RailContent} from "@/components/studio-rail";
 import type {AgentPreference} from "@/lib/types";
 import type {AgentProposal,JobView,NoModelResult} from "@/lib/studio-types";
 import {getLocalCharacter,listLocalCharacters} from "@/lib/character-store";
 import {characterCoverage,characterUsability,type CharacterProfile} from "@/lib/characters";
 import {fa} from "@/lib/format";
+import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,tooManyFa,toWireAttachment,validateAttachmentSet,type LocalAttachment} from "@/lib/attachments";
+import {readAttachment} from "@/lib/attachment-files";
 
-type TranscriptItem={role:"user"|"agent";text:string};
+type TranscriptItem={role:"user"|"agent";text:string;attachments?:LocalAttachment[]};
 type StudioView="chat"|"canvas";
 const opening="سلام! دوست داری چه تصویر یا ویدیویی بسازیم؟ می‌تونی مدل موردعلاقه‌ات رو هم توی پیام بنویسی.";
 const idlePreview="شروع کن: ایده‌ات رو در چت بنویس.";
@@ -24,6 +28,7 @@ const PREFERENCES=[{value:"quality",label:"کیفیت"},{value:"speed",label:"س
 
 /** sessionStorage can throw (private windows, blocked storage); the selection then simply does not persist. */
 const rememberCharacter=(id:string|null)=>{try{if(id)window.sessionStorage.setItem(CHARACTER_KEY,id);else window.sessionStorage.removeItem(CHARACTER_KEY);}catch{ /* not persisted */ }};
+const hasFiles=(e:DragEvent)=>Array.from(e.dataTransfer.types).includes("Files");
 const rememberedCharacter=()=>{try{return window.sessionStorage.getItem(CHARACTER_KEY);}catch{return null;}};
 
 export function Studio(){
@@ -46,7 +51,18 @@ export function Studio(){
  const [characterNote,setCharacterNote]=useState("");
  const [view,setView]=useState<StudioView>("chat");
  const [menuOpen,setMenuOpen]=useState(false);
+ const [attachments,setAttachments]=useState<LocalAttachment[]>([]);
+ const [problems,setProblems]=useState<AttachmentProblem[]>([]);
+ const [reading,setReading]=useState(false);
+ const [dragging,setDragging]=useState(false);
+ const [announce,setAnnounce]=useState("");
+ const [previewing,setPreviewing]=useState<LocalAttachment|null>(null);
  const endRef=useRef<HTMLDivElement>(null);
+ const fileInput=useRef<HTMLInputElement>(null);
+ const readingRef=useRef(false);
+ const dragDepth=useRef(0);
+ /** Every live object URL (composer tray and sent messages). Revoked on remove, new chat and unmount. */
+ const urls=useRef(new Set<string>());
  const character=characters.find(c=>c.id===characterId)??null;
  /** Keep ?character=<id> in step with the selection without reloading or adding history entries. */
  function syncUrl(id:string|null){
@@ -74,8 +90,44 @@ export function Studio(){
   return()=>{alive=false;};
   // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount; syncUrl only needs the router, which is stable
  },[]);
+ useEffect(()=>{const live=urls.current;return()=>{live.forEach(u=>URL.revokeObjectURL(u));live.clear();};},[]);
  useEffect(()=>{endRef.current?.scrollIntoView({block:"end"});},[messages,proposal,noModel,restricted,error]);
+ function releaseUrl(a:LocalAttachment){if(a.previewUrl){URL.revokeObjectURL(a.previewUrl);urls.current.delete(a.previewUrl);}}
+ /** Verifies the picked files one by one; the good ones join the tray, each rejected one gets its own Persian reason. */
+ async function addFiles(files:File[]){
+  if(!files.length||readingRef.current)return;
+  readingRef.current=true;setReading(true);setProblems([]);setAnnounce("");
+  const next=[...attachments],added:LocalAttachment[]=[],bad:AttachmentProblem[]=[];
+  for(const file of files){
+   const name=file.name||"فایل",fail=(message:string)=>bad.push({key:crypto.randomUUID(),name,message});
+   if(next.length>=MAX_ATTACHMENTS){fail(tooManyFa());continue;}
+   try{
+    const a=await readAttachment(file),check=validateAttachmentSet([...next,a]);
+    if(!check.ok){if(a.previewUrl)URL.revokeObjectURL(a.previewUrl);fail(check.error);continue;}
+    if(a.previewUrl)urls.current.add(a.previewUrl);
+    next.push(a);added.push(a);
+   }catch(err){fail(err instanceof Error?err.message:ATTACHMENT_ERRORS_FA.unreadable);}
+  }
+  setAttachments(cur=>[...cur,...added]);setProblems(bad);
+  setAnnounce((added.length?fa(added.length)+" فایل اضافه شد. ":"")+(bad.length?fa(bad.length)+" فایل رد شد.":""));
+  readingRef.current=false;setReading(false);
+ }
+ function removeAttachment(id:string){
+  const a=attachments.find(x=>x.id===id);if(a)releaseUrl(a);
+  setAttachments(list=>list.filter(x=>x.id!==id));
+ }
+ function patchAttachment(id:string,patch:AttachmentPatch){setAttachments(list=>list.map(x=>x.id===id?{...x,...patch}:x));}
+ function onDrop(e:DragEvent){
+  if(!hasFiles(e))return;
+  e.preventDefault();dragDepth.current=0;setDragging(false);void addFiles(Array.from(e.dataTransfer.files));
+ }
+ function onPaste(e:ClipboardEvent){
+  const files=Array.from(e.clipboardData.files);
+  if(files.length){e.preventDefault();void addFiles(files);}
+ }
  function newChat(){
+  urls.current.forEach(u=>URL.revokeObjectURL(u));urls.current.clear();
+  setAttachments([]);setProblems([]);setAnnounce("");setPreviewing(null);
   setMessages([{role:"agent",text:opening}]);setProposal(null);setNoModel(null);setRestricted("");setJob(null);
   setPreview(idlePreview);setError("");setDraft("");
  }
@@ -92,11 +144,13 @@ export function Studio(){
    }
    const fresh=current;setCharacters(list=>list.map(c=>c.id===fresh.id?fresh:c));
   }
-  setDraft("");setError("");setRestricted("");setBusy(true);setProposal(null);setNoModel(null);
-  setMessages(m=>[...m,{role:"user",text}]);
+  // The tray clears, but the files stay (with their object URLs) on the sent message; they are released on new chat or unmount.
+  const sent=attachments;
+  setDraft("");setError("");setRestricted("");setBusy(true);setProposal(null);setNoModel(null);setAttachments([]);setProblems([]);setAnnounce("");
+  setMessages(m=>[...m,{role:"user",text,...(sent.length?{attachments:sent}:{})}]);
   const characterRef=current?{id:current.id,name:current.name,angles:characterCoverage(current.references).uploaded,version:current.version}:undefined;
   try{
-   const r=await fetch("/api/agent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,preference,...(characterRef&&characterRef.angles.length>0?{characterRef}:{})})});
+   const r=await fetch("/api/agent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,preference,...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(sent.length?{attachments:sent.map(toWireAttachment)}:{})})});
    if(!r.ok){
     const errorBody=await r.json().catch(()=>({})) as {error?:string;message?:string;plan?:AgentProposal["plan"]};
     if(r.status===422&&errorBody.error==="no_compatible_model"){
@@ -194,7 +248,15 @@ export function Studio(){
     </Tabs>
    </section>
    {/* End side: agent panel */}
-   <section aria-label="دستیار هووش" className={(showChat?"flex":"hidden")+" min-h-0 flex-1 flex-col border-line-tertiary md:flex md:border-s"}>
+   <section aria-label="دستیار هووش" className={(showChat?"flex":"hidden")+" relative min-h-0 flex-1 flex-col border-line-tertiary md:flex md:border-s"}
+    onDragEnter={e=>{if(!hasFiles(e))return;e.preventDefault();dragDepth.current+=1;setDragging(true);}}
+    onDragOver={e=>{if(hasFiles(e))e.preventDefault();}}
+    onDragLeave={e=>{if(!hasFiles(e))return;dragDepth.current=Math.max(0,dragDepth.current-1);if(!dragDepth.current)setDragging(false);}}
+    onDrop={onDrop}>
+    {dragging&&<div aria-hidden="true" className="pointer-events-none absolute inset-2 z-10 flex flex-col items-center justify-center gap-2 rounded-card border border-dashed border-primary bg-surface-base/90 type-title text-fg-primary">
+     <Icon icon={Upload} size={32} aria-hidden="true"/>فایل‌ها را اینجا رها کن
+    </div>}
+    <div role="status" aria-live="polite" className="sr-only">{dragging?"فایل‌ها را اینجا رها کن":announce}</div>
     <div className="border-b border-line-tertiary px-4 py-3">
      <h2 className="type-title text-fg-primary">دستیار هووش</h2>
      <p className="type-body-sm text-fg-secondary">ساخت تصویر و ویدیو با گفت‌وگو</p>
@@ -211,6 +273,7 @@ export function Studio(){
      <div aria-live="polite" aria-label="گفت‌وگو" role="log" className="flex flex-col gap-4 p-4">
       {messages.map((m,i)=><div key={i} className={m.role==="user"?"max-w-[85%] self-end rounded-card bg-surface-subtle px-4 py-3 type-body-sm text-fg-primary":"type-body-sm text-fg-primary"}>
        <span className="sr-only">{m.role==="user"?"شما: ":"هووش: "}</span>{m.text}
+       {m.attachments&&<ul aria-label="پیوست‌های این پیام" className="mt-2 flex flex-wrap gap-2">{m.attachments.map(a=><AttachmentChip key={a.id} item={a} onPreview={()=>setPreviewing(a)}/>)}</ul>}
       </div>)}
       {proposal&&<ProposalCard proposal={proposal} selected={selected} onSelect={setSelected} busy={busy} onApprove={()=>void approve()}/>}
       {noModel&&<NoModelCard result={noModel}/>}
@@ -228,20 +291,24 @@ export function Studio(){
      <AlertDescription>{error}</AlertDescription>
     </Alert></div>}
     <form onSubmit={e=>void send(e)} className="flex shrink-0 flex-col gap-3 border-t border-line-tertiary bg-surface-base p-4">
+     <AttachmentTray items={attachments} problems={problems} reading={reading} onChange={patchAttachment} onRemove={removeAttachment} onPreview={setPreviewing} onDismiss={key=>setProblems(list=>list.filter(p=>p.key!==key))}/>
      <Label className="sr-only" htmlFor="whoush-prompt">توضیح تصویر یا ویدیو</Label>
-     <Textarea id="whoush-prompt" value={draft} onChange={e=>setDraft(e.target.value)} placeholder="چی دوست داری بسازیم؟" rows={3} maxLength={4000} className="max-h-40 resize-none"/>
+     <Textarea id="whoush-prompt" value={draft} onChange={e=>setDraft(e.target.value)} onPaste={onPaste} placeholder="چی دوست داری بسازیم؟" rows={3} maxLength={4000} className="max-h-40 resize-none"/>
      <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex flex-wrap items-center gap-2">
+       <input ref={fileInput} type="file" multiple hidden accept={ATTACHMENT_ACCEPT} data-testid="attachment-input" onChange={e=>{const files=Array.from(e.target.files??[]);e.target.value="";void addFiles(files);}}/>
+       <Button type="button" variant="ghost" size="icon" aria-label="افزودن پیوست" onClick={()=>fileInput.current?.click()}><Icon icon={Paperclip} aria-hidden="true"/></Button>
        <CharacterPicker characters={characters} value={characterId} onChange={pickCharacter} loaded={charactersLoaded}/>
        <Select value={preference} onValueChange={v=>setPreference(v as AgentPreference)} items={PREFERENCES as unknown as {value:string;label:string}[]}>
         <SelectTrigger aria-label="اولویت ساخت"><span className="text-fg-secondary">اولویت</span><SelectValue/></SelectTrigger>
         <SelectContent>{PREFERENCES.map(p=><SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}</SelectContent>
        </Select>
       </div>
-      <Button type="submit" disabled={busy||!draft.trim()}>{busy?"در حال بررسی…":"ارسال"}<Icon icon={ArrowUp} aria-hidden="true"/></Button>
+      <Button type="submit" disabled={busy||reading||!draft.trim()}>{busy?"در حال بررسی…":"ارسال"}<Icon icon={ArrowUp} aria-hidden="true"/></Button>
      </div>
     </form>
    </section>
+   <AttachmentPreview item={previewing} onClose={()=>setPreviewing(null)}/>
   </main>
  </div>;
 }
