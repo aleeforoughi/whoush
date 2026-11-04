@@ -109,7 +109,8 @@ export const ATTACHMENT_ERRORS_FA={
  unreadable:"فایل قابل خواندن نیست.",
  metadataTimeout:"خواندن مشخصات فایل بیش از ۵ ثانیه طول کشید.",
  metadataFailed:"مشخصات این فایل قابل خواندن نیست؛ ممکن است خراب باشد.",
- tooLong:"مدت این فایل بیش از یک ساعت است."
+ tooLong:"مدت این فایل بیش از یک ساعت است.",
+ tagsExhausted:"از این نوع پیوست در این گفت‌وگو به سقف ۹۹ رسیده‌ای؛ گفت‌وگوی جدید شروع کن."
 } as const;
 const mbFa=(b:number)=>faPlain(Math.round(b/MB));
 export const tooLargeFa=(kind:AttachmentKind)=>"حجم فایل "+ATTACHMENT_KINDS[kind].labelFa+" باید حداکثر "+mbFa(ATTACHMENT_KINDS[kind].maxBytes)+" مگابایت باشد.";
@@ -194,6 +195,15 @@ export type LocalAttachment={
  id:string;tag:string;kind:AttachmentKind;mime:string;bytes:number;sha256:string;name:string;role?:AttachmentRole;consent?:boolean;
  width?:number;height?:number;durationSeconds?:number;textExcerpt?:string;speech?:AttachmentSpeech;previewUrl?:string;
 };
+/** Sets the role and drops what belongs to another role: speech details ride only with `lip_sync`, consent only with `voice_clone`. A role the kind cannot have is ignored. */
+export function withRole(a:LocalAttachment,role:AttachmentRole):LocalAttachment{
+ if(!roleAllowed(a.kind,role))return a;
+ const next:LocalAttachment={...a,role};
+ delete next.speech;delete next.consent;
+ if(role==="lip_sync")next.speech=a.role==="lip_sync"&&a.speech?a.speech:{hasSpeech:true,language:"unknown",accent:"unspecified"};
+ if(role==="voice_clone"&&a.role==="voice_clone"&&a.consent!==undefined)next.consent=a.consent;
+ return next;
+}
 /** A media attachment that cannot be sent yet: no role chosen, or `voice_clone` without the consent box. */
 export type SendBlocker={id:string;tag:string;reason:"role"|"consent"};
 export function sendBlockers(list:readonly Pick<LocalAttachment,"id"|"tag"|"kind"|"role"|"consent">[]):SendBlocker[]{

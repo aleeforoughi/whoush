@@ -3,12 +3,14 @@ import {useEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEv
 import Link from "next/link";
 import {useRouter} from "next/navigation";
 import {ArrowUp,CircleAlert,Clapperboard,Info,Menu,Paperclip,Upload,UserRound,X} from "lucide-react";
-import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Select,SelectContent,SelectItem,SelectTrigger,SelectValue,Sheet,SheetClose,SheetContent,SheetDescription,SheetTitle,SheetTrigger,Tabs,TabsContent,TabsList,TabsTrigger,Textarea,Label} from "@aleeforoughi/feather-react";
+import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Select,SelectContent,SelectItem,SelectTrigger,SelectValue,Sheet,SheetClose,SheetContent,SheetDescription,SheetTitle,SheetTrigger,Tabs,TabsContent,TabsList,TabsTrigger,Label} from "@aleeforoughi/feather-react";
 import {BrandMark} from "@/components/brand-mark";
 import {JobSteps} from "@/components/job-steps";
 import {NoModelCard,ProposalCard} from "@/components/proposal-card";
 import {CharacterPicker} from "@/components/character-picker";
 import {AttachmentChip,AttachmentPreview,type AttachmentPatch} from "@/components/attachment-chip";
+import {MentionTextarea} from "@/components/mention-textarea";
+import {MessageText} from "@/components/message-text";
 import {AttachmentTray,type AttachmentProblem} from "@/components/attachment-tray";
 import {RailContent} from "@/components/studio-rail";
 import type {AgentPreference} from "@/lib/types";
@@ -16,7 +18,7 @@ import type {AgentProposal,JobView,NoModelResult} from "@/lib/studio-types";
 import {getLocalCharacter,listLocalCharacters} from "@/lib/character-store";
 import {characterCoverage,characterUsability,type CharacterProfile} from "@/lib/characters";
 import {fa} from "@/lib/format";
-import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,tooManyFa,toWireAttachment,validateAttachmentSet,type LocalAttachment} from "@/lib/attachments";
+import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,allocateTag,insertMention,newTagCounters,parseMentions,sendBlockers,tooManyFa,toWireAttachment,validateAttachmentSet,withRole,type LocalAttachment} from "@/lib/attachments";
 import {readAttachment} from "@/lib/attachment-files";
 
 type TranscriptItem={role:"user"|"agent";text:string;attachments?:LocalAttachment[]};
@@ -57,13 +59,22 @@ export function Studio(){
  const [dragging,setDragging]=useState(false);
  const [announce,setAnnounce]=useState("");
  const [previewing,setPreviewing]=useState<LocalAttachment|null>(null);
+ /** Set by a send attempt with a media attachment still missing its role or consent; the chips then show their errors. */
+ const [attempted,setAttempted]=useState(false);
  const endRef=useRef<HTMLDivElement>(null);
  const fileInput=useRef<HTMLInputElement>(null);
+ const promptRef=useRef<HTMLTextAreaElement>(null);
+ /** Tags count up for the whole conversation and are never reused after a removal; "new chat" starts over. */
+ const tagCounters=useRef(newTagCounters());
  const readingRef=useRef(false);
  const dragDepth=useRef(0);
  /** Every live object URL (composer tray and sent messages). Revoked on remove, new chat and unmount. */
  const urls=useRef(new Set<string>());
  const character=characters.find(c=>c.id===characterId)??null;
+ /** Every attachment of this conversation that still exists: sent messages first, then the tray. */
+ const conversation=[...messages.flatMap(m=>m.attachments??[]),...attachments];
+ const byTag=new Map(conversation.map(a=>[a.tag,a]));
+ const blockers=attempted?sendBlockers(attachments):[];
  /** Keep ?character=<id> in step with the selection without reloading or adding history entries. */
  function syncUrl(id:string|null){
   const query=new URLSearchParams(window.location.search);
@@ -102,8 +113,12 @@ export function Studio(){
    const name=file.name||"فایل",fail=(message:string)=>bad.push({key:crypto.randomUUID(),name,message});
    if(next.length>=MAX_ATTACHMENTS){fail(tooManyFa());continue;}
    try{
-    const a=await readAttachment(file),check=validateAttachmentSet([...next,a]);
-    if(!check.ok){if(a.previewUrl)URL.revokeObjectURL(a.previewUrl);fail(check.error);continue;}
+    const read=await readAttachment(file),check=validateAttachmentSet([...next,read]);
+    if(!check.ok){if(read.previewUrl)URL.revokeObjectURL(read.previewUrl);fail(check.error);continue;}
+    const tagged=allocateTag(tagCounters.current,read.kind);
+    if(!tagged){if(read.previewUrl)URL.revokeObjectURL(read.previewUrl);fail(ATTACHMENT_ERRORS_FA.tagsExhausted);continue;}
+    tagCounters.current=tagged.counters;
+    const a:LocalAttachment={...read,tag:tagged.tag};
     if(a.previewUrl)urls.current.add(a.previewUrl);
     next.push(a);added.push(a);
    }catch(err){fail(err instanceof Error?err.message:ATTACHMENT_ERRORS_FA.unreadable);}
@@ -116,7 +131,14 @@ export function Studio(){
   const a=attachments.find(x=>x.id===id);if(a)releaseUrl(a);
   setAttachments(list=>list.filter(x=>x.id!==id));
  }
- function patchAttachment(id:string,patch:AttachmentPatch){setAttachments(list=>list.map(x=>x.id===id?{...x,...patch}:x));}
+ function patchAttachment(id:string,patch:AttachmentPatch){setAttachments(list=>list.map(x=>x.id!==id?x:patch.role?withRole(x,patch.role):{...x,...patch}));}
+ /** Puts `@tag ` into the prompt at the caret (or over the selection) and returns focus to it. */
+ function mentionTag(tag:string){
+  const el=promptRef.current;if(!el)return;
+  const r=insertMention(draft,el.selectionStart,el.selectionEnd,tag);
+  if(r.text.length>4000)return;
+  setDraft(r.text);requestAnimationFrame(()=>{el.focus();el.setSelectionRange(r.caret,r.caret);});
+ }
  function onDrop(e:DragEvent){
   if(!hasFiles(e))return;
   e.preventDefault();dragDepth.current=0;setDragging(false);void addFiles(Array.from(e.dataTransfer.files));
@@ -127,12 +149,25 @@ export function Studio(){
  }
  function newChat(){
   urls.current.forEach(u=>URL.revokeObjectURL(u));urls.current.clear();
-  setAttachments([]);setProblems([]);setAnnounce("");setPreviewing(null);
+  setAttachments([]);setProblems([]);setAnnounce("");setPreviewing(null);setAttempted(false);tagCounters.current=newTagCounters();
   setMessages([{role:"agent",text:opening}]);setProposal(null);setNoModel(null);setRestricted("");setJob(null);
   setPreview(idlePreview);setError("");setDraft("");
  }
  async function send(e:FormEvent){
   e.preventDefault();const text=draft.trim();if(!text||busy)return;
+  // Every image, video and audio needs a role (and voice cloning a consent) before anything is sent.
+  const missing=sendBlockers(attachments);
+  if(missing.length){
+   setAttempted(true);setError("");
+   const first="#attachment-"+missing[0].id;
+   requestAnimationFrame(()=>document.querySelector<HTMLElement>(first+" [data-slot=select-trigger],"+first+" [data-slot=checkbox]")?.focus());
+   return;
+  }
+  // This message's new files plus any earlier file it names with @tag (metadata only, as before).
+  const mentioned=parseMentions(text),inTray=new Set(attachments.map(a=>a.id));
+  const outgoing=[...messages.flatMap(m=>m.attachments??[]).filter(a=>mentioned.includes(a.tag)&&!inTray.has(a.id)),...attachments];
+  const fits=validateAttachmentSet(outgoing);
+  if(!fits.ok){setError(fits.error);return;}
   // The profile may have been edited or withdrawn in another tab: send what is stored now, and only if it is still usable.
   let current=character;
   if(character){
@@ -146,11 +181,11 @@ export function Studio(){
   }
   // The tray clears, but the files stay (with their object URLs) on the sent message; they are released on new chat or unmount.
   const sent=attachments;
-  setDraft("");setError("");setRestricted("");setBusy(true);setProposal(null);setNoModel(null);setAttachments([]);setProblems([]);setAnnounce("");
+  setDraft("");setError("");setAttempted(false);setRestricted("");setBusy(true);setProposal(null);setNoModel(null);setAttachments([]);setProblems([]);setAnnounce("");
   setMessages(m=>[...m,{role:"user",text,...(sent.length?{attachments:sent}:{})}]);
   const characterRef=current?{id:current.id,name:current.name,angles:characterCoverage(current.references).uploaded,version:current.version}:undefined;
   try{
-   const r=await fetch("/api/agent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,preference,...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(sent.length?{attachments:sent.map(toWireAttachment)}:{})})});
+   const r=await fetch("/api/agent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,preference,...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(toWireAttachment)}:{})})});
    if(!r.ok){
     const errorBody=await r.json().catch(()=>({})) as {error?:string;message?:string;plan?:AgentProposal["plan"]};
     if(r.status===422&&errorBody.error==="no_compatible_model"){
@@ -272,8 +307,8 @@ export function Studio(){
     <ScrollArea className="min-h-0 flex-1">
      <div aria-live="polite" aria-label="گفت‌وگو" role="log" className="flex flex-col gap-4 p-4">
       {messages.map((m,i)=><div key={i} className={m.role==="user"?"max-w-[85%] self-end rounded-card bg-surface-subtle px-4 py-3 type-body-sm text-fg-primary":"type-body-sm text-fg-primary"}>
-       <span className="sr-only">{m.role==="user"?"شما: ":"هووش: "}</span>{m.text}
-       {m.attachments&&<ul aria-label="پیوست‌های این پیام" className="mt-2 flex flex-wrap gap-2">{m.attachments.map(a=><AttachmentChip key={a.id} item={a} onPreview={()=>setPreviewing(a)}/>)}</ul>}
+       <span className="sr-only">{m.role==="user"?"شما: ":"هووش: "}</span>{m.role==="user"?<MessageText text={m.text} attachments={byTag} onOpen={setPreviewing}/>:m.text}
+       {m.attachments&&<ul aria-label="پیوست‌های این پیام" className="mt-2 flex flex-wrap gap-2">{m.attachments.map(a=><AttachmentChip key={a.id} item={a} onPreview={()=>setPreviewing(a)} onMention={()=>mentionTag(a.tag)}/>)}</ul>}
       </div>)}
       {proposal&&<ProposalCard proposal={proposal} selected={selected} onSelect={setSelected} busy={busy} onApprove={()=>void approve()}/>}
       {noModel&&<NoModelCard result={noModel}/>}
@@ -291,9 +326,9 @@ export function Studio(){
      <AlertDescription>{error}</AlertDescription>
     </Alert></div>}
     <form onSubmit={e=>void send(e)} className="flex shrink-0 flex-col gap-3 border-t border-line-tertiary bg-surface-base p-4">
-     <AttachmentTray items={attachments} problems={problems} reading={reading} onChange={patchAttachment} onRemove={removeAttachment} onPreview={setPreviewing} onDismiss={key=>setProblems(list=>list.filter(p=>p.key!==key))}/>
+     <AttachmentTray items={attachments} problems={problems} blockers={blockers} reading={reading} onChange={patchAttachment} onRemove={removeAttachment} onPreview={setPreviewing} onMention={mentionTag} onDismiss={key=>setProblems(list=>list.filter(p=>p.key!==key))}/>
      <Label className="sr-only" htmlFor="whoush-prompt">توضیح تصویر یا ویدیو</Label>
-     <Textarea id="whoush-prompt" value={draft} onChange={e=>setDraft(e.target.value)} onPaste={onPaste} placeholder="چی دوست داری بسازیم؟" rows={3} maxLength={4000} className="max-h-40 resize-none"/>
+     <MentionTextarea id="whoush-prompt" inputRef={promptRef} value={draft} onValueChange={setDraft} options={conversation} onPaste={onPaste} placeholder="چی دوست داری بسازیم؟ با @ به پیوست‌ها اشاره کن" rows={3} maxLength={4000} className="max-h-40 resize-none"/>
      <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex flex-wrap items-center gap-2">
        <input ref={fileInput} type="file" multiple hidden accept={ATTACHMENT_ACCEPT} data-testid="attachment-input" onChange={e=>{const files=Array.from(e.target.files??[]);e.target.value="";void addFiles(files);}}/>

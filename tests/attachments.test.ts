@@ -1,6 +1,6 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {ATTACHMENT_ACCEPT,ATTACHMENT_KINDS,ATTACHMENT_ROLE_IDS,MAX_ATTACHMENTS,MAX_EXCERPT_CHARS,MAX_TOTAL_ATTACHMENT_BYTES,TAG_PATTERN,allocateTag,describeTagEn,insertMention,mentionTrigger,newTagCounters,parseMentions,rewriteMentions,roleLabelFa,rolesFor,sendBlockers,sniffKind,splitMentions,tagPrefix,textExcerpt,toWireAttachment,validateAttachmentSet,type AttachmentKind,type LocalAttachment} from "../lib/attachments";
+import {ATTACHMENT_ACCEPT,ATTACHMENT_KINDS,ATTACHMENT_ROLE_IDS,MAX_ATTACHMENTS,MAX_EXCERPT_CHARS,MAX_TOTAL_ATTACHMENT_BYTES,TAG_PATTERN,allocateTag,describeTagEn,insertMention,mentionTrigger,newTagCounters,parseMentions,rewriteMentions,roleLabelFa,rolesFor,sendBlockers,sniffKind,splitMentions,tagPrefix,textExcerpt,toWireAttachment,validateAttachmentSet,withRole,type AttachmentKind,type LocalAttachment} from "../lib/attachments";
 import {CreativeTurnInputSchema} from "../lib/creative-plan";
 import {faDuration} from "../lib/format";
 
@@ -204,6 +204,16 @@ test("send blockers: media without a role, and voice_clone without consent",()=>
  assert.deepEqual(sendBlockers([a("audio1","audio",{role:"voice_clone",consent:true}),a("image1","image",{role:"object"})]),[]);
 });
 
+test("choosing a role drops what belongs to another role and ignores roles the kind cannot have",()=>{
+ const audio:LocalAttachment={id:"a",tag:"audio1",kind:"audio",mime:"audio/mpeg",bytes:1,sha256:"a".repeat(64),name:"x.mp3"};
+ const lip=withRole(audio,"lip_sync");assert.deepEqual(lip.speech,{hasSpeech:true,language:"unknown",accent:"unspecified"});
+ const tuned=withRole({...lip,speech:{hasSpeech:true,language:"fa",accent:"original"}},"lip_sync");assert.equal(tuned.speech?.language,"fa","re-picking the same role keeps the choices");
+ const music=withRole(tuned,"music");assert.equal(music.role,"music");assert.ok(!("speech" in music));
+ const clone=withRole(music,"voice_clone");assert.equal(clone.role,"voice_clone");assert.ok(!("consent" in clone)&&sendBlockers([clone])[0].reason==="consent");
+ assert.equal(withRole({...clone,consent:true},"voice_clone").consent,true);assert.ok(!("consent" in withRole({...clone,consent:true},"music")));
+ assert.equal(withRole(audio,"character"),audio,"an image role on audio is ignored");
+ assert.equal(withRole({...audio,kind:"md"},"music").role,undefined);
+});
 test("the wire payload carries metadata only: no name, no object URL, no bytes",()=>{
  const local:LocalAttachment={id:crypto.randomUUID(),tag:"file1",kind:"md",mime:"text/markdown",bytes:12,sha256:"b".repeat(64),name:"private-notes.md",textExcerpt:"# hi",previewUrl:"blob:http://x/1"};
  const w=toWireAttachment(local);
