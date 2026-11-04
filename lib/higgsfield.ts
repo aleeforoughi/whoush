@@ -1,5 +1,5 @@
 import "server-only";
-import { providerPolicy } from "./policy";
+import { devLiveTest, providerPolicy } from "./policy";
 const BASE="https://api.higgsfield.ai";
 export type HiggsfieldSubmission={request_id:string;status_url?:string;cancel_url?:string};
 // Status values and response fields as documented (docs/HIGGSFIELD_EVIDENCE.md): in_progress is the only non-terminal state besides queued.
@@ -7,7 +7,8 @@ export type HiggsfieldStatusValue="queued"|"in_progress"|"completed"|"failed"|"n
 export type HiggsfieldStatus={status:HiggsfieldStatusValue;request_id?:string;images?:{url:string}[];video?:{url:string};audio?:{url:string};audios?:{url:string}[];error?:string|null;expires_at?:string|null};
 export class NotCancelableError extends Error{constructor(){super("Request can no longer be canceled");this.name="NotCancelableError";}}
 function auth(){const key=process.env.HIGGSFIELD_API_KEY;if(!key) throw new Error("Missing credentials");return {"Authorization":"Key "+key,"Content-Type":"application/json"};}
-function requireEnabled(){if(!providerPolicy().liveGeneration) throw new Error("Live API disabled by deployment policy");}
+// Production gate, or owner-only local dev testing (devLiveTest: next dev + WHOUSH_DEV_LIVE_TEST, capped and never charged; see lib/policy.ts).
+function requireEnabled(){if(!providerPolicy().liveGeneration&&!devLiveTest().enabled) throw new Error("Live API disabled by deployment policy");}
 export async function submitHiggsfieldVerifiedPath(verifiedPath:string,payload:Record<string,unknown>,idempotencyKey?:string):Promise<HiggsfieldSubmission>{
  requireEnabled();
  if(!/^\/[a-z0-9-]+\/[a-z0-9-]+(?:\/[a-z0-9-]+)*$/.test(verifiedPath)) throw new Error("Invalid configured model path");

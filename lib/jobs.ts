@@ -71,8 +71,9 @@ export async function executeApprovedQuote(i:{token:string;approved:boolean;idem
   const r=await provider.submit({modelId:job.modelId,prompt,configuration:job.configuration,idempotencyKey:job.id});
   job.providerRequestId=r.providerRequestId;transition(job,"submitted",deps.now?.()??new Date());
   if(job.mode==="dev_live")console.info("[whoush dev-live] media submit",job.modelId,r.providerRequestId); // never the prompt
- }catch{
+ }catch(e){
   // CONCERN: an ambiguous live submit failure may have created a provider request; needs reconciliation before launch.
+  if(job.mode==="dev_live")console.warn("[whoush dev-live] media submit failed:",e instanceof Error?e.message:"unknown"); // message only: no key, no prompt
   ledger.release(job.id);transition(job,"released",deps.now?.()??new Date());
  }
  store.save(job);return job;
