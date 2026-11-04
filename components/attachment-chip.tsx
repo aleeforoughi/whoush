@@ -9,7 +9,7 @@ const LANGUAGES=[{value:"fa",label:"فارسی"},{value:"other",label:"زبان 
 const ACCENTS=[{value:"original",label:"حفظ لهجهٔ اصلی"},{value:"tehrani",label:"تهرانی"},{value:"unspecified",label:"نامشخص"}];
 export type AttachmentPatch=Partial<Pick<LocalAttachment,"role"|"speech"|"consent">>;
 export const canPreview=(a:LocalAttachment)=>Boolean(a.previewUrl)&&(a.kind==="image"||a.kind==="video");
-/** The Persian tag (`#تصویر۱`) in a `<bdi>`; it is Persian text now, so it takes its direction from its own letters. */
+/** The Persian tag (`#تصویر-۱`) in a `<bdi>`; it is Persian text now, so it takes its direction from its own letters. */
 const tagText=(tag:string)=><bdi>{displayTag(tag)}</bdi>;
 
 function Thumb({a}:{a:LocalAttachment}){
@@ -29,7 +29,7 @@ function Meta({a}:{a:LocalAttachment}){
   {a.width!==undefined&&a.height!==undefined&&<> · <bdi>{faDimensions(a.width,a.height)}</bdi></>}
  </span>;
 }
-/** The tag as a small Badge; with `onMention` it is a button that puts the Persian tag (`#تصویر۱`) into the prompt at the caret. */
+/** The tag as a small Badge; with `onMention` it is a button that puts the Persian tag (`#تصویر-۱`) into the prompt at the caret. */
 export function TagBadge({tag,onMention}:{tag:string;onMention?:()=>void}){
  const badge=<Badge variant="secondary">{tagText(tag)}</Badge>;
  return onMention

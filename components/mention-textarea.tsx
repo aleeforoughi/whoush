@@ -9,7 +9,7 @@ const NAV_KEYS=["ArrowUp","ArrowDown","Enter","Tab","Escape"];
 /**
  * The prompt field with a `#` mention picker (`@` works too), built as an ARIA combobox: focus stays in the textarea, the list is a listbox whose
  * active option is announced through aria-activedescendant. Typing `#` (at the start or after whitespace) opens every conversation
- * attachment; more characters filter by tag word (Persian or English, either digit set). Choosing one writes the canonical `#تصویر۱`. An ordinary
+ * attachment; more characters filter by tag word (Persian or English, either digit set, hyphen or not). Choosing one writes the canonical `#تصویر-۱`. An ordinary
  * hashtag such as `#نوروز` is not the start of any tag word, so the list closes. ArrowUp/ArrowDown move, Enter or Tab insert, Escape closes.
  */
 export function MentionTextarea({value,onValueChange,options,inputRef,...props}:Omit<ComponentProps<"textarea">,"value"|"onChange"|"ref">&{value:string;onValueChange:(v:string)=>void;options:readonly MentionOption[];inputRef:RefObject<HTMLTextAreaElement|null>}){
@@ -30,7 +30,7 @@ export function MentionTextarea({value,onValueChange,options,inputRef,...props}:
  }
  function pick(o:MentionOption){
   const el=inputRef.current;if(!el||!trigger)return;
-  const caret=el.selectionStart,end=caret+(/^[\p{L}\p{N}\u200c\u0640]*/u.exec(value.slice(caret))?.[0].length??0);
+  const caret=el.selectionStart,end=caret+(/^[\p{L}\p{N}\u200c\u0640\u2010\u2011\u2013\u2212\-]*/u.exec(value.slice(caret))?.[0].length??0);
   const r=insertMention(value,trigger.start,end,o.tag);
   if(props.maxLength&&r.text.length>props.maxLength)return;
   onValueChange(r.text);setTrigger(null);

@@ -132,7 +132,7 @@ export function Studio(){
   setAttachments(list=>list.filter(x=>x.id!==id));
  }
  function patchAttachment(id:string,patch:AttachmentPatch){setAttachments(list=>list.map(x=>x.id!==id?x:patch.role?withRole(x,patch.role):{...x,...patch}));}
- /** Puts the Persian tag (`#تصویر۱ `) into the prompt at the caret (or over the selection) and returns focus to it. */
+ /** Puts the Persian tag (`#تصویر-۱ `) into the prompt at the caret (or over the selection) and returns focus to it. */
  function mentionTag(tag:string){
   const el=promptRef.current;if(!el)return;
   const r=insertMention(draft,el.selectionStart,el.selectionEnd,tag);
@@ -163,7 +163,7 @@ export function Studio(){
    requestAnimationFrame(()=>document.querySelector<HTMLElement>(first+" [data-slot=select-trigger],"+first+" [data-slot=checkbox]")?.focus());
    return;
   }
-  // This message's new files plus any earlier file it mentions as #تصویر۱ or @image1 (metadata only, as before).
+  // This message's new files plus any earlier file it mentions as #تصویر-۱ or @image1 (metadata only, as before).
   const mentioned=parseMentions(text),inTray=new Set(attachments.map(a=>a.id));
   const outgoing=[...messages.flatMap(m=>m.attachments??[]).filter(a=>mentioned.includes(a.tag)&&!inTray.has(a.id)),...attachments];
   const fits=validateAttachmentSet(outgoing);

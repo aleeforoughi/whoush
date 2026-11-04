@@ -184,52 +184,59 @@ test("rewriteMentions describes each mention in English and marks a missing tag"
  assert.equal(describeTagEn({tag:"video2",kind:"video",role:"edit_reference"}),"[edit reference video 2]");
  assert.equal(describeTagEn({tag:"audio1",kind:"audio",role:"lip_sync"}),"[lip sync audio 1]");
 });
-test("displayTag shows the Persian word and Persian digits for every kind and for two-digit numbers",()=>{
- assert.equal(displayTag("image1"),"#تصویر۱");assert.equal(displayTag("video1"),"#ویدیو۱");assert.equal(displayTag("audio1"),"#صدا۱");assert.equal(displayTag("file1"),"#فایل۱");
- assert.equal(displayTag("image12"),"#تصویر۱۲");assert.equal(displayTag("file99"),"#فایل۹۹");assert.equal(displayTag("video10"),"#ویدیو۱۰");
- assert.ok(/^#[\u0600-\u06ff]+[\u06f0-\u06f9]+$/.test(displayTag("audio7")),"Persian digits U+06F0-U+06F9 only");
+test("displayTag shows the Persian word, an ASCII hyphen and Persian digits for every kind and for two-digit numbers",()=>{
+ assert.equal(displayTag("image1"),"#تصویر-۱");assert.equal(displayTag("video1"),"#ویدیو-۱");assert.equal(displayTag("audio1"),"#صدا-۱");assert.equal(displayTag("file1"),"#فایل-۱");
+ assert.equal(displayTag("image12"),"#تصویر-۱۲");assert.equal(displayTag("file99"),"#فایل-۹۹");assert.equal(displayTag("video10"),"#ویدیو-۱۰");
+ assert.ok(/^#[\u0600-\u06ff]+-[\u06f0-\u06f9]+$/.test(displayTag("audio7")),"Persian digits U+06F0-U+06F9 and a U+002D hyphen");
+ assert.equal(displayTag("image1").charCodeAt(displayTag("image1").indexOf("-")),0x2d);
  for(const kind of Object.keys(ATTACHMENT_KINDS) as AttachmentKind[]){const tag=tagPrefix(kind)+"3";assert.deepEqual(parseMentions(displayTag(tag)),[tag],"the display form parses back to the internal tag");}
 });
-test("parseMentions accepts Persian, Arabic-script and English spellings with # or @",()=>{
- assert.deepEqual(parseMentions("#تصویر۱"),["image1"]);
- assert.deepEqual(parseMentions("#تصوير١"),["image1"],"Arabic yeh and an Arabic-Indic digit");
- assert.deepEqual(parseMentions("#ویدئو۲"),["video2"]);assert.deepEqual(parseMentions("#ویدیو۲"),["video2"]);assert.deepEqual(parseMentions("@صدا۳"),["audio3"]);
- assert.deepEqual(parseMentions("#فایل1"),["file1"]);assert.deepEqual(parseMentions("@image1"),["image1"]);assert.deepEqual(parseMentions("#image1 @Video2"),["image1","video2"]);
- assert.deepEqual(parseMentions("#فايل٣ و #صدا1"),["file3","audio1"],"Arabic yeh in the word, mixed digit sets");
- assert.deepEqual(parseMentions("#تص\u200cویر۱"),["image1"],"ZWNJ inside the word is dropped");assert.deepEqual(parseMentions("#تصـویر۱"),["image1"],"tatweel inside the word is dropped");
- assert.deepEqual(parseMentions("#تصویر۱، بعد #تصویر۱ و #تصویر۲."),["image1","image2"],"punctuation after is fine; each tag once");
- assert.deepEqual(parseMentions("کاراکتر #تصویر۱ را در #تصویر۱۲ بگذار"),["image1","image12"]);assert.deepEqual(parseMentions("(#صدا۳)"),["audio3"]);
+test("parseMentions accepts the hyphenated, plain, Arabic-script and English spellings with # or @",()=>{
+ assert.deepEqual(parseMentions("#تصویر-۱"),["image1"]);assert.deepEqual(parseMentions("#تصویر۱"),["image1"]);
+ assert.deepEqual(parseMentions("#صدا-۱ #صدا۱ #صدا1 #صدا-1"),["audio1"],"hyphen, no hyphen and ASCII digits name the same tag");
+ assert.deepEqual(parseMentions("#تصوير-١"),["image1"],"Arabic yeh and an Arabic-Indic digit");assert.deepEqual(parseMentions("#تصوير١"),["image1"]);
+ assert.deepEqual(parseMentions("#ویدئو-۲"),["video2"]);assert.deepEqual(parseMentions("#ویدیو۲"),["video2"]);assert.deepEqual(parseMentions("@صدا-۳"),["audio3"]);assert.deepEqual(parseMentions("@صدا۳"),["audio3"]);
+ assert.deepEqual(parseMentions("#فایل1"),["file1"]);assert.deepEqual(parseMentions("#فایل-1"),["file1"]);
+ assert.deepEqual(parseMentions("@image1"),["image1"]);assert.deepEqual(parseMentions("@image-1"),["image1"]);assert.deepEqual(parseMentions("#image-1 @Video2"),["image1","video2"]);
+ for(const dash of ["\u2010","\u2011","\u2013","\u2212"])assert.deepEqual(parseMentions("#تصویر"+dash+"۱"),["image1"],"dash U+"+dash.charCodeAt(0).toString(16));
+ assert.deepEqual(parseMentions("#فايل-٣ و #صدا1"),["file3","audio1"],"Arabic yeh in the word, mixed digit sets");
+ assert.deepEqual(parseMentions("#تص\u200cویر-۱"),["image1"],"ZWNJ inside the word is dropped");assert.deepEqual(parseMentions("#تصویر\u200c۱"),["image1"],"a ZWNJ in place of the hyphen");assert.deepEqual(parseMentions("#تصـویر-۱"),["image1"],"tatweel inside the word is dropped");
+ assert.deepEqual(parseMentions("#تصویر-۱، بعد #تصویر۱ و #تصویر-۲."),["image1","image2"],"punctuation after is fine; each tag once");
+ assert.deepEqual(parseMentions("کاراکتر #تصویر-۱ را در #تصویر-۱۲ بگذار"),["image1","image12"]);assert.deepEqual(parseMentions("(#صدا-۳)"),["audio3"]);
 });
 test("parseMentions rejects ordinary hashtags, emails, longer numbers and zero",()=>{
- for(const no of ["#نوروز","email@image1.com","#تصویر۱۲۳","#تصویر۰","#تصویر۰۱","#تصویر","#تصویرها۱","متن#تصویر۱","x#صدا۱","##تصویر۱","#تصویر۱ام","#تصویر۱\u200cام","#تصویر۱_","#تصویر۱a","#عکس۱","@@صدا۱"])assert.deepEqual(parseMentions(no),[],no);
- assert.deepEqual(splitMentions("a #تصویر۱، b @Image2"),[{text:"a "},{tag:"image1",raw:"#تصویر۱"},{text:"، b "},{tag:"image2",raw:"@Image2"}]);
+ for(const no of ["#نوروز","email@image1.com","#تصویر-۱۲۳","#تصویر۱۲۳","#تصویر-۰","#تصویر۰","#تصویر-۰۱","#تصویر","#تصویر-","#تصویرها-۱","#تصویر--۱","متن#تصویر-۱","x#صدا-۱","##تصویر-۱","#تصویر-۱ام","#تصویر-۱\u200cام","#تصویر-۱_","#تصویر-۱a","#عکس-۱","@@صدا-۱","email@image-1.com"])assert.deepEqual(parseMentions(no),[],no);
+ assert.deepEqual(splitMentions("a #تصویر-۱، b @Image2"),[{text:"a "},{tag:"image1",raw:"#تصویر-۱"},{text:"، b "},{tag:"image2",raw:"@Image2"}]);
+ assert.deepEqual(splitMentions("#تصویر۱ و @image-1"),[{tag:"image1",raw:"#تصویر۱"},{text:" و "},{tag:"image1",raw:"@image-1"}]);
 });
-test("rewriteMentions turns Persian and English mentions into the same English description",()=>{
+test("rewriteMentions turns every accepted spelling into the same English description",()=>{
  const m=new Map([["image1",{tag:"image1",kind:"image" as const,role:"character" as const}],["audio1",{tag:"audio1",kind:"audio" as const,role:"music" as const}]]);
- assert.equal(rewriteMentions("#تصوير١ با @image1 و #صدا۱ و #تصویر۳ و #نوروز",m),"[reference image 1 · character] با [reference image 1 · character] و [music reference audio 1] و [missing attachment] و #نوروز");
+ assert.equal(rewriteMentions("#تصوير-١ با #تصویر۱ و @image1 و @image-1 و #صدا-۱ و #تصویر-۳ و #نوروز",m),"[reference image 1 · character] با [reference image 1 · character] و [reference image 1 · character] و [reference image 1 · character] و [music reference audio 1] و [missing attachment] و #نوروز");
 });
-test("composer helpers: insertMention writes the canonical Persian tag and keeps spacing and the caret",()=>{
- assert.deepEqual(insertMention("",0,0,"image1"),{text:"#تصویر۱ ",caret:8});
- assert.deepEqual(insertMention("hello",5,5,"image1"),{text:"hello #تصویر۱ ",caret:14});
- assert.deepEqual(insertMention("hello ",6,6,"image1"),{text:"hello #تصویر۱ ",caret:14});
- assert.deepEqual(insertMention("hi @im there",3,6,"image1"),{text:"hi #تصویر۱ there",caret:11});
- assert.deepEqual(insertMention("hi #تص there",3,6,"audio12"),{text:"hi #صدا۱۲ there",caret:10});
- assert.deepEqual(insertMention("a @im",2,5,"video1"),{text:"a #ویدیو۱ ",caret:10});
- const r=insertMention("بیا #صد",4,7,"audio2");assert.equal(r.text,"بیا #صدا۲ ");assert.equal(r.text.slice(0,r.caret),"بیا #صدا۲ ");assert.deepEqual(parseMentions(r.text),["audio2"]);
+test("composer helpers: insertMention writes the canonical hyphenated Persian tag and keeps spacing and the caret",()=>{
+ assert.deepEqual(insertMention("",0,0,"image1"),{text:"#تصویر-۱ ",caret:9});
+ assert.deepEqual(insertMention("hello",5,5,"image1"),{text:"hello #تصویر-۱ ",caret:15});
+ assert.deepEqual(insertMention("hello ",6,6,"image1"),{text:"hello #تصویر-۱ ",caret:15});
+ assert.deepEqual(insertMention("hi @im there",3,6,"image1"),{text:"hi #تصویر-۱ there",caret:12});
+ assert.deepEqual(insertMention("hi #تص there",3,6,"audio12"),{text:"hi #صدا-۱۲ there",caret:11});
+ assert.deepEqual(insertMention("hi #صدا- there",3,8,"audio1"),{text:"hi #صدا-۱ there",caret:10});
+ assert.deepEqual(insertMention("a @im",2,5,"video1"),{text:"a #ویدیو-۱ ",caret:11});
+ const r=insertMention("بیا #صد",4,7,"audio2");assert.equal(r.text,"بیا #صدا-۲ ");assert.equal(r.text.slice(0,r.caret),"بیا #صدا-۲ ");assert.deepEqual(parseMentions(r.text),["audio2"]);
 });
 test("mentionTrigger opens on # or @ at a word start and closes for ordinary hashtags",()=>{
  assert.deepEqual(mentionTrigger("@",1),{start:0,query:""});assert.deepEqual(mentionTrigger("#",1),{start:0,query:""});assert.deepEqual(mentionTrigger("see @Im",7),{start:4,query:"im"});
  assert.deepEqual(mentionTrigger("x\n@image1",9),{start:2,query:"image1"});assert.deepEqual(mentionTrigger("سلام @aud",9),{start:5,query:"aud"});
  assert.deepEqual(mentionTrigger("سلام #تص",8),{start:5,query:"تص"});assert.deepEqual(mentionTrigger("#صدا",4),{start:0,query:"صدا"});assert.deepEqual(mentionTrigger("#im",3),{start:0,query:"im"});
- assert.deepEqual(mentionTrigger("#تصوير١",7),{start:0,query:"تصویر1"},"the query is normalized");assert.deepEqual(mentionTrigger("#ويدئو",6),{start:0,query:"ویدئو"},"Arabic yeh is unified");
- assert.equal(mentionTrigger("#نوروز",6),undefined,"an ordinary hashtag");assert.equal(mentionTrigger("#ن",2),undefined);assert.equal(mentionTrigger("#تصویر۱۲۳",9),undefined);assert.equal(mentionTrigger("@xyz",4),undefined);
+ assert.deepEqual(mentionTrigger("#صدا-",5),{start:0,query:"صدا-"},"a hyphen after the word keeps the list open");assert.deepEqual(mentionTrigger("#صدا\u2011۱",6),{start:0,query:"صدا-1"},"other dashes and digits are normalized");
+ assert.deepEqual(mentionTrigger("#تصوير-١",8),{start:0,query:"تصویر-1"},"the query is normalized");assert.deepEqual(mentionTrigger("#ويدئو",6),{start:0,query:"ویدئو"},"Arabic yeh is unified");
+ assert.equal(mentionTrigger("#نوروز",6),undefined,"an ordinary hashtag");assert.equal(mentionTrigger("#ن",2),undefined);assert.equal(mentionTrigger("#تصویر-۱۲۳",10),undefined);assert.equal(mentionTrigger("#تصویر--",8),undefined);assert.equal(mentionTrigger("@xyz",4),undefined);
  assert.equal(mentionTrigger("email@im",8),undefined);assert.equal(mentionTrigger("a#تص",4),undefined);assert.equal(mentionTrigger("@im ",4),undefined);assert.equal(mentionTrigger("hello",5),undefined);
- assert.deepEqual(mentionTrigger("#تصویر۱ and more",3),{start:0,query:"تص"});assert.deepEqual(mentionTrigger("@image1 and more",3),{start:0,query:"im"});
+ assert.deepEqual(mentionTrigger("#تصویر-۱ and more",3),{start:0,query:"تص"});assert.deepEqual(mentionTrigger("@image1 and more",3),{start:0,query:"im"});
 });
-test("tagMatchesQuery filters by Persian or English word and either digit set",()=>{
- for(const q of ["","ت","تص","تصویر","تصویر۱","تصویر1","تصوير١","im","IM","image","image1"])assert.ok(tagMatchesQuery("image1",q),q);
- for(const q of ["صدا","vid","تصویر۲","image2","image12","نوروز"])assert.ok(!tagMatchesQuery("image1",q),q);
- assert.ok(tagMatchesQuery("audio1","صدا")&&tagMatchesQuery("audio1","au")&&tagMatchesQuery("video2","ویدئو")&&tagMatchesQuery("video2","ویدیو۲")&&tagMatchesQuery("file12","فا")&&tagMatchesQuery("file12","fi")&&tagMatchesQuery("file12","فایل۱"));
+test("tagMatchesQuery filters by Persian or English word, either digit set, with or without the hyphen",()=>{
+ for(const q of ["","ت","تص","تصویر","تصویر-","تصویر۱","تصویر-۱","تصویر1","تصوير-١","im","IM","image","image-","image1","image-1"])assert.ok(tagMatchesQuery("image1",q),q);
+ for(const q of ["صدا","vid","تصویر۲","تصویر-۲","image2","image12","نوروز","تصویر--"])assert.ok(!tagMatchesQuery("image1",q),q);
+ assert.ok(tagMatchesQuery("audio1","صدا")&&tagMatchesQuery("audio1","صدا-")&&tagMatchesQuery("audio1","au")&&tagMatchesQuery("video2","ویدئو-")&&tagMatchesQuery("video2","ویدیو-۲")&&tagMatchesQuery("file12","فا")&&tagMatchesQuery("file12","fi")&&tagMatchesQuery("file12","فایل-۱")&&tagMatchesQuery("file12","فایل۱۲"));
 });
 
 test("send blockers: media without a role, and voice_clone without consent",()=>{

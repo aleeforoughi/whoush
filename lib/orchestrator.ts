@@ -46,7 +46,7 @@ const missingQuestion=(angles:readonly string[])=>{const m=missingViews(angles);
 const fas=(l:readonly Pair[])=>l.map(x=>x.fa);
 const ens=(l:readonly Pair[])=>l.map(x=>x.en);
 // ---- attachment roles ----
-// Each role adds a hard constraint, a continuity lock or a soft preference. The Persian half names the attachment as `#تصویر۱` (`displayTag`); the English
+// Each role adds a hard constraint, a continuity lock or a soft preference. The Persian half names the attachment as `#تصویر-۱` (`displayTag`); the English
 // half uses the internal `@image1`, which `rewriteMentions` turns into an English description (`[reference image 1 · character]`) in the provider-facing prompt.
 type Ref={tag:string;kind:AttachmentKind;role?:AttachmentRole};
 const tagMap=(l:readonly Ref[]=[])=>new Map(l.map(a=>[a.tag,a]));

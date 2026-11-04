@@ -50,25 +50,25 @@ export function allocateTag(counters:TagCounters,kind:AttachmentKind):{tag:strin
  const prefix=tagPrefix(kind),n=counters[prefix]+1;
  return n>99?undefined:{tag:prefix+n,counters:{...counters,[prefix]:n}};
 }
-/** The Persian word shown in a tag: `image1` is `#تصویر۱`. The internal/wire tag stays English. */
+/** The Persian word shown in a tag: `image1` is `#تصویر-۱`. The internal/wire tag stays English. */
 export const TAG_WORD_FA={image:"تصویر",video:"ویدیو",audio:"صدا",file:"فایل"} as const satisfies Record<TagPrefix,string>;
 /** Every spelling accepted in a mention, as normalized by `normalizeMention`: Persian words (ویدئو too) and the legacy English prefixes. */
 const MENTION_WORDS:Record<string,TagPrefix>={"تصویر":"image","ویدیو":"video","ویدئو":"video","صدا":"audio","فایل":"file",image:"image",video:"video",audio:"audio",file:"file"};
 const faNumber=(n:number|string)=>String(n).replace(/\d/g,d=>String.fromCharCode(0x06f0+Number(d)));
-/** The user-facing form of an internal tag, with Persian digits: `image1` is `#تصویر۱`, `file12` is `#فایل۱۲`. */
+/** The user-facing form of an internal tag: the Persian word, an ASCII hyphen and Persian digits. `image1` is `#تصویر-۱`, `file12` is `#فایل-۱۲`. */
 export function displayTag(tag:string):string{
  const m=/^(image|video|audio|file)(\d+)$/.exec(tag);
- return m?"#"+TAG_WORD_FA[m[1] as TagPrefix]+faNumber(m[2]):"#"+tag;
+ return m?"#"+TAG_WORD_FA[m[1] as TagPrefix]+"-"+faNumber(m[2]):"#"+tag;
 }
-/** Case and script tolerant form of a typed token: Arabic ي/ى become ی, ك becomes ک, Arabic-Indic and Persian digits become ASCII, ZWNJ and tatweel vanish. */
-const normalizeMention=(s:string)=>s.replace(/[‌ـ]/g,"").replace(/[يى]/g,"ی").replace(/ك/g,"ک")
- .replace(/[٠-٩]/g,c=>String(c.charCodeAt(0)-0x0660)).replace(/[۰-۹]/g,c=>String(c.charCodeAt(0)-0x06f0)).toLowerCase();
+/** Case and script tolerant form of a typed token: Arabic ي/ى become ی, ك becomes ک, Arabic-Indic and Persian digits become ASCII, the dashes U+2010, U+2011, U+2013 and U+2212 become `-`, ZWNJ and tatweel vanish. */
+const normalizeMention=(s:string)=>s.replace(/[\u200c\u0640]/g,"").replace(/[\u064a\u0649]/g,"\u06cc").replace(/\u0643/g,"\u06a9").replace(/[\u2010\u2011\u2013\u2212]/g,"-")
+ .replace(/[\u0660-\u0669]/g,c=>String(c.charCodeAt(0)-0x0660)).replace(/[\u06f0-\u06f9]/g,c=>String(c.charCodeAt(0)-0x06f0)).toLowerCase();
 /**
- * Mention syntax: `#` or `@` + a Persian or English kind word + a number from 1 to 99, e.g. `#تصویر۱`, `@صدا3`, `@image1`. A token starts at the beginning
+ * Mention syntax: `#` or `@` + a Persian or English kind word + an optional hyphen (or U+2010, U+2011, U+2013, U+2212 dash) + a number from 1 to 99, e.g. `#تصویر-۱`, `#تصویر۱`, `@صدا3`, `@image-1`. A ZWNJ in place of the hyphen is part of the word and ignored. A token starts at the beginning
  * or after anything but a letter, digit, mark, ZWNJ, underscore, `@` or `#` (so `email@image1.com` is not a mention) and is not followed by a letter, digit,
  * mark, ZWNJ or underscore (so `#تصویر۱۲۳` and `#نوروز` are not mentions).
  */
-const mentionRe=()=>/(?<![\p{L}\p{N}\p{M}‌_@#])[#@]([\p{L}‌ـ]+)(\p{N}+)(?![\p{L}\p{N}\p{M}‌_])/gu;
+const mentionRe=()=>/(?<![\p{L}\p{N}\p{M}\u200c_@#])[#@]([\p{L}\u200c\u0640]+)[-\u2010\u2011\u2013\u2212]?(\p{N}+)(?![\p{L}\p{N}\p{M}\u200c_])/gu;
 /** Every valid mention in the text, in order, with its position and its internal tag. */
 function scanMentions(text:string):Array<{index:number;raw:string;tag:string}>{
  const out:Array<{index:number;raw:string;tag:string}>=[];
@@ -78,7 +78,7 @@ function scanMentions(text:string):Array<{index:number;raw:string;tag:string}>{
  }
  return out;
 }
-/** Distinct internal tags mentioned in the text (`#تصویر۱` and `@image1` both give `image1`), in order of first use. */
+/** Distinct internal tags mentioned in the text (`#تصویر-۱`, `#تصویر۱` and `@image1` all give `image1`), in order of first use. */
 export function parseMentions(text:string):string[]{
  return [...new Set(scanMentions(text).map(m=>m.tag))];
 }
@@ -110,28 +110,28 @@ export function rewriteMentions(text:string,byTag:ReadonlyMap<string,{tag:string
  }
  return out+text.slice(at);
 }
-/** Inserts the canonical `#تصویر۱ ` over the range [start,end), adding a leading space when the previous character is not whitespace; returns the new text and caret. */
+/** Inserts the canonical `#تصویر-۱ ` over the range [start,end), adding a leading space when the previous character is not whitespace; returns the new text and caret. */
 export function insertMention(text:string,start:number,end:number,tag:string):{text:string;caret:number}{
  const before=text.slice(0,start),after=text.slice(end),shown=displayTag(tag);
  const lead=before===""||/\s$/.test(before)?"":" ",ins=lead+shown+(/^\s/.test(after)?"":" ");
  return {text:before+ins+after,caret:before.length+lead.length+shown.length+1};
 }
-/** Whether a normalized query is the start of a tag word, optionally followed by up to two digits: `تص`, `im`, `صدا`, `video2`. */
+/** Whether a normalized query is the start of a tag word, optionally followed by a hyphen and up to two digits: `تص`, `im`, `صدا`, `صدا-`, `video2`. */
 function isTagQuery(q:string):boolean{
- return Object.keys(MENTION_WORDS).some(w=>w.startsWith(q)||(q.startsWith(w)&&/^\d{0,2}$/.test(q.slice(w.length))));
+ return Object.keys(MENTION_WORDS).some(w=>w.startsWith(q)||(q.startsWith(w)&&/^-?\d{0,2}$/.test(q.slice(w.length))));
 }
-/** Whether an attachment's tag matches a normalized picker query (Persian or English word, either digit set): `image1` matches `تص`, `im`, `تصویر۱` and `image1`, not `صدا`. */
+/** Whether an attachment's tag matches a normalized picker query (Persian or English word, either digit set, hyphen or not): `image1` matches `تص`, `im`, `تصویر-`, `تصویر۱` and `image1`, not `صدا`. */
 export function tagMatchesQuery(tag:string,query:string):boolean{
  const q=normalizeMention(query),m=/^(image|video|audio|file)(\d+)$/.exec(tag);
  if(!m)return false;
- return Object.entries(MENTION_WORDS).some(([w,p])=>p===m[1]&&(w+m[2]).startsWith(q));
+ return Object.entries(MENTION_WORDS).some(([w,p])=>p===m[1]&&((w+m[2]).startsWith(q)||(w+"-"+m[2]).startsWith(q)));
 }
 /**
  * The open `#query` or `@query` token right before the caret (at the start or after whitespace), if any. The query is normalized (lowercase, ASCII digits,
  * ی/ک unified). An ordinary hashtag such as `#نوروز` is not a trigger, because it is not the start of any tag word.
  */
 export function mentionTrigger(text:string,caret:number):{start:number;query:string}|undefined{
- const m=/(^|\s)[#@]([\p{L}\p{N}‌ـ]*)$/u.exec(text.slice(0,caret));
+ const m=/(^|\s)[#@]([\p{L}\p{N}\u200c\u0640\u2010\u2011\u2013\u2212\-]*)$/u.exec(text.slice(0,caret));
  if(!m)return undefined;
  const query=normalizeMention(m[2]);
  return isTagQuery(query)?{start:caret-m[2].length-1,query}:undefined;
