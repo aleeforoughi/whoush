@@ -438,10 +438,10 @@ test("attachments: the audit keeps only tag, role, kind, size and sha256",async(
 });
 test("attachments: every image counts as a reference image, video and audio roles raise their own requirements",()=>{
  const refs={attachments:[{kind:"image",role:"character"},{kind:"image",role:"environment"},{kind:"image",role:"edit_reference"},{kind:"video",role:"edit_reference"},{kind:"audio",role:"music"},{kind:"md"}]};
- assert.deepEqual(mediaRequirements(refs,false),{referenceImages:3,lipSync:undefined,videoReference:true});
- assert.deepEqual(mediaRequirements({...refs,characterRef:{angles:["front","profile_left"]}},true),{referenceImages:5,lipSync:true,videoReference:true});
+ assert.deepEqual(mediaRequirements(refs,false),{operation:"replace",referenceImages:3,lipSync:undefined,videoReference:true});
+ assert.deepEqual(mediaRequirements({...refs,characterRef:{angles:["front","profile_left"]}},true),{operation:"replace",referenceImages:5,lipSync:true,videoReference:true});
  assert.deepEqual(mediaRequirements({attachments:[{kind:"video",role:"motion_reference"}]},false),{referenceImages:undefined,lipSync:undefined,motionReference:true});
- assert.deepEqual(mediaRequirements({attachments:[{kind:"audio",role:"lip_sync"}]},false),{referenceImages:undefined,lipSync:true});
+ assert.deepEqual(mediaRequirements({attachments:[{kind:"audio",role:"lip_sync"}]},false),{operation:"lip_sync",referenceImages:undefined,lipSync:true});
  assert.deepEqual(mediaRequirements({attachments:[{kind:"audio",role:"voice_clone"},{kind:"audio",role:"music"}]},false),{referenceImages:undefined,lipSync:undefined});
  assert.deepEqual(mediaRequirements({},false),{referenceImages:undefined,lipSync:undefined});
 });
@@ -741,4 +741,40 @@ test("public plan: references carry tag, kind, role and labelFa only, files-only
  const docs=planned(await orchestrateCreativeTurn({text:LAKE,attachments:[att("md"),att("json"),att("pdf")]}));
  assert.deepEqual(docs.plan.references,[]);assert.ok(docs.proposal.fixedNeurons>0);
  assert.deepEqual(planned(await orchestrateCreativeTurn({text:LAKE})).plan.references,[]);
+});
+const SUGGEST=(name:string)=>"مدل مناسب این کار: "+name+"؛ پس از تأیید فعال می‌شود.";
+test("P5: lip-sync audio with a character image fails closed and suggests Intone (not active, no price)",async()=>{
+ const body={text:"a presenter greeting the audience",attachments:[att("audio",{tag:"audio1",role:"lip_sync"}),att("image",{tag:"image1",role:"character"})]};
+ const r=await orchestrateCreativeTurn(body);
+ assert.equal(r.status,"unsupported");const u=r as Extract<OrchestratorResult,{status:"unsupported"}>;
+ assert.equal(u.suggestedModel?.name,"Intone");assert.equal(u.suggestedModel?.active,false);assert.ok(u.suggestedModel!.blockersFa.length>=3);
+ assert.ok(u.message.endsWith(SUGGEST("Intone")),u.message);assert.deepEqual(u.plan.suggestedModel,u.suggestedModel);
+ const res=await POST(new Request("http://x/api/agent",{method:"POST",body:JSON.stringify(body)}));
+ assert.equal(res.status,422);const j=await res.json();assert.equal(j.suggestedModel.name,"Intone");assert.equal(j.plan.suggestedModel.name,"Intone");assert.ok(j.message.endsWith(SUGGEST("Intone")));
+ assertNoLeak(JSON.stringify(j),"intone");assert.deepEqual(Object.keys(j.suggestedModel).sort(),["active","blockersFa","name"],"no price or id");
+ // audio alone is enough
+ const audioOnly=await orchestrateCreativeTurn({text:"a presenter speaking",attachments:[att("audio",{role:"lip_sync"})]});
+ assert.equal((audioOnly as {suggestedModel?:{name:string}}).suggestedModel?.name,"Intone");
+});
+test("P5: video edit_reference + character/object image suggests Genjutsu; motion_reference + image suggests Genjutsu",async()=>{
+ for(const role of ["character","object"]){
+  const r=await orchestrateCreativeTurn({text:"swap the person in the clip",attachments:[att("video",{role:"edit_reference"}),att("image",{role})]}) as Extract<OrchestratorResult,{status:"unsupported"}>;
+  assert.equal(r.status,"unsupported");assert.equal(r.suggestedModel?.name,"Genjutsu");assert.ok(r.message.endsWith(SUGGEST("Genjutsu")));
+ }
+ const m=await orchestrateCreativeTurn({text:"make her dance like the clip",attachments:[att("video",{role:"motion_reference"}),att("image",{role:"character"})]}) as Extract<OrchestratorResult,{status:"unsupported"}>;
+ assert.equal(m.suggestedModel?.name,"Genjutsu");assert.ok(m.message.endsWith(SUGGEST("Genjutsu")));
+ assert.deepEqual(mediaRequirements({attachments:[{kind:"video",role:"motion_reference"},{kind:"image",role:"graphic"}]},false),{referenceImages:1,lipSync:undefined,motionReference:true});
+ // an environment image does not make an edit a replacement
+ const env=await orchestrateCreativeTurn({text:"change the sky in the clip",attachments:[att("video",{role:"edit_reference"}),att("image",{role:"environment"})]}) as Extract<OrchestratorResult,{status:"unsupported"}>;
+ assert.equal(env.suggestedModel,undefined);assert.ok(!env.message.includes("مدل مناسب این کار"));
+ // plain media-review (a reference image only) has no suggestion
+ const plain=await orchestrateCreativeTurn({text:"a photo of a lake",attachments:[att("image")]}) as Extract<OrchestratorResult,{status:"unsupported"}>;
+ assert.equal(plain.suggestedModel,undefined);assert.equal("suggestedModel" in plain.plan,false);
+});
+test("P5: voice clone gets no suggestion; mediaRequirements sees attachments and names the operation",async()=>{
+ const v=await orchestrateCreativeTurn({text:"clone this voice",attachments:[att("audio",{role:"voice_clone",consent:true}),att("image",{role:"character"})]}) as Extract<OrchestratorResult,{status:"unsupported"}>;
+ assert.equal(v.status,"unsupported");assert.equal(v.suggestedModel,undefined);assert.ok(!v.message.includes("مدل مناسب این کار"));assert.equal(last().fallbackReason,"voice_clone_unsupported");
+ assert.equal(mediaRequirements({attachments:[{kind:"audio",role:"lip_sync"},{kind:"image",role:"character"}]},false).operation,"lip_sync");
+ assert.equal(mediaRequirements({attachments:[{kind:"video",role:"edit_reference"},{kind:"image",role:"object"}]},false).operation,"replace");
+ assert.equal(mediaRequirements({attachments:[{kind:"video",role:"edit_reference"}]},false).operation,undefined);
 });

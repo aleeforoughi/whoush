@@ -1,7 +1,7 @@
 /** Pure typed contracts for the private creative orchestration layer. No server-only imports. */
 import {z} from "zod";
 import {CHARACTER_VIEWS,type CharacterView} from "./characters";
-import type {ReasoningTier} from "./types";
+import type {ReasoningTier,SuggestedModel} from "./types";
 import {ATTACHMENT_KINDS,ATTACHMENT_KIND_IDS,ATTACHMENT_ROLE_IDS,MAX_ATTACHMENTS,MAX_DURATION_SECONDS,MAX_EXCERPT_CHARS,MAX_TOTAL_ATTACHMENT_BYTES,TAG_PATTERN,isMediaKind,roleAllowed,tagPrefix,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
 const VIEW_IDS=CHARACTER_VIEWS.map(v=>v.id) as [CharacterView,...CharacterView[]];
 const accent=z.enum(["tehrani","original","unspecified"]);
@@ -74,10 +74,12 @@ export type PublicCreativePlan=Pick<CreativePlan,"intentSummaryFa"|"mediaKind"|"
  identityLock?:Pick<NonNullable<CreativePlan["identityLock"]>,"characterId"|"providedAngles"|"lockedAttributes"|"allowedChanges">;realism:{mode:CreativePlan["realism"]["mode"]};
  /** The media attachments the plan uses, by tag and role. Never ids, hashes or file names. */
  references:PublicReference[];
+ /** On an unsupported turn: the catalogue model that fits the work but cannot be offered yet (raw name and Persian blockers, never a price or id). */
+ suggestedModel?:SuggestedModel;
 };
-export function toPublicPlan(p:CreativePlan,references:readonly PublicReference[]=[]):PublicCreativePlan{
+export function toPublicPlan(p:CreativePlan,references:readonly PublicReference[]=[],suggestedModel?:SuggestedModel):PublicCreativePlan{
  const il=p.identityLock;
- return {references:references.map(r=>({tag:r.tag,kind:r.kind,role:r.role,roleSource:r.roleSource,labelFa:r.labelFa})),intentSummaryFa:p.intentSummaryFa,mediaKind:p.mediaKind,hardConstraints:p.hardConstraints,softPreferences:p.softPreferences,camera:p.camera,shot:p.shot,
+ return {...(suggestedModel?{suggestedModel:{name:suggestedModel.name,active:suggestedModel.active,blockersFa:[...suggestedModel.blockersFa]}}:{}),references:references.map(r=>({tag:r.tag,kind:r.kind,role:r.role,roleSource:r.roleSource,labelFa:r.labelFa})),intentSummaryFa:p.intentSummaryFa,mediaKind:p.mediaKind,hardConstraints:p.hardConstraints,softPreferences:p.softPreferences,camera:p.camera,shot:p.shot,
   identityLock:il&&{characterId:il.characterId,providedAngles:il.providedAngles,lockedAttributes:il.lockedAttributes,allowedChanges:il.allowedChanges},
   continuity:p.continuity,realism:{mode:p.realism.mode},speech:p.speech,qaChecklist:p.qaChecklist,clarifyingQuestionFa:p.clarifyingQuestionFa};
 }

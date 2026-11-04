@@ -1,7 +1,7 @@
 "use client";
 import {Check,CircleHelp} from "lucide-react";
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Card,CardAction,CardContent,CardDescription,CardFooter,CardHeader,CardTitle,Field,FieldContent,FieldDescription,FieldLabel,FieldLegend,FieldSet,FieldTitle,Icon,RadioGroup,RadioGroupItem,Separator} from "@aleeforoughi/feather-react";
-import {PlanDetails} from "@/components/plan-details";
+import {PlanDetails,SuggestedModelNote} from "@/components/plan-details";
 import type {AgentProposal,NoModelResult} from "@/lib/studio-types";
 import {fa} from "@/lib/format";
 
@@ -75,6 +75,7 @@ export function NoModelCard({result}:{result:NoModelResult}){
     <AlertTitle>یک سؤال برای ادامه</AlertTitle>
     <AlertDescription>{result.plan.clarifyingQuestionFa}</AlertDescription>
    </Alert>}
+   {result.plan.suggestedModel&&<SuggestedModelNote model={result.plan.suggestedModel}/>}
    <p className="type-body-sm text-fg-secondary">تا پیدا شدن مدل سازگار، قیمتی نمایش داده نمی‌شود و چیزی برای تأیید وجود ندارد.</p>
    <PlanDetails plan={result.plan} defaultOpen/>
   </CardContent>

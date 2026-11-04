@@ -6,14 +6,14 @@ import {CreativePlanSchema,CreativeTurnInputSchema,toPublicPlan,type PublicRefer
 import {llmPolicy,preparePrivateCreativeRequest} from "./llm";
 import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./private-audit";
 import {displayTag,inferAttachmentRoles,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
-import {detectMediaKind} from "./router";
+import {detectMediaKind,suggestModel} from "./router";
 import {evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
 import {SKILLS,SKILL_REGISTRY_VERSION} from "./skills";
-import type {GenerationProposal,MediaRequirements} from "./types";
+import type {GenerationProposal,MediaRequirements,SuggestedModel} from "./types";
 export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;now?:()=>Date};
 export type OrchestratorResult=
  |{status:"planned";turnId:string;proposal:GenerationProposal;plan:PublicCreativePlan}
- |{status:"unsupported";turnId:string;plan:PublicCreativePlan;message:string}
+ |{status:"unsupported";turnId:string;plan:PublicCreativePlan;message:string;suggestedModel?:SuggestedModel}
  |{status:"restricted";decision:"block"|"review";category:SafetyCategory;message:string};
 const FA_REFUSED="این درخواست در حال حاضر قابل پردازش نیست. لطفاً آن را با توضیح غیرحساس‌تر دوباره بنویس.";
 const FA_NO_REFS="برنامه تولید با کاراکتر انتخاب‌شده آماده است، اما هنوز هیچ مدل تأییدشده‌ای عکس مرجع کاراکتر را نمی‌پذیرد؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
@@ -21,6 +21,7 @@ const FA_TEXT_BLOCKED="یکی از فایل‌های متنیِ پیوست‌ش�
 const FA_MEDIA_REVIEW="برنامه آماده است، اما بررسی ایمنی فایل‌های تصویری، ویدیویی و صوتی هنوز فعال نیست؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 const FA_VOICE_CLONE="کلون صدا در هووش پشتیبانی نمی‌شود؛ هووش فقط تصویر و ویدیو می‌سازد و تولید یا شبیه‌سازی صدا ممکن نیست.";
 const faMissing=(tags:readonly string[])=>tags.length===1?"پیوست "+displayTag(tags[0])+" در این گفت‌وگو پیدا نشد؛ آن را دوباره اضافه کن یا تگ را اصلاح کن.":"پیوست‌های "+tags.map(displayTag).join("، ")+" در این گفت‌وگو پیدا نشدند؛ آن‌ها را دوباره اضافه کن یا تگ‌ها را اصلاح کن.";
+const faSuggestion=(m:SuggestedModel)=>" مدل مناسب این کار: "+m.name+"؛ پس از تأیید فعال می‌شود.";
 const FA_PDF_NOTE="محتوای فایل PDF هنوز خوانده نمی‌شود و در برنامه اثری ندارد";
 const lipsMsg="برنامه لیپ‌سینک آماده است، اما هنوز هیچ مدل تأییدشده‌ای هماهنگی لب را پشتیبانی نمی‌کند؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 // ---- deterministic planner (pure, no network): complete valid plan from the active skills ----
@@ -190,12 +191,18 @@ export function deriveAudio(input:{audio?:Audio;attachments?:readonly {kind:stri
 /**
  * Hard capability requirements. Character angles and every attached image (all image roles are references) count as reference images;
  * a `motion_reference` video needs `motionReference`, an `edit_reference` video `videoReference`, a `lip_sync` audio `lipSync`.
+ * `operation` names the specialised work the attachments describe (checked in this order): a lip_sync audio is `lip_sync`; an edit_reference video with a
+ * character or object image is `replace`; a motion_reference video with an image that is not a graphic is `motion_transfer`.
  */
 export function mediaRequirements(input:{characterRef?:{angles:readonly string[]};attachments?:readonly {kind:string;role?:string}[]},lipSync:boolean):MediaRequirements{
- const files=input.attachments??[],images=files.filter(a=>a.kind==="image"&&a.role).length,refs=(input.characterRef?.angles.length??0)+images;
+ const files=input.attachments??[],images=files.filter(a=>a.kind==="image"&&a.role),refs=(input.characterRef?.angles.length??0)+images.length;
  const lips=lipSync||files.some(a=>a.kind==="audio"&&a.role==="lip_sync");
- return {referenceImages:refs||undefined,lipSync:lips||undefined,
-  ...(files.some(a=>a.kind==="video"&&a.role==="motion_reference")?{motionReference:true}:{}),...(files.some(a=>a.kind==="video"&&a.role==="edit_reference")?{videoReference:true}:{})};
+ const video=(role:string)=>files.some(a=>a.kind==="video"&&a.role===role);
+ const operation:MediaRequirements["operation"]=files.some(a=>a.kind==="audio"&&a.role==="lip_sync")?"lip_sync"
+  :video("edit_reference")&&images.some(a=>a.role==="character"||a.role==="object")?"replace"
+  :video("motion_reference")&&images.some(a=>a.role!=="graphic")?"motion_transfer":undefined;
+ return {...(operation?{operation}:{}),referenceImages:refs||undefined,lipSync:lips||undefined,
+  ...(video("motion_reference")?{motionReference:true}:{}),...(video("edit_reference")?{videoReference:true}:{})};
 }
 // ---- orchestration ----
 export async function orchestrateCreativeTurn(rawInput:unknown,deps:OrchestratorDeps={}):Promise<OrchestratorResult>{
@@ -254,7 +261,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   if(r.decision!=="allow"){rec({planner:label,fallbackReason:"plan_restricted",corrections,usage:result?.usage});return {status:"restricted",decision:r.decision,category:r.category,message:r.message};}
  }
  // Hard capability requirements: a character reference needs reference-image input, lip sync needs a lip-sync model.
- const requirements=mediaRequirements(input,kind==="video"&&prep.activeSkillIds.includes("persian_lip_sync_phonetics"));
+ const requirements=mediaRequirements({characterRef:ref,attachments:files},kind==="video"&&prep.activeSkillIds.includes("persian_lip_sync_phonetics"));
  // Voice cloning is never offered: Whoush only makes images and videos, and generating or imitating a voice is out of scope.
  if(files.some(f=>f.role==="voice_clone")){
   rec({planner:label,fallbackReason:"voice_clone_unsupported",corrections:corrections.length?corrections:undefined});
@@ -264,14 +271,16 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // audio attachment fails closed: the plan is returned, but no proposal or price, so uninspected media can never reach provider handoff (step 6).
  if(files.some(f=>isMediaKind(f.kind))){
   rec({planner:label,fallbackReason:"media_review_unavailable",corrections:corrections.length?corrections:undefined});
-  return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs),message:FA_MEDIA_REVIEW};
+  const suggestedModel=suggestModel(requirements,kind);
+  return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs,suggestedModel),message:FA_MEDIA_REVIEW+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{})};
  }
  let proposal:GenerationProposal;
  try{proposal=buildProposal(input.text,input.preference,requirements);}
  catch(e){
   if(!(e instanceof NoCompatibleModelError))throw e;
   rec({planner:label,fallbackReason:"no_compatible_model",corrections:corrections.length?corrections:undefined});
-  return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs),message:ref?FA_NO_REFS:lipsMsg};
+  const suggestedModel=suggestModel(requirements,kind),base=ref?FA_NO_REFS:lipsMsg;
+  return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs,suggestedModel),message:base+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{})};
  }
  keepPrompt(turnId,plan.mediaPrompt);
  rec({planner:label,fallbackReason,corrections:corrections.length?corrections:undefined,usage:label==="live"?result?.usage:undefined});
