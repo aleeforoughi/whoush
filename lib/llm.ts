@@ -1,7 +1,7 @@
 import "server-only";
 import type { ReasoningTier, MediaKind } from "./types";
 import {assertSafeText} from "./safety";
-import {resolveCreativeSkills,compileSkillInstructions,type CreativeSkillId} from "./skills";
+import {resolveCreativeSkills,compileSkillInstructions,type SkillId} from "./skills";
 import {reasoningTier,detectMediaKind} from "./router";
 export type PrivateRouting={tier:ReasoningTier;modelId:string;provider:"anthropic"|"openai"};
 export function resolvePrivateRouting(tier:ReasoningTier):PrivateRouting|null{
@@ -15,7 +15,7 @@ export function resolvePrivateRouting(tier:ReasoningTier):PrivateRouting|null{
 export function preparePrivateCreativeRequest(args:{
  prompt:string;kind?:MediaKind;task?:"generate"|"edit";hasReferences?:boolean;hasAudioReference?:boolean;
 }):{
- systemInstructions:string;userText:string;activeSkillIds:CreativeSkillId[];
+ systemInstructions:string;userText:string;activeSkillIds:SkillId[];
  privateReasoningTier:ReasoningTier;privateRoute:PrivateRouting|null;
 }{
  assertSafeText(args.prompt); // fail before LLM spend or any media proposal
