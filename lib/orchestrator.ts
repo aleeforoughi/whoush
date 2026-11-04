@@ -1,6 +1,6 @@
 import "server-only";
 import {createHash,randomUUID} from "node:crypto";
-import {buildProposal} from "./agent";
+import {buildProposal,NoCompatibleModelError} from "./agent";
 import {CHARACTER_VIEWS,REQUIRED_CHARACTER_VIEWS} from "./characters";
 import {CreativePlanSchema,CreativeTurnInputSchema,toPublicPlan,PlannerInvalidOutputError,PlannerRefusedError,PlannerUnavailableError,type CreativePlan,type PlannerRequest,type PlannerResult,type PrivatePlanner,type PublicCreativePlan} from "./creative-plan";
 import {llmPolicy,preparePrivateCreativeRequest} from "./llm";
@@ -12,8 +12,11 @@ import type {GenerationProposal} from "./types";
 export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;now?:()=>Date};
 export type OrchestratorResult=
  |{status:"planned";turnId:string;proposal:GenerationProposal;plan:PublicCreativePlan}
+ |{status:"unsupported";turnId:string;plan:PublicCreativePlan;message:string}
  |{status:"restricted";decision:"block"|"review";category:SafetyCategory;message:string};
 const FA_REFUSED="این درخواست در حال حاضر قابل پردازش نیست. لطفاً آن را با توضیح غیرحساس‌تر دوباره بنویس.";
+const FA_NO_REFS="برنامه تولید با کاراکتر انتخاب‌شده آماده است، اما هنوز هیچ مدل تأییدشده‌ای عکس مرجع کاراکتر را نمی‌پذیرد؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
+const lipsMsg="برنامه لیپ‌سینک آماده است، اما هنوز هیچ مدل تأییدشده‌ای هماهنگی لب را پشتیبانی نمی‌کند؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 // ---- deterministic planner (pure, no network): complete valid plan from the active skills ----
 const has=(p:string,w:RegExp)=>w.test(p);
 const PORTRAIT=/\b(portrait|headshot|selfie|face|person|people|woman|man|girl|boy|bride|groom|model|child|presenter|speaker|host|singer|actor|actress)\b|lip sync|lipsync|پرتره|چهره|سلفی|عروس|داماد|دختر|پسر|زن|مرد|مدل|شخص|کودک/;
@@ -128,7 +131,15 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   const r=evaluateTextSafety(t);
   if(r.decision!=="allow"){rec({planner:label,fallbackReason:"plan_restricted",corrections,usage:result?.usage});return {status:"restricted",decision:r.decision,category:r.category,message:r.message};}
  }
- const proposal=buildProposal(input.text,input.preference);
+ // Hard capability requirements: a character reference needs reference-image input, lip sync needs a lip-sync model.
+ const requirements={referenceImages:ref?ref.angles.length:undefined,lipSync:kind==="video"&&prep.activeSkillIds.includes("persian_lip_sync_phonetics")?true:undefined};
+ let proposal:GenerationProposal;
+ try{proposal=buildProposal(input.text,input.preference,requirements);}
+ catch(e){
+  if(!(e instanceof NoCompatibleModelError))throw e;
+  rec({planner:label,fallbackReason:"no_compatible_model",corrections:corrections.length?corrections:undefined});
+  return {status:"unsupported",turnId,plan:toPublicPlan(plan),message:ref?FA_NO_REFS:lipsMsg};
+ }
  keepPrompt(turnId,plan.mediaPrompt);
  rec({planner:label,fallbackReason,corrections:corrections.length?corrections:undefined,usage:label==="live"?result?.usage:undefined});
  return {status:"planned",turnId,proposal,plan:toPublicPlan(plan)};
