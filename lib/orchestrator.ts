@@ -18,45 +18,68 @@ const FA_REFUSED="این درخواست در حال حاضر قابل پرداز
 const FA_NO_REFS="برنامه تولید با کاراکتر انتخاب‌شده آماده است، اما هنوز هیچ مدل تأییدشده‌ای عکس مرجع کاراکتر را نمی‌پذیرد؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 const lipsMsg="برنامه لیپ‌سینک آماده است، اما هنوز هیچ مدل تأییدشده‌ای هماهنگی لب را پشتیبانی نمی‌کند؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 // ---- deterministic planner (pure, no network): complete valid plan from the active skills ----
+// Every customer-visible line is Persian. `mediaPrompt` (private, provider-facing) is English, so each phrase that feeds both
+// is written as an {en, fa} pair: `.fa` goes into the public plan, `.en` into the prompt.
+type Pair={en:string;fa:string};
+const P=(en:string,fa:string):Pair=>({en,fa});
+const faDigits=(s:string)=>s.replace(/\d/g,d=>"۰۱۲۳۴۵۶۷۸۹"[Number(d)]);
 const has=(p:string,w:RegExp)=>w.test(p);
 const PORTRAIT=/\b(portrait|headshot|selfie|face|person|people|woman|man|girl|boy|bride|groom|model|child|presenter|speaker|host|singer|actor|actress)\b|lip sync|lipsync|پرتره|چهره|سلفی|عروس|داماد|دختر|پسر|زن|مرد|مدل|شخص|کودک/;
 const NIGHT=/\b(night|neon|moonlit)\b|شب|نئون/;
 const VERTICAL=/\b(reels?|tiktok|stor(y|ies)|vertical|shorts)\b|استوری|ریلز|تیک تاک|عمودی/;
-const MOVES=[[/\b(drone|aerial)\b|پهپاد/,"slow aerial glide forward"],[/\b(orbit|around)\b|چرخش/,"slow orbit around the subject"],[/\b(pan)\b|پن/,"slow horizontal pan"],[/\b(static|locked|still camera)\b|ثابت/,"locked-off tripod, no camera movement"]] as const;
+const MOVES:ReadonlyArray<readonly [RegExp,Pair]>=[
+ [/\b(drone|aerial)\b|پهپاد/,P("slow aerial glide forward","حرکت هوایی آرام رو به جلو")],
+ [/\b(orbit|around)\b|چرخش/,P("slow orbit around the subject","چرخش آرام دور سوژه")],
+ [/\b(pan)\b|پن/,P("slow horizontal pan","پن افقی آرام")],
+ [/\b(static|locked|still camera)\b|ثابت/,P("locked-off tripod, no camera movement","سه‌پایهٔ ثابت، بدون حرکت دوربین")]
+];
+const DOLLY=P("slow dolly-in at walking pace","دالی‌این آرام با سرعت قدم زدن");
 const viewTitles=(ids:readonly string[])=>ids.map(id=>CHARACTER_VIEWS.find(v=>v.id===id)?.title??id).join("، ");
 const missingViews=(angles:readonly string[])=>REQUIRED_CHARACTER_VIEWS.filter(v=>!angles.includes(v));
 const missingQuestion=(angles:readonly string[])=>{const m=missingViews(angles);return m.length?"زاویه‌های «"+viewTitles(m)+"» هنوز اضافه نشده‌اند و ساخته نمی‌شوند؛ ادامه بدهیم یا اول آن‌ها را اضافه می‌کنی؟":undefined;};
+const fas=(l:readonly Pair[])=>l.map(x=>x.fa);
+const ens=(l:readonly Pair[])=>l.map(x=>x.en);
 export function deterministicPlanner(req:PlannerRequest):{plan:CreativePlan}{
  const {input,kind,activeSkillIds:ids}=req;const text=input.text;const p=normalizePersian(text);
  const portrait=has(p,PORTRAIT),night=has(p,NIGHT),vertical=has(p,VERTICAL),photoreal=ids.includes("hyper_realism"),ref=input.characterRef;
  const dur=/(\d{1,2})\s*(?:s|sec|secs|second|seconds|ثانیه)\b/.exec(p);
+ const look=P("full-frame mirrorless look, natural color science","ظاهر دوربین بدون‌آینهٔ فول‌فریم با رنگ‌های طبیعی");
+ const d=portrait
+  ?{look,framing:P("head-and-shoulders, eyes on the upper third, subject slightly off-center","کادر سر و شانه، چشم‌ها روی خط یک‌سوم بالایی، سوژه کمی خارج از مرکز"),lighting:P("soft key about 45 degrees to the camera side, gentle fill, subtle rim separation","نور اصلی نرم با زاویهٔ حدود ۴۵ درجه از کنار دوربین، پرکنندهٔ ملایم و جداسازی ظریف لبه"),focus:P("focal plane on the nearest eye, shallow depth of field","فوکوس روی نزدیک‌ترین چشم، عمق میدان کم")}
+  :{look,framing:P("wide environmental framing, horizon on a third, foreground-midground-background layering","کادر باز محیطی، خط افق روی یک‌سوم، لایه‌بندی پیش‌زمینه، میانه و پس‌زمینه"),lighting:P("natural directional light with consistent shadow direction, soft overcast or golden-hour quality","نور طبیعی جهت‌دار با جهت ثابت سایه، کیفیت نرم ابری یا ساعت طلایی"),focus:P("deep depth of field, focus about one third into the scene","عمق میدان زیاد، فوکوس حدود یک‌سوم داخل صحنه")};
  const camera=portrait
-  ?{look:"full-frame mirrorless look, natural color science",focalLengthMm:85,aperture:night?"f/1.8":"f/2.0",shutter:night?"1/125s":"1/200s",iso:night?1600:200,whiteBalanceK:night?3800:5600,framing:"head-and-shoulders, eyes on the upper third, subject slightly off-center",lighting:"soft key about 45 degrees to the camera side, gentle fill, subtle rim separation",focus:"focal plane on the nearest eye, shallow depth of field",aspectRatio:vertical?"9:16":"4:5"}
-  :{look:"full-frame mirrorless look, natural color science",focalLengthMm:35,aperture:night?"f/2.8":"f/5.6",shutter:night?"1/60s":"1/250s",iso:night?1600:100,whiteBalanceK:night?4000:5600,framing:"wide environmental framing, horizon on a third, foreground-midground-background layering",lighting:"natural directional light with consistent shadow direction, soft overcast or golden-hour quality",focus:"deep depth of field, focus about one third into the scene",aspectRatio:vertical?"9:16":"3:2"};
- const mv=MOVES.find(([re])=>re.test(p))?.[1]??"slow dolly-in at walking pace";
- const shot={shotSize:portrait?"medium close-up":"wide establishing shot",cameraMovement:mv,lens:portrait?"50mm equivalent":"28mm equivalent",targetFps:24,shutterAngle:180,durationSeconds:dur?Math.min(60,Math.max(1,Number(dur[1]))):5,blocking:"subject action is motivated and readable; camera axis and screen direction stay consistent",continuityNotes:["First, middle and last frames share identity, wardrobe, lighting direction and palette","Natural motion blur from the 180 degree shutter; no FPS drift"]};
+  ?{look:d.look.fa,focalLengthMm:85,aperture:night?"f/1.8":"f/2.0",shutter:night?"1/125s":"1/200s",iso:night?1600:200,whiteBalanceK:night?3800:5600,framing:d.framing.fa,lighting:d.lighting.fa,focus:d.focus.fa,aspectRatio:vertical?"9:16":"4:5"}
+  :{look:d.look.fa,focalLengthMm:35,aperture:night?"f/2.8":"f/5.6",shutter:night?"1/60s":"1/250s",iso:night?1600:100,whiteBalanceK:night?4000:5600,framing:d.framing.fa,lighting:d.lighting.fa,focus:d.focus.fa,aspectRatio:vertical?"9:16":"3:2"};
+ const mv=MOVES.find(([re])=>re.test(p))?.[1]??DOLLY;
+ const size=portrait?P("medium close-up","نمای نزدیک متوسط"):P("wide establishing shot","نمای باز معرفی صحنه");
+ const notes=[P("First, middle and last frames share identity, wardrobe, lighting direction and palette","فریم اول، میانی و آخر هویت، لباس، جهت نور و پالت رنگی یکسان دارند"),P("Natural motion blur from the 180 degree shutter; no FPS drift","محوشدگی حرکتی طبیعی از شاتر ۱۸۰ درجه؛ بدون نوسان فریم‌ریت")];
+ const shot={shotSize:size.fa,cameraMovement:mv.fa,lens:portrait?"معادل لنز ۵۰ میلی‌متر":"معادل لنز ۲۸ میلی‌متر",targetFps:24,shutterAngle:180,durationSeconds:dur?Math.min(60,Math.max(1,Number(dur[1]))):5,blocking:"حرکت سوژه دلیل مشخص دارد و خوانا است؛ محور دوربین و جهت حرکت روی صفحه ثابت می‌ماند",continuityNotes:fas(notes)};
  const lips=ids.includes("persian_lip_sync_phonetics"),speech=input.audio?.hasSpeech===true;
- const hard=["Follow the brief exactly; do not add unrequested subjects, text or logos",
-  ...(input.task==="edit"?["Preserve all unedited source regions: identity, framing, lighting, color and pixels"]:[]),
-  ...(kind==="video"?["Keep people and objects continuous; no teleporting, sudden appearance or unintended cuts"]:[]),
-  ...(ref?["Use only the provided reference angles; never invent missing views"]:[])];
- const directives=photoreal
-  ?["Natural skin microtexture with visible pores, fine hairs and subtle asymmetry where people appear","No waxy, plastic or over-smoothed skin","Physically accurate materials: fabric weave, metal, glass, wood, stone","No gratuitous film grain, glow, haze or stylistic filters unless requested","Balanced exposure with natural highlight roll-off"]
-  :["Respect the requested stylized look; do not impose photographic textures or lens artifacts","Keep line, palette and shading consistent across the whole frame"];
+ const hardP:Pair[]=[P("Follow the brief exactly; do not add unrequested subjects, text or logos","دقیقاً مطابق توضیح تو؛ سوژه، متن یا لوگوی اضافه‌ای وارد نمی‌شود"),
+  ...(input.task==="edit"?[P("Preserve all unedited source regions: identity, framing, lighting, color and pixels","همهٔ بخش‌های ویرایش‌نشدهٔ تصویر مبدأ حفظ می‌شود: هویت، کادر، نور، رنگ و پیکسل‌ها")]:[]),
+  ...(kind==="video"?[P("Keep people and objects continuous; no teleporting, sudden appearance or unintended cuts","افراد و اشیا پیوسته می‌مانند؛ بدون جابه‌جایی ناگهانی، ظاهر یا ناپدید شدن ناگهانی و برش ناخواسته")]:[]),
+  ...(ref?[P("Use only the provided reference angles; never invent missing views","فقط از زاویه‌های مرجع ارائه‌شده استفاده می‌شود؛ نمای ناموجود ساخته نمی‌شود")]:[])];
+ const directivesP:Pair[]=photoreal
+  ?[P("Natural skin microtexture with visible pores, fine hairs and subtle asymmetry where people appear","بافت ریز طبیعی پوست با منافذ قابل‌دیدن، موهای ریز و کمی عدم تقارن، هرجا آدمی دیده می‌شود"),P("No waxy, plastic or over-smoothed skin","پوست مومی، پلاستیکی یا بیش‌ازحد صاف نباشد"),P("Physically accurate materials: fabric weave, metal, glass, wood, stone","مواد با رفتار فیزیکی درست: بافت پارچه، فلز، شیشه، چوب و سنگ"),P("No gratuitous film grain, glow, haze or stylistic filters unless requested","بدون گرین فیلم، درخشش، مه یا فیلتر سبکیِ بی‌دلیل، مگر اینکه خواسته شود"),P("Balanced exposure with natural highlight roll-off","نوردهی متعادل با افت طبیعی نواحی روشن")]
+  :[P("Respect the requested stylized look; do not impose photographic textures or lens artifacts","سبک خواسته‌شده رعایت می‌شود؛ بافت عکاسی یا خطاهای لنز تحمیل نمی‌شود"),P("Keep line, palette and shading consistent across the whole frame","خط، پالت رنگی و سایه‌پردازی در کل کادر یکدست می‌ماند")];
+ const directives=fas(directivesP);
+ const hard=fas(hardP);
+ const soft=[kind==="image"?"نسبت تصویر "+faDigits(camera.aspectRatio):"کادر مناسب پلتفرم با جذابیت واضح در ثانیهٔ اول",...(night?["حال‌وهوای کم‌نور با منابع نور واقعی صحنه"]:[])];
+ const direction=kind==="image"?[camera.focalLengthMm+"mm",camera.aperture,camera.shutter,"ISO "+camera.iso,camera.whiteBalanceK+"K",d.framing.en,d.lighting.en]:[size.en,mv.en,shot.targetFps+"fps",shot.shutterAngle+" degree shutter",shot.durationSeconds+"s"];
  const plan:CreativePlan={
   intentSummaryFa:(kind==="image"?"ساخت تصویر: ":"ساخت ویدیو: ")+text.replace(/\s+/g," ").slice(0,160)+(text.length>160?"…":""),
   mediaKind:kind,
-  mediaPrompt:(text.slice(0,1700)+"\nDirection: "+(kind==="image"?[camera.focalLengthMm+"mm",camera.aperture,camera.shutter,"ISO "+camera.iso,camera.whiteBalanceK+"K",camera.framing,camera.lighting].join(", "):[shot.shotSize,shot.cameraMovement,shot.targetFps+"fps",shot.shutterAngle+" degree shutter",shot.durationSeconds+"s"].join(", "))+". "+directives.join(". ")+". "+hard.join(". ")).slice(0,3000),
+  mediaPrompt:(text.slice(0,1700)+"\nDirection: "+direction.join(", ")+". "+ens(directivesP).join(". ")+". "+ens(hardP).join(". ")).slice(0,3000),
   hardConstraints:hard,
-  softPreferences:[kind==="image"?"Aspect ratio "+camera.aspectRatio:"Platform-friendly framing with a clear first-second hook",...(night?["Low-light mood with practical light sources"]:[])],
+  softPreferences:soft,
   negative:["extra fingers","distorted anatomy","garbled or misspelled text","watermark",...(photoreal?["waxy or plastic skin","over-smoothing","gratuitous grain, glow or filters"]:[])],
   camera:kind==="image"?camera:undefined,shot:kind==="video"?shot:undefined,
-  identityLock:ref?{characterId:ref.id,version:ref.version,providedAngles:[...ref.angles],lockedAttributes:["face geometry","hairstyle and hairline","skin tone and texture","body proportions","age presentation","wardrobe unless changed"],allowedChanges:["pose and expression","environment and lighting as requested","camera angle"]}:undefined,
-  continuity:{locks:["Keep identity, wardrobe, hairstyle, props and palette consistent across frames and revisions","Fixed lighting direction and time of day unless the brief changes them","Change nothing the user did not ask to change"],
-   antiTeleport:kind==="video"?["Every person and object keeps permanence: no sudden appearance or disappearance","Hand-object contact and trajectories stay physically plausible","No jumps in position between consecutive frames"]:[]},
+  identityLock:ref?{characterId:ref.id,version:ref.version,providedAngles:[...ref.angles],lockedAttributes:["هندسهٔ چهره","مدل مو و خط رویش مو","رنگ و بافت پوست","تناسب بدن","سن ظاهری","لباس، مگر تغییرش خواسته شود"],allowedChanges:["ژست و حالت چهره","محیط و نور طبق درخواست","زاویهٔ دوربین"]}:undefined,
+  continuity:{locks:["هویت، لباس، مدل مو، وسایل و پالت رنگی در همهٔ فریم‌ها و بازبینی‌ها یکسان می‌ماند","جهت نور و ساعت روز ثابت است، مگر اینکه توضیح تو آن را تغییر بدهد","هر چیزی که درخواست تغییرش نشده، دست‌نخورده می‌ماند"],
+   antiTeleport:kind==="video"?["هر فرد و شیء پایدار می‌ماند: بدون ظاهر یا ناپدید شدن ناگهانی","تماس دست با اشیا و مسیر حرکت‌ها از نظر فیزیکی قابل‌باور می‌ماند","میان فریم‌های پیاپی پرش ناگهانی در موقعیت وجود ندارد"]:[]},
   realism:{mode:photoreal?"photoreal":"stylized",directives},
-  speech:kind==="video"?{lipSync:lips?{status:speech?"planned_from_audio":"needs_audio",notes:speech?["Derive mouth timing from the supplied audio; no text-only timestamps","Keep the source voice, words and accent unchanged",...(ids.includes("tehrani_accent")?["Tehrani accent is a creative target for newly written dialogue only; supplied audio is never altered"]:[])]:["Supply the spoken audio so mouth timing can be aligned; timing is never estimated from text alone"]}:{status:"not_requested",notes:[]},accent:ids.includes("tehrani_accent")?"tehrani":input.audio?.accent==="original"?"original":"unspecified"}:undefined,
-  qaChecklist:["Subject, count and composition match the brief","Anatomy, hands and geometry are plausible","Visible Persian or English text is spelled correctly with joined letters",kind==="video"?"First, middle and last frames keep identity and lighting; no teleporting objects; duration and FPS match the plan":"Lighting, exposure and perspective are consistent",...(photoreal?["Skin and materials read as natural, not waxy or over-filtered"]:[])],
+  speech:kind==="video"?{lipSync:lips?{status:speech?"planned_from_audio":"needs_audio",notes:speech?["زمان‌بندی دهان از روی صدای ارائه‌شده استخراج می‌شود، نه از زمان‌بندی حدسیِ متن","صدا، کلمات و لهجهٔ فایل اصلی بدون تغییر می‌ماند",...(ids.includes("tehrani_accent")?["لهجهٔ تهرانی فقط هدف خلاقانه برای دیالوگ تازه‌نوشته‌شده است؛ صدای ارائه‌شده هرگز تغییر نمی‌کند"]:[])]:["برای هم‌زمان‌سازی لب، فایل صوتی گفتار را ارائه کن؛ زمان‌بندی هرگز فقط از روی متن حدس زده نمی‌شود"]}:{status:"not_requested",notes:[]},accent:ids.includes("tehrani_accent")?"tehrani":input.audio?.accent==="original"?"original":"unspecified"}:undefined,
+  qaChecklist:["سوژه، تعداد و ترکیب‌بندی با توضیح تو می‌خواند","آناتومی، دست‌ها و هندسه قابل‌باورند","متن فارسی یا انگلیسی داخل تصویر درست نوشته شده و حروف فارسی به‌هم‌پیوسته‌اند",kind==="video"?"فریم اول، میانی و آخر هویت و نور را حفظ می‌کنند؛ شیئی ناگهان جابه‌جا نمی‌شود؛ مدت و فریم‌ریت با برنامه می‌خواند":"نور، نوردهی و پرسپکتیو یکدست است",...(photoreal?["پوست و مواد طبیعی دیده می‌شوند، نه مومی یا بیش‌ازحد فیلترشده"]:[])],
   clarifyingQuestionFa:ref?missingQuestion(ref.angles):undefined
  };
  return {plan};

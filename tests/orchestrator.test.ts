@@ -4,6 +4,7 @@ import {orchestrateCreativeTurn,deterministicPlanner,getPrivateMediaPrompt,type 
 import {readPrivateAuditForTests,defaultAuditSink} from "../lib/private-audit";
 import {CreativePlanSchema,CreativeTurnInputSchema,PlannerRefusedError,PlannerUnavailableError,PlannerInvalidOutputError,type CreativePlan,type PlannerRequest,type PrivatePlanner} from "../lib/creative-plan";
 import {llmPolicy,preparePrivateCreativeRequest} from "../lib/llm";
+import {detectMediaKind} from "../lib/router";
 import {SKILLS,SKILL_REGISTRY_VERSION,resolveCreativeSkills,compileSkillInstructions,type SkillContext,type SkillId} from "../lib/skills";
 import {POST} from "../app/api/agent/route";
 
@@ -295,4 +296,47 @@ test("character references and lip sync never route to a model without that capa
  assert.equal(l.status,"unsupported");assert.match((l as {message:string}).message,/لیپ/);
  assert.equal(last().fallbackReason,"no_compatible_model");
  const plain=await orchestrateCreativeTurn({text:"a photo of a woman in a garden"});assert.equal(plain.status,"planned");
+});
+
+// ---- customer-visible plan text is Persian; the provider-facing prompt stays English ----
+const PERSIAN=/[؀-ۿ]/;
+test("public plan text is Persian for English and Persian prompts; Latin-only values are limited to tokens like f-stops",async()=>{
+ const cases:Array<[string,Record<string,unknown>]>=[
+  ["a photoreal portrait of a woman in a library at night",{characterRef:{id:"char-abcdef12",name:"Sara",angles:["front","profile_left"],version:2}}],
+  ["a photo of a mountain lake",{}],
+  ["cartoon video of a dog running, vertical reels",{visualStyle:"stylized"}],
+  ["lip sync video of a presenter speaking",{audio:{hasAudioReference:true,hasSpeech:true,language:"fa",accent:"unspecified"}}],
+  ["lip sync video of a presenter speaking",{}],
+  ["edit this photo and replace the background with a beach",{task:"edit"}],
+  ["یک عکس حرفه‌ای از بازار قدیمی شیراز در غروب",{}],
+  ["ویدیو با لهجه تهرانی از یک دختر که سلام می‌کند",{audio:{hasAudioReference:true,hasSpeech:true,language:"fa",accent:"unspecified"}}],
+  ["پرتره‌ی یک مرد با شخصیت من",{characterRef:{id:"char-abcdef12",name:"Sara",angles:["front"],version:1}}]
+ ];
+ for(const [text,extra] of cases){
+  const input=CreativeTurnInputSchema.parse({text,...extra});const kind=detectMediaKind(text);
+  const prep=preparePrivateCreativeRequest({prompt:text,kind,task:input.task,hasReferences:Boolean(input.characterRef||input.audio?.hasAudioReference),hasAudioReference:input.audio?(input.audio.hasAudioReference||input.audio.hasSpeech):undefined,hasSpeechAudio:input.audio?.hasSpeech,speechLanguage:input.audio?.language,accent:input.audio?.accent,characterRef:input.characterRef,visualStyle:input.visualStyle});
+  const plan=deterministicPlanner({...prep,privateRoute:null,kind,input}).plan;
+  const lists:Array<[string,readonly string[]]>=[["hardConstraints",plan.hardConstraints],["softPreferences",plan.softPreferences],["continuity.locks",plan.continuity.locks],["continuity.antiTeleport",plan.continuity.antiTeleport],["realism.directives",plan.realism.directives],["qaChecklist",plan.qaChecklist],
+   ["identityLock.lockedAttributes",plan.identityLock?.lockedAttributes??[]],["identityLock.allowedChanges",plan.identityLock?.allowedChanges??[]],["speech.notes",plan.speech?.lipSync.notes??[]],["shot.continuityNotes",plan.shot?.continuityNotes??[]]];
+  const singles:Array<[string,string|undefined]>=[["intentSummaryFa",plan.intentSummaryFa],["camera.look",plan.camera?.look],["camera.framing",plan.camera?.framing],["camera.lighting",plan.camera?.lighting],["camera.focus",plan.camera?.focus],
+   ["shot.shotSize",plan.shot?.shotSize],["shot.cameraMovement",plan.shot?.cameraMovement],["shot.lens",plan.shot?.lens],["shot.blocking",plan.shot?.blocking]];
+  for(const [name,list] of lists)for(const line of list)assert.match(line,PERSIAN,text+" -> "+name+": "+line);
+  for(const [name,value] of singles)if(value!==undefined)assert.match(value,PERSIAN,text+" -> "+name+": "+value);
+  assert.ok(plan.hardConstraints.length>0&&plan.qaChecklist.length>=3);
+  // numeric fields stay numeric
+  if(plan.camera){assert.equal(typeof plan.camera.iso,"number");assert.equal(typeof plan.camera.focalLengthMm,"number");assert.match(plan.camera.aperture,/^f\/\d/);}
+  if(plan.shot){assert.equal(typeof plan.shot.targetFps,"number");assert.equal(typeof plan.shot.durationSeconds,"number");}
+  // the provider-facing prompt is built from the English parallel text: for an English brief it contains no Persian letters
+  if(!PERSIAN.test(text))assert.doesNotMatch(plan.mediaPrompt,PERSIAN,text+" -> mediaPrompt");
+  assert.match(plan.mediaPrompt,/Follow the brief exactly/);
+  assert.ok(plan.negative.every(n=>!PERSIAN.test(n)));
+ }
+ // end to end through the orchestrator: the public plan the UI receives
+ const r=await run("a photo of a mountain lake");
+ for(const line of [...r.plan.hardConstraints,...r.plan.qaChecklist])assert.match(line,PERSIAN);
+ assert.ok(!/Follow the brief|Direction:/.test(JSON.stringify(r)));
+});
+test("compiled skill instructions ask the live planner for Persian customer-visible fields and an English mediaPrompt",()=>{
+ const t=compileSkillInstructions({prompt:"photo",kind:"image"});
+ assert.match(t,/must be natural Persian; mediaPrompt and negative stay English/);
 });
