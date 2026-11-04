@@ -27,5 +27,5 @@ A discovered model moves through these stages in order. Skipping one is a launch
 
 ## Rules
 - Nothing is enabled automatically. A scout report is a checklist for people, not a change.
-- LLM tier changes (a new or removed model, changed limits) are **recommendations for the owner**: they affect cost and margin (`docs/NEURON_PRICING.md`) and are decided there. Customer-facing text never names an LLM vendor or family.
+- LLM tier changes (a new or removed model, changed limits) are **recommendations for the owner** (routing and the eval method are in `docs/LLM_ROUTING.md`): they affect cost and margin (`docs/NEURON_PRICING.md`) and are decided there. Customer-facing text never names an LLM vendor or family.
 - Customer-facing text never names Higgsfield; only raw model names (Soul, Intone, Genjutsu, Seedance, Kling…).
