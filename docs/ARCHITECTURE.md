@@ -9,6 +9,11 @@ Three-zone workspace:
 3. Right: Persian creative agent, reference grid, messages, one-or-many media-model suggestion action cards, cost and approval, composer.
 On mobile transition to tabbed focus views with persisted conversation state. Visual tokens are approximate reference samples, not Runway proprietary values.
 
+## Professional skills and Iran-specific safety
+`lib/skills.ts` defines 15 immutable/versioned professional instruction modules. `lib/llm.ts#preparePrivateCreativeRequest` is the intended single gateway for real private creative LLM calls. Always active: prompt engineering, art direction, Persian language, QA. Photography is mandatory for image, cinematography/videography mandatory for video, specialized editing/culture/social/graphic/copy/audio/geography when relevant.
+`lib/safety.ts` is an initial lexical prefilter; it blocks explicit politics, politicians, nudity and obvious sexualized posing, and routes ambiguous Iranian terms to review. It is **not** production-grade and cannot inspect media. The live pipeline must add context-aware Persian semantic moderation, media analysis, final prompt screening, pre-submission rechecks and output moderation with human review and appeals.
+Read `docs/CREATIVE_SKILLS.md` and `docs/MODERATION_POLICY.md`. Zero political content is a Whoush product choice, not a prediction that the platform cannot be filtered.
+
 ## Data flow
 User prompt and attached asset IDs
 → validate user/session/reference ownership and region/provider eligibility
