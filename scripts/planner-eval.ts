@@ -15,7 +15,7 @@ import {detectMediaKind} from "../lib/router";
 import {planWithAnthropic} from "../lib/llm-anthropic";
 import {planWithOpenAI} from "../lib/llm-openai";
 import type {PrivateAuditRecord,PrivateAuditSink} from "../lib/private-audit";
-import {EvalPromptsSchema,applyEnv,classTable,suggestClassOverrides,completeness,estimateCostUsd,normalizeUsage,parseEnvFile,persianRatio,publicStrings,renderReport,scoreMentions,summarize,type EvalPrompt,type EvalRun} from "./planner-eval-lib";
+import {EvalPromptsSchema,applyEnv,withRateLimitRetry,classTable,suggestClassOverrides,completeness,estimateCostUsd,normalizeUsage,parseEnvFile,persianRatio,publicStrings,renderReport,scoreMentions,summarize,type EvalPrompt,type EvalRun} from "./planner-eval-lib";
 
 const KEY_FOR={anthropic:"ANTHROPIC_API_KEY",openai:"OPENAI_API_KEY"} as const;
 function args(argv:string[]){
@@ -68,20 +68,21 @@ async function main(){
  mkdirSync(outDir,{recursive:true});
  const runs:EvalRun[]=[];
  for(const p of chosen)for(const model of a.models){
-  const provider=providerForModelId(model)!,cap:{usage:unknown;ms:number}={usage:null,ms:0},c=collector();
-  const planner:PrivatePlanner=async req=>{
+  const provider=providerForModelId(model)!,cap:{usage:unknown;ms:number;waits:number}={usage:null,ms:0,waits:0},c=collector();
+  // Latency is the successful call only; rate-limit waits are counted in rateLimitWaits, not in latency.
+  const planner:PrivatePlanner=req=>withRateLimitRetry(async()=>{
    const t0=performance.now();
    try{const r=await (provider==="openai"?planWithOpenAI(req,model):planWithAnthropic(req,model));cap.usage=r.usage;return r;}
    finally{cap.ms=performance.now()-t0;}
-  };
+  },{onWait:ms=>{cap.waits++;console.log(p.id+" "+model+" rate limited, waiting "+Math.round(ms/1000)+"s");}});
   let run:EvalRun;
   try{
    const r=await orchestrateCreativeTurn(p.input,{planner,audit:c.sink}),rec=c.recs[c.recs.length-1],pl=pubOf(r);
    const strings=publicStrings(pl),m=scoreMentions(strings,p.expect.mustMention,p.expect.mustNotMention),usage=normalizeUsage(cap.usage);
    run={promptId:p.id,model,provider,ok:(r.status==="planned"||r.status==="unsupported")&&rec?.planner==="live"&&!rec.fallbackReason,status:r.status,fallbackReason:rec?.fallbackReason,latencyMs:Math.round(cap.ms),usage,costUsdEstimate:estimateCostUsd(model,usage),
-    corrections:rec?.corrections?.length??0,leakFiltered:rec?.fallbackReason==="leak_filtered",persianRatio:persianRatio(strings),complete:completeness(pl,p.expect.kind),mentionHitRate:m.hitRate,mentionMisses:m.misses,mustNotViolations:m.violations,planChars:strings.join("").length,plan:pl,...tag(p)};
+    corrections:rec?.corrections?.length??0,leakFiltered:rec?.fallbackReason==="leak_filtered",persianRatio:persianRatio(strings),complete:completeness(pl,p.expect.kind),mentionHitRate:m.hitRate,mentionMisses:m.misses,mustNotViolations:m.violations,planChars:strings.join("").length,plan:pl,...tag(p),...(cap.waits?{rateLimitWaits:cap.waits}:{})};
   }catch(e){
-   run={promptId:p.id,model,provider,ok:false,status:"error",error:(e as Error).name,latencyMs:Math.round(cap.ms),usage:normalizeUsage(cap.usage),costUsdEstimate:null,corrections:0,leakFiltered:false,persianRatio:0,complete:null,mentionHitRate:null,mentionMisses:[],mustNotViolations:[],planChars:0,...tag(p)};
+   run={promptId:p.id,model,provider,ok:false,status:"error",error:(e as Error).name,latencyMs:Math.round(cap.ms),...(cap.waits?{rateLimitWaits:cap.waits}:{}),usage:normalizeUsage(cap.usage),costUsdEstimate:null,corrections:0,leakFiltered:false,persianRatio:0,complete:null,mentionHitRate:null,mentionMisses:[],mustNotViolations:[],planChars:0,...tag(p)};
   }
   runs.push(run);
   console.log(p.id+" "+model+" "+(run.ok?"ok":"FAIL "+(run.fallbackReason??run.error??run.status))+" "+run.latencyMs+"ms");

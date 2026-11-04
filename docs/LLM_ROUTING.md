@@ -58,6 +58,17 @@ A rung is dropped when: its provider has no key; its provider is in cooldown; it
 - **Astra** (`gpt-6-astra`) is for rare, most complicated tasks only: reachable only in the exceptional band (or an owner class override), only with `LLM_ASTRA_ENABLED=true`, and counted per UTC day in memory.
 - **Audit** (private, `routing` on `PrivateAuditRecord`): `taskClass`, `score`, `signals`, `band`, `ladder`, `skipped`, `attempts[{modelId, provider, outcome, latencyMs, usage, estCostUsd}]`, `chosenModelId`. `route` holds the provider and model that produced the plan. None of it reaches a customer response.
 
+## Rate limits (`rateLimits` in `config/llm-routing.json`)
+The 2026-11-04 eval hit OpenAI 429s when several eval processes ran at once on one account. Handling, in order:
+1. **SDK retries.** Both adapters build their client with `sdkMaxRetries` (2) and `requestTimeoutMs` (120 s). The SDKs themselves retry 408, 409, 429, 5xx and connection errors with exponential backoff, honouring `Retry-After` up to 60 s.
+2. **Vendor-neutral error.** What still fails becomes `PlannerUnavailableError` with a private `limit`: `rate` for a 429 (and Anthropic 529 overloaded), carrying `retryAfterMs` parsed from `retry-after-ms` or `retry-after` (seconds or HTTP date); `quota` for an OpenAI 429 with code `insufficient_quota`. No vendor text reaches the message.
+3. **Cooldown.** The provider cools down for `providerCooldownSeconds` (60), or longer when the provider's Retry-After is longer (capped at `maxRetryAfterSeconds`, 600), or `quotaCooldownSeconds` (900) for a quota limit. A longer cooldown is never shortened. The turn escalates to the next rung as before (`planner_unavailable` is in `escalateOn`), normally the other provider.
+4. **Concurrency.** Each provider has at most `maxConcurrent` planner calls in flight per server process (OpenAI 4, Anthropic 8), FIFO. A turn waits up to `maxQueueWaitMs` (5 s) for a slot; if the provider stays busy the rung is skipped as `provider_busy` without spending the attempt budget, and the next rung is tried. If every rung is busy the deterministic planner answers (`fallbackReason: "provider busy"`). Slots are released even when a planner throws.
+5. **Audit.** Attempts carry `limit` and `retryAfterMs`; skips carry `provider_busy`. None of it reaches a customer response.
+6. **Eval.** In fixed-model mode `scripts/planner-eval.ts` waits out a rate limit (Retry-After, else 10 s then 30 s, at most 2 retries, each wait at most 120 s) so a busy minute is not scored as a model failure; waits are counted in `rateLimitWaits`, not in latency. A quota limit is never retried. Run evals one at a time per account.
+
+Limits not handled here: cooldowns, slots and counters are in process memory, so several server instances (or several eval processes) sharing one account are not coordinated. Production needs a shared limiter (for example Redis) sized to the account's real tier limits, and alerts on quota errors. The concurrency numbers above are conservative defaults, not the accounts' published limits.
+
 ## Verified models and prices
 Read on 2026-11-04. All OpenAI models use the Responses API with 1.05M context and 128K max output.
 

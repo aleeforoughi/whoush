@@ -5,9 +5,16 @@ import {zodOutputFormat} from "@anthropic-ai/sdk/helpers/zod";
 import {CreativePlanSchema,PlannerInvalidOutputError,PlannerRefusedError,PlannerUnavailableError,type CreativePlan} from "./creative-plan";
 export {buildBriefMessage,stripBriefTags,type BriefAttachment} from "./planner-brief";
 import {buildBriefMessage,type BriefAttachment} from "./planner-brief";
+import {loadRoutingConfig,retryAfterMsFrom} from "./llm-routing";
+/** Vendor-neutral mapping: 429 and 529 (overloaded) are rate limits with the provider's Retry-After; anything else is plain unavailable. */
+export function anthropicUnavailable(e:InstanceType<typeof Anthropic.APIError>):PlannerUnavailableError{
+ if(e.status===429||e.status===529)return new PlannerUnavailableError(undefined,{limit:"rate",retryAfterMs:retryAfterMsFrom(e.headers)});
+ return new PlannerUnavailableError();
+}
 /** Live private planner. Errors are mapped to vendor-neutral types; usage is for the private audit only. */
 export async function planWithAnthropic(req:{systemInstructions:string;userText:string;attachments?:readonly BriefAttachment[]},modelId:string):Promise<{plan:CreativePlan;usage:Anthropic.Usage;modelId:string}>{
- const client=new Anthropic({apiKey:process.env.ANTHROPIC_API_KEY});
+ const rl=loadRoutingConfig().rateLimits;
+ const client=new Anthropic({apiKey:process.env.ANTHROPIC_API_KEY,maxRetries:rl.sdkMaxRetries,timeout:rl.requestTimeoutMs});
  let response;
  try{
   response=await client.messages.parse({
@@ -17,7 +24,7 @@ export async function planWithAnthropic(req:{systemInstructions:string;userText:
    output_config:{format:zodOutputFormat(CreativePlanSchema)}
   });
  }catch(e){
-  if(e instanceof Anthropic.RateLimitError||e instanceof Anthropic.APIConnectionError||e instanceof Anthropic.APIError)throw new PlannerUnavailableError();
+  if(e instanceof Anthropic.APIError)throw anthropicUnavailable(e); // rate limit, overloaded, connection, timeout, auth, 5xx (RateLimitError and APIConnectionError are subclasses)
   if(e instanceof Anthropic.AnthropicError&&/^Failed to parse structured output/.test(e.message))throw new PlannerInvalidOutputError();
   throw e;
  }

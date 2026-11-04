@@ -25,6 +25,14 @@ export const RoutingConfigSchema=z.object({
  classOverrides:z.partialRecord(z.enum(TASK_CLASSES),ladder),
  escalation:z.object({maxAttemptsPerTurn:z.number().int().min(1).max(4),escalateOnCorrectionsAtLeast:z.number().int().min(1).max(50),escalateOn:z.array(z.enum(ESCALATE_ON))}).strict(),
  providerCooldownSeconds:z.number().int().min(0).max(3600),
+ /** Per-provider in-process concurrency (a busy provider is skipped after maxQueueWaitMs, so the ladder moves to the other provider), Retry-After and quota cooldowns, and SDK request settings. */
+ rateLimits:z.object({
+  providers:z.partialRecord(z.enum(["anthropic","openai"]),z.object({maxConcurrent:z.number().int().min(1).max(256),maxQueueWaitMs:z.number().int().min(0).max(120000)}).strict()),
+  maxRetryAfterSeconds:z.number().int().min(1).max(3600),
+  quotaCooldownSeconds:z.number().int().min(0).max(86400),
+  requestTimeoutMs:z.number().int().min(5000).max(600000),
+  sdkMaxRetries:z.number().int().min(0).max(5)
+ }).strict(),
  maxEstimatedCostUsdPerTurn:z.number().positive().max(100),
  astra:z.object({requiresEnv:z.string().regex(/^[A-Z][A-Z0-9_]*$/),maxCallsPerDay:z.number().int().min(0).max(10000),modelId:modelId.default("gpt-6-astra")}).strict(),
  prices:z.record(z.string(),z.tuple([z.number().nonnegative(),z.number().nonnegative()]))
@@ -81,18 +89,54 @@ export function profileTask(input:Pick<CreativeTurnInput,"text"|"task"|"style"|"
 }
 
 // ---- route planning ----
-export type RouterState={cooldowns:Map<string,number>;astra:{day:string;n:number}};
-export const createRouterState=():RouterState=>({cooldowns:new Map(),astra:{day:"",n:0}});
+export type RouterState={cooldowns:Map<string,number>;astra:{day:string;n:number};inFlight:Map<string,number>;waiters:Map<string,(()=>void)[]>};
+export const createRouterState=():RouterState=>({cooldowns:new Map(),astra:{day:"",n:0},inFlight:new Map(),waiters:new Map()});
 const g=globalThis as {__whoushRouterState?:RouterState};
-/** Process-wide in-memory state (cooldowns, Astra daily counter). Lost on restart by design; a shared store is a later concern. */
+/** Process-wide in-memory state (cooldowns, Astra daily counter, provider slots). Lost on restart by design; a shared store is a later concern. */
 export const defaultRouterState=():RouterState=>g.__whoushRouterState??=createRouterState();
 export const resetRouterStateForTests=()=>{g.__whoushRouterState=createRouterState();};
 const utcDay=(d:Date)=>d.toISOString().slice(0,10);
-export function markProviderCooldown(provider:string,now:Date,cfg:RoutingConfig,state:RouterState=defaultRouterState()){if(cfg.providerCooldownSeconds>0)state.cooldowns.set(provider,now.getTime()+cfg.providerCooldownSeconds*1000);}
+/**
+ * Cooldown after an unavailable outcome. Rate limited: the provider's Retry-After when longer than the default, capped at maxRetryAfterSeconds.
+ * Quota exhausted: quotaCooldownSeconds (retrying soon does not help). An existing longer cooldown is never shortened.
+ */
+export function markProviderCooldown(provider:string,now:Date,cfg:RoutingConfig,state:RouterState=defaultRouterState(),info:{limit?:"rate"|"quota";retryAfterMs?:number}={}){
+ const rl=cfg.rateLimits,base=cfg.providerCooldownSeconds*1000;
+ const ms=info.limit==="quota"?Math.max(base,rl.quotaCooldownSeconds*1000):Math.min(Math.max(base,info.retryAfterMs??0),Math.max(base,rl.maxRetryAfterSeconds*1000));
+ if(ms<=0)return;
+ const until=now.getTime()+ms;if(until>(state.cooldowns.get(provider)??0))state.cooldowns.set(provider,until);
+}
+/**
+ * Takes one in-flight slot for a provider, waiting up to maxQueueWaitMs in FIFO order. Resolves to a release function (safe to call twice),
+ * or null when the provider stayed busy: the caller skips that rung instead of piling more requests onto a rate-limited account.
+ * In-process only, like cooldowns: several server instances or eval processes share one provider account and are not coordinated here.
+ */
+export function acquireProviderSlot(provider:string,cfg:RoutingConfig,state:RouterState=defaultRouterState()):Promise<(()=>void)|null>{
+ const lim=cfg.rateLimits.providers[provider as "anthropic"|"openai"];
+ if(!lim)return Promise.resolve(()=>{});
+ const take=()=>{state.inFlight.set(provider,(state.inFlight.get(provider)??0)+1);let done=false;
+  return ()=>{if(done)return;done=true;state.inFlight.set(provider,Math.max(0,(state.inFlight.get(provider)??1)-1));state.waiters.get(provider)?.shift()?.();};};
+ if((state.inFlight.get(provider)??0)<lim.maxConcurrent)return Promise.resolve(take());
+ if(lim.maxQueueWaitMs===0)return Promise.resolve(null);
+ return new Promise(resolve=>{
+  const q=state.waiters.get(provider)??[];state.waiters.set(provider,q);
+  let settled=false;
+  const wake=()=>{if(settled)return;settled=true;clearTimeout(t);resolve(take());};
+  const t=setTimeout(()=>{if(settled)return;settled=true;const i=q.indexOf(wake);if(i>=0)q.splice(i,1);resolve(null);},lim.maxQueueWaitMs);
+  q.push(wake);
+ });
+}
+/** Parses Retry-After style headers: `retry-after-ms`, then `retry-after` as seconds or an HTTP date. Undefined when absent or unparsable. */
+export function retryAfterMsFrom(headers:{get(name:string):string|null}|undefined,now:number=Date.now()):number|undefined{
+ const ms=Number(headers?.get("retry-after-ms"));if(Number.isFinite(ms)&&ms>0)return Math.ceil(ms);
+ const v=headers?.get("retry-after");if(!v)return undefined;
+ const s=Number(v);if(Number.isFinite(s))return s>0?Math.ceil(s*1000):undefined;
+ const d=Date.parse(v);return Number.isFinite(d)&&d>now?d-now:undefined;
+}
 export function countAstraCall(now:Date,state:RouterState=defaultRouterState()){const d=utcDay(now);if(state.astra.day!==d)state.astra={day:d,n:0};state.astra.n++;}
 const astraCalls=(now:Date,s:RouterState)=>s.astra.day===utcDay(now)?s.astra.n:0;
 const KEY={anthropic:"ANTHROPIC_API_KEY",openai:"OPENAI_API_KEY"} as const;
-export type RouteSkip={modelId:string;why:"no_key"|"cooldown"|"astra_disabled"|"astra_daily_cap"|"cost_ceiling"|"unknown_provider"};
+export type RouteSkip={modelId:string;why:"no_key"|"cooldown"|"astra_disabled"|"astra_daily_cap"|"cost_ceiling"|"unknown_provider"|"provider_busy"};
 export type PlannedRoute={band:"quick"|"standard"|"complex"|"exceptional";ladder:string[];reason:string;skipped:RouteSkip[]};
 export const estimateTurnCostUsd=(cfg:RoutingConfig,model:string,inputChars:number):number=>{const p=cfg.prices[model];return p?(Math.ceil(inputChars/4)*p[0]+2500*p[1])/1e6:0;};
 export const bandFor=(cfg:RoutingConfig,score:number)=>cfg.bands.find(b=>score<=b.maxScore)??cfg.bands[cfg.bands.length-1];
@@ -134,5 +178,5 @@ export function planRoute(profile:TaskProfile,opts:{cfg?:RoutingConfig;env?:Reco
 }
 
 // ---- audit ----
-export type RoutingAttempt={modelId:string;provider:string;outcome:string;latencyMs:number;usage?:unknown;estCostUsd:number|null};
+export type RoutingAttempt={modelId:string;provider:string;outcome:string;latencyMs:number;usage?:unknown;estCostUsd:number|null;limit?:"rate"|"quota";retryAfterMs?:number};
 export type RoutingAudit=TaskProfile&{band:string;ladder:string[];skipped:RouteSkip[];attempts:RoutingAttempt[];chosenModelId:string|null};
