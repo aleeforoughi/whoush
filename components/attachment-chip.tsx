@@ -36,7 +36,7 @@ function Meta({a}:{a:LocalAttachment}){
 export function TagBadge({tag,onMention}:{tag:string;onMention?:()=>void}){
  const badge=<Badge variant="secondary">{tagText(tag)}</Badge>;
  return onMention
-  ?<button type="button" onClick={onMention} aria-label={"درج "+displayTag(tag)+" در متن"} className="hit-area inline-flex rounded-full motion-hover not-disabled:hover:opacity-80">{badge}</button>
+  ?<button type="button" onClick={onMention} aria-label={"درج "+displayTag(tag)+" در متن"} className="hit-area inline-flex rounded-control motion-hover not-disabled:hover:opacity-80">{badge}</button>
   :badge;
 }
 /** One attachment: editable in the composer tray (`onChange`/`onRemove`), read-only in a sent message. */

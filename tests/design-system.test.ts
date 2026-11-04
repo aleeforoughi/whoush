@@ -78,3 +78,10 @@ test("fonts are declared but never committed",()=>{
  assert.deepEqual(tracked,[],"licensed font binaries must not be committed");
  assert.equal(execFileSync("git",["check-ignore","-q","public/fonts/iransans/IRANSansWeb.woff2"],{cwd:root}).length,0);
 });
+
+test("corner radii: controls 8px, cards 12px, modals 16px in both themes; badges use the control radius",()=>{
+ const css=read("app/styles/brand.css");
+ for(const [tier,v] of [["control","0.5rem"],["card","0.75rem"],["dialog","1rem"]] as const)assert.equal(css.match(new RegExp("--radius-"+tier+": "+v.replace(".","\\.")+";","g"))?.length,2,tier);
+ assert.match(css,/\[data-slot="badge"\] \{\s*border-radius: var\(--radius-control\);/);
+ for(const f of ["components/mode-control.tsx","components/style-control.tsx","components/message-text.tsx","components/attachment-chip.tsx"])assert.ok(!read(f).includes("rounded-full"),f+" overrides the 8px control radius");
+});

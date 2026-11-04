@@ -9,7 +9,7 @@ export function MessageText({text,attachments,onOpen}:{text:string;attachments:R
   const a=attachments.get(part.tag),label=<bdi>{displayTag(part.tag)}</bdi>;
   if(!a)return <Badge key={i} variant="outline" className="align-middle">{label}</Badge>;
   const media=a.kind==="image"||a.kind==="video";
-  return <button key={i} type="button" onClick={()=>onOpen(a)} aria-label={(media?"پیش‌نمایش ":"اطلاعات ")+displayTag(a.tag)} className="hit-area inline-flex rounded-full align-middle motion-hover not-disabled:hover:opacity-80">
+  return <button key={i} type="button" onClick={()=>onOpen(a)} aria-label={(media?"پیش‌نمایش ":"اطلاعات ")+displayTag(a.tag)} className="hit-area inline-flex rounded-control align-middle motion-hover not-disabled:hover:opacity-80">
    <Badge variant="secondary">{label}</Badge>
   </button>;
  })}</>;

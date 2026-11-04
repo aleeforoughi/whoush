@@ -32,7 +32,7 @@ export function ModeControl({value,onChange,notify}:{value:AgentPreference;onCha
  return <div className="flex flex-wrap items-center gap-2">
   <DropdownMenu>
    {/* Outlined in the mode's own color (text, icon and border), never filled: the only filled control in the composer stays the send button. */}
-   <DropdownMenuTrigger render={<Button type="button" variant="outline" aria-label={"حالت ساخت: "+modeLabelFa(value)+"، برای تغییر کلیک کن"} aria-haspopup="menu" className={cn(TONE[value],"rounded-full bg-transparent")}/>}>
+   <DropdownMenuTrigger render={<Button type="button" variant="outline" aria-label={"حالت ساخت: "+modeLabelFa(value)+"، برای تغییر کلیک کن"} aria-haspopup="menu" className={cn(TONE[value],"bg-transparent")}/>}>
     <Icon icon={ICONS[value]} aria-hidden="true"/>{modeLabelFa(value)}<Icon icon={ChevronDown} aria-hidden="true"/>
    </DropdownMenuTrigger>
    <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-56">

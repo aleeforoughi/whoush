@@ -61,10 +61,10 @@
   --chart-4: color-mix(in oklab, #1a73e8 60%, #ffffff);
   --chart-5: color-mix(in oklab, #181c25 45%, #ffffff);
   --radius-xs: 0.25rem;
-  --radius-control: 0.25rem;
-  --radius-card: 0.5rem;
+  --radius-control: 0.5rem;
+  --radius-card: 0.75rem;
   --radius-step: 0.25rem;
-  --radius-dialog: 0.75rem;
+  --radius-dialog: 1rem;
   --radius: var(--radius-card);
   --sidebar: #f7f9fc;
   --sidebar-foreground: var(--text-primary);
@@ -218,6 +218,11 @@
   font-weight: 700;
 }
 
+/* Component tokens */
+[data-slot="badge"] {
+  border-radius: var(--radius-control);
+}
+
 /* Dark: only the variable block of tokens.dark.json. Density and component rules above are shared. */
 :root:root.dark {
   --background: #000000;
@@ -277,10 +282,10 @@
   --chart-4: color-mix(in oklab, #80b4ff 60%, #000000);
   --chart-5: color-mix(in oklab, #f5f8ff 45%, #000000);
   --radius-xs: 0.25rem;
-  --radius-control: 0.25rem;
-  --radius-card: 0.5rem;
+  --radius-control: 0.5rem;
+  --radius-card: 0.75rem;
   --radius-step: 0.25rem;
-  --radius-dialog: 0.75rem;
+  --radius-dialog: 1rem;
   --radius: var(--radius-card);
   --sidebar: #080b12;
   --sidebar-foreground: var(--text-primary);

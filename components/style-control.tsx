@@ -21,7 +21,7 @@ export function useStyleSetting():[GenerationStyle|null,(s:GenerationStyle|null)
 /** «سبک» beside the build mode: a neutral secondary pill showing only the current style; clicking it opens a radio menu (خودکار · واقع‌گرایانه · سه‌بعدی · کارتونی). */
 export function StyleControl({value,onChange}:{value:GenerationStyle|null;onChange:(s:GenerationStyle|null)=>void}){
  return <DropdownMenu>
-  <DropdownMenuTrigger render={<Button type="button" variant="outline" aria-label={"سبک: "+styleLabelFa(value)+"، برای تغییر کلیک کن"} aria-haspopup="menu" className="rounded-full"/>}>
+  <DropdownMenuTrigger render={<Button type="button" variant="outline" aria-label={"سبک: "+styleLabelFa(value)+"، برای تغییر کلیک کن"} aria-haspopup="menu"/>}>
    <Icon icon={ICONS[value??AUTO]} aria-hidden="true"/>{value?styleLabelFa(value):"سبک: "+AUTO_STYLE_FA.titleFa}<Icon icon={ChevronDown} aria-hidden="true"/>
   </DropdownMenuTrigger>
   <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-64">

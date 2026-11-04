@@ -12,7 +12,7 @@
     "mutedForeground": "#A3ADBD"
   },
   "typography": { "fontFamily": { "display": "Inter", "body": "Inter" }, "headingWeight": 700 },
-  "shape": "soft",
+  "shape": "rounded",
   "density": "comfortable",
   "elevation": "flat",
   "motion": "calm"

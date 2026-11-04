@@ -6,6 +6,7 @@
 - Product: **Whoush / هووش**. Website and interface **Persian Farsi**, RTL-first. English permitted only for product names, international model names, file extensions and technical terms where needed.
 - Primary font: **IRANSans / IRANSansX** using valid commercially licensed self-hosted WOFF2 files. Do not download, redistribute, bundle or commit proprietary font files without a verified license. CSS currently uses IRANSans-family names and safe Tahoma fallback. The user must supply a valid license/font files before claiming font integration is complete.
 - `html lang="fa" dir="rtl"`, Persian-friendly line-height, correctly shaped glyphs, bidi isolation for English model names, URLs, digits and currency. Test `تومان`, `نورون`, Latin model names and mixed text.
+- Corner radius: every button, input and control **8px**, cards **12px**, modals and sheets **16px** (Feather shape `rounded` in both brand token files; badges use the control radius via a component token). Circles only for non-button indicators such as progress step dots.
 - Root font size `16px = 1rem`. Spacing scale `8px` increments; exception only for optical hairlines/icon geometry. Consistent typography scale, readable UI, generous breathing room.
 
 ## Palette
