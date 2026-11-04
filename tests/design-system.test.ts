@@ -1,0 +1,75 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import {buildTheme} from "@aleeforoughi/feather-tokens";
+import {generateBrand} from "../scripts/brand.mjs";
+
+const root=path.resolve(import.meta.dirname,"..");
+const read=(p:string)=>fs.readFileSync(path.join(root,p),"utf8");
+function walk(dir:string,exts:string[],out:string[]=[]):string[]{
+ for(const e of fs.readdirSync(path.join(root,dir),{withFileTypes:true})){
+  const rel=path.join(dir,e.name);
+  if(e.isDirectory())walk(rel,exts,out);
+  else if(exts.some(x=>e.name.endsWith(x)))out.push(rel);
+ }
+ return out;
+}
+const sources=[...walk("app",[".ts",".tsx",".css"]),...walk("components",[".ts",".tsx",".css"])];
+const tsx=sources.filter(f=>f.endsWith(".tsx"));
+
+test("both brand token files build with Feather's theme engine and zero problems",()=>{
+ for(const file of ["brand/tokens.json","brand/tokens.dark.json"]){
+  const result=buildTheme(JSON.parse(read(file)));
+  assert.equal(result.ok,true,file+" problems: "+(result.ok?"":result.problems.join("; ")));
+ }
+});
+
+test("brand tokens carry the approved palette",()=>{
+ const light=JSON.parse(read("brand/tokens.json")),dark=JSON.parse(read("brand/tokens.dark.json"));
+ assert.equal(light.colors.primary,"#1A73E8");assert.equal(light.colors.background,"#FFFFFF");
+ assert.equal(dark.colors.primary,"#005BFF");assert.equal(dark.colors.background,"#000000");
+});
+
+test("generated brand CSS is identical to a fresh regeneration",()=>{
+ const fresh=generateBrand() as Record<string,string>;
+ assert.equal(read("app/styles/brand.css"),fresh["brand.css"],"run `npm run brand` and commit app/styles/brand.css");
+ assert.equal(read("app/styles/brand-fonts.css"),fresh["brand-fonts.css"],"run `npm run brand` and commit app/styles/brand-fonts.css");
+ const css=fresh["brand.css"];
+ assert.match(css,/:root:root \{/);assert.match(css,/:root:root\.dark \{/);
+ assert.equal((css.match(/^:root:root\.dark \{/gm)??[]).length,1,"only the dark variable block is appended");
+});
+
+test("no old prototype purple, no hardcoded hex colors in TSX, and the old stylesheets are gone",()=>{
+ const purple=["9c75f9","6240ce","7444e5","7545df","8c61ed","a681ed","b99afd","bea4ff","c0a2ff","c3aaff"];
+ for(const f of sources){
+  const text=read(f).toLowerCase();
+  for(const hex of purple)assert.ok(!text.includes("#"+hex),f+" contains old purple #"+hex);
+ }
+ for(const f of tsx)assert.ok(!/#[0-9a-f]{6}\b/i.test(read(f)),f+" has a hex color literal; use Feather tokens");
+ assert.ok(!fs.existsSync(path.join(root,"app/design-system.css")));
+ assert.ok(!fs.existsSync(path.join(root,"app/characters/characters.css")));
+ for(const f of sources)assert.ok(!/design-system\.css|characters\.css/.test(read(f)),f+" still references an old stylesheet");
+});
+
+test("root layout is Persian, RTL and dark by default, and applies the saved theme before paint",()=>{
+ const layout=read("app/layout.tsx");
+ assert.match(layout,/lang="fa"/);assert.match(layout,/dir="rtl"/);assert.match(layout,/className="dark"/);
+ assert.match(layout,/whoush-theme/);assert.match(layout,/try\{/);
+ const globals=read("app/globals.css");
+ for(const imp of ["tailwindcss","@aleeforoughi/feather-react/styles.css","./styles/brand-fonts.css","./styles/brand.css","./fonts.css","./feather-rtl.css"])
+  assert.ok(globals.includes('@import "'+imp+'"'),"globals.css must import "+imp);
+});
+
+test("Whoush TSX uses logical Tailwind utilities, never physical directions",()=>{
+ const physical=/\b(ml|mr|pl|pr|left|right)-\d|\btext-(left|right)\b|rounded-[lr]-/;
+ for(const f of tsx)assert.ok(!physical.test(read(f)),f+" uses a physical-direction utility; use ms-/me-/ps-/pe-/start-/end-/text-start/text-end");
+});
+
+test("fonts are declared but never committed",()=>{
+ const fonts=read("app/fonts.css");
+ assert.match(fonts,/font-family: "IRANSansX"/);assert.match(fonts,/font-display: swap/);
+ const dir=path.join(root,"public/fonts/iransans");
+ assert.ok(fs.existsSync(path.join(dir,"README.md")));
+ assert.deepEqual(fs.readdirSync(dir).filter(f=>/\.(woff2?|ttf|otf)$/i.test(f)),[],"licensed font binaries must not be committed");
+});

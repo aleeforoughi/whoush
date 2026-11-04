@@ -43,6 +43,7 @@ export function NeuronStore(){
        </button>
       </Card>;
      })}
+     {!data&&!failed&&<p role="status" className="sr-only">در حال بارگذاری بسته‌ها…</p>}
      {!data&&!failed&&[0,1,2,3,4,5].map(i=><Skeleton key={i} className="h-48 rounded-card" aria-hidden="true"/>)}
      {failed&&<Alert variant="destructive" role="alert" className="sm:col-span-2 xl:col-span-3">
       <Icon icon={CircleAlert} aria-hidden="true"/>

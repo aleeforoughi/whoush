@@ -4,6 +4,11 @@
  * These scoped overrides mirror ONLY the parts Whoush uses. Each rule names the Feather class it undoes.
  * Unlayered, so they win over Feather's layered utilities. Do not add anything here that Whoush does not render. */
 
+/* accordion: trigger "text-left" */
+[dir="rtl"] [data-slot="accordion-trigger"] {
+  text-align: start;
+}
+
 /* alert: "text-left" */
 [dir="rtl"] [data-slot="alert"] {
   text-align: start;
