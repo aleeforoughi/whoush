@@ -26,7 +26,7 @@ export function Studio(){
   try{
    const r=await fetch("/api/agent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,preference})});
    if(!r.ok){const errorBody=await r.json().catch(()=>({}));throw new Error(typeof errorBody.message==="string"?errorBody.message:"خطا در آماده‌سازی پیشنهاد");}
-   const data=await r.json() as GenerationProposal;
+   const data=await r.json() as GenerationProposal&{turnId?:string};
    setProposal(data);setSelected(data.selectedModelId);setPreview("در انتظار تأیید تولید");
    setMessages(m=>[...m,{role:"agent",text:data.message}]);
   }catch(err){setError(err instanceof Error?err.message:"خطای ناشناخته");}
@@ -35,12 +35,23 @@ export function Studio(){
  async function approve(){
   if(!proposal||busy)return;setBusy(true);setError("");
   try{
-   const q=await fetch("/api/generation/quote",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({modelId:selected})});
-   if(!q.ok)throw new Error("مشکل در محاسبه هزینه");
-   const execution=await fetch("/api/generation/execute",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({modelId:selected})});
-   const result=await execution.json();if(!execution.ok)throw new Error("خطا در اجرای آزمایشی");
-   setPreview("تأیید آزمایشی ثبت شد. هیچ تصویری تولید یا نورونی کسر نشده است.");
-   setMessages(m=>[...m,{role:"agent",text:result.message}]);setProposal(null);
+   const turnId=(proposal as GenerationProposal&{turnId?:string}).turnId;
+   if(!turnId)throw new Error("پیشنهاد منقضی شده است؛ دوباره درخواستت را بفرست.");
+   const post=(url:string,body:unknown)=>fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+   const q=await post("/api/generation/quote",{modelId:selected,turnId});
+   if(!q.ok)throw new Error(q.status===410?"پیشنهاد منقضی شده است؛ دوباره درخواستت را بفرست.":"مشکل در محاسبه هزینه");
+   const quote=await q.json() as {token:string};
+   const execution=await post("/api/generation/execute",{token:quote.token,approved:true,idempotencyKey:crypto.randomUUID()});
+   if(!execution.ok)throw new Error("خطا در شروع تولید");
+   let job=await execution.json() as {id:string;state:string;messageFa:string};
+   const done=["completed","completed_demo","failed","canceled","released"];
+   setPreview(job.messageFa);
+   for(let i=0;i<10&&!done.includes(job.state);i++){
+    await new Promise(r=>setTimeout(r,1500));
+    const poll=await fetch("/api/generation/jobs/"+job.id,{cache:"no-store"});if(!poll.ok)break;
+    job=await poll.json();setPreview(job.messageFa);
+   }
+   setMessages(m=>[...m,{role:"agent",text:job.messageFa}]);setProposal(null);
   }catch(err){setError(err instanceof Error?err.message:"خطای ناشناخته");}
   finally{setBusy(false);}
  }

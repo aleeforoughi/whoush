@@ -1,0 +1,60 @@
+import "server-only";
+import {randomUUID} from "node:crypto";
+import {findMediaModel,type MediaConfiguration} from "./catalog";
+import {cancelHiggsfield,getHiggsfieldStatus,NotCancelableError,submitHiggsfieldVerifiedPath,type HiggsfieldStatus} from "./higgsfield";
+import {generationGate} from "./policy";
+import type {MediaModel} from "./types";
+/** Provider outputs are provider-hosted URLs that expire (>= 7 days); mirroring to owned storage is NOT implemented (docs/LAUNCH_GATES.md gate 8). */
+export type ProviderOutput={kind:"image"|"video"|"audio";url:string;needsMirroring:true;mime?:string;width?:number;height?:number;durationSeconds?:number};
+export type ProviderState="queued"|"running"|"completed"|"completed_demo"|"failed"|"nsfw"|"canceled";
+export type ProviderStatus={state:ProviderState;outputs:ProviderOutput[];expiresAt?:string};
+export type ProviderJob={modelId:string;prompt:string;configuration:MediaConfiguration;idempotencyKey:string};
+export interface MediaProvider{submit(job:ProviderJob):Promise<{providerRequestId:string}>;status(providerRequestId:string):Promise<ProviderStatus>;cancel(providerRequestId:string):Promise<void>}
+export {NotCancelableError};
+/** Deterministic, offline: queued -> running -> completed_demo over polls. It never returns media URLs. */
+export class MockMediaProvider implements MediaProvider{
+ private readonly polls=new Map<string,number>();
+ private readonly canceled=new Set<string>();
+ async submit():Promise<{providerRequestId:string}>{const id="mock-"+randomUUID();this.polls.set(id,0);return {providerRequestId:id};}
+ async status(id:string):Promise<ProviderStatus>{
+  const n=this.polls.get(id);if(n===undefined)throw new Error("Unknown mock request");
+  if(this.canceled.has(id))return {state:"canceled",outputs:[]};
+  this.polls.set(id,n+1);
+  return {state:n===0?"queued":n===1?"running":"completed_demo",outputs:[]};
+ }
+ async cancel(id:string):Promise<void>{
+  const n=this.polls.get(id);if(n===undefined)throw new Error("Unknown mock request");
+  if(n>1)throw new NotCancelableError(); // mirrors "only while queued"
+  this.canceled.add(id);
+ }
+}
+/** Payloads only for models whose input schema was read (docs/HIGGSFIELD_EVIDENCE.md). Anything else throws. */
+export function buildHiggsfieldPayload(model:MediaModel,prompt:string,c:MediaConfiguration):Record<string,unknown>{
+ if(model.verifiedApiPath==="/higgsfield-ai/soul/standard") return {prompt,num_images:1,...(c.aspectRatio?{aspect_ratio:c.aspectRatio}:{})}; // resolution deliberately omitted: documented sources conflict
+ throw new Error("No verified payload mapping for model");
+}
+function mapOutputs(r:HiggsfieldStatus):ProviderOutput[]{
+ const o:ProviderOutput[]=[],seen=new Set<string>();
+ const add=(kind:ProviderOutput["kind"],u?:{url:string}|null)=>{if(u&&typeof u.url==="string"&&!seen.has(u.url)){seen.add(u.url);o.push({kind,url:u.url,needsMirroring:true});}};
+ for(const i of r.images??[])add("image",i);add("video",r.video);add("audio",r.audio);for(const a of r.audios??[])add("audio",a);
+ return o;
+}
+/** Only constructible/usable when generationGate(model).live; re-checked on every submit. */
+export class HiggsfieldMediaProvider implements MediaProvider{
+ async submit(job:ProviderJob):Promise<{providerRequestId:string}>{
+  const model=findMediaModel(job.modelId);if(!model||!model.verifiedApiPath||!generationGate(model).live)throw new Error("Live generation blocked");
+  const r=await submitHiggsfieldVerifiedPath(model.verifiedApiPath,buildHiggsfieldPayload(model,job.prompt,job.configuration),job.idempotencyKey);
+  if(!r||typeof r.request_id!=="string"||!r.request_id)throw new Error("Malformed provider submission");
+  return {providerRequestId:r.request_id};
+ }
+ async status(id:string):Promise<ProviderStatus>{
+  const r=await getHiggsfieldStatus(id);
+  const m:Record<string,ProviderState>={queued:"queued",in_progress:"running",completed:"completed",failed:"failed",nsfw:"nsfw",canceled:"canceled"};
+  const state=m[r.status];if(!state)throw new Error("Unknown provider status"); // never guess an undocumented status
+  return {state,outputs:state==="completed"?mapOutputs(r):[],expiresAt:r.expires_at??undefined};
+ }
+ async cancel(id:string):Promise<void>{await cancelHiggsfield(id);}
+}
+const g=globalThis as {__whoushMockProvider?:MediaProvider};
+export const sharedMockProvider=():MediaProvider=>(g.__whoushMockProvider??=new MockMediaProvider());
+export const providerForMode=(mode:"demo"|"live"):MediaProvider=>mode==="live"?new HiggsfieldMediaProvider():sharedMockProvider();
