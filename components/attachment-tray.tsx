@@ -11,7 +11,7 @@ export const ATTACHMENT_NOTE="فایل‌ها فقط در همین مرورگر 
 /** Chips for the files picked for the next message, a running count, per-file problems and the privacy note. */
 export function AttachmentTray({items,problems,reading,onChange,onRemove,onPreview,onDismiss}:{items:LocalAttachment[];problems:AttachmentProblem[];reading:boolean;onChange:(id:string,patch:AttachmentPatch)=>void;onRemove:(id:string)=>void;onPreview:(item:LocalAttachment)=>void;onDismiss:(key:string)=>void}){
  if(!items.length&&!problems.length&&!reading)return null;
- return <div className="flex flex-col gap-2">
+ return <div className="flex max-h-[45dvh] flex-col gap-2 overflow-y-auto">
   {problems.map(p=><Alert key={p.key} variant="destructive" role="alert" className="flex items-center gap-2">
    <Icon icon={CircleAlert} aria-hidden="true"/>
    <AlertDescription className="min-w-0 flex-1 break-words"><bdi>{p.name}</bdi>: {p.message}</AlertDescription>

@@ -56,3 +56,16 @@ Use `tests/skills-safety.test.ts` and expand with 100+ representative Persian pr
 
 ## Plan language
 Customer-visible plan fields (summary, constraints, camera/shot descriptions, continuity, identity lock lists, speech notes, QA checklist) are natural Persian in both the deterministic planner and the live planner instructions. `mediaPrompt` and `negative` are provider-facing, private and English.
+
+## Attachments
+Users can attach files to a chat message (`lib/attachments.ts`, `lib/attachment-files.ts`, `components/attachment-tray.tsx`). Limits: 10 files and 200 MB per message; image 20 MB (JPEG, PNG, WebP), video 100 MB (MP4, MOV, WebM), audio 25 MB (MP3, WAV, M4A, OGG, WebM), PDF 20 MB, JSON 1 MB, Markdown 1 MB.
+
+**Verification.** The browser decides what a file is from its leading bytes (magic numbers), never from its name or declared type. A declared type or extension that disagrees with the bytes, SVG, HTML, executables and empty files are rejected with a Persian reason. JSON and Markdown must be valid UTF-8, and JSON must parse. The server re-validates the metadata with a strict schema (`AttachmentSchema` in `lib/creative-plan.ts`), but it never sees the bytes, so the byte check is a user-experience and consistency gate, not a security boundary.
+
+**What is sent** with the request: per file an id, kind, mime, size, sha256, optional pixel size or duration, a role (`reference` or `context`), audio speech details (has speech, language, accent) and, for Markdown and JSON only, a text excerpt of up to 8000 characters. **What is not sent:** file bytes and file names (the schema rejects a `name`). Files stay in browser memory for the session; nothing is stored or uploaded.
+
+**How the server uses them.** Excerpts are run through the safety preflight like the prompt (a blocked excerpt restricts the turn before any planner runs). They reach the private planner only inside `<attachment>` blocks within `<user_brief>`, with forged tags stripped, and the skill instructions mark them as untrusted data. Audio attachments feed the same flags as the legacy `audio` field, so Persian speech on a lip-sync video activates the Tehrani accent skill exactly as before. The private audit keeps only `{kind, bytes, sha256}`.
+
+**Fail closed.** No image, video or audio inspector exists yet (`docs/MODERATION_POLICY.md` steps 4 and 6). Any such attachment makes the turn return the plan with `no_compatible_model` (HTTP 422), no proposal and no price, and the audit reason `media_review_unavailable`. Reference-role images already count toward the router's `referenceImages` requirement for when that check is lifted.
+
+**PDF.** PDFs are accepted and counted, but their text is not extracted (no parser dependency yet); the plan states that the PDF has no effect.
