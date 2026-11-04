@@ -159,5 +159,5 @@ export function renderReport(runs:readonly EvalRun[],prompts:readonly EvalPrompt
  "table{border-collapse:collapse;width:100%}th,td{border:1px solid var(--line);padding:6px 8px;vertical-align:top;text-align:start}.wrap{overflow-x:auto}blockquote{margin:.4em 0;padding:8px 12px;background:var(--card);border-inline-start:3px solid var(--acc)}"+
  "dl{margin:0;display:grid;grid-template-columns:max-content 1fr;gap:2px 10px}dt{color:var(--mut)}dd{margin:0}ul{margin:.2em 0;padding-inline-start:1.2em}.none{color:var(--mut)}.rate{display:block;margin-top:10px}.rate input{width:3.5em}.note{color:var(--mut)}pre{background:var(--card);padding:10px;overflow-x:auto}"+
  "</style></head><body><h1>ارزیابی برنامه‌ریز خصوصی</h1><p class=\"note\">تولید: "+esc(meta.generatedAt)+" | هزینه‌ها تخمین‌اند و فقط برای مقایسهٔ داخلی؛ مدل‌ها و قیمت‌ها هرگز به مشتری نشان داده نمی‌شوند. تأخیر و کیفیت فقط روی اجراهای موفق حساب شده است.</p>"+
- "<h2>خلاصه</h2><div class=\"wrap\"><table><thead>"+head+"</thead><tbody>"+rows+"</tbody></table></div><h2>مقایسهٔ پرامپت‌ها</h2>"+sections+"</body></html>";
+ "<h2>خلاصه</h2><div class=\"wrap\"><table><thead>"+head+"</thead><tbody>"+rows+"</tbody></table></div>"+classSection+"<h2>مقایسهٔ پرامپت‌ها</h2>"+sections+"</body></html>";
 }
