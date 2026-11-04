@@ -64,7 +64,7 @@ export const mean=(xs:readonly number[]):number|null=>xs.length?xs.reduce((a,b)=
 
 // ---- results ----
 export type EvalRun={
- promptId:string;model:string;provider:string;ok:boolean;status:string;fallbackReason?:string;error?:string;
+ promptId:string;model:string;provider:string;ok:boolean;status:string;fallbackReason?:string;error?:string;rateLimitWaits?:number;
  latencyMs:number;usage:{input_tokens:number;output_tokens:number}|null;costUsdEstimate:number|null;
  corrections:number;leakFiltered:boolean;persianRatio:number;complete:boolean|null;
  mentionHitRate:number|null;mentionMisses:string[];mustNotViolations:string[];planChars:number;plan?:PublicCreativePlan;
@@ -160,4 +160,20 @@ export function renderReport(runs:readonly EvalRun[],prompts:readonly EvalPrompt
  "dl{margin:0;display:grid;grid-template-columns:max-content 1fr;gap:2px 10px}dt{color:var(--mut)}dd{margin:0}ul{margin:.2em 0;padding-inline-start:1.2em}.none{color:var(--mut)}.rate{display:block;margin-top:10px}.rate input{width:3.5em}.note{color:var(--mut)}pre{background:var(--card);padding:10px;overflow-x:auto}"+
  "</style></head><body><h1>ارزیابی برنامه‌ریز خصوصی</h1><p class=\"note\">تولید: "+esc(meta.generatedAt)+" | هزینه‌ها تخمین‌اند و فقط برای مقایسهٔ داخلی؛ مدل‌ها و قیمت‌ها هرگز به مشتری نشان داده نمی‌شوند. تأخیر و کیفیت فقط روی اجراهای موفق حساب شده است.</p>"+
  "<h2>خلاصه</h2><div class=\"wrap\"><table><thead>"+head+"</thead><tbody>"+rows+"</tbody></table></div>"+classSection+"<h2>مقایسهٔ پرامپت‌ها</h2>"+sections+"</body></html>";
+}
+
+/**
+ * Retries a call that failed with a RATE limit (a quota limit is never retried): waits the provider's Retry-After, else baseMs * 3^n, capped at maxWaitMs,
+ * at most maxRetries times. So one busy minute does not count as a model failure in the comparison. `onWait` reports each wait (count it in the run).
+ */
+export async function withRateLimitRetry<T>(fn:()=>Promise<T>,o:{maxRetries?:number;baseMs?:number;maxWaitMs?:number;sleep?:(ms:number)=>Promise<void>;onWait?:(ms:number)=>void}={}):Promise<T>{
+ const max=o.maxRetries??2,base=o.baseMs??10_000,cap=o.maxWaitMs??120_000,sleep=o.sleep??(ms=>new Promise(r=>setTimeout(r,ms)));
+ for(let n=0;;n++){
+  try{return await fn();}
+  catch(e){
+   const info=e as {name?:string;limit?:string;retryAfterMs?:number};
+   if(n>=max||info?.name!=="PlannerUnavailableError"||info.limit!=="rate")throw e;
+   const ms=Math.min(cap,info.retryAfterMs??base*3**n);o.onWait?.(ms);await sleep(ms);
+  }
+ }
 }

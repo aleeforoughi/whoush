@@ -123,6 +123,8 @@ export type PlannerRequest={systemInstructions:string;userText:string;activeSkil
  attachments?:{tag:string;kind:AttachmentInput["kind"];role?:AttachmentRole;roleSource?:RoleSource;textExcerpt?:string}[]};
 export type PlannerResult={plan:unknown;usage?:unknown;modelId?:string};
 export type PrivatePlanner=(req:PlannerRequest)=>Promise<PlannerResult>|PlannerResult;
-export class PlannerUnavailableError extends Error{constructor(message="planner unavailable"){super(message);this.name="PlannerUnavailableError";}}
+/** `limit` says why: `rate` (429 / overloaded, with the provider's Retry-After when it sent one) or `quota` (the account is out of quota or credit: retrying soon does not help). Vendor-neutral, private. */
+export type PlannerLimit={limit?:"rate"|"quota";retryAfterMs?:number};
+export class PlannerUnavailableError extends Error{readonly limit?:"rate"|"quota";readonly retryAfterMs?:number;constructor(message="planner unavailable",info:PlannerLimit={}){super(message);this.name="PlannerUnavailableError";this.limit=info.limit;this.retryAfterMs=info.retryAfterMs;}}
 export class PlannerRefusedError extends Error{constructor(message="planner refused"){super(message);this.name="PlannerRefusedError";}}
 export class PlannerInvalidOutputError extends Error{constructor(message="planner returned invalid output"){super(message);this.name="PlannerInvalidOutputError";}}

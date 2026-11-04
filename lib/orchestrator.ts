@@ -4,7 +4,7 @@ import {buildProposal,NoCompatibleModelError} from "./agent";
 import {CHARACTER_VIEWS,REQUIRED_CHARACTER_VIEWS} from "./characters";
 import {CreativePlanSchema,CreativeTurnInputSchema,STYLE_VISUAL,toPublicPlan,type GenerationStyle,type PublicReference,PlannerInvalidOutputError,PlannerRefusedError,PlannerUnavailableError,type CreativePlan,type PlannerRequest,type PlannerResult,type PrivatePlanner,type PublicCreativePlan} from "./creative-plan";
 import {llmGate,preparePrivateCreativeRequest} from "./llm";
-import {countAstraCall,defaultRouterState,estimateTurnCostUsd,loadRoutingConfig,markProviderCooldown,planRoute,profileTask,type RoutingAudit,type RoutingAttempt,type RoutingConfig,type RouterState} from "./llm-routing";
+import {acquireProviderSlot,countAstraCall,defaultRouterState,estimateTurnCostUsd,loadRoutingConfig,markProviderCooldown,planRoute,profileTask,type RoutingAudit,type RoutingAttempt,type RoutingConfig,type RouterState} from "./llm-routing";
 import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./private-audit";
 import {displayTag,inferAttachmentRoles,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
 import {providerForModelId} from "./llm-routing";
@@ -275,10 +275,13 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  };
  // One attempt: call a planner, then validate, enforce invariants and leak-filter its output. `refused` is reported, never retried here.
  type Outcome="ok"|"refused"|"planner_unavailable"|"invalid_output"|"leak_filtered"|"planner_error";
- const attempt=async(pl:PrivatePlanner):Promise<{outcome:Outcome;result?:PlannerResult;fin?:{e?:{plan:CreativePlan;corrections:string[]};reason?:string}}>=>{
+ const attempt=async(pl:PrivatePlanner):Promise<{outcome:Outcome;result?:PlannerResult;fin?:{e?:{plan:CreativePlan;corrections:string[]};reason?:string};limit?:"rate"|"quota";retryAfterMs?:number}>=>{
   let r:PlannerResult;
   try{r=await pl(req);}
-  catch(e){return {outcome:e instanceof PlannerRefusedError?"refused":e instanceof PlannerUnavailableError?"planner_unavailable":e instanceof PlannerInvalidOutputError?"invalid_output":"planner_error"};}
+  catch(e){
+   if(e instanceof PlannerUnavailableError)return {outcome:"planner_unavailable",...(e.limit?{limit:e.limit}:{}),...(e.retryAfterMs!==undefined?{retryAfterMs:e.retryAfterMs}:{})};
+   return {outcome:e instanceof PlannerRefusedError?"refused":e instanceof PlannerInvalidOutputError?"invalid_output":"planner_error"};
+  }
   const f=finalize(r.plan);
   return {outcome:f.e?"ok":(f.reason as Outcome),result:r,fin:f};
  };
@@ -300,19 +303,26 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
    const route=planRoute(prof,{cfg,now:now(),state,inputChars:chars});
    routing={...prof,band:route.band,ladder:route.ladder,skipped:route.skipped,attempts:[],chosenModelId:null};
    if(!route.ladder.length)fallbackReason=route.skipped.some(x=>x.why==="cooldown")?"provider cooldown":route.skipped.some(x=>x.why==="no_key")?"api key not configured":"no route available";
-   let best:{o:Awaited<ReturnType<typeof attempt>>;modelId:string}|undefined,last:Outcome="planner_error";
-   for(let i=0;i<route.ladder.length&&i<cfg.escalation.maxAttemptsPerTurn;i++){
+   let best:{o:Awaited<ReturnType<typeof attempt>>;modelId:string}|undefined,last:Outcome="planner_error",made=0;
+   // `made` counts real calls against the attempt budget. A rung whose provider stays busy (all in-flight slots taken past maxQueueWaitMs) is skipped without a call.
+   for(let i=0;i<route.ladder.length&&made<cfg.escalation.maxAttemptsPerTurn;i++){
     const modelId=route.ladder[i],provider=providerForModelId(modelId)!;
-    req.privateRoute={provider,modelId};
-    if(modelId===cfg.astra.modelId)countAstraCall(now(),state);
-    const adapter=deps.plannerFor?.(modelId,provider)??(provider==="openai"?async(r:PlannerRequest)=>(await import("./llm-openai")).planWithOpenAI(r,modelId):async(r:PlannerRequest)=>(await import("./llm-anthropic")).planWithAnthropic(r,modelId));
-    const t0=Date.now(),o=await attempt(adapter),usage=o.result?.usage;
-    const u=usage as {input_tokens?:number;output_tokens?:number}|undefined;
-    routing.attempts.push({modelId,provider,outcome:o.outcome,latencyMs:Date.now()-t0,...(usage?{usage}:{}),estCostUsd:u&&typeof u.input_tokens==="number"&&cfg.prices[modelId]?(u.input_tokens*cfg.prices[modelId][0]+(u.output_tokens??0)*cfg.prices[modelId][1])/1e6:null} as RoutingAttempt);
+    const release=await acquireProviderSlot(provider,cfg,state);
+    if(!release){routing.skipped.push({modelId,why:"provider_busy"});continue;}
+    made++;
+    let o:Awaited<ReturnType<typeof attempt>>,t0=Date.now();
+    try{
+     req.privateRoute={provider,modelId};
+     if(modelId===cfg.astra.modelId)countAstraCall(now(),state);
+     const adapter=deps.plannerFor?.(modelId,provider)??(provider==="openai"?async(r:PlannerRequest)=>(await import("./llm-openai")).planWithOpenAI(r,modelId):async(r:PlannerRequest)=>(await import("./llm-anthropic")).planWithAnthropic(r,modelId));
+     t0=Date.now();o=await attempt(adapter);
+    }finally{release();}
+    const usage=o.result?.usage,u=usage as {input_tokens?:number;output_tokens?:number}|undefined;
+    routing.attempts.push({modelId,provider,outcome:o.outcome,latencyMs:Date.now()-t0,...(usage?{usage}:{}),estCostUsd:u&&typeof u.input_tokens==="number"&&cfg.prices[modelId]?(u.input_tokens*cfg.prices[modelId][0]+(u.output_tokens??0)*cfg.prices[modelId][1])/1e6:null,...(o.limit?{limit:o.limit}:{}),...(o.retryAfterMs!==undefined?{retryAfterMs:o.retryAfterMs}:{})} as RoutingAttempt);
     last=o.outcome;
-    if(o.outcome==="planner_unavailable")markProviderCooldown(provider,now(),cfg,state);
+    if(o.outcome==="planner_unavailable")markProviderCooldown(provider,now(),cfg,state,{limit:o.limit,retryAfterMs:o.retryAfterMs});
     if(o.outcome==="refused"&&!cfg.escalation.escalateOn.includes("refused")){rec({planner:"live",fallbackReason:"planner_refused",routing});return refusedResult();}
-    const more=i+1<route.ladder.length&&i+1<cfg.escalation.maxAttemptsPerTurn;
+    const more=i+1<route.ladder.length&&made<cfg.escalation.maxAttemptsPerTurn;
     if(o.outcome==="ok"){
      best=o.fin?.e?{o,modelId}:best;
      if(more&&(o.fin!.e!.corrections.length>=cfg.escalation.escalateOnCorrectionsAtLeast))continue;
@@ -321,7 +331,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
     if(!(more&&(cfg.escalation.escalateOn as string[]).includes(o.outcome)))break;
    }
    if(best){label="live";result=best.o.result;fin=best.o.fin!;routing.chosenModelId=best.modelId;req.privateRoute={provider:providerForModelId(best.modelId)!,modelId:best.modelId};}
-   else if(route.ladder.length){fallbackReason=last==="refused"?"planner_refused":last;}
+   else if(route.ladder.length){fallbackReason=!made?"provider busy":last==="refused"?"planner_refused":last;}
   }
  }
  if(!fin.e){

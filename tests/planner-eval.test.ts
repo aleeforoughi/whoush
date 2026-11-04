@@ -81,3 +81,17 @@ test("per-class table and suggested overrides rank by ok-rate, corrections, Pers
  const html=renderReport(runs,[],{generatedAt:"t",models:["router"]});
  assert.match(html,/classOverrides/);assert.match(html,/به تفکیک نوع کار/);
 });
+test("withRateLimitRetry waits out rate limits (Retry-After, else backoff), never retries a quota limit or other errors",async()=>{
+ const {withRateLimitRetry}=await import("../scripts/planner-eval-lib");
+ const {PlannerUnavailableError,PlannerInvalidOutputError}=await import("../lib/creative-plan");
+ const waits:number[]=[],sleep=async(ms:number)=>{waits.push(ms);};
+ let n=0;
+ assert.equal(await withRateLimitRetry(async()=>{if(n++<2)throw new PlannerUnavailableError(undefined,{limit:"rate",retryAfterMs:n===1?4000:undefined});return "ok";},{sleep,baseMs:1000}),"ok");
+ assert.deepEqual(waits,[4000,3000],"Retry-After first, then base * 3^n");
+ waits.length=0;n=0;
+ await assert.rejects(withRateLimitRetry(async()=>{n++;throw new PlannerUnavailableError(undefined,{limit:"rate",retryAfterMs:999_999});},{sleep,maxRetries:2,maxWaitMs:5000}),{name:"PlannerUnavailableError"});
+ assert.equal(n,3);assert.deepEqual(waits,[5000,5000],"capped");
+ for(const e of [new PlannerUnavailableError(undefined,{limit:"quota"}),new PlannerUnavailableError(),new PlannerInvalidOutputError()]){
+  waits.length=0;n=0;await assert.rejects(withRateLimitRetry(async()=>{n++;throw e;},{sleep}));assert.equal(n,1);assert.deepEqual(waits,[]);
+ }
+});

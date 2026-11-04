@@ -13,6 +13,16 @@
   "escalateOn": ["invalid_output", "planner_unavailable", "leak_filtered"]
  },
  "providerCooldownSeconds": 60,
+ "rateLimits": {
+  "providers": {
+   "openai": {"maxConcurrent": 4, "maxQueueWaitMs": 5000},
+   "anthropic": {"maxConcurrent": 8, "maxQueueWaitMs": 5000}
+  },
+  "maxRetryAfterSeconds": 600,
+  "quotaCooldownSeconds": 900,
+  "requestTimeoutMs": 120000,
+  "sdkMaxRetries": 2
+ },
  "maxEstimatedCostUsdPerTurn": 0.25,
  "astra": {"requiresEnv": "LLM_ASTRA_ENABLED", "maxCallsPerDay": 20},
  "prices": {
