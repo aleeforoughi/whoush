@@ -237,7 +237,7 @@ export function CharacterStudio(){
       </p>
       <Alert role="note">
        <Icon icon={Info} aria-hidden="true"/>
-       <AlertDescription>انتخاب کاراکتر در نسخه فعلی صرفاً برای آماده‌سازی پروژه است. عکس‌ها فقط در همین مرورگر می‌مانند و به <bdi dir="ltr">Higgsfield</bdi> ارسال نمی‌شوند، زاویه مفقود تولید نمی‌شود و نتیجه «قفل چهره» تضمین نشده است. ذخیره‌سازی سمت سرور و ارسال مرجع به سرویس تولید، پس از ورود به حساب و وجود یک مدل تأییدشده با ورودی تصویر مرجع اضافه می‌شود.</AlertDescription>
+       <AlertDescription>انتخاب کاراکتر در نسخه فعلی صرفاً برای آماده‌سازی پروژه است. عکس‌ها فقط در همین مرورگر می‌مانند و به سرویس تولید ارسال نمی‌شوند، زاویه مفقود تولید نمی‌شود و نتیجه «قفل چهره» تضمین نشده است. ذخیره‌سازی سمت سرور و ارسال مرجع به سرویس تولید، پس از ورود به حساب و وجود یک مدل تأییدشده با ورودی تصویر مرجع اضافه می‌شود.</AlertDescription>
       </Alert>
       {saved&&<div className="flex flex-wrap gap-3">
        <Button variant="outline" onClick={()=>setDialog("withdraw")}><Icon icon={ShieldCheck} aria-hidden="true"/>پس گرفتن رضایت</Button>

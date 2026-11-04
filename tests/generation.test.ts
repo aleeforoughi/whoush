@@ -2,7 +2,7 @@ import {test} from "node:test";
 import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
 import {MEDIA_CATALOG,MEDIA_CATALOG_VERSION,assertValidCatalog,findMediaModel,priceFor} from "../lib/catalog";
-import {recommendMediaModels} from "../lib/router";
+import {modelIneligibility,recommendMediaModels} from "../lib/router";
 import {buildProposal,NoCompatibleModelError} from "../lib/agent";
 import {generationGate} from "../lib/policy";
 import {ReservationLedger} from "../lib/ledger";
@@ -241,6 +241,15 @@ test("router: ineligible explicit model is rejected with reason and compatible a
  const p=buildProposal("make a 10 second video with kling","quality",{durationSeconds:10});
  assert.equal(p.selectedModelId,"seedance-2-5-10s");assert.equal(p.explicitRejected?.modelId,"kling-4-0-5s");assert.ok(p.suggestions.length>=1&&p.suggestions.length<=3);
  assert.throws(()=>buildProposal("video with seedance lip sync","quality",{lipSync:true}),NoCompatibleModelError);
+});
+test("router: motion-reference and video-reference are unverified for every model, so they are never satisfied",()=>{
+ assert.ok(MEDIA_CATALOG.every(m=>m.capabilities.motionReference===false&&m.capabilities.videoReference===false));
+ for(const req of [{motionReference:true},{videoReference:true}]){
+  const r=recommendMediaModels("a video of a horse","quality",req);assert.equal(r.ranked.length,0);
+  assert.throws(()=>buildProposal("a video of a horse","quality",req),NoCompatibleModelError);
+  assert.ok(modelIneligibility(MEDIA_CATALOG.find(m=>m.kind==="video")!,req));
+ }
+ assert.ok(recommendMediaModels("a video of a horse","quality",{motionReference:false}).ranked.length>0);
 });
 test("router: two-argument calls and eligible explicit models behave as before",()=>{
  const a=recommendMediaModels("Generate an image using Nano Banana Pro 2K");

@@ -10,3 +10,5 @@ export const faBytes=(bytes:number)=>bytes<1024*1024
 export const faDimensions=(w:number,h:number)=>faPlain(w)+"×"+faPlain(h);
 /** Calendar date in the Persian locale (Jalali), e.g. ۱۴۰۵/۸/۱۳. */
 export const faDate=(iso:string)=>new Date(iso).toLocaleDateString("fa-IR");
+/** Duration "۱:۰۵" (minutes:seconds) in Persian digits; "۰:۰۷" for short clips. */
+export const faDuration=(seconds:number)=>{const s=Math.max(0,Math.round(seconds));return faPlain(Math.floor(s/60))+":"+(s%60).toLocaleString("fa-IR",{minimumIntegerDigits:2,useGrouping:false});};

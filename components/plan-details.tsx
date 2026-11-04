@@ -3,6 +3,7 @@ import type {ReactNode} from "react";
 import {Accordion,AccordionContent,AccordionItem,AccordionTrigger} from "@aleeforoughi/feather-react";
 import type {PublicCreativePlan} from "@/lib/creative-plan";
 import {CHARACTER_VIEWS} from "@/lib/characters";
+import {displayTag} from "@/lib/attachments";
 import {fa} from "@/lib/format";
 
 const latin=(v:string|number)=><bdi dir="ltr">{v}</bdi>;
@@ -29,7 +30,7 @@ function Bullets({title,items}:{title:string;items:readonly string[]}){
 
 /** The collapsible «جزئیات برنامه»: camera or shot design, constraints, continuity, QA. All of it is a proposal, not verified model settings. */
 export function PlanDetails({plan,defaultOpen=false}:{plan:PublicCreativePlan;defaultOpen?:boolean}){
- const {camera,shot,identityLock,speech}=plan;
+ const {camera,shot,identityLock,speech,references}=plan;
  return <Accordion defaultValue={defaultOpen?["plan"]:[]}>
   <AccordionItem value="plan">
    <AccordionTrigger>جزئیات برنامه</AccordionTrigger>
@@ -37,6 +38,10 @@ export function PlanDetails({plan,defaultOpen=false}:{plan:PublicCreativePlan;de
     <div className="flex flex-col gap-5">
      <p className="type-caption text-fg-secondary">این‌ها پیشنهاد کارگردانی هووش است، نه تنظیمات تأییدشدهٔ مدل.</p>
      <Facts title="کلیات" rows={[["نوع خروجی",plan.mediaKind==="video"?"ویدیو":"تصویر"],["سبک",plan.realism.mode==="photoreal"?"واقع‌گرایانه":"سبک‌دار"]]}/>
+     {references.length>0&&<section className="flex flex-col gap-2">
+      <h4 className="type-label text-fg-primary">مراجع</h4>
+      <ul className="flex flex-col gap-1 type-body-sm text-fg-primary">{references.map(r=><li key={r.tag}><bdi>{displayTag(r.tag)}</bdi> · {r.labelFa}{r.roleSource==="inferred"&&" (انتخاب هووش)"}</li>)}</ul>
+     </section>}
      {camera&&<Facts title="دوربین" rows={[
       ["حال‌وهوای دوربین",text(camera.look)],
       ["لنز",<>{fa(camera.focalLengthMm)} میلی‌متر</>],

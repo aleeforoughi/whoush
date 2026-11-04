@@ -22,6 +22,8 @@ export function modelIneligibility(m:MediaModel,r:MediaRequirements={}):string|u
  if(r.aspectRatio&&!c.aspectRatios.includes(r.aspectRatio)) return "این مدل نسبت تصویر درخواستی را پشتیبانی نمی‌کند.";
  if(r.durationSeconds!==undefined&&!(c.durationsSeconds??[]).includes(r.durationSeconds)) return "این مدل مدت‌زمان درخواستی را پشتیبانی نمی‌کند.";
  if(r.lipSync&&!c.lipSync) return "این مدل همگام‌سازی لب را پشتیبانی نمی‌کند.";
+ if(r.motionReference&&!c.motionReference) return "این مدل الگوی حرکت از ویدیوی مرجع را پشتیبانی نمی‌کند.";
+ if(r.videoReference&&!c.videoReference) return "این مدل ادیت روی ویدیوی مرجع را پشتیبانی نمی‌کند.";
  return undefined;
 }
 export function recommendMediaModels(prompt:string, preference:AgentPreference="quality", requirements?:MediaRequirements){
