@@ -1,8 +1,10 @@
 import { recommendMediaModels } from "./router";
+import { assertSafeText } from "./safety";
 import type { AgentPreference, GenerationProposal } from "./types";
 export function createDemoProposal(text:string,preference:AgentPreference="quality"):GenerationProposal{
  const trimmed=text.trim();
  if(!trimmed||trimmed.length>4000) throw new Error("Prompt must be between 1 and 4000 characters.");
+ assertSafeText(trimmed);
  const {kind,ranked,explicit}=recommendMediaModels(trimmed,preference);
  const selected=ranked[0];
  return {
