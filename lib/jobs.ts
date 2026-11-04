@@ -55,6 +55,7 @@ export async function executeApprovedQuote(i:{token:string;approved:boolean;idem
  const q=verifyQuote(i.token,now),model=findMediaModel(q.modelId);if(!model)throw new QuoteError("stale_quote");
  if(i.moderation.decision!=="allow")throw new JobError("moderation_blocked"); // fail closed
  if(q.mode==="live"&&i.moderation.source!=="production")throw new JobError("moderation_blocked");
+ if(q.mode==="live"&&!ledger.checksBalance)throw new JobError("insufficient_balance"); // live spend needs a real wallet balance source
  const prompt=getPrivateMediaPrompt(q.turnId);if(prompt===undefined)throw new QuoteError("unknown_turn");
  const t=now.toISOString();
  const job:Job={id:randomUUID(),ownerId:i.ownerId,idempotencyKey:i.idempotencyKey,quoteId:q.quoteId,turnId:q.turnId,modelId:q.modelId,mode:q.mode,configuration:q.configuration,characterRef:q.characterRef,neurons:q.neurons,chargedNeurons:0,state:"quoted",outputs:[],qa:{status:"not_applicable",checks:[]},createdAt:t,updatedAt:t};

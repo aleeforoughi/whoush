@@ -13,8 +13,10 @@ beforeEach(()=>{saved=Object.fromEntries(ENV_KEYS.map(k=>[k,process.env[k]]));fo
 afterEach(()=>{for(const k of ENV_KEYS){if(saved[k]===undefined)delete process.env[k];else process.env[k]=saved[k];}});
 const noNet=globalThis.fetch;
 const planned=(r:OrchestratorResult)=>{assert.equal(r.status,"planned",JSON.stringify(r));return r as Extract<OrchestratorResult,{status:"planned"}>;};
+// Character references and lip sync need capabilities no verified model has yet: the plan is still produced, without a proposal.
+const planOf=(r:OrchestratorResult)=>{assert.ok(r.status==="planned"||r.status==="unsupported",JSON.stringify(r));return r as Extract<OrchestratorResult,{status:"planned"|"unsupported"}>;};
 const last=()=>{const a=readPrivateAuditForTests();return a[a.length-1];};
-const run=async(text:string,extra:Record<string,unknown>={})=>planned(await orchestrateCreativeTurn({text,...extra}));
+const run=async(text:string,extra:Record<string,unknown>={})=>planOf(await orchestrateCreativeTurn({text,...extra}));
 const sha=async(t:string)=>(await import("node:crypto")).createHash("sha256").update(t).digest("hex");
 
 test("all 22 skills are reachable from table-driven contexts",()=>{
@@ -68,12 +70,12 @@ function assertNoLeak(json:string,label:string){
 }
 test("public orchestrator result and route response leak no private identifiers",async()=>{
  for(const [text,extra] of PROMPTS){
-  const r=planned(await orchestrateCreativeTurn({text,...extra}));
+  const r=planOf(await orchestrateCreativeTurn({text,...extra}));
   assertNoLeak(JSON.stringify(r),text);
   const res=await POST(new Request("http://x/api/agent",{method:"POST",body:JSON.stringify({text,...extra})}));
-  assert.equal(res.status,200,text);assert.equal(res.headers.get("cache-control"),"no-store");
+  assert.equal(res.status,r.status==="planned"?200:422,text);assert.equal(res.headers.get("cache-control"),"no-store");
   const body=await res.json();assertNoLeak(JSON.stringify(body),"route "+text);
-  assert.equal("mediaPrompt" in body.plan,false);assert.ok(body.turnId&&body.plan&&body.selectedModelId);
+  assert.equal("mediaPrompt" in body.plan,false);assert.ok(body.turnId&&body.plan&&(r.status==="unsupported"?body.error==="no_compatible_model":body.selectedModelId));
  }
 });
 test("legacy {text,preference} bodies still work; restricted gives 422 with the old JSON shape; bad bodies 400",async()=>{
@@ -108,7 +110,7 @@ test("invariants correct an untrusted planner: wrong kind, forged identityLock, 
  assert.ok(last().corrections?.includes("media_kind")&&last().corrections?.includes("identity_dropped"));
  // forged lock with a real ref is overwritten from the request
  const ref={id:"char-abcdef12",name:"سارا",angles:["front","profile_left"],version:2};
- const r2=planned(await orchestrateCreativeTurn({text:"a photo of a woman in a garden",characterRef:ref},{planner:evil}));
+ const r2=planOf(await orchestrateCreativeTurn({text:"a photo of a woman in a garden",characterRef:ref},{planner:evil}));
  assert.deepEqual(r2.plan.identityLock?.providedAngles,["front","profile_left"]);assert.equal(r2.plan.identityLock?.characterId,ref.id);
  // video missing shot/antiTeleport and a stylized lie get filled/forced
  const lazy:PrivatePlanner=r=>{const p=structuredClone(deterministicPlanner(r).plan) as CreativePlan;delete p.shot;p.continuity.antiTeleport=[];p.realism={mode:"photoreal",directives:["pores"]};return {plan:p};};
@@ -281,4 +283,16 @@ test("deterministic planner output always satisfies CreativePlanSchema (and the 
  }
  const {zodOutputFormat}=await import("@anthropic-ai/sdk/helpers/zod");
  assert.equal(zodOutputFormat(CreativePlanSchema).type,"json_schema");
+});
+
+test("character references and lip sync never route to a model without that capability",async()=>{
+ const ref={id:"char-abcdef12",name:"Sara",angles:["front","profile_left"],version:1};
+ const c=await orchestrateCreativeTurn({text:"a photo of a woman in a garden",characterRef:ref});
+ assert.equal(c.status,"unsupported");assert.ok(!("proposal" in c));
+ assert.deepEqual((c as {plan:{identityLock?:{providedAngles:string[]}}}).plan.identityLock?.providedAngles,["front","profile_left"]);
+ assert.match((c as {message:string}).message,/مرجع/);
+ const l=await orchestrateCreativeTurn({text:"lip sync video of a presenter speaking"});
+ assert.equal(l.status,"unsupported");assert.match((l as {message:string}).message,/لیپ/);
+ assert.equal(last().fallbackReason,"no_compatible_model");
+ const plain=await orchestrateCreativeTurn({text:"a photo of a woman in a garden"});assert.equal(plain.status,"planned");
 });

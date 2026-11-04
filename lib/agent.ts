@@ -3,7 +3,7 @@ import { assertSafeText } from "./safety";
 import type { AgentPreference, GenerationProposal, MediaRequirements } from "./types";
 /** Shared proposal builder: callers MUST have passed safety first (createDemoProposal and the orchestrator both do). */
 export class NoCompatibleModelError extends Error{constructor(){super("No media model satisfies the requirements");this.name="NoCompatibleModelError";}}
-/** `requirements` are hard filters (reference images, aspect ratio, duration, lip sync). TODO(P3 wiring): lib/orchestrator.ts does not pass them yet. */
+/** `requirements` are hard filters (reference images, aspect ratio, duration, lip sync). lib/orchestrator.ts derives them from the character reference and lip-sync skill. */
 export function buildProposal(trimmed:string,preference:AgentPreference="quality",requirements?:MediaRequirements):GenerationProposal{
  const {kind,ranked,explicit,explicitRejected}=recommendMediaModels(trimmed,preference,requirements);
  if(!ranked.length) throw new NoCompatibleModelError();

@@ -19,6 +19,7 @@ export type Reservation={id:string;walletId:string;neurons:number;state:"reserve
 export class ReservationLedger{
  private readonly m=new Map<string,Reservation>();
  constructor(private readonly available?:(walletId:string)=>number){}
+ get checksBalance():boolean{return Boolean(this.available);}
  reserve(id:string,walletId:string,neurons:number):Reservation{
   assertNeuron(neurons);if(neurons<=0)throw new Error("Reservation must be positive");
   const ex=this.m.get(id);

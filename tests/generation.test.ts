@@ -172,7 +172,7 @@ test("live path: lexical moderation is not enough; settle exactly once on verifi
  await withEnv(LIVE_ENV,async()=>{
   let status:ProviderStatus={state:"queued",outputs:[]};
   const provider:MediaProvider={async submit(j){assert.equal(j.modelId,"soul-image");return {providerRequestId:"req-1"};},async status(){return status;},async cancel(){throw new NotCancelableError();}};
-  const mk=()=>({store:new InMemoryJobStore(),ledger:new ReservationLedger(),provider});
+  const mk=()=>({store:new InMemoryJobStore(),ledger:new ReservationLedger(()=>1000),provider});
   const exec=async(deps:JobDeps)=>{const q=createQuote({modelId:"soul-image",turnId:await turn()});assert.equal(q.mode,"live");return {q,args:{token:q.token,approved:true as const,idempotencyKey:randomUUID(),ownerId:"o",moderation:{decision:"allow" as const,source:"production" as const}}};};
   const d1=mk(),{args:a1}=await exec(d1);
   await assert.rejects(()=>executeApprovedQuote({...a1,moderation:allow},d1),(e:unknown)=>e instanceof JobError&&e.code==="moderation_blocked");
@@ -192,6 +192,9 @@ test("live path: lexical moderation is not enough; settle exactly once on verifi
    assert.equal(r.chargedNeurons,0,s.state);assert.equal(d.ledger.get(j.id)?.state,"released");assert.deepEqual(toPublicJob(r).outputs,[]);
    assert.ok(r.state==="failed"||r.state==="canceled");
   }
+  // live spend without a wallet balance source is refused before any reservation
+  const d0={store:new InMemoryJobStore(),ledger:new ReservationLedger(),provider},{args:a0}=await exec(d0);
+  await assert.rejects(()=>executeApprovedQuote(a0,d0),(e:unknown)=>e instanceof JobError&&e.code==="insufficient_balance");assert.equal(d0.ledger.count(),0);
   // submission failure releases the reservation
   const d3=mk();d3.provider={...provider,async submit(){throw new Error("boom");}};
   const {args:a3}=await exec(d3),j3=await executeApprovedQuote(a3,d3);
