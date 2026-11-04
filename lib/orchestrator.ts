@@ -5,10 +5,11 @@ import {CHARACTER_VIEWS,REQUIRED_CHARACTER_VIEWS} from "./characters";
 import {CreativePlanSchema,CreativeTurnInputSchema,toPublicPlan,PlannerInvalidOutputError,PlannerRefusedError,PlannerUnavailableError,type CreativePlan,type PlannerRequest,type PlannerResult,type PrivatePlanner,type PublicCreativePlan} from "./creative-plan";
 import {llmPolicy,preparePrivateCreativeRequest} from "./llm";
 import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./private-audit";
+import {isMediaKind} from "./attachments";
 import {detectMediaKind} from "./router";
 import {evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
 import {SKILLS,SKILL_REGISTRY_VERSION} from "./skills";
-import type {GenerationProposal} from "./types";
+import type {GenerationProposal,MediaRequirements} from "./types";
 export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;now?:()=>Date};
 export type OrchestratorResult=
  |{status:"planned";turnId:string;proposal:GenerationProposal;plan:PublicCreativePlan}
@@ -16,6 +17,9 @@ export type OrchestratorResult=
  |{status:"restricted";decision:"block"|"review";category:SafetyCategory;message:string};
 const FA_REFUSED="این درخواست در حال حاضر قابل پردازش نیست. لطفاً آن را با توضیح غیرحساس‌تر دوباره بنویس.";
 const FA_NO_REFS="برنامه تولید با کاراکتر انتخاب‌شده آماده است، اما هنوز هیچ مدل تأییدشده‌ای عکس مرجع کاراکتر را نمی‌پذیرد؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
+const FA_TEXT_BLOCKED="یکی از فایل‌های متنیِ پیوست‌شده مسدود شد. ";
+const FA_MEDIA_REVIEW="برنامه آماده است، اما بررسی ایمنی فایل‌های تصویری، ویدیویی و صوتی هنوز فعال نیست؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
+const FA_PDF_NOTE="محتوای فایل PDF هنوز خوانده نمی‌شود و در برنامه اثری ندارد";
 const lipsMsg="برنامه لیپ‌سینک آماده است، اما هنوز هیچ مدل تأییدشده‌ای هماهنگی لب را پشتیبانی نمی‌کند؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 // ---- deterministic planner (pure, no network): complete valid plan from the active skills ----
 // Every customer-visible line is Persian. `mediaPrompt` (private, provider-facing) is English, so each phrase that feeds both
@@ -64,7 +68,9 @@ export function deterministicPlanner(req:PlannerRequest):{plan:CreativePlan}{
   :[P("Respect the requested stylized look; do not impose photographic textures or lens artifacts","سبک خواسته‌شده رعایت می‌شود؛ بافت عکاسی یا خطاهای لنز تحمیل نمی‌شود"),P("Keep line, palette and shading consistent across the whole frame","خط، پالت رنگی و سایه‌پردازی در کل کادر یکدست می‌ماند")];
  const directives=fas(directivesP);
  const hard=fas(hardP);
- const soft=[kind==="image"?"نسبت تصویر "+faDigits(camera.aspectRatio):"کادر مناسب پلتفرم با جذابیت واضح در ثانیهٔ اول",...(night?["حال‌وهوای کم‌نور با منابع نور واقعی صحنه"]:[])];
+ const docs=(req.attachments??[]).filter(a=>a.textExcerpt).length,pdfs=(req.attachments??[]).filter(a=>a.kind==="pdf").length;
+ const soft=[kind==="image"?"نسبت تصویر "+faDigits(camera.aspectRatio):"کادر مناسب پلتفرم با جذابیت واضح در ثانیهٔ اول",...(night?["حال‌وهوای کم‌نور با منابع نور واقعی صحنه"]:[]),
+  ...(docs?[faDigits(String(docs))+" سند متنی به‌عنوان زمینه همراه درخواست ثبت شد؛ برنامهٔ آزمایشی هنوز محتوای آن‌ها را اعمال نمی‌کند"]:[]),...(pdfs?[FA_PDF_NOTE]:[])];
  const direction=kind==="image"?[camera.focalLengthMm+"mm",camera.aperture,camera.shutter,"ISO "+camera.iso,camera.whiteBalanceK+"K",d.framing.en,d.lighting.en]:[size.en,mv.en,shot.targetFps+"fps",shot.shutterAngle+" degree shutter",shot.durationSeconds+"s"];
  const plan:CreativePlan={
   intentSummaryFa:(kind==="image"?"ساخت تصویر: ":"ساخت ویدیو: ")+text.replace(/\s+/g," ").slice(0,160)+(text.length>160?"…":""),
@@ -119,16 +125,39 @@ const MAX_PROMPTS=200;
 const store=()=>((globalThis as {__whoushPrompts?:Map<string,string>}).__whoushPrompts??=new Map());
 export const getPrivateMediaPrompt=(turnId:string):string|undefined=>store().get(turnId);
 function keepPrompt(turnId:string,prompt:string){const m=store();m.set(turnId,prompt);while(m.size>MAX_PROMPTS)m.delete(m.keys().next().value as string);}
+// ---- attachments ----
+type Audio=NonNullable<ReturnType<typeof CreativeTurnInputSchema.parse>["audio"]>;
+/** One set of audio flags from the legacy `audio` field and from audio attachments; the first source that has speech decides language and accent. */
+export function deriveAudio(input:{audio?:Audio;attachments?:readonly {kind:string;speech?:{hasSpeech:boolean;language:Audio["language"];accent:Audio["accent"]}}[]}):Audio|undefined{
+ const a=input.audio,files=(input.attachments??[]).filter(x=>x.kind==="audio");
+ if(!a&&!files.length)return undefined;
+ const speaker=a?.hasSpeech?a:files.map(f=>f.speech).find(sp=>sp?.hasSpeech);
+ return {hasAudioReference:Boolean(a?.hasAudioReference)||files.length>0||Boolean(speaker),hasSpeech:Boolean(speaker),language:speaker?.language??a?.language??"unknown",accent:speaker?.accent&&speaker.accent!=="unspecified"?speaker.accent:a?.accent??"unspecified"};
+}
+/** Hard capability requirements. Character angles and reference-role images count as reference images; videos and audio never do. */
+export function mediaRequirements(input:{characterRef?:{angles:readonly string[]};attachments?:readonly {kind:string;role:string}[]},lipSync:boolean):MediaRequirements{
+ const images=(input.attachments??[]).filter(a=>a.kind==="image"&&a.role==="reference").length,refs=(input.characterRef?.angles.length??0)+images;
+ return {referenceImages:refs||undefined,lipSync:lipSync||undefined};
+}
 // ---- orchestration ----
 export async function orchestrateCreativeTurn(rawInput:unknown,deps:OrchestratorDeps={}):Promise<OrchestratorResult>{
- const input=CreativeTurnInputSchema.parse(rawInput),audit=deps.audit??defaultAuditSink,now=deps.now??(()=>new Date());
- const safety=evaluateTextSafety(input.text);
+ const parsed=CreativeTurnInputSchema.parse(rawInput),audit=deps.audit??defaultAuditSink,now=deps.now??(()=>new Date());
+ const safety=evaluateTextSafety(parsed.text);
  if(safety.decision!=="allow")return {status:"restricted",decision:safety.decision,category:safety.category,message:safety.message};
+ const files=parsed.attachments??[];
+ // Text attachments are user text: they get the same preflight before any planner sees them.
+ for(const f of files){
+  if(!f.textExcerpt)continue;
+  const r=evaluateTextSafety(f.textExcerpt);
+  if(r.decision!=="allow")return {status:"restricted",decision:r.decision,category:r.category,message:FA_TEXT_BLOCKED+r.message};
+ }
+ // Planners see attachments only through `req.attachments` (kinds and excerpts as data); the audio flags are merged into `input.audio`.
+ const input={...parsed,audio:deriveAudio(parsed),attachments:undefined};
  const kind=detectMediaKind(input.text),a=input.audio,ref=input.characterRef;
- const prep=preparePrivateCreativeRequest({prompt:input.text,kind,task:input.task,hasReferences:Boolean(ref||a?.hasAudioReference),hasAudioReference:a?(a.hasAudioReference||a.hasSpeech):undefined,hasSpeechAudio:a?.hasSpeech,speechLanguage:a?.language,accent:a?.accent,characterRef:ref,visualStyle:input.visualStyle});
- const req:PlannerRequest={...prep,privateRoute:prep.privateRoute&&{provider:prep.privateRoute.provider,modelId:prep.privateRoute.modelId},kind,input};
+ const prep=preparePrivateCreativeRequest({prompt:input.text,kind,task:input.task,hasReferences:Boolean(ref||a?.hasAudioReference||files.length),hasAudioReference:a?(a.hasAudioReference||a.hasSpeech):undefined,hasSpeechAudio:a?.hasSpeech,speechLanguage:a?.language,accent:a?.accent,characterRef:ref,visualStyle:input.visualStyle});
+ const req:PlannerRequest={...prep,privateRoute:prep.privateRoute&&{provider:prep.privateRoute.provider,modelId:prep.privateRoute.modelId},kind,input,...(files.length?{attachments:files.map(f=>({kind:f.kind,...(f.textExcerpt?{textExcerpt:f.textExcerpt}:{})}))}:{})};
  const turnId=randomUUID();
- const rec=(x:Partial<PrivateAuditRecord>)=>audit.record({turnId,at:now().toISOString(),skillRegistryVersion:SKILL_REGISTRY_VERSION,activeSkillIds:[...prep.activeSkillIds],reasoningTier:prep.privateReasoningTier,route:req.privateRoute,planner:"deterministic",promptSha256:createHash("sha256").update(input.text).digest("hex"),...x});
+ const rec=(x:Partial<PrivateAuditRecord>)=>audit.record({turnId,at:now().toISOString(),skillRegistryVersion:SKILL_REGISTRY_VERSION,activeSkillIds:[...prep.activeSkillIds],reasoningTier:prep.privateReasoningTier,route:req.privateRoute,planner:"deterministic",promptSha256:createHash("sha256").update(input.text).digest("hex"),...(files.length?{attachments:files.map(f=>({kind:f.kind,bytes:f.bytes,sha256:f.sha256}))}:{}),...x});
  let planner=deps.planner,label:PrivateAuditRecord["planner"]=planner&&planner!==deterministicPlanner?"live":"deterministic",fallbackReason:string|undefined;
  if(!planner){
   const pol=llmPolicy(prep.privateReasoningTier);
@@ -155,7 +184,13 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   if(r.decision!=="allow"){rec({planner:label,fallbackReason:"plan_restricted",corrections,usage:result?.usage});return {status:"restricted",decision:r.decision,category:r.category,message:r.message};}
  }
  // Hard capability requirements: a character reference needs reference-image input, lip sync needs a lip-sync model.
- const requirements={referenceImages:ref?ref.angles.length:undefined,lipSync:kind==="video"&&prep.activeSkillIds.includes("persian_lip_sync_phonetics")?true:undefined};
+ const requirements=mediaRequirements(input,kind==="video"&&prep.activeSkillIds.includes("persian_lip_sync_phonetics"));
+ // TODO(docs/MODERATION_POLICY.md step 4, "Reference inspection"): plug a real multimodal inspector in here. Until one exists, any image, video or
+ // audio attachment fails closed: the plan is returned, but no proposal or price, so uninspected media can never reach provider handoff (step 6).
+ if(files.some(f=>isMediaKind(f.kind))){
+  rec({planner:label,fallbackReason:"media_review_unavailable",corrections:corrections.length?corrections:undefined});
+  return {status:"unsupported",turnId,plan:toPublicPlan(plan),message:FA_MEDIA_REVIEW};
+ }
  let proposal:GenerationProposal;
  try{proposal=buildProposal(input.text,input.preference,requirements);}
  catch(e){
