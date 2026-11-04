@@ -19,6 +19,10 @@ test("the shipped config is valid and its bands cover 0..100 in order",()=>{
  const c=cfg();assert.deepEqual(c.bands.map(b=>b.id),["quick","standard","complex","exceptional"]);assert.deepEqual(c.bands.map(b=>b.maxScore),[24,59,84,100]);
  assert.equal(c.astra.modelId,"gpt-6-astra");assert.ok(!c.escalation.escalateOn.includes("refused"),"refusals never escalate by default");
 });
+// Owner-approved 2026-11-04 from the 30-prompt Persian planner eval (docs/LLM_ROUTING.md): Luna first for quick, Sonnet first for standard.
+test("the shipped ladders are Luna then Haiku for quick and Sonnet then Sol for standard",()=>{
+ const c=cfg();assert.deepEqual(c.bands[0].ladder,["gpt-6-luna","claude-haiku-5-5"]);assert.deepEqual(c.bands[1].ladder,["claude-sonnet-5-5","gpt-6.1-sol"]);
+});
 test("config validation rejects unknown providers, unordered bands, missing prices and bad numbers",()=>{
  const bad=(over:Record<string,unknown>)=>assert.throws(()=>withCfg(over));
  const bands=(f:(b:{id:string;maxScore:number;ladder:string[]}[])=>void)=>{const b=structuredClone(defaultJson.bands) as {id:string;maxScore:number;ladder:string[]}[];f(b);return b;};
@@ -59,7 +63,7 @@ test("band selection at the edges",()=>{
 });
 test("planRoute: the band's ladder when everything is available, and class overrides win",()=>{
  const env={...BOTH,LLM_ASTRA_ENABLED:"true"},now=new Date("2026-11-04T10:00:00Z");
- assert.deepEqual(planRoute(prof(10),{env,now,state:createRouterState()}).ladder,["claude-haiku-5-5","gpt-6-luna"]);
+ assert.deepEqual(planRoute(prof(10),{env,now,state:createRouterState()}).ladder,["gpt-6-luna","claude-haiku-5-5"]);
  assert.deepEqual(planRoute(prof(90),{env,now,state:createRouterState()}).ladder,["claude-opus-5-5","gpt-6-astra"]);
  const c=withCfg({classOverrides:{lip_sync:["gpt-6.1-sol","claude-opus-5-5"]}});
  const r=planRoute(prof(10,"lip_sync"),{cfg:c,env,now,state:createRouterState()});assert.deepEqual(r.ladder,["gpt-6.1-sol","claude-opus-5-5"]);assert.equal(r.band,"quick");assert.match(r.reason,/class_override/);
@@ -72,7 +76,7 @@ test("planRoute skips: missing key, cooldown (with expiry), Astra disabled and d
  // cooldown
  const st=createRouterState();st.cooldowns.set("anthropic",now.getTime()+60_000);
  r=planRoute(prof(10),{env:BOTH,now,state:st});assert.deepEqual(r.ladder,["gpt-6-luna"]);assert.equal(r.skipped[0].why,"cooldown");
- r=planRoute(prof(10),{env:BOTH,now:new Date(now.getTime()+60_001),state:st});assert.deepEqual(r.ladder,["claude-haiku-5-5","gpt-6-luna"],"cooldown expired");
+ r=planRoute(prof(10),{env:BOTH,now:new Date(now.getTime()+60_001),state:st});assert.deepEqual(r.ladder,["gpt-6-luna","claude-haiku-5-5"],"cooldown expired");
  // astra
  r=planRoute(prof(95),{env:BOTH,now,state:createRouterState()});assert.deepEqual(r.ladder,["claude-opus-5-5"]);assert.equal(r.skipped[0].why,"astra_disabled");
  r=planRoute(prof(95),{env:{...BOTH,LLM_ASTRA_ENABLED:"1"},now,state:createRouterState()});assert.equal(r.skipped[0].why,"astra_disabled","only the literal true");
@@ -87,13 +91,13 @@ test("planRoute skips: missing key, cooldown (with expiry), Astra disabled and d
  r=planRoute(prof(95),{cfg:tiny,env:{...BOTH,LLM_ASTRA_ENABLED:"true"},now,state:createRouterState(),inputChars:40_000});assert.deepEqual(r.ladder,["claude-opus-5-5"],"cheapest available rung survives");
 });
 test("legacy LLM_*_MODEL variables replace the first rung of quick, standard and complex only",()=>{
- const base={env:{...BOTH,LLM_FAST_MODEL:"gpt-6-luna",LLM_BALANCED_MODEL:"claude-opus-5-5",LLM_DEEP_MODEL:"gpt-6.1-sol"},now:new Date(),state:createRouterState()};
- assert.deepEqual(planRoute(prof(10),base).ladder,["gpt-6-luna"]);
+ const base={env:{...BOTH,LLM_FAST_MODEL:"claude-haiku-5-5",LLM_BALANCED_MODEL:"claude-opus-5-5",LLM_DEEP_MODEL:"gpt-6.1-sol"},now:new Date(),state:createRouterState()};
+ assert.deepEqual(planRoute(prof(10),base).ladder,["claude-haiku-5-5"],"a duplicate rung collapses");
  assert.deepEqual(planRoute(prof(40),base).ladder,["claude-opus-5-5","gpt-6.1-sol"]);
  assert.deepEqual(planRoute(prof(70),base).ladder,["gpt-6.1-sol"],"a duplicate rung collapses");
- assert.deepEqual(planRoute(prof(10),{...base,env:{...BOTH,LLM_FAST_MODEL:"gpt-6.1-sol"}}).ladder,["gpt-6.1-sol","gpt-6-luna"]);
+ assert.deepEqual(planRoute(prof(10),{...base,env:{...BOTH,LLM_FAST_MODEL:"gpt-6.1-sol"}}).ladder,["gpt-6.1-sol","claude-haiku-5-5"]);
  assert.deepEqual(planRoute(prof(95),{...base,env:{...base.env,LLM_ASTRA_ENABLED:"true"}}).ladder,["claude-opus-5-5","gpt-6-astra"]);
- assert.deepEqual(planRoute(prof(10),{...base,env:{...BOTH,LLM_FAST_MODEL:"mystery-1"}}).ladder,["claude-haiku-5-5","gpt-6-luna"],"an unknown legacy id is ignored (fail closed)");
+ assert.deepEqual(planRoute(prof(10),{...base,env:{...BOTH,LLM_FAST_MODEL:"mystery-1"}}).ladder,["gpt-6-luna","claude-haiku-5-5"],"an unknown legacy id is ignored (fail closed)");
 });
 
 // ---- orchestrator escalation (stub planners, no network) ----
@@ -104,7 +108,9 @@ const usage={input_tokens:1000,output_tokens:500};
 const good:PrivatePlanner=r=>({plan:deterministicPlanner(r).plan,usage});
 const calls:string[]=[];
 const hook=(m:Record<string,PrivatePlanner>)=>(id:string)=>{const p=m[id];if(!p)throw new Error("unexpected model "+id);return (async(r:PlannerRequest)=>{calls.push(id);return p(r);}) as PrivatePlanner;};
-const runTurn=(m:Record<string,PrivatePlanner>,extra:Record<string,unknown>={})=>{calls.length=0;return orchestrateCreativeTurn({text:TEXT},{plannerFor:hook(m),routerState:createRouterState(),...extra});};
+// The escalation mechanics below run on a fixed quick ladder (Haiku then Luna), so they do not change when the owner reorders the shipped ladders.
+const mech=(over:Record<string,unknown>={})=>withCfg({bands:[{id:"quick",maxScore:24,ladder:["claude-haiku-5-5","gpt-6-luna"]},...defaultJson.bands.slice(1)],...over});
+const runTurn=(m:Record<string,PrivatePlanner>,extra:Record<string,unknown>={})=>{calls.length=0;return orchestrateCreativeTurn({text:TEXT},{plannerFor:hook(m),routerState:createRouterState(),routing:mech(),...extra});};
 const boom=(E:new()=>Error):PrivatePlanner=>()=>{throw new E();};
 
 test("first rung succeeds: one attempt, audited privately with class, score, band and chosen model",async()=>{
@@ -141,7 +147,7 @@ test("a leaked model name on rung 1 escalates; the leak never reaches the custom
 test("many invariant corrections on rung 1 escalate to rung 2",async()=>{
  Object.assign(process.env,LIVE);
  const sloppy:PrivatePlanner=r=>({plan:{...deterministicPlanner(r).plan,camera:undefined,qaChecklist:["a one","a two","a three"],hardConstraints:[]},usage});
- const c=withCfg({escalation:{maxAttemptsPerTurn:2,escalateOnCorrectionsAtLeast:1,escalateOn:["invalid_output"]}});
+ const c=mech({escalation:{maxAttemptsPerTurn:2,escalateOnCorrectionsAtLeast:1,escalateOn:["invalid_output"]}});
  await runTurn({"claude-haiku-5-5":sloppy,"gpt-6-luna":good},{routing:c});
  assert.deepEqual(calls,["claude-haiku-5-5","gpt-6-luna"]);assert.equal(last().routing!.chosenModelId,"gpt-6-luna");
  // below the threshold the first answer stands
@@ -153,7 +159,7 @@ test("many invariant corrections on rung 1 escalate to rung 2",async()=>{
 });
 test("maxAttemptsPerTurn is respected, then the deterministic planner answers",async()=>{
  Object.assign(process.env,LIVE);
- const one=withCfg({escalation:{maxAttemptsPerTurn:1,escalateOnCorrectionsAtLeast:4,escalateOn:["invalid_output","planner_unavailable"]}});
+ const one=mech({escalation:{maxAttemptsPerTurn:1,escalateOnCorrectionsAtLeast:4,escalateOn:["invalid_output","planner_unavailable"]}});
  let r=await runTurn({"claude-haiku-5-5":boom(PlannerInvalidOutputError),"gpt-6-luna":good},{routing:one});
  assert.equal(r.status,"planned");assert.deepEqual(calls,["claude-haiku-5-5"]);assert.equal(last().planner,"deterministic");assert.equal(last().fallbackReason,"invalid_output");
  // three rungs configured, budget two
@@ -168,7 +174,7 @@ test("a refusal on rung 1 is restricted with no second attempt; only an explicit
  // a refusal after an unavailable first rung is still final
  const r2=await runTurn({"claude-haiku-5-5":boom(PlannerUnavailableError),"gpt-6-luna":boom(PlannerRefusedError)});
  assert.equal(r2.status,"restricted");assert.deepEqual(calls,["claude-haiku-5-5","gpt-6-luna"]);
- const opt=withCfg({escalation:{maxAttemptsPerTurn:2,escalateOnCorrectionsAtLeast:4,escalateOn:["refused"]}});
+ const opt=mech({escalation:{maxAttemptsPerTurn:2,escalateOnCorrectionsAtLeast:4,escalateOn:["refused"]}});
  const r3=await runTurn({"claude-haiku-5-5":boom(PlannerRefusedError),"gpt-6-luna":good},{routing:opt});
  assert.equal(r3.status,"planned");assert.deepEqual(calls,["claude-haiku-5-5","gpt-6-luna"]);
 });
@@ -189,4 +195,10 @@ test("Astra is used only when enabled, counted per day, and a route with no key 
 test("legacy env override reaches the orchestrator as the first rung",async()=>{
  Object.assign(process.env,LIVE,{LLM_FAST_MODEL:"gpt-6.1-sol"});
  await runTurn({"gpt-6.1-sol":good});assert.deepEqual(calls,["gpt-6.1-sol"]);assert.equal(last().route?.modelId,"gpt-6.1-sol");
+});
+test("with the shipped config a quick turn tries Luna first, and Haiku answers when Luna is unavailable",async()=>{
+ Object.assign(process.env,LIVE);
+ await runTurn({"gpt-6-luna":good},{routing:cfg()});assert.deepEqual(calls,["gpt-6-luna"]);assert.deepEqual(last().route,{provider:"openai",modelId:"gpt-6-luna"});
+ await runTurn({"gpt-6-luna":boom(PlannerUnavailableError),"claude-haiku-5-5":good},{routing:cfg()});
+ assert.deepEqual(calls,["gpt-6-luna","claude-haiku-5-5"]);assert.equal(last().routing!.chosenModelId,"claude-haiku-5-5");
 });

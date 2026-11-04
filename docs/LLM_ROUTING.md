@@ -39,13 +39,13 @@ Class precedence: `multi_shot`, `lip_sync`, `character`, `edit`, `document_heavy
 ## Bands and ladders (`config/llm-routing.json`)
 | Band | Score up to | Ladder (first rung tried first) |
 |---|---|---|
-| quick | 24 | `claude-haiku-5-5`, `gpt-6-luna` |
+| quick | 24 | `gpt-6-luna`, `claude-haiku-5-5` |
 | standard | 59 | `claude-sonnet-5-5`, `gpt-6.1-sol` |
 | complex | 84 | `claude-opus-5-5`, `gpt-6.1-sol` |
 | exceptional | 100 | `claude-opus-5-5`, `gpt-6-astra` |
 
 - `classOverrides` maps a task class to its own ladder (replacing the band ladder). Empty today; fill it from eval evidence (below).
-- **Legacy override:** `LLM_FAST_MODEL`, `LLM_BALANCED_MODEL`, `LLM_DEEP_MODEL`, when set to a `claude-` or `gpt-` id, replace the **first rung** of quick, standard and complex respectively (the other rungs stay; a duplicate collapses). The exceptional band is never overridden. An id with an unknown prefix is ignored. A class override wins over the legacy variables.
+- **Legacy override:** `LLM_FAST_MODEL`, `LLM_BALANCED_MODEL`, `LLM_DEEP_MODEL`, when set to a `claude-` or `gpt-` id, replace the **first rung** of quick, standard and complex respectively (the other rungs stay; a duplicate collapses). The exceptional band is never overridden. An id with an unknown prefix is ignored. A class override wins over the legacy variables. Leave them unset to use the ladders as configured: a stale value silently pins the first rung (the owner's `.env.local` dropped them on 2026-11-04 for this reason).
 - Validation (`parseRoutingConfig`): every model id has a known provider prefix and a price; bands are quick, standard, complex, exceptional with strictly ascending `maxScore`, the last equal to 100; ladders have unique rungs; escalation numbers are in range. An invalid file throws at load; nothing is guessed.
 
 ## Skipping rungs (`planRoute`)
@@ -91,3 +91,17 @@ How to read the report:
 
 ## Decisions
 Routing changes (bands, ladders, class overrides, escalation, Astra, cost ceiling) are the **owner's decision**, based on eval evidence on both cost and quality. Nothing is applied automatically, no script writes `config/llm-routing.json`, and a scout report or eval suggestion is a checklist, not a change. Customers never choose a model.
+
+### Applied: 2026-11-04 (owner approved)
+From the 30-prompt Persian eval (28/30 valid plans for every model; the other 2 are the expected no-price character and lip-sync plans):
+
+| Model | Persian text | Expected keywords | Corrections per plan | Latency p50 | Est. cost per plan |
+|---|---|---|---|---|---|
+| `claude-haiku-5-5` | 96.3% | 92% | 2.12 | 11.1s | $0.0015 |
+| `gpt-6-luna` | 99.3% | 89% | 0.33 | 14.3s | $0.0008 |
+| `claude-sonnet-5-5` | 99.5% | 96% | 0.22 | 17.1s | $0.036 |
+| `gpt-6.1-sol` | 99.6% | 100% | 0.16 | 38.1s | $0.023 (longer plans) |
+
+- **quick:** `gpt-6-luna` first, `claude-haiku-5-5` as the fallback rung. Luna wrote more Persian and needed about six times fewer invariant corrections at about half the cost; Haiku stays as the faster, other-provider fallback.
+- **standard:** unchanged, `claude-sonnet-5-5` first, `gpt-6.1-sol` second. Sol scored slightly higher but at more than twice the median latency; it stays the fallback.
+- Not settled by this sample: 22 of the 30 prompts are quick images, Opus and Astra were not run, and Sol's earlier unavailable results came from evals running at the same time on one account (sequential reruns all passed), so production still needs rate-limit handling. Re-run with longer, edit, character and multi-shot prompts before changing complex or exceptional.

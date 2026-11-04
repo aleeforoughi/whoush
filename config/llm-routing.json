@@ -1,7 +1,7 @@
 {
  "version": 1,
  "bands": [
-  {"id": "quick", "maxScore": 24, "ladder": ["claude-haiku-5-5", "gpt-6-luna"]},
+  {"id": "quick", "maxScore": 24, "ladder": ["gpt-6-luna", "claude-haiku-5-5"]},
   {"id": "standard", "maxScore": 59, "ladder": ["claude-sonnet-5-5", "gpt-6.1-sol"]},
   {"id": "complex", "maxScore": 84, "ladder": ["claude-opus-5-5", "gpt-6.1-sol"]},
   {"id": "exceptional", "maxScore": 100, "ladder": ["claude-opus-5-5", "gpt-6-astra"]}
