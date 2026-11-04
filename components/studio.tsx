@@ -10,7 +10,8 @@ import {CharacterDialog} from "@/components/character-dialog";
 import {InsertMenu} from "@/components/insert-menu";
 import {ModeControl,useMode} from "@/components/mode-control";
 import {StyleControl,useStyleSetting} from "@/components/style-control";
-import {AttachmentChip,AttachmentPreview,type AttachmentPatch} from "@/components/attachment-chip";
+import {AttachmentChip,type AttachmentPatch} from "@/components/attachment-chip";
+import {MediaViewer,type ViewerItem} from "@/components/media-viewer";
 import {MentionTextarea} from "@/components/mention-textarea";
 import {MessageText} from "@/components/message-text";
 import {AttachmentTray,type AttachmentProblem} from "@/components/attachment-tray";
@@ -83,7 +84,8 @@ export function Studio(){
  const [reading,setReading]=useState(false);
  const [dragging,setDragging]=useState(false);
  const [announce,setAnnounce]=useState("");
- const [previewing,setPreviewing]=useState<LocalAttachment|null>(null);
+ /** The full-screen viewer: the conversation's files as they were when it opened, and the project title to show. */
+ const [viewer,setViewer]=useState<{items:ViewerItem[];index:number;title?:string}|null>(null);
  const endRef=useRef<HTMLDivElement>(null);
  const fileInput=useRef<HTMLInputElement>(null);
  const formRef=useRef<HTMLFormElement>(null);
@@ -179,7 +181,7 @@ export function Studio(){
  function releaseAll(){
   urls.current.forEach(u=>URL.revokeObjectURL(u));urls.current.clear();
   blobs.current=new Map();savedAssets.current=new Set();
-  setAttachments([]);setProblems([]);setAnnounce("");setPreviewing(null);tagCounters.current=newTagCounters();
+  setAttachments([]);setProblems([]);setAnnounce("");setViewer(null);tagCounters.current=newTagCounters();
   setMessages([]);setProposal(null);setLiveId(null);setJob(null);
   setPreview(idlePreview);setError("");setNotice("");setStorageNote("");setDraft("");
  }
@@ -256,6 +258,12 @@ export function Studio(){
  useEffect(()=>{const live=urls.current;return()=>{live.forEach(u=>URL.revokeObjectURL(u));live.clear();};},[]);
  useEffect(()=>{endRef.current?.scrollIntoView({block:"end"});},[messages,proposal,error]);
  const blobFor=(id:string)=>blobs.current.get(id);
+ /** Opens the viewer on one attachment, with every attachment of this conversation (sent messages first, then the tray) to step through. */
+ function openViewer(a:LocalAttachment){
+  const items:ViewerItem[]=conversation.map(c=>({id:c.id,kind:c.kind,mime:c.mime,bytes:c.bytes,name:c.name,tag:c.tag,role:c.role,width:c.width,height:c.height,durationSeconds:c.durationSeconds,url:c.previewUrl,blob:blobFor(c.id)}));
+  const index=items.findIndex(i=>i.id===a.id);
+  if(index>=0)setViewer({items,index,title:active.current?.title});
+ }
  function releaseUrl(a:LocalAttachment){if(a.previewUrl){URL.revokeObjectURL(a.previewUrl);urls.current.delete(a.previewUrl);}}
  /** Verifies the picked files one by one; the good ones join the tray, each rejected one gets its own Persian reason. */
  async function addFiles(files:File[],upload?:Upload){
@@ -469,9 +477,9 @@ export function Studio(){
          <AlertDescription>{m.text}</AlertDescription>
         </Alert>
         :<div className={m.role==="user"?"max-w-[85%] self-end rounded-card bg-surface-subtle px-4 py-3 type-body-sm text-fg-primary":"type-body-sm text-fg-primary"}>
-         <span className="sr-only">{m.role==="user"?"شما: ":"هووش: "}</span>{m.role==="user"?<MessageText text={m.text} attachments={byTag} onOpen={setPreviewing}/>:m.text}
+         <span className="sr-only">{m.role==="user"?"شما: ":"هووش: "}</span>{m.role==="user"?<MessageText text={m.text} attachments={byTag} onOpen={openViewer}/>:m.text}
          {m.kind==="job"&&<> <Badge variant="outline">{jobStateFa(m.snapshot.state)}</Badge></>}
-         {m.attachments&&<ul aria-label="پیوست‌های این پیام" className="mt-2 flex flex-wrap gap-2">{m.attachments.map(a=><AttachmentChip key={a.id} item={a} onPreview={()=>setPreviewing(a)} onMention={()=>mentionTag(a.tag)}/>)}</ul>}
+         {m.attachments&&<ul aria-label="پیوست‌های این پیام" className="mt-2 flex flex-wrap gap-2">{m.attachments.map(a=><AttachmentChip key={a.id} item={a} onPreview={()=>openViewer(a)} onMention={()=>mentionTag(a.tag)}/>)}</ul>}
         </div>}
        {m.kind==="proposal"&&(proposal&&m.id===liveId
         ?<ProposalCard proposal={proposal} selected={selected} onSelect={setSelected} busy={busy} onApprove={()=>void approve()}/>
@@ -489,7 +497,7 @@ export function Studio(){
     {/* The chip tray and the composer scroll together under the chat, so on a short screen the prompt and the send button stay reachable. */}
     <div className="flex max-h-[64dvh] min-h-0 shrink-0 flex-col overflow-y-auto border-t border-line-tertiary bg-surface-base">
     <form ref={formRef} onSubmit={e=>void send(e)} className="flex shrink-0 flex-col gap-3 bg-surface-base p-4">
-     <AttachmentTray items={attachments} problems={problems} reading={reading} onChange={patchAttachment} onRemove={removeAttachment} onPreview={setPreviewing} onMention={mentionTag} onDismiss={key=>setProblems(list=>list.filter(p=>p.key!==key))}/>
+     <AttachmentTray items={attachments} problems={problems} reading={reading} onChange={patchAttachment} onRemove={removeAttachment} onPreview={openViewer} onMention={mentionTag} onDismiss={key=>setProblems(list=>list.filter(p=>p.key!==key))}/>
      <input ref={fileInput} type="file" multiple hidden accept={ATTACHMENT_ACCEPT} data-testid="attachment-input" onChange={e=>{const files=Array.from(e.target.files??[]),upload=pendingUpload.current;pendingUpload.current=undefined;e.target.value="";void addFiles(files,upload);}}/>
      <Label className="sr-only" htmlFor="whoush-prompt">توضیح تصویر یا ویدیو</Label>
      <MentionTextarea id="whoush-prompt" inputRef={promptRef} value={draft} onValueChange={setDraft} options={conversation} onPaste={onPaste} placeholder="چی می‌خوای بسازیم؟" aria-describedby="prompt-hint" rows={3} maxLength={4000} className="max-h-40 resize-none"
@@ -506,7 +514,9 @@ export function Studio(){
     </form>
     </div>
    </section>
-   <AttachmentPreview item={previewing} onClose={()=>setPreviewing(null)} blobFor={blobFor} projectTitle={previewing?active.current?.title:undefined}/>
+   <MediaViewer items={viewer?.items??[]} index={viewer?viewer.index:null} onIndexChange={i=>setViewer(v=>v&&{...v,index:i})} onClose={()=>setViewer(null)}
+    projectTitleOf={()=>viewer?.title}
+    restoreFocusTo={item=>document.querySelector<HTMLElement>('[data-viewer-open="'+CSS.escape(item.id)+'"]')}/>
    <CharacterDialog open={charactersOpen} onOpenChange={setCharactersOpen} characters={characters} loaded={charactersLoaded} selectedId={characterId} onPick={pickCharacter}/>
   </main>
  </RailShell>;
