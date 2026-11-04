@@ -1,6 +1,7 @@
 "use client";
 import {useEffect,useState} from "react";
 import Link from "next/link";
+import {ThemeToggle} from "@/components/theme-toggle";
 import type {PackageQuote} from "@/lib/types";
 interface ApiResult{mode:"demo"|"live";packages:PackageQuote[];quotedAt:string;expiresAt:string;}
 const f=(n:number)=>n.toLocaleString("fa-IR");
@@ -10,7 +11,7 @@ export function NeuronStore(){
  useEffect(()=>{let active=true;fetch("/api/pricing/packages",{cache:"no-store"}).then(r=>r.json()).then(d=>{if(active)setData(d);}).catch(()=>{});return()=>{active=false;}},[]);
  const picked=data?.packages.find(p=>p.id===selected);
  return <main className="store-page" dir="rtl">
-  <header className="store-header"><Link href="/" className="brand">✳ <strong>whoush</strong></Link><Link href="/studio" className="secondary-link">بازگشت به استودیو</Link></header>
+  <header className="store-header"><Link href="/" className="brand">✳ <strong>whoush</strong></Link><div style={{display:"flex",alignItems:"center",gap:"8px"}}><ThemeToggle/><Link href="/studio" className="secondary-link">بازگشت به استودیو</Link></div></header>
   <div className="store-intro"><span className="eyebrow">WH OUSH / NEURON STORE</span><h1>خرید <em>نورون</em></h1><p>بسته بزرگ‌تر بخر، نورون هدیه بیشتری دریافت کن.</p></div>
   <div className="store-content"><section className="store-grid">
    {(data?.packages??[]).map((p,i)=><button key={p.id} className={"store-card "+(selected===p.id?"active":"")} onClick={()=>setSelected(p.id)} aria-pressed={selected===p.id}>
