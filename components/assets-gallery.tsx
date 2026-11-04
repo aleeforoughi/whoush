@@ -37,7 +37,7 @@ function AssetCard({asset,url,projectTitle,onOpen}:{asset:StoredAsset;url?:strin
  const label=(media?"پیش‌نمایش ":"جزئیات ")+displayTag(asset.tag)+" از پروژهٔ "+projectTitle;
  return <li className="min-w-0"><Card className="h-full">
   {/* The preview button and the project link are siblings, never nested. */}
-  <button type="button" onClick={onOpen} aria-label={label} className="flex min-w-0 flex-1 flex-col text-start motion-hover not-disabled:hover:bg-surface-hover">
+  <button type="button" onClick={onOpen} aria-label={label} className="flex min-w-0 flex-1 flex-col rounded-t-card text-start motion-hover not-disabled:hover:bg-surface-hover">
    <Thumb asset={asset} url={url}/>
    <span className="flex min-w-0 flex-col gap-1 p-3">
     <span className="type-label text-fg-primary"><bdi>{displayTag(asset.tag)}</bdi></span>
