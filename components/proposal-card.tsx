@@ -3,6 +3,7 @@ import {Check,CircleHelp} from "lucide-react";
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Card,CardAction,CardContent,CardDescription,CardFooter,CardHeader,CardTitle,Field,FieldContent,FieldDescription,FieldLabel,FieldLegend,FieldSet,FieldTitle,Icon,RadioGroup,RadioGroupItem,Separator} from "@aleeforoughi/feather-react";
 import {PlanDetails,SuggestedModelNote} from "@/components/plan-details";
 import type {AgentProposal,NoModelResult} from "@/lib/studio-types";
+import {PAST_PROPOSAL_FA,type ProposalSnapshot} from "@/lib/projects";
 import {fa} from "@/lib/format";
 
 /** Latin model names keep their own direction inside Persian text. */
@@ -78,6 +79,25 @@ export function NoModelCard({result}:{result:NoModelResult}){
    {result.plan.suggestedModel&&<SuggestedModelNote model={result.plan.suggestedModel}/>}
    <p className="type-body-sm text-fg-secondary">تا پیدا شدن مدل سازگار، قیمتی نمایش داده نمی‌شود و چیزی برای تأیید وجود ندارد.</p>
    <PlanDetails plan={result.plan} defaultOpen/>
+  </CardContent>
+ </Card>;
+}
+
+/** A proposal from earlier in the conversation, read-only: its quote has expired (or the page was reloaded), so there is nothing to approve. */
+export function PastProposalCard({snapshot}:{snapshot:ProposalSnapshot}){
+ return <Card data-testid="past-proposal">
+  <CardHeader>
+   <CardTitle>برنامه تولید {snapshot.operation==="generate_video"?"ویدیو":"تصویر"}</CardTitle>
+   <CardDescription>{snapshot.intentSummaryFa}</CardDescription>
+   <CardAction><Badge variant="outline">نسخه نمایشی</Badge></CardAction>
+  </CardHeader>
+  <CardContent className="flex flex-col gap-4">
+   <div className="flex items-baseline justify-between gap-4">
+    <span className="type-body-sm text-fg-secondary">مدل پیشنهادی: <ModelName name={snapshot.modelName}/></span>
+    <strong className="type-label text-fg-primary whitespace-nowrap">{fa(snapshot.neurons)} نورون</strong>
+   </div>
+   <p role="note" className="type-caption text-fg-secondary">{PAST_PROPOSAL_FA}</p>
+   <PlanDetails plan={snapshot.plan}/>
   </CardContent>
  </Card>;
 }

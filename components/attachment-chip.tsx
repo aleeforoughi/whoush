@@ -1,6 +1,6 @@
 "use client";
 import {File as FileIcon,FileAudio,FileJson,FileText,Play,X,type LucideIcon} from "lucide-react";
-import {Badge,Button,Dialog,DialogBody,DialogClose,DialogContent,DialogDescription,DialogFooter,DialogHeader,DialogTitle,Icon,Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from "@aleeforoughi/feather-react";
+import {Badge,Button,Icon,Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from "@aleeforoughi/feather-react";
 import {ATTACHMENT_KINDS,displayTag,isMediaKind,roleLabelFa,rolesFor,type AttachmentKind,type AttachmentRole,type AttachmentSpeech,type LocalAttachment} from "@/lib/attachments";
 import {faBytes,faDimensions,faDuration} from "@/lib/format";
 
@@ -36,7 +36,7 @@ function Meta({a}:{a:LocalAttachment}){
 export function TagBadge({tag,onMention}:{tag:string;onMention?:()=>void}){
  const badge=<Badge variant="secondary">{tagText(tag)}</Badge>;
  return onMention
-  ?<button type="button" onClick={onMention} aria-label={"درج "+displayTag(tag)+" در متن"} className="hit-area inline-flex rounded-full motion-hover not-disabled:hover:opacity-80">{badge}</button>
+  ?<button type="button" onClick={onMention} aria-label={"درج "+displayTag(tag)+" در متن"} className="hit-area inline-flex rounded-control motion-hover not-disabled:hover:opacity-80">{badge}</button>
   :badge;
 }
 /** One attachment: editable in the composer tray (`onChange`/`onRemove`), read-only in a sent message. */
@@ -46,7 +46,7 @@ export function AttachmentChip({item:a,onChange,onRemove,onPreview,onMention}:{i
  const controls=editable&&(media||a.kind==="audio");
  const set=(patch:Partial<AttachmentSpeech>)=>speech&&onChange?.({speech:{...speech,...patch}});
  const thumb=canPreview(a)&&onPreview
-  ?<button type="button" onClick={onPreview} aria-label={"پیش‌نمایش "+a.name} className="shrink-0 rounded-control hit-area motion-hover not-disabled:hover:opacity-80"><Thumb a={a}/></button>
+  ?<button type="button" onClick={onPreview} aria-label={"نمایش تمام‌صفحه "+displayTag(a.tag)} data-viewer-open={a.id} className="shrink-0 rounded-control hit-area motion-hover not-disabled:hover:opacity-80"><Thumb a={a}/></button>
   :<Thumb a={a}/>;
  return <li id={"attachment-"+a.id} className={"flex min-w-0 max-w-full flex-col gap-2 rounded-card border bg-surface-subtle p-2 "+"border-line-secondary "+(controls?"basis-full":"")}>
   <div className="flex items-center gap-2">
@@ -76,25 +76,4 @@ export function AttachmentChip({item:a,onChange,onRemove,onPreview,onMention}:{i
    </Select>
   </div>}
 </li>;
-}
-
-/** Large preview of an attached image or video from its local object URL; for any other attachment, its details. */
-export function AttachmentPreview({item,onClose}:{item:LocalAttachment|null;onClose:()=>void}){
- return <Dialog open={item!==null} onOpenChange={open=>{if(!open)onClose();}}>
-  <DialogContent showCloseButton={false} className="sm:max-w-3xl">
-   <DialogHeader>
-    <DialogTitle className="break-all"><bdi>{item?.name}</bdi></DialogTitle>
-    <DialogDescription>{item&&<>{tagText(item.tag)}{item.role&&<> · {roleLabelFa(item.role,item.kind)}</>} · <Meta a={item}/></>}</DialogDescription>
-   </DialogHeader>
-   {item?.previewUrl&&(item.kind==="image"||item.kind==="video")&&<DialogBody>
-    <div className="flex max-h-[60vh] items-center justify-center overflow-hidden rounded-card border border-line-secondary bg-surface-subtle">
-     {item.kind==="image"
-      // eslint-disable-next-line @next/next/no-img-element -- a local blob: URL; next/image cannot optimize it
-      ?<img src={item.previewUrl} alt={item.name} className="max-h-[60vh] w-auto max-w-full object-contain"/>
-      :<video src={item.previewUrl} controls playsInline className="max-h-[60vh] w-full"/>}
-    </div>
-   </DialogBody>}
-   <DialogFooter><DialogClose render={<Button variant="outline"/>}>بستن</DialogClose></DialogFooter>
-  </DialogContent>
- </Dialog>;
 }

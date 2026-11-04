@@ -9,6 +9,7 @@ import {ThemeToggle} from "@/components/theme-toggle";
 
 const links=[
  {href:"/studio",label:"استودیو"},
+ {href:"/assets",label:"دارایی‌ها"},
  {href:"/characters",label:"استودیوی کاراکتر"},
  {href:"/neurons",label:"خرید نورون"}
 ] as const;

@@ -37,8 +37,9 @@ test("generated brand CSS is identical to a fresh regeneration",()=>{
  assert.equal(read("app/styles/brand.css"),fresh["brand.css"],"run `npm run brand` and commit app/styles/brand.css");
  assert.equal(read("app/styles/brand-fonts.css"),fresh["brand-fonts.css"],"run `npm run brand` and commit app/styles/brand-fonts.css");
  const css=fresh["brand.css"];
- assert.match(css,/:root:root \{/);assert.match(css,/:root:root\.dark \{/);
- assert.equal((css.match(/^:root:root\.dark \{/gm)??[]).length,1,"only the dark variable block is appended");
+ assert.match(css,/:root:root \{/);
+ // The dark block also targets nested always-dark surfaces (the full-screen viewer) so they get the Whoush dark brand, not Feather's default.
+ assert.equal((css.match(/^:root:root\.dark,\n\.dark\.dark\.dark \{/gm)??[]).length,1,"only the dark variable block is appended");
 });
 
 test("no old prototype purple, no hardcoded hex colors in TSX, and the old stylesheets are gone",()=>{
@@ -77,4 +78,34 @@ test("fonts are declared but never committed",()=>{
  const tracked=execFileSync("git",["ls-files","public/fonts"],{cwd:root,encoding:"utf8"}).split("\n").filter(f=>/\.(woff2?|ttf|otf|eot)$/i.test(f));
  assert.deepEqual(tracked,[],"licensed font binaries must not be committed");
  assert.equal(execFileSync("git",["check-ignore","-q","public/fonts/iransans/IRANSansWeb.woff2"],{cwd:root}).length,0);
+});
+
+test("corner radii: controls 8px, cards 12px, modals 16px in both themes; badges use the control radius",()=>{
+ const css=read("app/styles/brand.css");
+ for(const [tier,v] of [["control","0.5rem"],["card","0.75rem"],["dialog","1rem"]] as const)assert.equal(css.match(new RegExp("--radius-"+tier+": "+v.replace(".","\\.")+";","g"))?.length,2,tier);
+ assert.match(css,/\[data-slot="badge"\] \{\s*border-radius: var\(--radius-control\);/);
+ for(const f of ["components/mode-control.tsx","components/style-control.tsx","components/message-text.tsx","components/attachment-chip.tsx","components/assets-gallery.tsx","components/media-viewer.tsx"])assert.ok(!read(f).includes("rounded-full"),f+" overrides the 8px control radius");
+});
+
+// The one documented exception to the 8/12/16 radius rule: the full-screen viewer covers the whole viewport, so its surface has no corners (docs/DESIGN_SYSTEM.md).
+test("only the full-screen media viewer may use rounded-none, and it is an always-dark, unblurred, full-viewport surface",()=>{
+ // mention-textarea's field sits inside a rounded wrapper that owns the control radius and the border, so the inner textarea has none of its own.
+ for(const f of tsx.filter(f=>!f.endsWith("media-viewer.tsx")&&!f.endsWith("mention-textarea.tsx")))assert.ok(!/\brounded-none\b/.test(read(f)),f+" uses rounded-none; only components/media-viewer.tsx (full screen) is exempt from the 8/12/16 radii");
+ const viewer=read("components/media-viewer.tsx");
+ assert.match(viewer,/\brounded-none\b/);
+ for(const cls of ["dark","fixed","inset-0","h-dvh","w-screen","max-w-none","bg-background"])assert.match(viewer,new RegExp("[\" \\s]"+cls+"[\" \\s]"),"the viewer surface needs "+cls);
+ assert.ok(!viewer.includes("backdrop-blur"),"the viewer has no backdrop blur");
+ assert.match(viewer,/aria-modal="true"/);
+ assert.match(viewer,/aria-label=\{VIEWER_LABEL_FA\}/);
+ // Everything inside the viewer's controls keeps the control radius: no per-component radius override.
+ assert.ok(!/rounded-(sm|md|lg|xl|2xl|3xl|full)\b/.test(viewer),"viewer controls keep the 8px control radius");
+});
+
+test("media-first assets grid: 1 column below 480px, 2 from 480px, 3 from lg, 4 only from 2xl; media area is 4:5",()=>{
+ const gallery=read("components/assets-gallery.tsx");
+ assert.match(gallery,/grid-cols-1 gap-4 min-\[480px\]:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4/);
+ assert.ok(!/\bxl:grid-cols-4\b|\bmd:grid-cols-3\b/.test(gallery),"no earlier breakpoints for 3 or 4 columns");
+ assert.match(gallery,/aspect-4\/5/);
+ assert.match(gallery,/rounded-t-card/);
+ assert.match(gallery,/bg-linear-to-t from-background\/80/);
 });

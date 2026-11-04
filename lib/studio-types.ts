@@ -6,4 +6,4 @@ export type AgentProposal=GenerationProposal&{turnId?:string;plan:PublicCreative
 /** What POST /api/agent returns with 422 `no_compatible_model`. */
 export type NoModelResult={message:string;plan?:PublicCreativePlan};
 /** The public job view from /api/generation/jobs/:id (only the fields the UI uses). */
-export type JobView={state:string;messageFa:string};
+export type JobView={state:string;messageFa:string;outputs?:{kind:"image"|"video";url:string}[]};
