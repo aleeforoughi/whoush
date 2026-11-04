@@ -2,6 +2,7 @@
 import {File as FileIcon,FileAudio,FileJson,FileText,Play,X,type LucideIcon} from "lucide-react";
 import {Badge,Button,Dialog,DialogBody,DialogClose,DialogContent,DialogDescription,DialogFooter,DialogHeader,DialogTitle,Icon,Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from "@aleeforoughi/feather-react";
 import {ATTACHMENT_KINDS,displayTag,isMediaKind,roleLabelFa,rolesFor,type AttachmentKind,type AttachmentRole,type AttachmentSpeech,type LocalAttachment} from "@/lib/attachments";
+import {ShareActions} from "@/components/share-actions";
 import {faBytes,faDimensions,faDuration} from "@/lib/format";
 
 const ICONS:Record<AttachmentKind,LucideIcon>={image:FileIcon,video:FileIcon,audio:FileAudio,pdf:FileIcon,json:FileJson,md:FileText};
@@ -79,7 +80,7 @@ export function AttachmentChip({item:a,onChange,onRemove,onPreview,onMention}:{i
 }
 
 /** Large preview of an attached image or video from its local object URL; for any other attachment, its details. */
-export function AttachmentPreview({item,onClose}:{item:LocalAttachment|null;onClose:()=>void}){
+export function AttachmentPreview({item,onClose,blobFor,projectTitle}:{item:LocalAttachment|null;onClose:()=>void;blobFor?:(id:string)=>Blob|undefined;projectTitle?:string}){
  return <Dialog open={item!==null} onOpenChange={open=>{if(!open)onClose();}}>
   <DialogContent showCloseButton={false} className="sm:max-w-3xl">
    <DialogHeader>
@@ -95,6 +96,7 @@ export function AttachmentPreview({item,onClose}:{item:LocalAttachment|null;onCl
       :<audio src={item.previewUrl} controls className="m-4 w-full"/>}
     </div>
    </DialogBody>}
+   {item&&<DialogBody><ShareActions file={{blob:blobFor?.(item.id),name:item.name,mime:item.mime,kind:item.kind,tag:item.tag,width:item.width,height:item.height,durationSeconds:item.durationSeconds,projectTitle}}/></DialogBody>}
    <DialogFooter><DialogClose render={<Button variant="outline"/>}>بستن</DialogClose></DialogFooter>
   </DialogContent>
  </Dialog>;

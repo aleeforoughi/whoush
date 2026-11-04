@@ -96,7 +96,7 @@ function DeleteDialog({project,onClose,onDeleted}:{project:ProjectSummary|null;o
    </DialogHeader>
    <DialogBody>
     <p className="break-words type-body-sm text-fg-primary">«{project?.title}»</p>
-    <p className="type-caption text-fg-secondary">این کار برگشت‌پذیر نیست؛ جایی نسخهٔ دیگری نگه داشته نشده است.</p>
+    <p className="type-caption text-fg-secondary">این کار برگشت‌پذیر نیست.</p>
     {error&&<p role="alert" className="type-caption text-destructive">{error}</p>}
    </DialogBody>
    <DialogFooter>

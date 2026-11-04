@@ -6,6 +6,7 @@ import {AudioLines,CircleAlert,FileJson,FileText,Film,FileQuestion,Images,Info,P
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Card,CardContent,Icon,Select,SelectContent,SelectItem,SelectTrigger,SelectValue,Skeleton,Tabs,TabsList,TabsTrigger} from "@aleeforoughi/feather-react";
 import {AUTO_ROLE_FA,AttachmentPreview} from "@/components/attachment-chip";
 import {useProjects} from "@/components/projects-section";
+import {ShareActions} from "@/components/share-actions";
 import {RailShell} from "@/components/studio-rail";
 import {ATTACHMENT_KINDS,displayTag,roleLabelFa,type AttachmentKind} from "@/lib/attachments";
 import {fa,faBytes,faDimensions,faDuration} from "@/lib/format";
@@ -49,8 +50,11 @@ function AssetCard({asset,url,projectTitle,onOpen}:{asset:StoredAsset;url?:strin
     <span className="type-caption text-fg-secondary">{relativeTimeFa(asset.createdAt)}</span>
    </span>
   </button>
-  <div className="flex min-w-0 px-3 pb-3">
+  <div className="flex min-w-0 px-3 pb-3 pt-0">
    <Badge variant="secondary" render={<Link href={"/studio?project="+asset.projectId} aria-label={"باز کردن پروژهٔ "+projectTitle}/>} className="max-w-full"><span className="min-w-0 truncate">{projectTitle}</span></Badge>
+  </div>
+  <div className="min-w-0 px-3 pb-3">
+   <ShareActions compact file={{blob:asset.blob,name:asset.name,mime:asset.mime,kind:asset.kind,tag:asset.tag,width:asset.width,height:asset.height,durationSeconds:asset.durationSeconds,projectTitle}}/>
   </div>
  </Card></li>;
 }
@@ -138,6 +142,6 @@ export function AssetsGallery(){
        </ul>}
    </div>
   </main>
-  <AttachmentPreview item={openItem} onClose={()=>setOpenId(null)}/>
+  <AttachmentPreview item={openItem} onClose={()=>setOpenId(null)} blobFor={id=>assets?.find(a=>a.id===id)?.blob} projectTitle={open?titles.get(open.projectId):undefined}/>
  </RailShell>;
 }

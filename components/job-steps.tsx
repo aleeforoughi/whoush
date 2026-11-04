@@ -1,5 +1,6 @@
 "use client";
 import {Badge} from "@aleeforoughi/feather-react";
+import {ShareActions} from "@/components/share-actions";
 import type {JobView} from "@/lib/studio-types";
 import {fa} from "@/lib/format";
 
@@ -30,5 +31,7 @@ export function JobSteps({job}:{job:JobView}){
   </ol>
   {failed&&<div className="flex flex-wrap items-center gap-2"><Badge variant="destructive">{failed}</Badge><span className="type-body-sm text-fg-secondary">{job.messageFa}</span></div>}
   {!failed&&<p className="type-body-sm text-fg-secondary">{job.messageFa}</p>}
+  {/* TODO(launch gate 8): outputs must be mirrored to owned storage (docs/LAUNCH_GATES.md) first; download and share then use a Whoush URL, never the provider's. The provider URL is not fetched or shown here. */}
+  {job.outputs?.map((o,i)=><ShareActions key={i} reason="پس از فعال شدن تولید واقعی" file={{name:"output",mime:o.kind==="video"?"video/mp4":"image/png",kind:o.kind,tag:o.kind+(i+1)}}/>)}
  </div>;
 }

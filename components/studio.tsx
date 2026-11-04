@@ -255,6 +255,7 @@ export function Studio(){
  },[]);
  useEffect(()=>{const live=urls.current;return()=>{live.forEach(u=>URL.revokeObjectURL(u));live.clear();};},[]);
  useEffect(()=>{endRef.current?.scrollIntoView({block:"end"});},[messages,proposal,error]);
+ const blobFor=(id:string)=>blobs.current.get(id);
  function releaseUrl(a:LocalAttachment){if(a.previewUrl){URL.revokeObjectURL(a.previewUrl);urls.current.delete(a.previewUrl);}}
  /** Verifies the picked files one by one; the good ones join the tray, each rejected one gets its own Persian reason. */
  async function addFiles(files:File[],upload?:Upload){
@@ -384,13 +385,13 @@ export function Studio(){
    const quote=await q.json() as {token:string};
    const execution=await post("/api/generation/execute",{token:quote.token,approved:true,idempotencyKey:crypto.randomUUID()});
    if(!execution.ok)throw new Error("خطا در شروع تولید");
-   let current=await execution.json() as {id:string;state:string;messageFa:string};
+   let current=await execution.json() as {id:string;state:string;messageFa:string;outputs?:JobView["outputs"]};
    const done=["completed","completed_demo","failed","canceled","released"];
-   setPreview(current.messageFa);setJob({state:current.state,messageFa:current.messageFa});setView("canvas");
+   setPreview(current.messageFa);setJob({state:current.state,messageFa:current.messageFa,outputs:current.outputs});setView("canvas");
    for(let i=0;i<10&&!done.includes(current.state);i++){
     await new Promise(r=>setTimeout(r,1500));
     const poll=await fetch("/api/generation/jobs/"+current.id,{cache:"no-store"});if(!poll.ok)break;
-    current=await poll.json();setPreview(current.messageFa);setJob({state:current.state,messageFa:current.messageFa});
+    current=await poll.json();setPreview(current.messageFa);setJob({state:current.state,messageFa:current.messageFa,outputs:current.outputs});
    }
    setMessages(m=>[...m,item({role:"agent",text:current.messageFa,kind:"job",snapshot:{state:current.state,messageFa:current.messageFa}})]);setProposal(null);setLiveId(null);touch();
   }catch(err){setError(err instanceof Error?err.message:"خطای ناشناخته");}
@@ -505,7 +506,7 @@ export function Studio(){
     </form>
     </div>
    </section>
-   <AttachmentPreview item={previewing} onClose={()=>setPreviewing(null)}/>
+   <AttachmentPreview item={previewing} onClose={()=>setPreviewing(null)} blobFor={blobFor} projectTitle={previewing?active.current?.title:undefined}/>
    <CharacterDialog open={charactersOpen} onOpenChange={setCharactersOpen} characters={characters} loaded={charactersLoaded} selectedId={characterId} onPick={pickCharacter}/>
   </main>
  </RailShell>;
