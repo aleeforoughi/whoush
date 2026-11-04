@@ -1,7 +1,7 @@
 "use client";
 import type {ReactNode} from "react";
 import {Accordion,AccordionContent,AccordionItem,AccordionTrigger,Badge} from "@aleeforoughi/feather-react";
-import type {PublicCreativePlan} from "@/lib/creative-plan";
+import {STYLE_LABEL_FA,type PublicCreativePlan} from "@/lib/creative-plan";
 import {CHARACTER_VIEWS} from "@/lib/characters";
 import {displayTag} from "@/lib/attachments";
 import {fa} from "@/lib/format";
@@ -48,7 +48,7 @@ export function PlanDetails({plan,defaultOpen=false}:{plan:PublicCreativePlan;de
    <AccordionContent>
     <div className="flex flex-col gap-5">
      <p className="type-caption text-fg-secondary">این‌ها پیشنهاد کارگردانی هووش است، نه تنظیمات تأییدشدهٔ مدل.</p>
-     <Facts title="کلیات" rows={[["نوع خروجی",plan.mediaKind==="video"?"ویدیو":"تصویر"],["سبک",plan.realism.mode==="photoreal"?"واقع‌گرایانه":"سبک‌دار"]]}/>
+     <Facts title="کلیات" rows={[["نوع خروجی",plan.mediaKind==="video"?"ویدیو":"تصویر"],["سبک",plan.realism.mode==="photoreal"?"واقع‌گرایانه":"سبک‌دار"],...(plan.style?[["سبک انتخاب‌شده",STYLE_LABEL_FA[plan.style]] as const]:[])]}/>
      {references.length>0&&<section className="flex flex-col gap-2">
       <h4 className="type-label text-fg-primary">مراجع</h4>
       <ul className="flex flex-col gap-1 type-body-sm text-fg-primary">{references.map(r=><li key={r.tag}><bdi>{displayTag(r.tag)}</bdi> · {r.labelFa}{r.roleSource==="inferred"&&" (انتخاب هووش)"}</li>)}</ul>

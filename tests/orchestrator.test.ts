@@ -837,3 +837,53 @@ test("curated roles: end_frame makes a video that ends on the image; start and e
  assert.deepEqual(both.plan.references.map(x=>[x.tag,x.role,x.roleSource]),[["image1","start_frame","inferred"],["image2","end_frame","inferred"]]);
  assert.equal(both.plan.mediaKind,"video");
 });
+const AUDIT_STYLE_TEXT="یک عکس واقعی از یک دختر در پارک";
+test("style: the schema accepts the three styles and rejects anything else",()=>{
+ for(const style of ["realistic","three_d","cartoon"])assert.equal(CreativeTurnInputSchema.safeParse({text:"x",style}).success,true,style);
+ for(const style of ["anime","photoreal","","REALISTIC",1,null])assert.equal(CreativeTurnInputSchema.safeParse({text:"x",style}).success,false,String(style));
+ assert.equal(CreativeTurnInputSchema.safeParse({text:"x"}).success,true);
+});
+test("style: it wins over visualStyle and over the words of the text, and the audit records it",async()=>{
+ const cartoon=planned(await orchestrateCreativeTurn({text:AUDIT_STYLE_TEXT,style:"cartoon"}));
+ assert.ok(!skillsOf().includes("hyper_realism"),"cartoon turns hyper_realism off even for «یک عکس واقعی»");assert.equal(cartoon.plan.realism.mode,"stylized");assert.equal(last().style,"cartoon");
+ await orchestrateCreativeTurn({text:AUDIT_STYLE_TEXT,style:"three_d",visualStyle:"photoreal"});assert.ok(!skillsOf().includes("hyper_realism"),"style beats visualStyle");
+ const real=planned(await orchestrateCreativeTurn({text:"an anime girl in a park",style:"realistic"}));
+ assert.ok(skillsOf().includes("hyper_realism"));assert.equal(real.plan.realism.mode,"photoreal");assert.equal(last().style,"realistic");
+ // with neither set the text detection is unchanged
+ const anime=planned(await orchestrateCreativeTurn({text:"an anime girl in a park"}));assert.equal(anime.plan.realism.mode,"stylized");assert.equal(last().style,undefined);
+ assert.equal(planned(await orchestrateCreativeTurn({text:AUDIT_STYLE_TEXT})).plan.realism.mode,"photoreal");
+ assert.equal(planned(await orchestrateCreativeTurn({text:"an anime girl in a park",visualStyle:"photoreal"})).plan.realism.mode,"photoreal","visualStyle still beats the words");
+});
+test("style: Persian directives in the plan, English in the provider prompt, and the public plan carries the style",async()=>{
+ let seen:CreativePlan|undefined;
+ const spy:PrivatePlanner=r=>{const out=deterministicPlanner(r);seen=out.plan as CreativePlan;return out;};
+ const t=planned(await orchestrateCreativeTurn({text:"a toy robot on a desk",style:"three_d"},{planner:spy}));
+ assert.ok(seen!.realism.directives.includes("رندر سه‌بعدی تمیز با متریال فیزیکی، نور نرم و سایهٔ طبیعی؛ بدون بافت پوست عکاسی یا نویز"));assert.equal(t.plan.style,"three_d");
+ assert.ok(getPrivateMediaPrompt(t.turnId)!.includes("3D render style: physically based materials, soft global illumination, clean shading"));
+ const c=planned(await orchestrateCreativeTurn({text:"a fox in the snow",style:"cartoon"},{planner:spy}));
+ assert.ok(seen!.realism.directives.includes("سبک کارتونی: خطوط تمیز، فرم‌های ساده و پالت رنگی هماهنگ"));
+ assert.ok(getPrivateMediaPrompt(c.turnId)!.includes("cartoon style: clean outlines, simplified shapes, harmonious vivid palette"));
+ const r=planned(await orchestrateCreativeTurn({text:"a lake at dawn",style:"realistic"}));
+ assert.ok(r.plan.softPreferences.includes("سبک واقع‌گرایانه: بافت، نور و رنگ طبیعی"));assert.equal(r.plan.style,"realistic");
+ assert.ok(getPrivateMediaPrompt(r.turnId)!.includes("realistic style: natural texture, light and color"));
+ assert.equal("style" in planned(await orchestrateCreativeTurn({text:"a lake at dawn"})).plan,false);
+ const res=await POST(new Request("http://x/api/agent",{method:"POST",body:JSON.stringify({text:"a toy robot",style:"cartoon"})}));
+ const j=await res.json();assert.equal(j.plan.style,"cartoon");assertNoLeak(JSON.stringify(j),"style");
+ assert.equal((await POST(new Request("http://x/api/agent",{method:"POST",body:JSON.stringify({text:"a toy robot",style:"oil"})}))).status,400);
+});
+test("style: a character reference in a stylized look keeps its identity recognizable",async()=>{
+ const ref={id:"char-abcdef12",name:"Sara",angles:["front","profile_left"],version:1};
+ const IDENT="هویت کاراکتر در سبک انتخاب‌شده قابل تشخیص می‌ماند";
+ for(const style of ["cartoon","three_d"] as const){
+  const r=planOf(await orchestrateCreativeTurn({text:"a girl in a garden",characterRef:ref,style}));
+  assert.ok(r.plan.hardConstraints.includes(IDENT),style);
+ }
+ assert.ok(!planOf(await orchestrateCreativeTurn({text:"a girl in a garden",characterRef:ref,style:"realistic"})).plan.hardConstraints.includes(IDENT));
+ assert.ok(!planOf(await orchestrateCreativeTurn({text:"a girl in a garden",style:"cartoon"})).plan.hardConstraints.includes(IDENT),"no character, no identity line");
+ const withRole=unsupported(await orchestrateCreativeTurn({text:"a girl in a garden",style:"cartoon",attachments:[att("image",{role:"character"})]}));
+ assert.ok(withRole.plan.hardConstraints.includes(IDENT));assert.equal(withRole.plan.style,"cartoon");
+ // a planner that drops the style lines gets them back
+ const dropper:PrivatePlanner=r=>{const p=deterministicPlanner(r).plan;return {plan:{...p,hardConstraints:p.hardConstraints.filter(h=>h!==IDENT),realism:{...p.realism,directives:["x"]}}};};
+ const fixed=planOf(await orchestrateCreativeTurn({text:"a girl in a garden",characterRef:ref,style:"cartoon"},{planner:dropper}));
+ assert.ok(fixed.plan.hardConstraints.includes(IDENT));assert.ok(last().corrections?.includes("style_directives"));
+});

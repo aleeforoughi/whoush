@@ -3,6 +3,12 @@ import {z} from "zod";
 import {CHARACTER_VIEWS,type CharacterView} from "./characters";
 import type {ReasoningTier,SuggestedModel} from "./types";
 import {ATTACHMENT_KINDS,ATTACHMENT_KIND_IDS,ATTACHMENT_ROLE_IDS,MAX_ATTACHMENTS,MAX_DURATION_SECONDS,MAX_EXCERPT_CHARS,MAX_TOTAL_ATTACHMENT_BYTES,TAG_PATTERN,isMediaKind,roleAllowed,tagPrefix,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
+/** The visual style a user can pick for one message (the «سبک» group of the + menu). */
+export const GENERATION_STYLES=["realistic","three_d","cartoon"] as const;
+export type GenerationStyle=(typeof GENERATION_STYLES)[number];
+/** What each style means for the pipeline: realistic is photoreal (hyper_realism on), the others are stylized. */
+export const STYLE_VISUAL:Record<GenerationStyle,"photoreal"|"stylized">={realistic:"photoreal",three_d:"stylized",cartoon:"stylized"};
+export const STYLE_LABEL_FA:Record<GenerationStyle,string>={realistic:"واقع‌گرایانه",three_d:"سه‌بعدی",cartoon:"کارتونی"};
 const VIEW_IDS=CHARACTER_VIEWS.map(v=>v.id) as [CharacterView,...CharacterView[]];
 const accent=z.enum(["tehrani","original","unspecified"]);
 const speechSchema=z.object({hasSpeech:z.boolean(),language:z.enum(["fa","other","unknown"]),accent}).strict();
@@ -41,6 +47,8 @@ export const CreativeTurnInputSchema=z.object({
  preference:z.enum(["quality","speed","cost"]).default("quality"),
  task:z.enum(["generate","edit","character"]).optional(),
  visualStyle:z.enum(["photoreal","stylized","auto"]).optional(),
+ /** The style chosen in the + menu for this message. It wins over `visualStyle` and over style words in the text. */
+ style:z.enum(GENERATION_STYLES).optional(),
  characterRef:z.object({
   id:z.string().regex(/^[a-z0-9-]{8,80}$/i),name:z.string().trim().min(2).max(80),
   angles:z.array(z.enum(VIEW_IDS)).min(1).max(6).refine(a=>new Set(a).size===a.length,"angles must be unique"),
@@ -76,10 +84,12 @@ export type PublicCreativePlan=Pick<CreativePlan,"intentSummaryFa"|"mediaKind"|"
  references:PublicReference[];
  /** On an unsupported turn: the catalogue model that fits the work but cannot be offered yet (raw name and Persian blockers, never a price or id). */
  suggestedModel?:SuggestedModel;
+ /** The style chosen in the + menu, if any. */
+ style?:GenerationStyle;
 };
-export function toPublicPlan(p:CreativePlan,references:readonly PublicReference[]=[],suggestedModel?:SuggestedModel):PublicCreativePlan{
+export function toPublicPlan(p:CreativePlan,references:readonly PublicReference[]=[],suggestedModel?:SuggestedModel,style?:GenerationStyle):PublicCreativePlan{
  const il=p.identityLock;
- return {...(suggestedModel?{suggestedModel:{name:suggestedModel.name,active:suggestedModel.active,blockersFa:[...suggestedModel.blockersFa]}}:{}),references:references.map(r=>({tag:r.tag,kind:r.kind,role:r.role,roleSource:r.roleSource,labelFa:r.labelFa})),intentSummaryFa:p.intentSummaryFa,mediaKind:p.mediaKind,hardConstraints:p.hardConstraints,softPreferences:p.softPreferences,camera:p.camera,shot:p.shot,
+ return {...(style?{style}:{}),...(suggestedModel?{suggestedModel:{name:suggestedModel.name,active:suggestedModel.active,blockersFa:[...suggestedModel.blockersFa]}}:{}),references:references.map(r=>({tag:r.tag,kind:r.kind,role:r.role,roleSource:r.roleSource,labelFa:r.labelFa})),intentSummaryFa:p.intentSummaryFa,mediaKind:p.mediaKind,hardConstraints:p.hardConstraints,softPreferences:p.softPreferences,camera:p.camera,shot:p.shot,
   identityLock:il&&{characterId:il.characterId,providedAngles:il.providedAngles,lockedAttributes:il.lockedAttributes,allowedChanges:il.allowedChanges},
   continuity:p.continuity,realism:{mode:p.realism.mode},speech:p.speech,qaChecklist:p.qaChecklist,clarifyingQuestionFa:p.clarifyingQuestionFa};
 }

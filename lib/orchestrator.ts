@@ -2,7 +2,7 @@ import "server-only";
 import {createHash,randomUUID} from "node:crypto";
 import {buildProposal,NoCompatibleModelError} from "./agent";
 import {CHARACTER_VIEWS,REQUIRED_CHARACTER_VIEWS} from "./characters";
-import {CreativePlanSchema,CreativeTurnInputSchema,toPublicPlan,type PublicReference,PlannerInvalidOutputError,PlannerRefusedError,PlannerUnavailableError,type CreativePlan,type PlannerRequest,type PlannerResult,type PrivatePlanner,type PublicCreativePlan} from "./creative-plan";
+import {CreativePlanSchema,CreativeTurnInputSchema,STYLE_VISUAL,toPublicPlan,type GenerationStyle,type PublicReference,PlannerInvalidOutputError,PlannerRefusedError,PlannerUnavailableError,type CreativePlan,type PlannerRequest,type PlannerResult,type PrivatePlanner,type PublicCreativePlan} from "./creative-plan";
 import {llmPolicy,preparePrivateCreativeRequest} from "./llm";
 import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./private-audit";
 import {displayTag,inferAttachmentRoles,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
@@ -46,6 +46,20 @@ const missingViews=(angles:readonly string[])=>REQUIRED_CHARACTER_VIEWS.filter(v
 const missingQuestion=(angles:readonly string[])=>{const m=missingViews(angles);return m.length?"زاویه‌های «"+viewTitles(m)+"» هنوز اضافه نشده‌اند و ساخته نمی‌شوند؛ ادامه بدهیم یا اول آن‌ها را اضافه می‌کنی؟":undefined;};
 const fas=(l:readonly Pair[])=>l.map(x=>x.fa);
 const ens=(l:readonly Pair[])=>l.map(x=>x.en);
+// ---- the style chosen in the + menu ----
+// realistic = photoreal (hyper_realism stays on); three_d and cartoon = stylized (hyper_realism off). The choice wins over `visualStyle` and over style words in the text.
+const STYLE_PAIRS:Record<GenerationStyle,Pair>={
+ realistic:P("realistic style: natural texture, light and color","سبک واقع‌گرایانه: بافت، نور و رنگ طبیعی"),
+ three_d:P("3D render style: physically based materials, soft global illumination, clean shading","رندر سه‌بعدی تمیز با متریال فیزیکی، نور نرم و سایهٔ طبیعی؛ بدون بافت پوست عکاسی یا نویز"),
+ cartoon:P("cartoon style: clean outlines, simplified shapes, harmonious vivid palette","سبک کارتونی: خطوط تمیز، فرم‌های ساده و پالت رنگی هماهنگ")
+};
+const STYLE_IDENTITY=P("The character's identity stays recognizable in the chosen style (a stylized identity, not a photographic one)","هویت کاراکتر در سبک انتخاب‌شده قابل تشخیص می‌ماند");
+export function styleDirectives(style:GenerationStyle|undefined,hasCharacter:boolean):{hard:Pair[];soft:Pair[];directives:Pair[]}{
+ if(!style)return {hard:[],soft:[],directives:[]};
+ if(style==="realistic")return {hard:[],soft:[STYLE_PAIRS.realistic],directives:[]};
+ return {hard:hasCharacter?[STYLE_IDENTITY]:[],soft:[],directives:[STYLE_PAIRS[style]]};
+}
+const hasCharacterRef=(req:PlannerRequest)=>Boolean(req.input.characterRef)||(req.attachments??[]).some(a=>a.kind==="image"&&a.role==="character");
 // ---- attachment roles ----
 // Each role adds a hard constraint, a continuity lock or a soft preference. The Persian half names the attachment as `#تصویر-۱` (`displayTag`); the English
 // half uses the internal `@image1`, which `rewriteMentions` turns into an English description (`[reference image 1 · character]`) in the provider-facing prompt.
@@ -105,23 +119,23 @@ export function deterministicPlanner(req:PlannerRequest):{plan:CreativePlan}{
  const notes=[P("First, middle and last frames share identity, wardrobe, lighting direction and palette","فریم اول، میانی و آخر هویت، لباس، جهت نور و پالت رنگی یکسان دارند"),P("Natural motion blur from the 180 degree shutter; no FPS drift","محوشدگی حرکتی طبیعی از شاتر ۱۸۰ درجه؛ بدون نوسان فریم‌ریت")];
  const shot={shotSize:size.fa,cameraMovement:mv.fa,lens:portrait?"معادل لنز ۵۰ میلی‌متر":"معادل لنز ۲۸ میلی‌متر",targetFps:24,shutterAngle:180,durationSeconds:dur?Math.min(60,Math.max(1,Number(dur[1]))):5,blocking:"حرکت سوژه دلیل مشخص دارد و خوانا است؛ محور دوربین و جهت حرکت روی صفحه ثابت می‌ماند",continuityNotes:fas(notes)};
  const lips=ids.includes("persian_lip_sync_phonetics"),speech=input.audio?.hasSpeech===true;
- const rd=roleDirectives(req.attachments),byTag=tagMap(req.attachments);
+ const rd=roleDirectives(req.attachments),byTag=tagMap(req.attachments),sd=styleDirectives(input.style,hasCharacterRef(req));
  const hardP:Pair[]=[P("Follow the brief exactly; do not add unrequested subjects, text or logos","دقیقاً مطابق توضیح تو؛ سوژه، متن یا لوگوی اضافه‌ای وارد نمی‌شود"),
   ...(input.task==="edit"?[P("Preserve all unedited source regions: identity, framing, lighting, color and pixels","همهٔ بخش‌های ویرایش‌نشدهٔ تصویر مبدأ حفظ می‌شود: هویت، کادر، نور، رنگ و پیکسل‌ها")]:[]),
   ...(kind==="video"?[P("Keep people and objects continuous; no teleporting, sudden appearance or unintended cuts","افراد و اشیا پیوسته می‌مانند؛ بدون جابه‌جایی ناگهانی، ظاهر یا ناپدید شدن ناگهانی و برش ناخواسته")]:[]),
   ...(ref?[P("Use only the provided reference angles; never invent missing views","فقط از زاویه‌های مرجع ارائه‌شده استفاده می‌شود؛ نمای ناموجود ساخته نمی‌شود")]:[]),
-  ...rd.hard];
+  ...sd.hard,...rd.hard];
  const directivesP:Pair[]=photoreal
   ?[P("Natural skin microtexture with visible pores, fine hairs and subtle asymmetry where people appear","بافت ریز طبیعی پوست با منافذ قابل‌دیدن، موهای ریز و کمی عدم تقارن، هرجا آدمی دیده می‌شود"),P("No waxy, plastic or over-smoothed skin","پوست مومی، پلاستیکی یا بیش‌ازحد صاف نباشد"),P("Physically accurate materials: fabric weave, metal, glass, wood, stone","مواد با رفتار فیزیکی درست: بافت پارچه، فلز، شیشه، چوب و سنگ"),P("No gratuitous film grain, glow, haze or stylistic filters unless requested","بدون گرین فیلم، درخشش، مه یا فیلتر سبکیِ بی‌دلیل، مگر اینکه خواسته شود"),P("Balanced exposure with natural highlight roll-off","نوردهی متعادل با افت طبیعی نواحی روشن")]
-  :[P("Respect the requested stylized look; do not impose photographic textures or lens artifacts","سبک خواسته‌شده رعایت می‌شود؛ بافت عکاسی یا خطاهای لنز تحمیل نمی‌شود"),P("Keep line, palette and shading consistent across the whole frame","خط، پالت رنگی و سایه‌پردازی در کل کادر یکدست می‌ماند")];
+  :[...sd.directives,P("Respect the requested stylized look; do not impose photographic textures or lens artifacts","سبک خواسته‌شده رعایت می‌شود؛ بافت عکاسی یا خطاهای لنز تحمیل نمی‌شود"),P("Keep line, palette and shading consistent across the whole frame","خط، پالت رنگی و سایه‌پردازی در کل کادر یکدست می‌ماند")];
  const directives=fas(directivesP);
  const hard=fas(hardP);
  const docs=(req.attachments??[]).filter(a=>a.textExcerpt).length,pdfs=(req.attachments??[]).filter(a=>a.kind==="pdf").length;
- const soft=[kind==="image"?"نسبت تصویر "+faDigits(camera.aspectRatio):"کادر مناسب پلتفرم با جذابیت واضح در ثانیهٔ اول",...fas(rd.soft),...(night?["حال‌وهوای کم‌نور با منابع نور واقعی صحنه"]:[]),
+ const soft=[...fas(sd.soft),kind==="image"?"نسبت تصویر "+faDigits(camera.aspectRatio):"کادر مناسب پلتفرم با جذابیت واضح در ثانیهٔ اول",...fas(rd.soft),...(night?["حال‌وهوای کم‌نور با منابع نور واقعی صحنه"]:[]),
   ...(docs?[faDigits(String(docs))+" سند متنی به‌عنوان زمینه همراه درخواست ثبت شد؛ برنامهٔ آزمایشی هنوز محتوای آن‌ها را اعمال نمی‌کند"]:[]),...(pdfs?[FA_PDF_NOTE]:[])];
  const direction=kind==="image"?[camera.focalLengthMm+"mm",camera.aperture,camera.shutter,"ISO "+camera.iso,camera.whiteBalanceK+"K",d.framing.en,d.lighting.en]:[size.en,mv.en,shot.targetFps+"fps",shot.shutterAngle+" degree shutter",shot.durationSeconds+"s"];
  // The user's text gets whatever budget the direction, hard constraints and role lines leave, so the constraints at the end are never cut off.
- const rest="\nDirection: "+direction.join(", ")+". "+ens(directivesP).join(". ")+". "+ens(hardP).join(". ")+(rd.locks.length||rd.soft.length?". "+ens([...rd.locks,...rd.soft]).join(". "):"");
+ const rest="\nDirection: "+direction.join(", ")+". "+ens(directivesP).join(". ")+". "+ens(hardP).join(". ")+(rd.locks.length||rd.soft.length||sd.soft.length?". "+ens([...rd.locks,...rd.soft,...sd.soft]).join(". "):"");
  const restEn=rewriteMentions(rest,byTag),prompt=(rewriteMentions(text,byTag).slice(0,Math.max(200,3000-restEn.length))+restEn).slice(0,3000);
  const plan:CreativePlan={
   intentSummaryFa:(kind==="image"?"ساخت تصویر: ":"ساخت ویدیو: ")+text.replace(/\s+/g," ").slice(0,160)+(text.length>160?"…":""),
@@ -164,6 +178,13 @@ function enforce(raw:CreativePlan,req:PlannerRequest):{plan:CreativePlan;correct
  if(note("role_directives",lackHard.length+lackLocks.length+lackSoft.length>0)){
   p.hardConstraints=[...p.hardConstraints,...fas(lackHard)];p.continuity={...p.continuity,locks:[...p.continuity.locks,...fas(lackLocks)]};p.softPreferences=[...p.softPreferences,...fas(lackSoft)];
   const extra=rewriteMentions(" "+ens([...lackHard,...lackLocks,...lackSoft]).join(". ")+".",tagMap(req.attachments));
+  p.mediaPrompt=p.mediaPrompt.slice(0,Math.max(0,3000-extra.length))+extra;
+ }
+ // The chosen style is restored the same way: Persian in the plan, English in the prompt.
+ const sdr=styleDirectives(input.style,hasCharacterRef(req)),lackStyleHard=sdr.hard.filter(lacks(p.hardConstraints)),lackStyleSoft=sdr.soft.filter(lacks(p.softPreferences)),lackStyleDir=sdr.directives.filter(lacks(p.realism.directives));
+ if(note("style_directives",lackStyleHard.length+lackStyleSoft.length+lackStyleDir.length>0)){
+  p.hardConstraints=[...p.hardConstraints,...fas(lackStyleHard)];p.softPreferences=[...p.softPreferences,...fas(lackStyleSoft)];p.realism={...p.realism,directives:[...p.realism.directives,...fas(lackStyleDir)]};
+  const extra=" "+ens([...lackStyleHard,...lackStyleSoft,...lackStyleDir]).join(". ")+".";
   p.mediaPrompt=p.mediaPrompt.slice(0,Math.max(0,3000-extra.length))+extra;
  }
  if(kind==="image"){if(note("speech_dropped",Boolean(p.speech)))delete p.speech;}
@@ -230,7 +251,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // Planners see attachments only through `req.attachments` (kinds and excerpts as data); the audio flags are merged into `input.audio`.
  // An edit_reference (image or video) makes the turn an edit, which brings photo_editor or video_editor.
  const task=parsed.task!=="character"&&files.some(f=>f.role==="edit_reference")?"edit":parsed.task;
- const input={...parsed,task,audio:deriveAudio({...parsed,attachments:files}),attachments:undefined};
+ const input={...parsed,task,visualStyle:parsed.style?STYLE_VISUAL[parsed.style]:parsed.visualStyle,audio:deriveAudio({...parsed,attachments:files}),attachments:undefined};
  // A video attachment (every media attachment carries a role), a lip_sync audio or a start_frame or end_frame image makes the output a video even when the text sounds like
  // an image request. Such a turn always has media, so it stops at the media-review check below and never reaches `buildProposal`, which re-detects from the text.
  const kind=files.some(f=>f.kind==="video"||(f.kind==="audio"&&f.role==="lip_sync")||(f.kind==="image"&&(f.role==="start_frame"||f.role==="end_frame")))?"video":detectMediaKind(input.text),a=input.audio,ref=input.characterRef;
@@ -239,7 +260,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const prep=preparePrivateCreativeRequest({prompt:input.text,kind,task:input.task,attachmentRoles:files.flatMap(f=>f.role?[f.role]:[]),hasReferences:Boolean(ref||a?.hasAudioReference||files.length),hasAudioReference:a?(a.hasAudioReference||a.hasSpeech):undefined,hasSpeechAudio:a?.hasSpeech,speechLanguage:a?.language,accent:a?.accent,characterRef:ref,visualStyle:input.visualStyle});
  const req:PlannerRequest={...prep,privateRoute:prep.privateRoute&&{provider:prep.privateRoute.provider,modelId:prep.privateRoute.modelId},kind,input,...(files.length?{attachments:files.map(f=>({tag:f.tag,kind:f.kind,...(f.role?{role:f.role,roleSource:f.roleSource??"user"}:{}),...(f.textExcerpt?{textExcerpt:f.textExcerpt}:{})}))}:{})};
  const turnId=randomUUID();
- const rec=(x:Partial<PrivateAuditRecord>)=>audit.record({turnId,at:now().toISOString(),skillRegistryVersion:SKILL_REGISTRY_VERSION,activeSkillIds:[...prep.activeSkillIds],reasoningTier:prep.privateReasoningTier,route:req.privateRoute,planner:"deterministic",promptSha256:createHash("sha256").update(input.text).digest("hex"),...(files.length?{attachments:files.map(f=>({tag:f.tag,...(f.role?{role:f.role,roleSource:f.roleSource??"user"}:{}),kind:f.kind,bytes:f.bytes,sha256:f.sha256}))}:{}),...x});
+ const rec=(x:Partial<PrivateAuditRecord>)=>audit.record({turnId,at:now().toISOString(),skillRegistryVersion:SKILL_REGISTRY_VERSION,activeSkillIds:[...prep.activeSkillIds],reasoningTier:prep.privateReasoningTier,route:req.privateRoute,planner:"deterministic",...(input.style?{style:input.style}:{}),promptSha256:createHash("sha256").update(input.text).digest("hex"),...(files.length?{attachments:files.map(f=>({tag:f.tag,...(f.role?{role:f.role,roleSource:f.roleSource??"user"}:{}),kind:f.kind,bytes:f.bytes,sha256:f.sha256}))}:{}),...x});
  let planner=deps.planner,label:PrivateAuditRecord["planner"]=planner&&planner!==deterministicPlanner?"live":"deterministic",fallbackReason:string|undefined;
  if(!planner){
   const pol=llmPolicy(prep.privateReasoningTier);
@@ -273,14 +294,14 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // Voice cloning is never offered: Whoush only makes images and videos, and generating or imitating a voice is out of scope.
  if(files.some(f=>f.role==="voice_clone")){
   rec({planner:label,fallbackReason:"voice_clone_unsupported",corrections:corrections.length?corrections:undefined});
-  return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs),message:FA_VOICE_CLONE};
+  return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs,undefined,input.style),message:FA_VOICE_CLONE};
  }
  // TODO(docs/MODERATION_POLICY.md step 4, "Reference inspection"): plug a real multimodal inspector in here. Until one exists, any image, video or
  // audio attachment fails closed: the plan is returned, but no proposal or price, so uninspected media can never reach provider handoff (step 6).
  if(files.some(f=>isMediaKind(f.kind))){
   rec({planner:label,fallbackReason:"media_review_unavailable",corrections:corrections.length?corrections:undefined});
   const suggestedModel=suggestModel(requirements,kind);
-  return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs,suggestedModel),message:FA_MEDIA_REVIEW+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{})};
+  return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs,suggestedModel,input.style),message:FA_MEDIA_REVIEW+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{})};
  }
  let proposal:GenerationProposal;
  try{proposal=buildProposal(input.text,input.preference,requirements);}
@@ -288,9 +309,9 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   if(!(e instanceof NoCompatibleModelError))throw e;
   rec({planner:label,fallbackReason:"no_compatible_model",corrections:corrections.length?corrections:undefined});
   const suggestedModel=suggestModel(requirements,kind),base=ref?FA_NO_REFS:lipsMsg;
-  return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs,suggestedModel),message:base+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{})};
+  return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs,suggestedModel,input.style),message:base+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{})};
  }
  keepPrompt(turnId,plan.mediaPrompt);
  rec({planner:label,fallbackReason,corrections:corrections.length?corrections:undefined,usage:label==="live"?result?.usage:undefined});
- return {status:"planned",turnId,proposal,plan:toPublicPlan(plan,refs)};
+ return {status:"planned",turnId,proposal,plan:toPublicPlan(plan,refs,undefined,input.style)};
 }
