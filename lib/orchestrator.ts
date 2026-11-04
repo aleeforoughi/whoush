@@ -5,7 +5,7 @@ import {CHARACTER_VIEWS,REQUIRED_CHARACTER_VIEWS} from "./characters";
 import {CreativePlanSchema,CreativeTurnInputSchema,toPublicPlan,type PublicReference,PlannerInvalidOutputError,PlannerRefusedError,PlannerUnavailableError,type CreativePlan,type PlannerRequest,type PlannerResult,type PrivatePlanner,type PublicCreativePlan} from "./creative-plan";
 import {llmPolicy,preparePrivateCreativeRequest} from "./llm";
 import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./private-audit";
-import {isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole} from "./attachments";
+import {displayTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole} from "./attachments";
 import {detectMediaKind} from "./router";
 import {evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
 import {SKILLS,SKILL_REGISTRY_VERSION} from "./skills";
@@ -20,7 +20,7 @@ const FA_NO_REFS="برنامه تولید با کاراکتر انتخاب‌ش�
 const FA_TEXT_BLOCKED="یکی از فایل‌های متنیِ پیوست‌شده مسدود شد. ";
 const FA_MEDIA_REVIEW="برنامه آماده است، اما بررسی ایمنی فایل‌های تصویری، ویدیویی و صوتی هنوز فعال نیست؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 const FA_VOICE_CLONE="کلون صدا در هووش پشتیبانی نمی‌شود؛ هووش فقط تصویر و ویدیو می‌سازد و تولید یا شبیه‌سازی صدا ممکن نیست.";
-const faMissing=(tags:readonly string[])=>tags.length===1?"پیوست @"+tags[0]+" در این گفت‌وگو پیدا نشد؛ آن را دوباره اضافه کن یا تگ را اصلاح کن.":"پیوست‌های "+tags.map(t=>"@"+t).join("، ")+" در این گفت‌وگو پیدا نشدند؛ آن‌ها را دوباره اضافه کن یا تگ‌ها را اصلاح کن.";
+const faMissing=(tags:readonly string[])=>tags.length===1?"پیوست "+displayTag(tags[0])+" در این گفت‌وگو پیدا نشد؛ آن را دوباره اضافه کن یا تگ را اصلاح کن.":"پیوست‌های "+tags.map(displayTag).join("، ")+" در این گفت‌وگو پیدا نشدند؛ آن‌ها را دوباره اضافه کن یا تگ‌ها را اصلاح کن.";
 const FA_PDF_NOTE="محتوای فایل PDF هنوز خوانده نمی‌شود و در برنامه اثری ندارد";
 const lipsMsg="برنامه لیپ‌سینک آماده است، اما هنوز هیچ مدل تأییدشده‌ای هماهنگی لب را پشتیبانی نمی‌کند؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 // ---- deterministic planner (pure, no network): complete valid plan from the active skills ----
@@ -46,22 +46,22 @@ const missingQuestion=(angles:readonly string[])=>{const m=missingViews(angles);
 const fas=(l:readonly Pair[])=>l.map(x=>x.fa);
 const ens=(l:readonly Pair[])=>l.map(x=>x.en);
 // ---- attachment roles ----
-// Each role adds a hard constraint, a continuity lock or a soft preference. Both halves name the attachment as `@tag`: the public Persian
-// text keeps it, and `rewriteMentions` turns it into an English description (`[reference image 1 · character]`) in the provider-facing prompt.
+// Each role adds a hard constraint, a continuity lock or a soft preference. The Persian half names the attachment as `#تصویر۱` (`displayTag`); the English
+// half uses the internal `@image1`, which `rewriteMentions` turns into an English description (`[reference image 1 · character]`) in the provider-facing prompt.
 type Ref={tag:string;kind:AttachmentKind;role?:AttachmentRole};
 const tagMap=(l:readonly Ref[]=[])=>new Map(l.map(a=>[a.tag,a]));
 function roleRule(kind:AttachmentKind,role:AttachmentRole,tag:string):{hard?:Pair;soft?:Pair;lock?:Pair}{
- const at="@"+tag;
+ const at="@"+tag,fa=displayTag(tag);
  switch(role){
-  case "character":return {hard:P(at+": preserve facial identity, hair, skin tone and body proportions exactly as in the reference",at+": هویت چهره، مو، رنگ پوست و تناسب بدن مطابق مرجع حفظ شود")};
-  case "environment":return {lock:P(at+": keep the location, architecture, light direction and time of day of the reference",at+": مکان، معماری، جهت نور و ساعت روز مطابق مرجع ثابت بماند")};
-  case "object":return {hard:P(at+": keep the object's shape, material, color, proportions and logo placement as in the reference",at+": شکل، جنس، رنگ، تناسب و جای لوگوی شیء مطابق مرجع حفظ شود")};
-  case "graphic":return {hard:P(at+": use the graphic, logo or text exactly as provided, with no distortion, recoloring or retyping",at+": گرافیک، لوگو یا متن مرجع بدون اعوجاج، تغییر رنگ یا بازنویسی استفاده شود")};
+  case "character":return {hard:P(at+": preserve facial identity, hair, skin tone and body proportions exactly as in the reference",fa+": هویت چهره، مو، رنگ پوست و تناسب بدن مطابق مرجع حفظ شود")};
+  case "environment":return {lock:P(at+": keep the location, architecture, light direction and time of day of the reference",fa+": مکان، معماری، جهت نور و ساعت روز مطابق مرجع ثابت بماند")};
+  case "object":return {hard:P(at+": keep the object's shape, material, color, proportions and logo placement as in the reference",fa+": شکل، جنس، رنگ، تناسب و جای لوگوی شیء مطابق مرجع حفظ شود")};
+  case "graphic":return {hard:P(at+": use the graphic, logo or text exactly as provided, with no distortion, recoloring or retyping",fa+": گرافیک، لوگو یا متن مرجع بدون اعوجاج، تغییر رنگ یا بازنویسی استفاده شود")};
   case "edit_reference":return kind==="video"
-   ?{hard:P(at+": preserve the frame rate, frame count, cuts, audio, framing and grade of the source video except for the requested change",at+": نرخ فریم، تعداد فریم، برش‌ها، صدا، کادر و گرید رنگ ویدیوی مبدأ حفظ شود، به‌جز تغییر درخواست‌شده")}
-   :{hard:P(at+": change only the requested region and preserve all remaining pixels, identity, framing and light",at+": فقط بخش درخواست‌شده تغییر کند و بقیهٔ پیکسل‌ها، هویت، کادر و نور حفظ شود")};
-  case "motion_reference":return {hard:P(at+": follow the path, speed, timing and blocking of the motion, but not the appearance of the reference",at+": مسیر، سرعت، زمان‌بندی و بلاکینگ حرکت از مرجع دنبال شود، اما ظاهر مرجع کپی نشود")};
-  case "music":return {soft:P(at+": let its beat, tempo and structure guide the cut rhythm and motion timing; do not generate or alter any music",at+": ضرباهنگ، تمپو و ساختار موسیقی راهنمای ریتم برش‌ها و زمان‌بندی حرکت باشد؛ موسیقی ساخته یا تغییر داده نمی‌شود")};
+   ?{hard:P(at+": preserve the frame rate, frame count, cuts, audio, framing and grade of the source video except for the requested change",fa+": نرخ فریم، تعداد فریم، برش‌ها، صدا، کادر و گرید رنگ ویدیوی مبدأ حفظ شود، به‌جز تغییر درخواست‌شده")}
+   :{hard:P(at+": change only the requested region and preserve all remaining pixels, identity, framing and light",fa+": فقط بخش درخواست‌شده تغییر کند و بقیهٔ پیکسل‌ها، هویت، کادر و نور حفظ شود")};
+  case "motion_reference":return {hard:P(at+": follow the path, speed, timing and blocking of the motion, but not the appearance of the reference",fa+": مسیر، سرعت، زمان‌بندی و بلاکینگ حرکت از مرجع دنبال شود، اما ظاهر مرجع کپی نشود")};
+  case "music":return {soft:P(at+": let its beat, tempo and structure guide the cut rhythm and motion timing; do not generate or alter any music",fa+": ضرباهنگ، تمپو و ساختار موسیقی راهنمای ریتم برش‌ها و زمان‌بندی حرکت باشد؛ موسیقی ساخته یا تغییر داده نمی‌شود")};
   default:return {};
  }
 }
@@ -237,7 +237,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  if(!fin.e){label="deterministic";fallbackReason=fin.reason;fin=finalize(deterministicPlanner(req).plan);}
  if(!fin.e)throw new Error("deterministic planner produced an invalid plan");
  const {plan,corrections}=fin.e;
- // Provider-facing text names attachments by description; the public Persian text keeps the @tag. A missing tag is a question, never a block.
+ // Provider-facing text names attachments by description; the public Persian text keeps what the user typed. A missing tag is a question, never a block.
  plan.mediaPrompt=rewriteMentions(plan.mediaPrompt,byTag).slice(0,3000);
  if(missing.length)plan.clarifyingQuestionFa=[faMissing(missing),plan.clarifyingQuestionFa].filter(Boolean).join(" ").slice(0,400);
  // plan inspection: LLM output never bypasses the safety layer

@@ -57,7 +57,8 @@ const PROMPTS:Array<[string,Record<string,unknown>]>=[
  ["انیمه یک دختر در باغ گل",{visualStyle:"stylized"}],
  ["poster for an Instagram story about a spring coffee sale",{}],
  ["generate an image using Nano Banana of a mountain lake at night",{preference:"cost"}],
- ["edit this photo and replace the background with a beach",{task:"edit"}]
+ ["edit this photo and replace the background with a beach",{task:"edit"}],
+ ["تصویر دریاچه‌ای آرام، مثل #تصویر۳ و #فایل۹",{}]
 ];
 const stringsOf=(v:unknown,out:string[]=[]):string[]=>{if(typeof v==="string")out.push(v);else if(Array.isArray(v))v.forEach(x=>stringsOf(x,out));else if(v&&typeof v==="object")Object.values(v).forEach(x=>stringsOf(x,out));return out;};
 function assertNoLeak(json:string,label:string){
@@ -472,7 +473,7 @@ test("anthropic adapter: attachment excerpts go inside <user_brief> as <attachme
 
 // ---- P4 tags, mentions and roles ----
 const LAKE="a photo of a lake";
-const FA_MISSING_3="پیوست @image3 در این گفت‌وگو پیدا نشد؛ آن را دوباره اضافه کن یا تگ را اصلاح کن.";
+const FA_MISSING_3="پیوست #تصویر۳ در این گفت‌وگو پیدا نشد؛ آن را دوباره اضافه کن یا تگ را اصلاح کن.";
 const unsupported=(r:OrchestratorResult)=>{assert.equal(r.status,"unsupported",JSON.stringify(r));return r as Extract<OrchestratorResult,{status:"unsupported"}>;};
 const seenBy=async(text:string,attachments:unknown[])=>{const {planner,seen}=spyPlanner();const r=await orchestrateCreativeTurn({text,attachments},{planner});return {r,req:seen[0]};};
 
@@ -481,12 +482,12 @@ test("mentions: a tag with no attachment gets a Persian clarifying question and 
  assert.equal(r.plan.clarifyingQuestionFa,FA_MISSING_3);assert.ok(r.proposal.fixedNeurons>0);
  assert.equal(planned(await orchestrateCreativeTurn({text:"put @Image3 on the left"})).plan.clarifyingQuestionFa,FA_MISSING_3,"case-insensitive, and it works with no attachments at all");
  const two=planned(await orchestrateCreativeTurn({text:"@video1 then @audio2 then @image3 again @image3"})).plan.clarifyingQuestionFa!;
- assert.ok(two.includes("@video1")&&two.includes("@audio2")&&two.includes("@image3")&&two.includes("پیدا نشدند"));assert.equal(two.split("@image3").length,2,"each missing tag is named once");
+ assert.ok(two.includes("#ویدیو۱")&&two.includes("#صدا۲")&&two.includes("#تصویر۳")&&two.includes("پیدا نشدند"));assert.equal(two.split("#تصویر۳").length,2,"each missing tag is named once");
  for(const fine of ["use @file1 as notes","write to me@image3.com","the @image100 tag is not a tag"])assert.equal(planned(await orchestrateCreativeTurn({text:fine,attachments:[att("md")]})).plan.clarifyingQuestionFa,undefined,fine);
  // an existing question (missing character angles) is kept after the new one
  const ref={id:"char-abcdef12",name:"سارا",angles:["front"],version:1};
  const both=planOf(await orchestrateCreativeTurn({text:"a woman in a garden with @image9",characterRef:ref})).plan.clarifyingQuestionFa!;
- assert.ok(both.startsWith("پیوست @image9")&&both.includes("زاویه‌های"));
+ assert.ok(both.startsWith("پیوست #تصویر۹")&&both.includes("زاویه‌های"));
  const res=await POST(new Request("http://x/api/agent",{method:"POST",body:JSON.stringify({text:"@image3 please"})}));
  assert.equal(res.status,200);assert.equal((await res.json()).plan.clarifyingQuestionFa,FA_MISSING_3);
 });
@@ -515,14 +516,51 @@ test("mentions: the provider-facing prompt describes attachments in English, the
  assert.ok(lp.length<=3000&&lp.includes("[reference image 1 · character]: preserve facial identity"),"role lines survive a long brief");
 });
 
+test("Persian mentions: a missing file asks about #تصویر۳, and Persian digits, Arabic letters and @/# all name the same tag",async()=>{
+ const ask=async(text:string,attachments?:unknown[])=>planned(await orchestrateCreativeTurn({text,...(attachments?{attachments}:{})})).plan.clarifyingQuestionFa;
+ assert.equal(await ask("عکس #تصویر۳ را سمت چپ دریاچه بگذار",[att("md")]),FA_MISSING_3);
+ for(const text of ["put #تصوير٣ on the left","put @تصویر3 on the left","put #image3 on the left","put @Image3 on the left"])assert.equal(await ask(text),FA_MISSING_3,text);
+ const two=(await ask("#ویدیو۱ بعد #صدا۲ بعد #تصویر۳ دوباره #تصویر۳"))!;
+ assert.ok(two.includes("#ویدیو۱")&&two.includes("#صدا۲")&&two.includes("#تصویر۳")&&two.includes("پیدا نشدند")&&!two.includes("@"));assert.equal(two.split("#تصویر۳").length,2);
+ for(const fine of ["use #فایل۱ as notes","شب #نوروز در شیراز","write to me@image3.com","the #تصویر۱۰۰ tag is not a tag","#تصویر۰"])assert.equal(await ask(fine,[att("md")]),undefined,fine);
+ const res=await POST(new Request("http://x/api/agent",{method:"POST",body:JSON.stringify({text:"#تصویر۳ را بگذار"})}));
+ assert.equal(res.status,200);assert.equal((await res.json()).plan.clarifyingQuestionFa,FA_MISSING_3);
+});
+test("Persian mentions: rewritten in the private media prompt, kept in the public text, nothing leaks",async()=>{
+ const text="یادداشت‌های #فایل۱ را بخوان و #تصوير٧ را نادیده بگیر؛ دوباره #فایل1";
+ const {r,req}=await seenBy(text,[att("md"),att("pdf")]);
+ const p=planned(r),prompt=getPrivateMediaPrompt(p.turnId)!;
+ assert.ok(prompt.startsWith("یادداشت‌های [attached document 1] را بخوان و [missing attachment] را نادیده بگیر؛ دوباره [attached document 1]"),prompt);
+ assert.ok(!prompt.includes("#فایل")&&!prompt.includes("#تصو")&&!prompt.includes("فایل1"),"no tag in any accepted spelling survives in the provider-facing prompt");
+ assert.ok(p.plan.intentSummaryFa.includes("#فایل۱")&&p.plan.intentSummaryFa.includes("#فایل1"),"the public summary keeps what the user wrote");
+ assert.ok(!JSON.stringify(p.plan).includes("[attached document"));
+ assertNoLeak(JSON.stringify(r),"persian mention");
+ assert.deepEqual(req.attachments,[{tag:"file1",kind:"md",textExcerpt:"# notes"},{tag:"file3",kind:"pdf"}]);
+ // media: every accepted form becomes the same English description
+ const media=await seenBy("draw #تصویر۱ in the style of @video1 and #ویدئو۱",[att("image",{role:"object"}),att("video",{role:"motion_reference"})]);
+ const mp=deterministicPlanner(media.req).plan.mediaPrompt;
+ assert.ok(mp.startsWith("draw [reference image 1 · object] in the style of [motion reference video 1] and [motion reference video 1]"),mp);
+ assert.ok(!/[#@\u0600-\u06ff]/.test(mp),"the English prompt holds no tag or Persian text");
+ // the public role lines name the attachment as #تصویر۱, never @image1
+ const pub=unsupported(await orchestrateCreativeTurn({text:"draw #تصویر۱ in a garden",attachments:[att("image",{role:"object"})]}));
+ assert.ok(pub.plan.hardConstraints.includes(CONSTRAINT.object));assert.ok(!JSON.stringify(pub.plan).includes("@image1"));
+ assert.deepEqual(pub.plan.references.map(x=>x.tag),["image1"],"the wire tag is unchanged");
+ assert.ok(pub.plan.intentSummaryFa.includes("#تصویر۱"));
+ assertNoLeak(JSON.stringify(pub),"persian media mention");
+ // a live planner that writes the Persian tag into its own prompt is rewritten after the fact
+ const live:PrivatePlanner=r2=>{const plan=structuredClone(deterministicPlanner(r2).plan) as CreativePlan;plan.mediaPrompt="lake scene following #فایل۱ closely";return {plan};};
+ const l=planned(await orchestrateCreativeTurn({text:"a lake per #فایل۱",attachments:[att("md")]},{planner:live}));
+ assert.equal(getPrivateMediaPrompt(l.turnId),"lake scene following [attached document 1] closely");
+});
+
 const skillsOf=()=>last().activeSkillIds;
 const CONSTRAINT={
- character:"@image1: هویت چهره، مو، رنگ پوست و تناسب بدن مطابق مرجع حفظ شود",
- object:"@image1: شکل، جنس، رنگ، تناسب و جای لوگوی شیء مطابق مرجع حفظ شود",
- graphic:"@image1: گرافیک، لوگو یا متن مرجع بدون اعوجاج، تغییر رنگ یا بازنویسی استفاده شود",
- imageEdit:"@image1: فقط بخش درخواست‌شده تغییر کند و بقیهٔ پیکسل‌ها، هویت، کادر و نور حفظ شود",
- motion:"@video1: مسیر، سرعت، زمان‌بندی و بلاکینگ حرکت از مرجع دنبال شود، اما ظاهر مرجع کپی نشود",
- videoEdit:"@video1: نرخ فریم، تعداد فریم، برش‌ها، صدا، کادر و گرید رنگ ویدیوی مبدأ حفظ شود، به‌جز تغییر درخواست‌شده"
+ character:"#تصویر۱: هویت چهره، مو، رنگ پوست و تناسب بدن مطابق مرجع حفظ شود",
+ object:"#تصویر۱: شکل، جنس، رنگ، تناسب و جای لوگوی شیء مطابق مرجع حفظ شود",
+ graphic:"#تصویر۱: گرافیک، لوگو یا متن مرجع بدون اعوجاج، تغییر رنگ یا بازنویسی استفاده شود",
+ imageEdit:"#تصویر۱: فقط بخش درخواست‌شده تغییر کند و بقیهٔ پیکسل‌ها، هویت، کادر و نور حفظ شود",
+ motion:"#ویدیو۱: مسیر، سرعت، زمان‌بندی و بلاکینگ حرکت از مرجع دنبال شود، اما ظاهر مرجع کپی نشود",
+ videoEdit:"#ویدیو۱: نرخ فریم، تعداد فریم، برش‌ها، صدا، کادر و گرید رنگ ویدیوی مبدأ حفظ شود، به‌جز تغییر درخواست‌شده"
 };
 test("roles: image character brings character_creation and anti_drift, a Persian hard constraint and a reference image requirement",async()=>{
  const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("image",{role:"character"})]}));
@@ -535,7 +573,7 @@ test("roles: image character brings character_creation and anti_drift, a Persian
 });
 test("roles: image environment adds continuity locks for place, architecture, light and time of day, and no culture skills by itself",async()=>{
  const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("image",{role:"environment"})]}));
- assert.ok(r.plan.continuity.locks.includes("@image1: مکان، معماری، جهت نور و ساعت روز مطابق مرجع ثابت بماند"),JSON.stringify(r.plan.continuity.locks));
+ assert.ok(r.plan.continuity.locks.includes("#تصویر۱: مکان، معماری، جهت نور و ساعت روز مطابق مرجع ثابت بماند"),JSON.stringify(r.plan.continuity.locks));
  assert.ok(!skillsOf().includes("iranian_geography")&&!skillsOf().includes("iranian_culture"));
  await orchestrateCreativeTurn({text:"عکس بازار قدیمی شیراز",attachments:[att("image",{role:"environment"})]});
  assert.ok(skillsOf().includes("iranian_geography"),"a text trigger still activates them, unchanged");
@@ -586,9 +624,9 @@ test("roles: audio lip_sync makes a video, implies speech, and activates Tehrani
 });
 test("roles: audio music brings audiographer and a soft rhythm preference, with no lip sync and no generated music",async()=>{
  const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("audio",{role:"music"})]}));
- const soft=r.plan.softPreferences.find(x=>x.startsWith("@audio1:"))!;
+ const soft=r.plan.softPreferences.find(x=>x.startsWith("#صدا۱:"))!;
  assert.ok(soft&&soft.includes("ضرباهنگ، تمپو و ساختار موسیقی")&&soft.includes("موسیقی ساخته یا تغییر داده نمی‌شود"),JSON.stringify(r.plan.softPreferences));
- assert.ok(!r.plan.hardConstraints.some(x=>x.includes("@audio1")),"a soft preference, not a hard constraint");
+ assert.ok(!r.plan.hardConstraints.some(x=>x.includes("#صدا۱")),"a soft preference, not a hard constraint");
  assert.ok(skillsOf().includes("audiographer")&&!skillsOf().includes("persian_lip_sync_phonetics")&&!skillsOf().includes("tehrani_accent"));
  const v=unsupported(await orchestrateCreativeTurn({text:"short video of a cat on a rooftop",attachments:[att("audio",{role:"music"})]}));
  assert.equal(v.plan.mediaKind,"video");assert.equal(v.plan.speech?.lipSync.status,"not_requested");assert.equal(v.plan.speech?.accent,"unspecified");
@@ -627,10 +665,10 @@ test("roles: media without a role, and the old reference/context roles, are inva
 test("roles: a planner that drops a role constraint gets it back from the invariants",async()=>{
  const lazy:PrivatePlanner=r=>{const plan=structuredClone(deterministicPlanner(r).plan) as CreativePlan;plan.hardConstraints=["do the brief"];plan.continuity.locks=["keep it consistent"];plan.softPreferences=[];return {plan};};
  const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("image",{role:"character"}),att("audio",{role:"music"})]},{planner:lazy}));
- assert.ok(r.plan.hardConstraints.includes(CONSTRAINT.character)&&r.plan.softPreferences.some(x=>x.startsWith("@audio1:")));
+ assert.ok(r.plan.hardConstraints.includes(CONSTRAINT.character)&&r.plan.softPreferences.some(x=>x.startsWith("#صدا۱:")));
  assert.ok(last().corrections?.includes("role_directives"));
  const env=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("image",{role:"environment"})]},{planner:lazy}));
- assert.ok(env.plan.continuity.locks.some(x=>x.startsWith("@image1:")));
+ assert.ok(env.plan.continuity.locks.some(x=>x.startsWith("#تصویر۱:")));
  // a planner that already has them is not corrected
  await orchestrateCreativeTurn({text:LAKE,attachments:[att("image",{role:"character"})]});assert.ok(!last().corrections?.includes("role_directives"));
 });
