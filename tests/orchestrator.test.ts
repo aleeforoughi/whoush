@@ -1,6 +1,7 @@
 import {test,beforeEach,afterEach} from "node:test";
 import assert from "node:assert/strict";
 import {orchestrateCreativeTurn,deterministicPlanner,getPrivateMediaPrompt,deriveAudio,mediaRequirements,type OrchestratorResult} from "../lib/orchestrator";
+import {resetRouterStateForTests} from "../lib/llm-routing";
 import {readPrivateAuditForTests,defaultAuditSink} from "../lib/private-audit";
 import {CreativePlanSchema,CreativeTurnInputSchema,PlannerRefusedError,PlannerUnavailableError,PlannerInvalidOutputError,type CreativePlan,type PlannerRequest,type PrivatePlanner} from "../lib/creative-plan";
 import {llmPolicy,preparePrivateCreativeRequest} from "../lib/llm";
@@ -11,7 +12,7 @@ import {describeTagEn} from "../lib/attachments";
 
 const ENV_KEYS=["LLM_PROVIDER_AUTHORIZED","ALLOW_LIVE_LLM","LLM_FAST_MODEL","LLM_BALANCED_MODEL","LLM_DEEP_MODEL","ANTHROPIC_API_KEY","OPENAI_API_KEY"];
 let saved:Record<string,string|undefined>={};
-beforeEach(()=>{saved=Object.fromEntries(ENV_KEYS.map(k=>[k,process.env[k]]));for(const k of ENV_KEYS)delete process.env[k];});
+beforeEach(()=>{resetRouterStateForTests();saved=Object.fromEntries(ENV_KEYS.map(k=>[k,process.env[k]]));for(const k of ENV_KEYS)delete process.env[k];});
 afterEach(()=>{for(const k of ENV_KEYS){if(saved[k]===undefined)delete process.env[k];else process.env[k]=saved[k];}});
 const noNet=globalThis.fetch;
 const planned=(r:OrchestratorResult)=>{assert.equal(r.status,"planned",JSON.stringify(r));return r as Extract<OrchestratorResult,{status:"planned"}>;};

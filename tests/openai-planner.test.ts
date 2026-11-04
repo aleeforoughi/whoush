@@ -3,11 +3,12 @@ import assert from "node:assert/strict";
 import {CreativePlanSchema,CreativePlanWireSchema,CreativeTurnInputSchema,fromWirePlan,PlannerInvalidOutputError,PlannerRefusedError,PlannerUnavailableError,type CreativePlan,type PlannerRequest} from "../lib/creative-plan";
 import {llmPolicy,preparePrivateCreativeRequest,resolvePrivateRouting} from "../lib/llm";
 import {deterministicPlanner,orchestrateCreativeTurn} from "../lib/orchestrator";
+import {resetRouterStateForTests} from "../lib/llm-routing";
 import {readPrivateAuditForTests} from "../lib/private-audit";
 
 const KEYS=["LLM_PROVIDER_AUTHORIZED","ALLOW_LIVE_LLM","LLM_FAST_MODEL","LLM_BALANCED_MODEL","LLM_DEEP_MODEL","ANTHROPIC_API_KEY","OPENAI_API_KEY"];
 let saved:Record<string,string|undefined>={};
-beforeEach(()=>{saved=Object.fromEntries(KEYS.map(k=>[k,process.env[k]]));for(const k of KEYS)delete process.env[k];});
+beforeEach(()=>{resetRouterStateForTests();saved=Object.fromEntries(KEYS.map(k=>[k,process.env[k]]));for(const k of KEYS)delete process.env[k];});
 afterEach(()=>{for(const k of KEYS){if(saved[k]===undefined)delete process.env[k];else process.env[k]=saved[k];}});
 const noNet=globalThis.fetch;
 const reqFor=(text:string):PlannerRequest=>{const input=CreativeTurnInputSchema.parse({text});const prep=preparePrivateCreativeRequest({prompt:text,kind:"image"});return {...prep,privateRoute:null,kind:"image",input};};
@@ -121,9 +122,12 @@ test("orchestrator dispatches by provider, audits provider and model privately, 
   stub(200,responseBody(textOut("{"),{status:"incomplete",incomplete_details:{reason:"max_output_tokens"}}));
   assert.equal((await orchestrateCreativeTurn({text})).status,"planned");assert.equal(last().planner,"deterministic");assert.equal(last().fallbackReason,"invalid_output");
   for(const status of [401,429,500]){
+   resetRouterStateForTests();
    stub(status,{error:{message:"x",type:"x",code:null,param:null}});
    assert.equal((await orchestrateCreativeTurn({text})).status,"planned");assert.equal(last().fallbackReason,"planner_unavailable",String(status));
+   assert.equal((await orchestrateCreativeTurn({text})).status,"planned");assert.equal(last().fallbackReason,"provider cooldown","the provider rests after an unavailable error");
   }
+  resetRouterStateForTests();
   stub(200,responseBody([{type:"message",id:"m",role:"assistant",status:"completed",content:[{type:"refusal",refusal:"no"}]}]));
   const ref=await orchestrateCreativeTurn({text});assert.equal(ref.status,"restricted");assert.equal(last().fallbackReason,"planner_refused");
  }finally{globalThis.fetch=noNet;}
