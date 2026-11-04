@@ -15,7 +15,7 @@ const NAV_KEYS=["ArrowUp","ArrowDown","Enter","Tab","Escape"];
  * `endAction` (the send button) are pinned to the bottom corners of the inline-start and inline-end edges, so they stay put as the textarea grows; the textarea reserves
  * both with padding on every line. Ctrl/Cmd+Enter calls `onSubmitShortcut`, but never while the mention list is open (there Enter and Tab insert a mention).
  */
-export function MentionTextarea({value,onValueChange,options,inputRef,startAction,endAction,onSubmitShortcut,className,...props}:Omit<ComponentProps<"textarea">,"value"|"onChange"|"ref">&{value:string;onValueChange:(v:string)=>void;options:readonly MentionOption[];inputRef:RefObject<HTMLTextAreaElement|null>;startAction?:ReactNode;endAction?:ReactNode;onSubmitShortcut?:()=>void}){
+export function MentionTextarea({value,onValueChange,options,inputRef,startAction,endAction,top,onSubmitShortcut,className,...props}:Omit<ComponentProps<"textarea">,"value"|"onChange"|"ref">&{value:string;onValueChange:(v:string)=>void;options:readonly MentionOption[];inputRef:RefObject<HTMLTextAreaElement|null>;startAction?:ReactNode;endAction?:ReactNode;/** Content inside the field's border, above the text (the upload cards). */top?:ReactNode;onSubmitShortcut?:()=>void}){
  const listId=useId(),optionId=(i:number)=>listId+"-"+i;
  const [trigger,setTrigger]=useState<{start:number;query:string}|null>(null);
  const [active,setActive]=useState(0);
@@ -43,6 +43,7 @@ export function MentionTextarea({value,onValueChange,options,inputRef,startActio
   <div className={"relative rounded-control border border-line-primary bg-transparent motion-state has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-offset-2 has-[textarea:focus-visible]:outline-ring"}>
   {startAction&&<div className="absolute bottom-1 start-1 z-10">{startAction}</div>}
   {endAction&&<div className="absolute bottom-1 end-1 z-10">{endAction}</div>}
+  {top&&<div className="px-2 pt-2">{top}</div>}
   <Textarea {...props} className={"rounded-none border-0 focus-visible:outline-hidden "+(startAction?"ps-14 ":"")+(endAction?"pe-14 ":"")+(className??"")} ref={inputRef} value={value} role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-controls={listId} aria-expanded={open} aria-activedescendant={open?optionId(current):undefined}
    onChange={e=>{onValueChange(e.target.value);sync(e.target);}}
    onClick={e=>sync(e.currentTarget)}

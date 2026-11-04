@@ -2,12 +2,14 @@
 import {Fragment,useEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
 import Link from "next/link";
 import {useRouter,useSearchParams} from "next/navigation";
-import {ArrowUp,CircleAlert,Clapperboard,Info,LoaderCircle,Upload,UserRound,X} from "lucide-react";
+import {ArrowUp,CircleAlert,Clapperboard,Info,LoaderCircle,Upload as UploadIcon,UserRound,X} from "lucide-react";
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Tabs,TabsContent,TabsList,TabsTrigger,Label} from "@aleeforoughi/feather-react";
 import {JobSteps} from "@/components/job-steps";
 import {NoModelCard,PastProposalCard,ProposalCard} from "@/components/proposal-card";
 import {CharacterDialog} from "@/components/character-dialog";
 import {InsertMenu} from "@/components/insert-menu";
+import {UploadSlotCard} from "@/components/upload-slot";
+import {SLOTS_FULL_FA,addSlot,removeSlot,slotFor,uploadRejection,type Upload,type UploadSlot} from "@/lib/upload-slots";
 import {ModeControl,useMode} from "@/components/mode-control";
 import {StyleControl,useStyleSetting} from "@/components/style-control";
 import {AttachmentChip,type AttachmentPatch} from "@/components/attachment-chip";
@@ -26,7 +28,7 @@ import type {GenerationStyle} from "@/lib/creative-plan";
 import type {AgentPreference} from "@/lib/types";
 import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,acceptFor,allocateTag,insertMention,newTagCounters,parseMentions,tooManyFa,toWireAttachment,validateAttachmentSet,withRole,withoutRole,type AttachmentKind,type AttachmentRole,type LocalAttachment} from "@/lib/attachments";
 import {readAttachment} from "@/lib/attachment-files";
-import type {InsertAction} from "@/lib/insert-menu";
+import type {InsertItem} from "@/lib/insert-menu";
 
 /** A stored message plus the live attachments of its turn (object URLs, not persisted). */
 type TranscriptItem=StoredMessage&{attachments?:LocalAttachment[]};
@@ -40,10 +42,6 @@ type StudioView="chat"|"canvas";
 const opening="سلام! دوست داری چه تصویر یا ویدیویی بسازیم؟ می‌تونی مدل موردعلاقه‌ات رو هم توی پیام بنویسی.";
 const idlePreview="شروع کن: ایده‌ات رو در چت بنویس.";
 const CHARACTER_KEY="whoush-character";
-/** A file picked through the + menu: its kind must match the entry, and `role` (absent for documents) is what the user chose. */
-type Upload={kind:"image"|"video"|"audio"|"file";role?:AttachmentRole};
-const UPLOAD_KIND_FA={image:"تصویر",video:"ویدیو",audio:"صدا",file:"سند (PDF، JSON یا Markdown)"} as const;
-const uploadRejection=(u:Upload,kind:AttachmentKind)=>(u.kind==="file"?kind==="pdf"||kind==="json"||kind==="md":u.kind===kind)?undefined:"این گزینه فقط "+UPLOAD_KIND_FA[u.kind]+" می‌پذیرد.";
 
 /** sessionStorage can throw (private windows, blocked storage); the selection then simply does not persist. */
 const rememberCharacter=(id:string|null)=>{try{if(id)window.sessionStorage.setItem(CHARACTER_KEY,id);else window.sessionStorage.removeItem(CHARACTER_KEY);}catch{ /* not persisted */ }};
@@ -89,8 +87,12 @@ export function Studio(){
  const endRef=useRef<HTMLDivElement>(null);
  const fileInput=useRef<HTMLInputElement>(null);
  const formRef=useRef<HTMLFormElement>(null);
- /** What the next file picker is for; set by a + menu entry and consumed when files are chosen. */
+ /** What the next file picker is for; set by an upload card and consumed when files are chosen. */
  const pendingUpload=useRef<Upload|undefined>(undefined);
+ /** The upload card the open picker fills (one file); removed once its file is attached. */
+ const pendingSlot=useRef<string|undefined>(undefined);
+ /** Empty upload cards inside the chat input, one per «+» entry picked. They hold no file and are dropped on send. */
+ const [slots,setSlots]=useState<UploadSlot[]>([]);
  const promptRef=useRef<HTMLTextAreaElement>(null);
  /** Tags count up for the whole conversation and are never reused after a removal; a project saves them, "new chat" starts over. */
  const tagCounters=useRef(newTagCounters());
@@ -181,7 +183,7 @@ export function Studio(){
  function releaseAll(){
   urls.current.forEach(u=>URL.revokeObjectURL(u));urls.current.clear();
   blobs.current=new Map();savedAssets.current=new Set();
-  setAttachments([]);setProblems([]);setAnnounce("");setViewer(null);tagCounters.current=newTagCounters();
+  setAttachments([]);setSlots([]);setProblems([]);setAnnounce("");setViewer(null);tagCounters.current=newTagCounters();
   setMessages([]);setProposal(null);setLiveId(null);setJob(null);
   setPreview(idlePreview);setError("");setNotice("");setStorageNote("");setDraft("");
  }
@@ -265,9 +267,9 @@ export function Studio(){
   if(index>=0)setViewer({items,index,title:active.current?.title});
  }
  function releaseUrl(a:LocalAttachment){if(a.previewUrl){URL.revokeObjectURL(a.previewUrl);urls.current.delete(a.previewUrl);}}
- /** Verifies the picked files one by one; the good ones join the tray, each rejected one gets its own Persian reason. */
- async function addFiles(files:File[],upload?:Upload){
-  if(!files.length||readingRef.current)return;
+ /** Verifies the picked files one by one; the good ones join the tray, each rejected one gets its own Persian reason. Returns how many were added. */
+ async function addFiles(files:File[],upload?:Upload):Promise<number>{
+  if(!files.length||readingRef.current)return 0;
   readingRef.current=true;setReading(true);setProblems([]);setAnnounce("");
   const next=[...attachments],added:LocalAttachment[]=[],bad:AttachmentProblem[]=[];
   for(const file of files){
@@ -291,6 +293,24 @@ export function Studio(){
   setAttachments(cur=>[...cur,...added]);setProblems(bad);
   setAnnounce((added.length?fa(added.length)+" فایل اضافه شد. ":"")+(bad.length?fa(bad.length)+" فایل رد شد.":""));
   readingRef.current=false;setReading(false);
+  return added.length;
+ }
+ /** Fills an upload card with one file (picked or dropped); the card goes away only when the file was accepted, so a rejected file leaves it for another try. */
+ async function fillSlot(id:string,files:File[],upload?:Upload){
+  if(await addFiles(files.slice(0,1),upload))setSlots(list=>removeSlot(list,id));
+ }
+ function openSlotPicker(slot:UploadSlot){
+  const el=fileInput.current;if(!el)return;
+  pendingUpload.current=slot.upload;pendingSlot.current=slot.id;
+  el.accept=slot.upload?acceptFor(slot.upload.kind==="file"?"file":slot.upload.kind):ATTACHMENT_ACCEPT;
+  el.multiple=false;
+  el.click();
+ }
+ function dropSlot(id:string){
+  const s=slots.find(x=>x.id===id);
+  setSlots(list=>removeSlot(list,id));
+  if(s)setAnnounce("کارت "+s.titleFa+" حذف شد.");
+  requestAnimationFrame(()=>promptRef.current?.focus());
  }
  function removeAttachment(id:string){
   const a=attachments.find(x=>x.id===id);if(a)releaseUrl(a);
@@ -305,13 +325,14 @@ export function Studio(){
   if(r.text.length>4000)return;
   setDraft(r.text);requestAnimationFrame(()=>{el.focus();el.setSelectionRange(r.caret,r.caret);});
  }
- /** A + menu entry: open the file picker for that kind (or the saved-character dialog). The picker is one hidden input whose `accept` follows the entry. */
- function pickInsert(action:InsertAction){
-  if(action.type==="characters"){setCharactersOpen(true);return;}
-  const el=fileInput.current;if(!el)return;
-  pendingUpload.current=action.type==="auto"?undefined:action.type==="file"?{kind:"file"}:{kind:action.kind,role:action.role};
-  el.accept=action.type==="auto"?ATTACHMENT_ACCEPT:acceptFor(action.type==="file"?"file":action.kind);
-  el.click();
+ /** A + menu entry adds an empty upload card (title and icon) inside the chat input and moves focus to it; «کاراکترهای من» opens the saved-character dialog. */
+ function pickInsert(item:InsertItem){
+  const slot=slotFor(item,crypto.randomUUID());
+  if(!slot){setCharactersOpen(true);return;}
+  const r=addSlot(slots,slot,attachments.length);
+  if(r.full){setProblems([{key:crypto.randomUUID(),name:item.titleFa,message:SLOTS_FULL_FA}]);return;}
+  setSlots(r.slots);setAnnounce("کارت آپلود "+slot.titleFa+" اضافه شد.");
+  requestAnimationFrame(()=>document.querySelector<HTMLButtonElement>('[data-slot-id="'+slot.id+'"]')?.focus());
  }
  function onDrop(e:DragEvent){
   if(!hasFiles(e))return;
@@ -353,7 +374,7 @@ export function Studio(){
   }
   // The tray clears, but the files stay (with their object URLs) on the sent message; they are released on new chat, project switch or unmount.
   const sent=attachments,firstText=messages.find(m=>m.role==="user")?.text??text,characterId=current?.id??null;
-  setDraft("");setError("");setNotice("");setBusy(true);setProposal(null);setLiveId(null);setAttachments([]);setProblems([]);setAnnounce("");
+  setDraft("");setError("");setNotice("");setBusy(true);setProposal(null);setLiveId(null);setAttachments([]);setSlots([]);setProblems([]);setAnnounce("");
   setMessages(m=>[...m,item({role:"user",text,...(sent.length?{attachments:sent}:{})})]);touch();
   const characterRef=current?{id:current.id,name:current.name,angles:characterCoverage(current.references).uploaded,version:current.version}:undefined;
   try{
@@ -447,7 +468,7 @@ export function Studio(){
     onDragLeave={e=>{if(!hasFiles(e))return;dragDepth.current=Math.max(0,dragDepth.current-1);if(!dragDepth.current)setDragging(false);}}
     onDrop={onDrop}>
     {dragging&&<div aria-hidden="true" className="pointer-events-none absolute inset-2 z-10 flex flex-col items-center justify-center gap-2 rounded-card border border-dashed border-primary bg-surface-base/90 type-title text-fg-primary">
-     <Icon icon={Upload} size={32} aria-hidden="true"/>فایل‌ها را اینجا رها کن
+     <Icon icon={UploadIcon} size={32} aria-hidden="true"/>فایل‌ها را اینجا رها کن
     </div>}
     <div role="status" aria-live="polite" className="sr-only">{dragging?"فایل‌ها را اینجا رها کن":announce}</div>
     <div className="border-b border-line-tertiary px-4 py-3">
@@ -498,11 +519,14 @@ export function Studio(){
     <div className="flex max-h-[64dvh] min-h-0 shrink-0 flex-col overflow-y-auto border-t border-line-tertiary bg-surface-base">
     <form ref={formRef} onSubmit={e=>void send(e)} className="flex shrink-0 flex-col gap-3 bg-surface-base p-4">
      <AttachmentTray items={attachments} problems={problems} reading={reading} onChange={patchAttachment} onRemove={removeAttachment} onPreview={openViewer} onMention={mentionTag} onDismiss={key=>setProblems(list=>list.filter(p=>p.key!==key))}/>
-     <input ref={fileInput} type="file" multiple hidden accept={ATTACHMENT_ACCEPT} data-testid="attachment-input" onChange={e=>{const files=Array.from(e.target.files??[]),upload=pendingUpload.current;pendingUpload.current=undefined;e.target.value="";void addFiles(files,upload);}}/>
+     <input ref={fileInput} type="file" multiple hidden accept={ATTACHMENT_ACCEPT} data-testid="attachment-input" onChange={e=>{const files=Array.from(e.target.files??[]),upload=pendingUpload.current,slot=pendingSlot.current;pendingUpload.current=undefined;pendingSlot.current=undefined;e.target.value="";e.target.multiple=true;if(slot)void fillSlot(slot,files,upload);else void addFiles(files,upload);}}/>
      <Label className="sr-only" htmlFor="whoush-prompt">توضیح تصویر یا ویدیو</Label>
      <MentionTextarea id="whoush-prompt" inputRef={promptRef} value={draft} onValueChange={setDraft} options={conversation} onPaste={onPaste} placeholder="چی می‌خوای بسازیم؟" aria-describedby="prompt-hint" rows={3} maxLength={4000} className="max-h-40 resize-none"
       onSubmitShortcut={()=>{if(draft.trim()&&!busy&&!reading)formRef.current?.requestSubmit();}}
       startAction={<InsertMenu disabled={reading} onPick={pickInsert}/>}
+      top={slots.length>0?<ul aria-label="کارت‌های آپلود" className="flex gap-2 overflow-x-auto pb-1">
+       {slots.map(s=><UploadSlotCard key={s.id} slot={s} disabled={reading} onUpload={()=>openSlotPicker(s)} onDropFiles={f=>void fillSlot(s.id,f,s.upload)} onRemove={()=>dropSlot(s.id)}/>)}
+      </ul>:undefined}
       endAction={<Button type="submit" size="icon" disabled={busy||reading||!draft.trim()} aria-busy={busy||undefined} aria-label={busy?"در حال ارسال…":"ارسال"}>
        <Icon icon={busy?LoaderCircle:ArrowUp} aria-hidden="true" className={busy?"animate-spin motion-reduce:animate-none":undefined}/>
       </Button>}/>
