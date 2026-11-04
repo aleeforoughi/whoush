@@ -11,7 +11,8 @@ function auth(){const key=process.env.HIGGSFIELD_API_KEY;if(!key) throw new Erro
 function requireEnabled(){if(!providerPolicy().liveGeneration&&!devLiveTest().enabled) throw new Error("Live API disabled by deployment policy");}
 export async function submitHiggsfieldVerifiedPath(verifiedPath:string,payload:Record<string,unknown>,idempotencyKey?:string):Promise<HiggsfieldSubmission>{
  requireEnabled();
- if(!/^\/[a-z0-9-]+\/[a-z0-9-]+(?:\/[a-z0-9-]+)*$/.test(verifiedPath)) throw new Error("Invalid configured model path");
+ // Documented paths have 2+ segments of lowercase letters and digits joined by single dots or dashes (seedance-2.5, v1.0). No "..", no empty segment.
+ if(!/^(?:\/[a-z0-9]+(?:[.-][a-z0-9]+)*){2,}$/.test(verifiedPath)) throw new Error("Invalid configured model path");
  // Paths and payload MUST be loaded from verified model-specific Higgsfield API schemas, never user-supplied.
  const response=await fetch(BASE+verifiedPath,{method:"POST",headers:{...auth(),...(idempotencyKey?{"Idempotency-Key":idempotencyKey}:{})},body:JSON.stringify(payload),cache:"no-store"});
  if(!response.ok) throw new Error("Higgsfield submission failed: "+response.status);

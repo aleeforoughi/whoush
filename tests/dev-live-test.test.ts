@@ -20,7 +20,7 @@ async function withEnv<T>(vars:Record<string,string|undefined>,fn:()=>Promise<T>
 }
 const resetCap=()=>{(globalThis as {__whoushDevSubmits?:{n:number}}).__whoushDevSubmits={n:0};};
 const DEV={NODE_ENV:"development",WHOUSH_DEV_LIVE_TEST:"true",HIGGSFIELD_API_KEY:"test-key"};
-const soul=findMediaModel("soul-image")!,seedance=findMediaModel("seedance-2-5-5s")!;
+const soul=findMediaModel("soul-image")!,seedance=findMediaModel("seedance-2-5-5s")!,kling=findMediaModel("kling-4-0-5s")!,genjutsu=findMediaModel("genjutsu-replace")!;
 
 test("dev live test can never switch on outside `next dev`",async()=>{
  for(const NODE_ENV of ["production","test",undefined])await withEnv({...DEV,NODE_ENV},()=>{
@@ -35,8 +35,10 @@ test("dev live test asserts no launch authorization and only allows verified mod
   resetCap();
   assert.equal(generationGate(soul).live,false,"production gates stay closed");
   assert.equal(generationModeFor(soul),"dev_live");
-  assert.equal(generationModeFor(seedance),"demo","unverified models stay mock");
-  assert.ok(devGenerationGate(seedance).blockers.includes("model_unverified"));
+  assert.equal(generationModeFor(seedance),"dev_live","Seedance 2.5 text-to-video is verified from its API reference");
+  assert.equal(generationModeFor(kling),"demo","unverified models stay mock");
+  assert.ok(devGenerationGate(kling).blockers.includes("model_unverified"));
+  assert.deepEqual(devGenerationGate(genjutsu).blockers,["needs_hosted_media"],"verified, but its media inputs cannot be hosted yet");
  });
  await withEnv({...DEV,HIGGSFIELD_API_KEY:undefined},()=>{resetCap();assert.ok(devGenerationGate(soul).blockers.includes("provider_credentials"));});
 });

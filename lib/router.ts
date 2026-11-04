@@ -1,5 +1,6 @@
 import { MEDIA_CATALOG } from "./catalog";
-import { isPriced, type AgentPreference, type MediaKind, type MediaModel, type MediaRequirements, type PricedMediaModel, type ReasoningTier, type SuggestedModel } from "./types";
+import { hasApprovedPrice, isPriced, type AgentPreference, type MediaKind, type MediaModel, type MediaRequirements, type PricedMediaModel, type ReasoningTier, type SuggestedModel } from "./types";
+import {needsHostedMedia} from "./policy";
 const videoWords=["video","animate","animation","motion","clip","ویدیو","فیلم","متحرک","انیمیشن","حرکت"];
 const imageWords=["image","photo","picture","portrait","عکس","تصویر","پوستر"];
 const norm=(s:string)=>s.toLocaleLowerCase("en-US").trim();
@@ -52,9 +53,12 @@ export function recommendMediaModels(prompt:string, preference:AgentPreference="
 }
 // Mirrors the fail-closed media review in lib/orchestrator.ts: no inspector for image, video or audio exists yet (docs/MODERATION_POLICY.md step 4).
 const MEDIA_REVIEW_ACTIVE=false;
+// Mirrors the needs_hosted_media blocker in lib/policy.ts: user media is browser-local, so a provider cannot fetch it yet.
+const HOSTED_MEDIA_ACTIVE=false;
 export const FA_BLOCKER_API="مسیر API تأیید نشده";
 export const FA_BLOCKER_PRICE="قیمت نورون هنوز تأیید نشده";
 export const FA_BLOCKER_REVIEW="بررسی ایمنی رسانه هنوز فعال نیست";
+export const FA_BLOCKER_HOSTING="بارگذاری رسانه روی سرور هنوز فعال نیست";
 /**
  * Pure. The catalogue model that best fits a specialised need (lip sync, replace, motion transfer), even when it is unverified or price-pending, with the Persian
  * reasons it cannot be offered yet. Never a proposal: `active` is true only when nothing blocks it. Undefined for plain generation and when no model fits.
@@ -62,7 +66,7 @@ export const FA_BLOCKER_REVIEW="بررسی ایمنی رسانه هنوز فعا
 export function bestModelFor(r:MediaRequirements,kind:MediaKind):{model:MediaModel;active:boolean;blockersFa:string[]}|undefined {
  const operation=r.operation??(r.lipSync?"lip_sync":undefined);
  if(!operation) return undefined;
- const blockers=(m:MediaModel)=>[...(m.capabilities.verified?[]:[FA_BLOCKER_API]),...(isPriced(m)?[]:[FA_BLOCKER_PRICE]),...(MEDIA_REVIEW_ACTIVE?[]:[FA_BLOCKER_REVIEW])];
+ const blockers=(m:MediaModel)=>[...(m.capabilities.verified?[]:[FA_BLOCKER_API]),...(hasApprovedPrice(m)?[]:[FA_BLOCKER_PRICE]),...(MEDIA_REVIEW_ACTIVE?[]:[FA_BLOCKER_REVIEW]),...(HOSTED_MEDIA_ACTIVE||!needsHostedMedia(m)?[]:[FA_BLOCKER_HOSTING])];
  const fits=MEDIA_CATALOG.filter(m=>m.kind===kind&&!modelIneligibility(m,{...r,operation},{assumeUnknownMax:true}));
  const ranked=fits.map(model=>({model,blockersFa:blockers(model)})).sort((a,b)=>a.blockersFa.length-b.blockersFa.length);
  const best=ranked[0];

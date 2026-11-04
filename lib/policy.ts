@@ -1,4 +1,6 @@
 import type { MediaModel } from "./types";
+/** Models that take user media (a source video, reference images, audio) need public provider-fetchable URLs; Whoush has no hosted media yet (docs/LAUNCH_GATES.md). */
+export const needsHostedMedia=(m:MediaModel)=>m.operations.some(o=>o!=="generate")||m.capabilities.referenceImages.supported;
 export interface LaunchPolicy { liveGeneration:boolean; reason:string; }
 export function providerPolicy():LaunchPolicy {
  const authorized=process.env.PROVIDER_END_USER_AUTHORIZED==="true" && process.env.PROVIDER_RESELLER_AUTHORIZED==="true";
@@ -19,6 +21,7 @@ export function generationGate(model?:MediaModel):{live:boolean;blockers:string[
  if(e.BILLING_LEDGER_VERIFIED!=="true") b.push("billing_ledger_unverified");
  if((e.QUOTE_SIGNING_SECRET??"").length<32) b.push("quote_signing_secret");
  if(!model) b.push("model_unspecified"); else if(!model.capabilities.verified||!model.verifiedApiPath) b.push("model_unverified");
+ if(model&&needsHostedMedia(model)) b.push("needs_hosted_media");
  return {live:b.length===0&&providerPolicy().liveGeneration,blockers:b};
 }
 /** Generation modes: `demo` (mock, no media), `live` (every launch gate passed) and `dev_live` (owner-only local testing, below). */
@@ -42,6 +45,7 @@ export function devGenerationGate(model?:MediaModel):{live:boolean;blockers:stri
  if(!d.enabled)b.push("dev_live_test_off");
  if(!process.env.HIGGSFIELD_API_KEY)b.push("provider_credentials");
  if(!model)b.push("model_unspecified");else if(!model.capabilities.verified||!model.verifiedApiPath)b.push("model_unverified");
+ if(model&&needsHostedMedia(model))b.push("needs_hosted_media");
  if(devSubmits().n>=d.maxSubmits)b.push("dev_cap_reached");
  return {live:b.length===0,blockers:b};
 }
