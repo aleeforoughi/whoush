@@ -1,3 +1,4 @@
+import type {GenerationMode} from "./policy";
 import type {MediaConfiguration} from "./catalog";
 import type {ProviderOutput} from "./media-provider";
 export type QACheck={id:string;labelFa:string;result:"pass"|"fail"|"unverified";noteFa?:string};
@@ -6,7 +7,7 @@ export const ALLOWED_OUTPUT_MIME=["image/png","image/jpeg","image/webp","video/m
 const NEEDS_HUMAN="نیازمند بازبینی انسانی یا چندوجهی است؛ به‌صورت خودکار تأیید نشده.";
 const ratio=(a:string)=>{const [w,h]=a.split(":").map(Number);return w/h;};
 /** Metadata-only checks. Identity, continuity, lip sync and text accuracy are NEVER passed automatically. Provider-reported completion is not a quality claim. */
-export function evaluateOutputQA(job:{mode:"demo"|"live";configuration:MediaConfiguration},outputs:readonly ProviderOutput[]):OutputQA{
+export function evaluateOutputQA(job:{mode:GenerationMode;configuration:MediaConfiguration},outputs:readonly ProviderOutput[]):OutputQA{
  if(job.mode==="demo")return {status:"not_applicable",checks:[]};
  const checks:QACheck[]=[{id:"output_count",labelFa:"وجود خروجی",result:outputs.length>0?"pass":"fail"}];
  const withMime=outputs.filter(o=>o.mime);

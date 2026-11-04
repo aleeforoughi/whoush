@@ -1,4 +1,5 @@
 import "server-only";
+import {devLiveTest} from "./policy";
 import Anthropic from "@anthropic-ai/sdk";
 import {zodOutputFormat} from "@anthropic-ai/sdk/helpers/zod";
 import {CreativePlanSchema,PlannerInvalidOutputError,PlannerRefusedError,PlannerUnavailableError,type CreativePlan} from "./creative-plan";
@@ -36,5 +37,6 @@ export async function planWithAnthropic(req:{systemInstructions:string;userText:
  }
  if(response.stop_reason==="refusal")throw new PlannerRefusedError();
  if(!response.parsed_output)throw new PlannerInvalidOutputError();
+ if(devLiveTest().enabled)console.info("[whoush dev-live] planner",modelId,"in",response.usage.input_tokens,"out",response.usage.output_tokens); // never the prompt
  return {plan:response.parsed_output,usage:response.usage,modelId};
 }
