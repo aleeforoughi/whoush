@@ -1,0 +1,40 @@
+/* Temporary — remove when aleeforoughi/feather#1 ships logical properties.
+ *
+ * Feather 1.17.0 positions some parts with physical classes (left/right, ml/mr, pl/pr, text-left, origin-left).
+ * These scoped overrides mirror ONLY the parts Whoush uses. Each rule names the Feather class it undoes.
+ * Unlayered, so they win over Feather's layered utilities. Do not add anything here that Whoush does not render. */
+
+/* accordion: trigger "text-left" */
+[dir="rtl"] [data-slot="accordion-trigger"] {
+  text-align: start;
+}
+
+/* alert: "text-left" */
+[dir="rtl"] [data-slot="alert"] {
+  text-align: start;
+}
+
+/* field: "text-left" on the description */
+[dir="rtl"] [data-slot="field-description"] {
+  text-align: start;
+}
+
+/* select: SelectValue "text-left" */
+[dir="rtl"] [data-slot="select-value"] {
+  text-align: start;
+}
+
+/* select: item "pr-8 pl-3" (room for the check on the end side) and indicator "right-3" */
+[dir="rtl"] [data-slot="select-item"] {
+  padding-right: 0.75rem;
+  padding-left: 2rem;
+}
+[dir="rtl"] [data-slot="select-item-indicator"] {
+  right: auto;
+  left: 0.75rem;
+}
+
+/* progress: the fill is scaled from "origin-left"; in RTL it grows from the right (start) edge */
+[dir="rtl"] [data-slot="progress-indicator"] {
+  transform-origin: right;
+}

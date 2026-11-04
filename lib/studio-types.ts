@@ -1,0 +1,9 @@
+import type {GenerationProposal} from "@/lib/types";
+import type {PublicCreativePlan} from "@/lib/creative-plan";
+
+/** What POST /api/agent returns for a compatible request: the proposal plus the turn id and the public plan. */
+export type AgentProposal=GenerationProposal&{turnId?:string;plan:PublicCreativePlan};
+/** What POST /api/agent returns with 422 `no_compatible_model`. */
+export type NoModelResult={message:string;plan?:PublicCreativePlan};
+/** The public job view from /api/generation/jobs/:id (only the fields the UI uses). */
+export type JobView={state:string;messageFa:string};

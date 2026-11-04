@@ -26,9 +26,16 @@ Use accessible contrast, not just brand fidelity. Blue accents are for meaningfu
 - Every step clear and explainable: prompt → best Higgsfield media model suggestion → optional alternative choices → fixed whole-Neuron price → explicit approval → queued/running/output → quality check. No public reasoning LLM selector, vendor names or LLM token accounting.
 - Do not imply character references, identity lock, phoneme alignment, real-time trend feeds or generation are already live when only scaffolded.
 
+## Status (P0 design foundation)
+- The UI is built from the owner's **Feather 1.17.0** design system (`@aleeforoughi/feather-react`, `@aleeforoughi/feather-tokens`) on Tailwind CSS v4. Whoush brands Feather only through tokens; no Feather component is edited or forked.
+- **Font: PENDING owner files.** IRANSansX is declared in `app/fonts.css` (`local()` first, then `/fonts/iransans/IRANSansX-{Regular,Medium,Bold}.woff2`), but no font file is committed. Until the owner places licensed WOFF2 files in `public/fonts/iransans/`, text falls back to Inter Variable and Tahoma. Font integration is not complete.
+- RTL: Feather 1.17.0 still uses some physical left/right classes. `app/feather-rtl.css` holds temporary scoped overrides for the parts Whoush renders (remove when aleeforoughi/feather#1 ships logical properties).
+- Light and dark brands are two token files because Feather's brand CLI themes one file; `scripts/brand.mjs` merges them (see feather#1).
+
 ## Implementation sources
-- `app/design-system.css`: token layer and initial theme overrides.
-- `components/theme-toggle.tsx`: dark/light toggle, local preference.
+- `brand/tokens.json` (light) and `brand/tokens.dark.json` (dark) → `npm run brand` → `app/styles/brand.css`, `app/styles/brand-fonts.css` (committed, tested for drift).
+- `app/globals.css`, `app/fonts.css`, `app/feather-rtl.css`: stylesheet entry, font stacks, temporary RTL overrides.
+- `components/theme-toggle.tsx`: dark/light toggle on the `dark` class of `<html>` (`localStorage["whoush-theme"]`, default dark, applied before paint by the inline script in `app/layout.tsx`).
 - `app/characters/page.tsx` + `components/character-studio.tsx`: six-angle Persian Character Studio.
 - `lib/skills.ts` + `lib/advanced-skills.ts`: 22 professional skills, routed privately.
 - `lib/characters.ts` + `lib/character-store.ts`: browser-local reference data only; not yet a server-side identity asset graph.
