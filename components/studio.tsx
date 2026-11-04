@@ -132,7 +132,7 @@ export function Studio(){
   setAttachments(list=>list.filter(x=>x.id!==id));
  }
  function patchAttachment(id:string,patch:AttachmentPatch){setAttachments(list=>list.map(x=>x.id!==id?x:patch.role?withRole(x,patch.role):{...x,...patch}));}
- /** Puts `@tag ` into the prompt at the caret (or over the selection) and returns focus to it. */
+ /** Puts the Persian tag (`#تصویر۱ `) into the prompt at the caret (or over the selection) and returns focus to it. */
  function mentionTag(tag:string){
   const el=promptRef.current;if(!el)return;
   const r=insertMention(draft,el.selectionStart,el.selectionEnd,tag);
@@ -163,7 +163,7 @@ export function Studio(){
    requestAnimationFrame(()=>document.querySelector<HTMLElement>(first+" [data-slot=select-trigger],"+first+" [data-slot=checkbox]")?.focus());
    return;
   }
-  // This message's new files plus any earlier file it names with @tag (metadata only, as before).
+  // This message's new files plus any earlier file it mentions as #تصویر۱ or @image1 (metadata only, as before).
   const mentioned=parseMentions(text),inTray=new Set(attachments.map(a=>a.id));
   const outgoing=[...messages.flatMap(m=>m.attachments??[]).filter(a=>mentioned.includes(a.tag)&&!inTray.has(a.id)),...attachments];
   const fits=validateAttachmentSet(outgoing);
@@ -328,7 +328,7 @@ export function Studio(){
     <form onSubmit={e=>void send(e)} className="flex shrink-0 flex-col gap-3 border-t border-line-tertiary bg-surface-base p-4">
      <AttachmentTray items={attachments} problems={problems} blockers={blockers} reading={reading} onChange={patchAttachment} onRemove={removeAttachment} onPreview={setPreviewing} onMention={mentionTag} onDismiss={key=>setProblems(list=>list.filter(p=>p.key!==key))}/>
      <Label className="sr-only" htmlFor="whoush-prompt">توضیح تصویر یا ویدیو</Label>
-     <MentionTextarea id="whoush-prompt" inputRef={promptRef} value={draft} onValueChange={setDraft} options={conversation} onPaste={onPaste} placeholder="چی دوست داری بسازیم؟ با @ به پیوست‌ها اشاره کن" rows={3} maxLength={4000} className="max-h-40 resize-none"/>
+     <MentionTextarea id="whoush-prompt" inputRef={promptRef} value={draft} onValueChange={setDraft} options={conversation} onPaste={onPaste} placeholder="چی دوست داری بسازیم؟ با # به پیوست‌ها اشاره کن" rows={3} maxLength={4000} className="max-h-40 resize-none"/>
      <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex flex-wrap items-center gap-2">
        <input ref={fileInput} type="file" multiple hidden accept={ATTACHMENT_ACCEPT} data-testid="attachment-input" onChange={e=>{const files=Array.from(e.target.files??[]);e.target.value="";void addFiles(files);}}/>

@@ -1,23 +1,24 @@
 "use client";
 import {useEffect,useId,useRef,useState,type ComponentProps,type RefObject} from "react";
 import {Badge,Card,Textarea} from "@aleeforoughi/feather-react";
-import {ATTACHMENT_KINDS,insertMention,isMediaKind,mentionTrigger,roleLabelFa,type LocalAttachment} from "@/lib/attachments";
+import {ATTACHMENT_KINDS,displayTag,insertMention,isMediaKind,mentionTrigger,roleLabelFa,tagMatchesQuery,type LocalAttachment} from "@/lib/attachments";
 
 export type MentionOption=Pick<LocalAttachment,"id"|"tag"|"kind"|"role">;
 const NAV_KEYS=["ArrowUp","ArrowDown","Enter","Tab","Escape"];
 
 /**
- * The prompt field with an `@` mention picker, built as an ARIA combobox: focus stays in the textarea, the list is a listbox whose
- * active option is announced through aria-activedescendant. Typing `@` (at the start or after whitespace) opens every conversation
- * attachment; more letters filter by tag. ArrowUp/ArrowDown move, Enter or Tab insert, Escape closes.
+ * The prompt field with a `#` mention picker (`@` works too), built as an ARIA combobox: focus stays in the textarea, the list is a listbox whose
+ * active option is announced through aria-activedescendant. Typing `#` (at the start or after whitespace) opens every conversation
+ * attachment; more characters filter by tag word (Persian or English, either digit set). Choosing one writes the canonical `#تصویر۱`. An ordinary
+ * hashtag such as `#نوروز` is not the start of any tag word, so the list closes. ArrowUp/ArrowDown move, Enter or Tab insert, Escape closes.
  */
 export function MentionTextarea({value,onValueChange,options,inputRef,...props}:Omit<ComponentProps<"textarea">,"value"|"onChange"|"ref">&{value:string;onValueChange:(v:string)=>void;options:readonly MentionOption[];inputRef:RefObject<HTMLTextAreaElement|null>}){
  const listId=useId(),optionId=(i:number)=>listId+"-"+i;
  const [trigger,setTrigger]=useState<{start:number;query:string}|null>(null);
  const [active,setActive]=useState(0);
- /** The `@` position the user closed with Escape: the list stays closed until the token changes. */
+ /** The `#` or `@` position the user closed with Escape: the list stays closed until the token changes. */
  const dismissed=useRef(-1);
- const matches=trigger?options.filter(o=>o.tag.startsWith(trigger.query)):[];
+ const matches=trigger?options.filter(o=>tagMatchesQuery(o.tag,trigger.query)):[];
  const open=trigger!==null&&matches.length>0,current=Math.min(active,Math.max(0,matches.length-1));
  useEffect(()=>{if(open)document.getElementById(optionId(current))?.scrollIntoView({block:"nearest"});});
  function sync(el:HTMLTextAreaElement){
@@ -29,7 +30,7 @@ export function MentionTextarea({value,onValueChange,options,inputRef,...props}:
  }
  function pick(o:MentionOption){
   const el=inputRef.current;if(!el||!trigger)return;
-  const caret=el.selectionStart,end=caret+(/^[A-Za-z0-9]*/.exec(value.slice(caret))?.[0].length??0);
+  const caret=el.selectionStart,end=caret+(/^[\p{L}\p{N}\u200c\u0640]*/u.exec(value.slice(caret))?.[0].length??0);
   const r=insertMention(value,trigger.start,end,o.tag);
   if(props.maxLength&&r.text.length>props.maxLength)return;
   onValueChange(r.text);setTrigger(null);
@@ -52,7 +53,7 @@ export function MentionTextarea({value,onValueChange,options,inputRef,...props}:
    {matches.map((o,i)=><div key={o.id} id={optionId(i)} role="option" aria-selected={i===current}
     onMouseDown={e=>{e.preventDefault();pick(o);}} onMouseMove={()=>{if(i!==current)setActive(i);}}
     className={"flex min-h-control cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 rounded-control px-3 py-2 "+(i===current?"bg-surface-hover":"")}>
-    <bdi dir="ltr" className="type-label text-fg-primary">@{o.tag}</bdi>
+    <bdi className="type-label text-fg-primary">{displayTag(o.tag)}</bdi>
     <Badge variant="outline">{ATTACHMENT_KINDS[o.kind].labelFa}</Badge>
     {isMediaKind(o.kind)&&<span className="type-caption text-fg-secondary">{o.role?roleLabelFa(o.role):"نقش انتخاب نشده"}</span>}
    </div>)}

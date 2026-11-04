@@ -1,7 +1,7 @@
 "use client";
 import {File as FileIcon,FileAudio,FileJson,FileText,Play,X,type LucideIcon} from "lucide-react";
 import {Badge,Button,Checkbox,Dialog,DialogBody,DialogClose,DialogContent,DialogDescription,DialogFooter,DialogHeader,DialogTitle,Icon,Label,Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from "@aleeforoughi/feather-react";
-import {ATTACHMENT_KINDS,VOICE_CLONE_CONSENT_FA,isMediaKind,roleLabelFa,rolesFor,type AttachmentKind,type AttachmentRole,type AttachmentSpeech,type LocalAttachment,type SendBlocker} from "@/lib/attachments";
+import {ATTACHMENT_KINDS,VOICE_CLONE_CONSENT_FA,displayTag,isMediaKind,roleLabelFa,rolesFor,type AttachmentKind,type AttachmentRole,type AttachmentSpeech,type LocalAttachment,type SendBlocker} from "@/lib/attachments";
 import {faBytes,faDimensions,faDuration} from "@/lib/format";
 
 const ICONS:Record<AttachmentKind,LucideIcon>={image:FileIcon,video:FileIcon,audio:FileAudio,pdf:FileIcon,json:FileJson,md:FileText};
@@ -9,7 +9,8 @@ const LANGUAGES=[{value:"fa",label:"فارسی"},{value:"other",label:"زبان 
 const ACCENTS=[{value:"original",label:"حفظ لهجهٔ اصلی"},{value:"tehrani",label:"تهرانی"},{value:"unspecified",label:"نامشخص"}];
 export type AttachmentPatch=Partial<Pick<LocalAttachment,"role"|"speech"|"consent">>;
 export const canPreview=(a:LocalAttachment)=>Boolean(a.previewUrl)&&(a.kind==="image"||a.kind==="video");
-const latin=(v:string)=><bdi dir="ltr">{v}</bdi>;
+/** The Persian tag (`#تصویر۱`) in a `<bdi>`; it is Persian text now, so it takes its direction from its own letters. */
+const tagText=(tag:string)=><bdi>{displayTag(tag)}</bdi>;
 
 function Thumb({a}:{a:LocalAttachment}){
  const frame="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-control border border-line-secondary bg-surface-hover text-fg-secondary";
@@ -28,16 +29,16 @@ function Meta({a}:{a:LocalAttachment}){
   {a.width!==undefined&&a.height!==undefined&&<> · <bdi>{faDimensions(a.width,a.height)}</bdi></>}
  </span>;
 }
-/** The tag as a small Badge; with `onMention` it is a button that puts `@tag` into the prompt at the caret. */
+/** The tag as a small Badge; with `onMention` it is a button that puts the Persian tag (`#تصویر۱`) into the prompt at the caret. */
 export function TagBadge({tag,onMention}:{tag:string;onMention?:()=>void}){
- const badge=<Badge variant="secondary">{latin("@"+tag)}</Badge>;
+ const badge=<Badge variant="secondary">{tagText(tag)}</Badge>;
  return onMention
-  ?<button type="button" onClick={onMention} aria-label={"درج @"+tag+" در متن"} className="hit-area inline-flex rounded-full motion-hover not-disabled:hover:opacity-80">{badge}</button>
+  ?<button type="button" onClick={onMention} aria-label={"درج "+displayTag(tag)+" در متن"} className="hit-area inline-flex rounded-full motion-hover not-disabled:hover:opacity-80">{badge}</button>
   :badge;
 }
-/** The Persian reason a media attachment blocks sending, with the tag kept left-to-right. */
+/** The Persian reason a media attachment blocks sending. */
 export function BlockerMessage({tag,reason}:{tag:string;reason:SendBlocker["reason"]}){
- return reason==="role"?<>نقش {latin("@"+tag)} را انتخاب کن</>:<>برای {latin("@"+tag)} تأیید مالکیت یا اجازهٔ صدا را علامت بزن</>;
+ return reason==="role"?<>نقش {tagText(tag)} را انتخاب کن</>:<>برای {tagText(tag)} تأیید مالکیت یا اجازهٔ صدا را علامت بزن</>;
 }
 
 /** One attachment: editable in the composer tray (`onChange`/`onRemove`), read-only in a sent message. `error` marks the missing role or consent that blocks sending. */
@@ -62,7 +63,7 @@ export function AttachmentChip({item:a,error,onChange,onRemove,onPreview,onMenti
    <TagBadge tag={a.tag} onMention={onMention}/>
    {media&&!editable&&a.role&&<Badge variant="outline">{roleLabelFa(a.role)}</Badge>}
    {controls&&media&&<Select value={a.role??null} onValueChange={v=>onChange?.({role:v as AttachmentRole})} items={roles}>
-    <SelectTrigger aria-label={"نقش @"+a.tag} aria-invalid={error==="role"} className="max-w-full"><SelectValue placeholder="نقش را انتخاب کن"/></SelectTrigger>
+    <SelectTrigger aria-label={"نقش "+displayTag(a.tag)} aria-invalid={error==="role"} className="max-w-full"><SelectValue placeholder="نقش را انتخاب کن"/></SelectTrigger>
     <SelectContent>{roles.map(r=><SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}</SelectContent>
    </Select>}
   </div>
@@ -90,7 +91,7 @@ export function AttachmentPreview({item,onClose}:{item:LocalAttachment|null;onCl
   <DialogContent showCloseButton={false} className="sm:max-w-3xl">
    <DialogHeader>
     <DialogTitle className="break-all"><bdi>{item?.name}</bdi></DialogTitle>
-    <DialogDescription>{item&&<>{latin("@"+item.tag)}{item.role&&<> · {roleLabelFa(item.role)}</>} · <Meta a={item}/></>}</DialogDescription>
+    <DialogDescription>{item&&<>{tagText(item.tag)}{item.role&&<> · {roleLabelFa(item.role)}</>} · <Meta a={item}/></>}</DialogDescription>
    </DialogHeader>
    {item?.previewUrl&&(item.kind==="image"||item.kind==="video")&&<DialogBody>
     <div className="flex max-h-[60vh] items-center justify-center overflow-hidden rounded-card border border-line-secondary bg-surface-subtle">
