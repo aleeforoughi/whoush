@@ -36,7 +36,7 @@ export const roleLabelFa=(role:AttachmentRole)=>ATTACHMENT_ROLES.image.find(r=>r
 export const roleAllowed=(kind:AttachmentKind,role:AttachmentRole)=>rolesFor(kind).some(r=>r.id===role);
 export const VOICE_CLONE_CONSENT_FA="صاحب این صدا هستم یا اجازهٔ کتبی صاحب صدا را دارم";
 
-// ---- tags: image1, video1, audio1, file1 (pdf, json, md) ----
+// ---- tags: image1, video1, audio1, file1 (pdf, json, md) stay English on the wire; users see #تصویر۱, #ویدیو۱, #صدا۱, #فایل۱ ----
 export type TagPrefix="image"|"video"|"audio"|"file";
 export const TAG_PATTERN=/^(image|video|audio|file)[1-9]\d?$/;
 export const tagPrefix=(kind:AttachmentKind):TagPrefix=>kind==="image"||kind==="video"||kind==="audio"?kind:"file";
@@ -50,18 +50,44 @@ export function allocateTag(counters:TagCounters,kind:AttachmentKind):{tag:strin
  const prefix=tagPrefix(kind),n=counters[prefix]+1;
  return n>99?undefined:{tag:prefix+n,counters:{...counters,[prefix]:n}};
 }
-/** Mention syntax: `@image1` at the start or after anything but a letter, digit, underscore or `@` (so `email@image1.com` is not a mention). */
-const mentionRe=()=>/(?<![\p{L}\p{N}_@])@((?:image|video|audio|file)[1-9]\d?)(?![A-Za-z0-9_])/giu;
-/** Distinct lowercase tags mentioned in the text, in order of first use. */
-export function parseMentions(text:string):string[]{
- return [...new Set([...text.matchAll(mentionRe())].map(m=>m[1].toLowerCase()))];
+/** The Persian word shown in a tag: `image1` is `#تصویر۱`. The internal/wire tag stays English. */
+export const TAG_WORD_FA={image:"تصویر",video:"ویدیو",audio:"صدا",file:"فایل"} as const satisfies Record<TagPrefix,string>;
+/** Every spelling accepted in a mention, as normalized by `normalizeMention`: Persian words (ویدئو too) and the legacy English prefixes. */
+const MENTION_WORDS:Record<string,TagPrefix>={"تصویر":"image","ویدیو":"video","ویدئو":"video","صدا":"audio","فایل":"file",image:"image",video:"video",audio:"audio",file:"file"};
+const faNumber=(n:number|string)=>String(n).replace(/\d/g,d=>String.fromCharCode(0x06f0+Number(d)));
+/** The user-facing form of an internal tag, with Persian digits: `image1` is `#تصویر۱`, `file12` is `#فایل۱۲`. */
+export function displayTag(tag:string):string{
+ const m=/^(image|video|audio|file)(\d+)$/.exec(tag);
+ return m?"#"+TAG_WORD_FA[m[1] as TagPrefix]+faNumber(m[2]):"#"+tag;
 }
-/** The text cut into plain runs and mentions (`raw` as typed, `tag` lowercase). */
+/** Case and script tolerant form of a typed token: Arabic ي/ى become ی, ك becomes ک, Arabic-Indic and Persian digits become ASCII, ZWNJ and tatweel vanish. */
+const normalizeMention=(s:string)=>s.replace(/[‌ـ]/g,"").replace(/[يى]/g,"ی").replace(/ك/g,"ک")
+ .replace(/[٠-٩]/g,c=>String(c.charCodeAt(0)-0x0660)).replace(/[۰-۹]/g,c=>String(c.charCodeAt(0)-0x06f0)).toLowerCase();
+/**
+ * Mention syntax: `#` or `@` + a Persian or English kind word + a number from 1 to 99, e.g. `#تصویر۱`, `@صدا3`, `@image1`. A token starts at the beginning
+ * or after anything but a letter, digit, mark, ZWNJ, underscore, `@` or `#` (so `email@image1.com` is not a mention) and is not followed by a letter, digit,
+ * mark, ZWNJ or underscore (so `#تصویر۱۲۳` and `#نوروز` are not mentions).
+ */
+const mentionRe=()=>/(?<![\p{L}\p{N}\p{M}‌_@#])[#@]([\p{L}‌ـ]+)(\p{N}+)(?![\p{L}\p{N}\p{M}‌_])/gu;
+/** Every valid mention in the text, in order, with its position and its internal tag. */
+function scanMentions(text:string):Array<{index:number;raw:string;tag:string}>{
+ const out:Array<{index:number;raw:string;tag:string}>=[];
+ for(const m of text.matchAll(mentionRe())){
+  const prefix=MENTION_WORDS[normalizeMention(m[1])],n=normalizeMention(m[2]);
+  if(prefix&&/^[1-9]\d?$/.test(n))out.push({index:m.index,raw:m[0],tag:prefix+n});
+ }
+ return out;
+}
+/** Distinct internal tags mentioned in the text (`#تصویر۱` and `@image1` both give `image1`), in order of first use. */
+export function parseMentions(text:string):string[]{
+ return [...new Set(scanMentions(text).map(m=>m.tag))];
+}
+/** The text cut into plain runs and mentions (`raw` as typed, `tag` internal). */
 export function splitMentions(text:string):Array<{text:string}|{tag:string;raw:string}>{
  const out:Array<{text:string}|{tag:string;raw:string}>=[];let at=0;
- for(const m of text.matchAll(mentionRe())){
+ for(const m of scanMentions(text)){
   if(m.index>at)out.push({text:text.slice(at,m.index)});
-  out.push({tag:m[1].toLowerCase(),raw:m[0]});at=m.index+m[0].length;
+  out.push({tag:m.tag,raw:m.raw});at=m.index+m.raw.length;
  }
  if(at<text.length)out.push({text:text.slice(at)});
  return out;
@@ -75,20 +101,40 @@ export function describeTagEn(a:{tag:string;kind:AttachmentKind;role?:Attachment
  if(a.kind==="audio")return "["+(en??"reference")+" audio "+n+"]";
  return "[attached document "+n+"]";
 }
-/** Replaces every mention with its English description; a tag with no attachment becomes `[missing attachment]`. */
+/** Replaces every mention, in any accepted spelling, with its English description; a tag with no attachment becomes `[missing attachment]`. */
 export function rewriteMentions(text:string,byTag:ReadonlyMap<string,{tag:string;kind:AttachmentKind;role?:AttachmentRole}>):string{
- return text.replace(mentionRe(),(_m,t:string)=>{const a=byTag.get(t.toLowerCase());return a?describeTagEn(a):"[missing attachment]";});
+ let out="",at=0;
+ for(const m of scanMentions(text)){
+  const a=byTag.get(m.tag);
+  out+=text.slice(at,m.index)+(a?describeTagEn(a):"[missing attachment]");at=m.index+m.raw.length;
+ }
+ return out+text.slice(at);
 }
-/** Inserts `@tag ` over the range [start,end), adding a leading space when the previous character is not whitespace; returns the new text and caret. */
+/** Inserts the canonical `#تصویر۱ ` over the range [start,end), adding a leading space when the previous character is not whitespace; returns the new text and caret. */
 export function insertMention(text:string,start:number,end:number,tag:string):{text:string;caret:number}{
- const before=text.slice(0,start),after=text.slice(end);
- const lead=before===""||/\s$/.test(before)?"":" ",ins=lead+"@"+tag+(/^\s/.test(after)?"":" ");
- return {text:before+ins+after,caret:before.length+lead.length+1+tag.length+1};
+ const before=text.slice(0,start),after=text.slice(end),shown=displayTag(tag);
+ const lead=before===""||/\s$/.test(before)?"":" ",ins=lead+shown+(/^\s/.test(after)?"":" ");
+ return {text:before+ins+after,caret:before.length+lead.length+shown.length+1};
 }
-/** The open `@query` token right before the caret (at the start or after whitespace), if any. */
+/** Whether a normalized query is the start of a tag word, optionally followed by up to two digits: `تص`, `im`, `صدا`, `video2`. */
+function isTagQuery(q:string):boolean{
+ return Object.keys(MENTION_WORDS).some(w=>w.startsWith(q)||(q.startsWith(w)&&/^\d{0,2}$/.test(q.slice(w.length))));
+}
+/** Whether an attachment's tag matches a normalized picker query (Persian or English word, either digit set): `image1` matches `تص`, `im`, `تصویر۱` and `image1`, not `صدا`. */
+export function tagMatchesQuery(tag:string,query:string):boolean{
+ const q=normalizeMention(query),m=/^(image|video|audio|file)(\d+)$/.exec(tag);
+ if(!m)return false;
+ return Object.entries(MENTION_WORDS).some(([w,p])=>p===m[1]&&(w+m[2]).startsWith(q));
+}
+/**
+ * The open `#query` or `@query` token right before the caret (at the start or after whitespace), if any. The query is normalized (lowercase, ASCII digits,
+ * ی/ک unified). An ordinary hashtag such as `#نوروز` is not a trigger, because it is not the start of any tag word.
+ */
 export function mentionTrigger(text:string,caret:number):{start:number;query:string}|undefined{
- const m=/(^|\s)@([A-Za-z0-9]*)$/.exec(text.slice(0,caret));
- return m?{start:caret-m[2].length-1,query:m[2].toLowerCase()}:undefined;
+ const m=/(^|\s)[#@]([\p{L}\p{N}‌ـ]*)$/u.exec(text.slice(0,caret));
+ if(!m)return undefined;
+ const query=normalizeMention(m[2]);
+ return isTagQuery(query)?{start:caret-m[2].length-1,query}:undefined;
 }
 const EXT_MIMES:Record<string,readonly string[]>={
  jpg:["image/jpeg"],jpeg:["image/jpeg"],png:["image/png"],webp:["image/webp"],
