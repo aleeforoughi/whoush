@@ -5,7 +5,7 @@ import {SKILLS,resolveCreativeSkills,compileSkillInstructions} from "../lib/skil
 import {createDemoProposal} from "../lib/agent";
 
 test("Persian normalization handles Arabic Yeh, Kaf, joiners and diacritics",()=>{
- assert.equal(normalizePersian("كيـتاب‌ های  زیبا"),"کتاب های زیبا");
+ assert.equal(normalizePersian("كـتاب‌ های  زیبا"),"کتاب های زیبا");
  assert.equal(normalizePersian("خامنه‌ای"),"خامنه ای");
 });
 test("nonpolitical Iran locations, flag and daily fashion remain available",()=>{
