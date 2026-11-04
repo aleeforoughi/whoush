@@ -48,7 +48,7 @@ Do not expose dollar value of Neuron or provider wholesale costs to end users.
 
 ## Provider interfaces
 `lib/higgsfield.ts` is server-only and intentionally disconnected from public consumer API. Use `https://api.higgsfield.ai`, authorization `Key <complete credential>`, submit media model-specific path, poll `/requests/{id}/status`, cancel by server POST when supported. Discover exact model path and schema from verified model docs. Ensure cancellation not confused with stopping polling.
-`lib/llm.ts` resolves confidential private model tiers but does not perform live calls yet.
+Private planner routing (task profile, bands, escalation, two provider adapters) is described in `docs/LLM_ROUTING.md`. Live calls stay behind `llmGate` plus per-provider keys.
 
 ## Deployment boundaries
 Domestic web frontend/cache can operate with a supported backend where allowed; international model calls are only available to end users permitted under provider policies. Independent hosting does NOT legalize prohibited end-user access. Never route through intermediaries to bypass a ban.

@@ -1,0 +1,26 @@
+{
+ "version": 1,
+ "bands": [
+  {"id": "quick", "maxScore": 24, "ladder": ["gpt-6-luna", "claude-haiku-5-5"]},
+  {"id": "standard", "maxScore": 59, "ladder": ["claude-sonnet-5-5", "gpt-6.1-sol"]},
+  {"id": "complex", "maxScore": 84, "ladder": ["claude-opus-5-5", "gpt-6.1-sol"]},
+  {"id": "exceptional", "maxScore": 100, "ladder": ["claude-opus-5-5", "gpt-6-astra"]}
+ ],
+ "classOverrides": {},
+ "escalation": {
+  "maxAttemptsPerTurn": 2,
+  "escalateOnCorrectionsAtLeast": 4,
+  "escalateOn": ["invalid_output", "planner_unavailable", "leak_filtered"]
+ },
+ "providerCooldownSeconds": 60,
+ "maxEstimatedCostUsdPerTurn": 0.25,
+ "astra": {"requiresEnv": "LLM_ASTRA_ENABLED", "maxCallsPerDay": 20},
+ "prices": {
+  "claude-haiku-5-5": [0.1, 0.5],
+  "claude-sonnet-5-5": [2, 10],
+  "claude-opus-5-5": [4, 20],
+  "gpt-6-luna": [0.1, 0.5],
+  "gpt-6.1-sol": [2, 10],
+  "gpt-6-astra": [10, 50]
+ }
+}

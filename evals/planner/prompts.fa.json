@@ -1,0 +1,382 @@
+[
+ {
+  "id": "portrait-01",
+  "input": {
+   "text": "پرتره‌ی یک پیرمرد نانوا در شیراز، چین‌های صورتش زیر نور صبح، نگاه مهربان"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "نور"
+   ]
+  }
+ },
+ {
+  "id": "portrait-02",
+  "input": {
+   "text": "عکس پرتره‌ی یک دختر جوان با روسری رنگی در بازار وکیل شیراز، عمق میدان کم"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "بازار"
+   ]
+  }
+ },
+ {
+  "id": "portrait-03",
+  "input": {
+   "text": "پرتره‌ی استودیویی یک نوازنده‌ی سنتور با لباس سنتی، نور رامبراند"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "سنتور"
+   ]
+  }
+ },
+ {
+  "id": "product-01",
+  "input": {
+   "text": "عکس تبلیغاتی یک ست چای‌خوری لاله‌ای روی میز چوبی، پس‌زمینه‌ی روشن و تمیز"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "چای"
+   ]
+  }
+ },
+ {
+  "id": "product-02",
+  "input": {
+   "text": "product shot of a saffron jar on marble, عکس محصول زعفران ایرانی با نور ملایم"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "زعفران"
+   ]
+  }
+ },
+ {
+  "id": "product-03",
+  "input": {
+   "text": "عکس محصول یک کیف دستی چرم دست‌دوز اصفهانی روی پس‌زمینه‌ی ساده"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "چرم"
+   ]
+  }
+ },
+ {
+  "id": "place-01",
+  "input": {
+   "text": "نمای بیرونی مسجد شیخ لطف‌الله اصفهان هنگام غروب، سقف کاشی‌کاری و بازتاب نور"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "اصفهان"
+   ]
+  }
+ },
+ {
+  "id": "place-02",
+  "input": {
+   "text": "میدان انقلاب تهران صبح یک روز بهاری با رفت‌وآمد آرام عابران"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "تهران"
+   ]
+  }
+ },
+ {
+  "id": "place-03",
+  "input": {
+   "text": "باغ ارم شیراز در پاییز با برگ‌های زرد و مسیر سنگ‌فرش"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "شیراز"
+   ]
+  }
+ },
+ {
+  "id": "place-04",
+  "input": {
+   "text": "کویر مرنجاب هنگام طلوع، تپه‌های شنی و سایه‌های بلند"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "کویر"
+   ]
+  }
+ },
+ {
+  "id": "culture-01",
+  "input": {
+   "text": "سفره‌ی هفت‌سین نوروز با سبزه، سکه و آینه، خانواده‌ای دور سفره نشسته‌اند"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "هفت"
+   ]
+  }
+ },
+ {
+  "id": "culture-02",
+  "input": {
+   "text": "شب یلدا؛ خانواده دور کرسی با انار و هندوانه و دیوان حافظ"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "یلدا"
+   ]
+  }
+ },
+ {
+  "id": "culture-03",
+  "input": {
+   "text": "خوشنویسی نستعلیق یک بیت از سعدی روی کاغذ دست‌ساز با قلم‌نی"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "نستعلیق"
+   ]
+  }
+ },
+ {
+  "id": "fashion-01",
+  "input": {
+   "text": "عکس مد با مانتو و شال ساده‌ی پاییزی در خیابان‌های سرسبز، پوشش کامل و شیک"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "مانتو"
+   ]
+  }
+ },
+ {
+  "id": "fashion-02",
+  "input": {
+   "text": "عکس مد زمستانی؛ مدل با پالتوی بلند پشمی و کلاه بافتنی در برف"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "پالتو"
+   ]
+  }
+ },
+ {
+  "id": "culture-04",
+  "input": {
+   "text": "نمای نزدیک از دست‌های یک کاشی‌کار در حال چیدن کاشی هفت‌رنگ در کارگاهی در اصفهان"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "کاشی"
+   ]
+  }
+ },
+ {
+  "id": "food-01",
+  "input": {
+   "text": "عکس غذا: چلوکباب کوبیده با کره و سماق و گوجه‌ی کبابی، نمای نزدیک"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "کباب"
+   ]
+  }
+ },
+ {
+  "id": "food-02",
+  "input": {
+   "text": "شیرینی‌های سنتی قطاب و نان برنجی روی سینی نقره‌ای، زمینه‌ی گرم"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "شیرینی"
+   ]
+  }
+ },
+ {
+  "id": "social-01",
+  "input": {
+   "text": "کاور ریلز عمودی ۹:۱۶ برای یک کافه‌ی کتاب با عنوان «بهار کتاب» و فضای گرم"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "۹:۱۶"
+   ]
+  }
+ },
+ {
+  "id": "social-02",
+  "input": {
+   "text": "استوری اینستاگرام برای تخفیف ویژه‌ی یلدا، طراحی مینیمال با رنگ‌های انار و سبز تیره"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "استوری"
+   ]
+  }
+ },
+ {
+  "id": "style-cartoon",
+  "input": {
+   "text": "یک گربه‌ی نارنجی که در کوچه‌های قدیمی یزد قدم می‌زند",
+   "style": "cartoon"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "کارتون"
+   ]
+  }
+ },
+ {
+  "id": "style-3d",
+  "input": {
+   "text": "رندر سه‌بعدی یک چراغ‌خواب به شکل گنبد مسجد، متریال شیشه‌ای و نور گرم",
+   "style": "three_d"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "سه‌بعدی"
+   ]
+  }
+ },
+ {
+  "id": "edit-01",
+  "input": {
+   "text": "رنگ آسمان این عکس را به غروب نارنجی تغییر بده ولی بقیه‌ی صحنه همان بماند",
+   "task": "edit"
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "همان"
+   ]
+  }
+ },
+ {
+  "id": "character-01",
+  "input": {
+   "text": "همان شخصیت را در حال خواندن کتاب در یک کتاب‌فروشی قدیمی نشان بده",
+   "characterRef": {
+    "id": "char-aref-0001",
+    "name": "آرین",
+    "angles": [
+     "front",
+     "three_quarter_left",
+     "three_quarter_right",
+     "profile_left"
+    ],
+    "version": 1
+   }
+  },
+  "expect": {
+   "kind": "image",
+   "mustMention": [
+    "شخصیت"
+   ]
+  }
+ },
+ {
+  "id": "video-01",
+  "input": {
+   "text": "ویدیوی کوتاه از بازار تبریز؛ دوربین آرام از میان غرفه‌ها جلو می‌رود"
+  },
+  "expect": {
+   "kind": "video",
+   "mustMention": [
+    "دوربین"
+   ]
+  }
+ },
+ {
+  "id": "video-02",
+  "input": {
+   "text": "ویدیو از یک قایق در تالاب انزلی هنگام مه صبحگاهی، حرکت دوربین پان آهسته از چپ به راست"
+  },
+  "expect": {
+   "kind": "video",
+   "mustMention": [
+    "پان"
+   ]
+  }
+ },
+ {
+  "id": "video-03",
+  "input": {
+   "text": "ویدیوی محصول: بخار چای از فنجان بالا می‌رود و دوربین آهسته نزدیک می‌شود (dolly in)"
+  },
+  "expect": {
+   "kind": "video",
+   "mustMention": [
+    "چای"
+   ]
+  }
+ },
+ {
+  "id": "video-04",
+  "input": {
+   "text": "ویدیوی نوروزی؛ بچه‌ها سبزه را آب می‌دهند و دوربین دور می‌چرخد، ۸ ثانیه"
+  },
+  "expect": {
+   "kind": "video",
+   "mustMention": [
+    "نوروز"
+   ]
+  }
+ },
+ {
+  "id": "video-05",
+  "input": {
+   "text": "a cinematic drone shot over Persepolis columns at golden hour، حرکت ارتفاع‌گیری آرام"
+  },
+  "expect": {
+   "kind": "video",
+   "mustMention": [
+    "تخت"
+   ]
+  }
+ },
+ {
+  "id": "lipsync-01",
+  "input": {
+   "text": "ویدیوی یک مجری زن جوان در استودیو با لحن گرم خوش‌آمدگویی می‌کند و به دوربین نگاه می‌کند؛ لب‌خوانی با صدای ضبط‌شده",
+   "audio": {
+    "hasAudioReference": true,
+    "hasSpeech": true,
+    "language": "fa",
+    "accent": "tehrani"
+   }
+  },
+  "expect": {
+   "kind": "video",
+   "mustMention": [
+    "لب"
+   ]
+  }
+ }
+]

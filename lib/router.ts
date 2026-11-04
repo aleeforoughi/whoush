@@ -73,8 +73,10 @@ export function suggestModel(r:MediaRequirements,kind:MediaKind):SuggestedModel|
  const b=bestModelFor(r,kind);
  return b&&{name:b.model.name,active:b.active,blockersFa:b.blockersFa};
 }
+/** Wording that marks a multi-shot or identity-critical brief (also a routing signal, lib/llm-routing.ts). */
+export const COMPLEX_BRIEF=/storyboard|multiple scenes|multi-shot|identity lock|preserve motion|سناریو|استوری‌بورد|چند سکانس|حفظ چهره/i;
 export function reasoningTier(prompt:string,hasReferences:boolean):ReasoningTier{
- const complex=/storyboard|multiple scenes|multi-shot|identity lock|preserve motion|سناریو|استوری‌بورد|چند سکانس|حفظ چهره/i.test(prompt);
+ const complex=COMPLEX_BRIEF.test(prompt);
  if(complex||prompt.length>1000) return "deep";
  if(hasReferences||prompt.length>180) return "balanced";
  return "fast";

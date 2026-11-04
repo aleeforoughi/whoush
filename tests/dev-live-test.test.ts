@@ -10,7 +10,7 @@ import {ReservationLedger} from "../lib/ledger";
 import type {MediaProvider,ProviderStatus} from "../lib/media-provider";
 import {orchestrateCreativeTurn} from "../lib/orchestrator";
 
-const KEYS=["NODE_ENV","WHOUSH_DEV_LIVE_TEST","WHOUSH_DEV_LIVE_MAX_SUBMITS","HIGGSFIELD_API_KEY","ANTHROPIC_API_KEY","LLM_FAST_MODEL","LLM_BALANCED_MODEL","LLM_DEEP_MODEL",
+const KEYS=["NODE_ENV","WHOUSH_DEV_LIVE_TEST","WHOUSH_DEV_LIVE_MAX_SUBMITS","HIGGSFIELD_API_KEY","ANTHROPIC_API_KEY","OPENAI_API_KEY","LLM_FAST_MODEL","LLM_BALANCED_MODEL","LLM_DEEP_MODEL",
  "PROVIDER_END_USER_AUTHORIZED","PROVIDER_RESELLER_AUTHORIZED","ALLOW_LIVE_GENERATION","PRODUCTION_MODERATION_VERIFIED","BILLING_LEDGER_VERIFIED","QUOTE_SIGNING_SECRET","LLM_PROVIDER_AUTHORIZED","ALLOW_LIVE_LLM"];
 async function withEnv<T>(vars:Record<string,string|undefined>,fn:()=>Promise<T>|T):Promise<T>{
  const saved=Object.fromEntries(KEYS.map(k=>[k,process.env[k]])),env=process.env as Record<string,string|undefined>;
@@ -68,6 +68,8 @@ test("a dev_live job submits to the real provider once, returns outputs, and nev
 test("dev live test enables the real planner only with a Claude model id and a key",async()=>{
  await withEnv({...DEV,ANTHROPIC_API_KEY:"k",LLM_FAST_MODEL:"claude-haiku-5-5"},()=>assert.deepEqual(llmPolicy("fast"),{live:true,reason:"dev_live_test"}));
  await withEnv({...DEV,LLM_FAST_MODEL:"claude-haiku-5-5"},()=>assert.equal(llmPolicy("fast").live,false));
- await withEnv({...DEV,ANTHROPIC_API_KEY:"k",LLM_FAST_MODEL:"gpt-x"},()=>assert.equal(llmPolicy("fast").live,false));
+ await withEnv({...DEV,ANTHROPIC_API_KEY:"k",LLM_FAST_MODEL:"gpt-x"},()=>assert.equal(llmPolicy("fast").live,false,"gpt id needs OPENAI_API_KEY"));
+ await withEnv({...DEV,OPENAI_API_KEY:"k",LLM_FAST_MODEL:"gpt-6.1-sol"},()=>assert.deepEqual(llmPolicy("fast"),{live:true,reason:"dev_live_test"}));
+ await withEnv({...DEV,ANTHROPIC_API_KEY:"k",LLM_FAST_MODEL:"mystery-1"},()=>assert.equal(llmPolicy("fast").live,false));
  await withEnv({...DEV,NODE_ENV:"production",ANTHROPIC_API_KEY:"k",LLM_FAST_MODEL:"claude-haiku-5-5"},()=>assert.equal(llmPolicy("fast").reason,"provider not authorized"));
 });

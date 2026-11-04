@@ -75,6 +75,30 @@ export const CreativePlanSchema=z.object({
  qaChecklist:z.array(s(300)).min(3).max(20),clarifyingQuestionFa:s(400).optional()
 });
 export type CreativePlan=z.infer<typeof CreativePlanSchema>;
+/**
+ * OpenAI Structured Outputs wire shape of CreativePlanSchema: every property required (optionals are nullable), strict objects, no string-length keywords
+ * (not supported there). Enums and numeric/array ranges stay. `fromWirePlan` maps it back; CreativePlanSchema remains the authority and re-validates.
+ */
+const ws=z.string(),wl=z.array(ws);
+const WireCameraSchema=z.object({look:ws,focalLengthMm:z.number().int().min(8).max(600),aperture:ws,shutter:ws,iso:z.number().int().min(50).max(25600),whiteBalanceK:z.number().int().min(2000).max(12000),framing:ws,lighting:ws,focus:ws,aspectRatio:ws}).strict();
+const WireShotSchema=z.object({shotSize:ws,cameraMovement:ws,lens:ws,targetFps:z.number().int().min(8).max(120),shutterAngle:z.number().int().min(1).max(360),durationSeconds:z.number().min(1).max(60),blocking:ws,continuityNotes:wl}).strict();
+export const CreativePlanWireSchema=z.object({
+ intentSummaryFa:ws,mediaKind:z.enum(["image","video"]),mediaPrompt:ws,
+ hardConstraints:wl,softPreferences:wl,negative:wl,
+ camera:WireCameraSchema.nullable(),shot:WireShotSchema.nullable(),
+ identityLock:z.object({characterId:ws,version:z.number().int().min(1),providedAngles:wl,lockedAttributes:wl,allowedChanges:wl}).strict().nullable(),
+ continuity:z.object({locks:wl,antiTeleport:wl}).strict(),
+ realism:z.object({mode:z.enum(["photoreal","stylized"]),directives:wl}).strict(),
+ speech:z.object({lipSync:z.object({status:z.enum(["needs_audio","planned_from_audio","not_requested"]),notes:wl}).strict(),accent}).strict().nullable(),
+ qaChecklist:wl,clarifyingQuestionFa:ws.nullable()
+}).strict();
+export type CreativePlanWire=z.infer<typeof CreativePlanWireSchema>;
+/** Drops every null (an absent optional on the wire) recursively. The result is untrusted: validate it with CreativePlanSchema. */
+export function fromWirePlan(wire:unknown):unknown{
+ if(Array.isArray(wire))return wire.map(fromWirePlan);
+ if(wire&&typeof wire==="object")return Object.fromEntries(Object.entries(wire).filter(([,v])=>v!==null).map(([k,v])=>[k,fromWirePlan(v)]));
+ return wire;
+}
 /** Whitelisted customer projection; never carries skills, tier, model/provider, usage or mediaPrompt. */
 /** `labelFa` is the role label; `roleSource` says whether the user chose the role or Whoush inferred it. The UI adds the «انتخاب هووش» suffix for `inferred`. */
 export type PublicReference={tag:string;kind:AttachmentKind;role:AttachmentRole;roleSource:RoleSource;labelFa:string};

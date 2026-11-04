@@ -3,14 +3,18 @@ import {createHash,randomUUID} from "node:crypto";
 import {buildProposal,NoCompatibleModelError} from "./agent";
 import {CHARACTER_VIEWS,REQUIRED_CHARACTER_VIEWS} from "./characters";
 import {CreativePlanSchema,CreativeTurnInputSchema,STYLE_VISUAL,toPublicPlan,type GenerationStyle,type PublicReference,PlannerInvalidOutputError,PlannerRefusedError,PlannerUnavailableError,type CreativePlan,type PlannerRequest,type PlannerResult,type PrivatePlanner,type PublicCreativePlan} from "./creative-plan";
-import {llmPolicy,preparePrivateCreativeRequest} from "./llm";
+import {llmGate,preparePrivateCreativeRequest} from "./llm";
+import {countAstraCall,defaultRouterState,estimateTurnCostUsd,loadRoutingConfig,markProviderCooldown,planRoute,profileTask,type RoutingAudit,type RoutingAttempt,type RoutingConfig,type RouterState} from "./llm-routing";
 import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./private-audit";
 import {displayTag,inferAttachmentRoles,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
+import {providerForModelId} from "./llm-routing";
 import {detectMediaKind,suggestModel} from "./router";
-import {evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
+import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
 import {SKILLS,SKILL_REGISTRY_VERSION} from "./skills";
 import type {GenerationProposal,MediaRequirements,SuggestedModel} from "./types";
-export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;now?:()=>Date};
+export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;now?:()=>Date;
+ /** Test hook: the planner for one routed model. Defaults to the real Anthropic or OpenAI adapter. */
+ plannerFor?:(modelId:string,provider:"anthropic"|"openai")=>PrivatePlanner;routing?:RoutingConfig;routerState?:RouterState};
 export type OrchestratorResult=
  |{status:"planned";turnId:string;proposal:GenerationProposal;plan:PublicCreativePlan}
  |{status:"unsupported";turnId:string;plan:PublicCreativePlan;message:string;suggestedModel?:SuggestedModel}
@@ -199,7 +203,9 @@ function enforce(raw:CreativePlan,req:PlannerRequest):{plan:CreativePlan;correct
 }
 // Customer projection must not echo vendor/model names, skill titles/ids or prompt internals unless the user wrote them.
 const FORBIDDEN=["claude","anthropic","openai","gpt","sonnet","opus","haiku","systeminstructions","reasoningtier","promptsha256",...Object.entries(SKILLS).flatMap(([id,s])=>[s.title.toLowerCase(),...(id.includes("_")?[id]:[])])];
-const leaks=(pub:PublicCreativePlan,userText:string)=>{const j=JSON.stringify(pub).toLowerCase(),u=userText.toLowerCase();return FORBIDDEN.some(t=>j.includes(t)&&!u.includes(t));};
+// Model-family words are only forbidden as standalone Latin tokens (so "solid" or "terrain" never trip it), and only when the user did not type them.
+const FAMILY_WORDS=["sol","astra","luna","terra"].map(w=>new RegExp("(?<![a-z0-9])"+w+"(?![a-z0-9])"));
+const leaks=(pub:PublicCreativePlan,userText:string)=>{const j=JSON.stringify(pub).toLowerCase(),u=userText.toLowerCase();return FORBIDDEN.some(t=>j.includes(t)&&!u.includes(t))||FAMILY_WORDS.some(r=>r.test(j)&&!r.test(u));};
 // ---- private prompt store for the generation phase (bounded, server memory only) ----
 const MAX_PROMPTS=200;
 const store=()=>((globalThis as {__whoushPrompts?:Map<string,string>}).__whoushPrompts??=new Map());
@@ -260,25 +266,68 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const prep=preparePrivateCreativeRequest({prompt:input.text,kind,task:input.task,attachmentRoles:files.flatMap(f=>f.role?[f.role]:[]),hasReferences:Boolean(ref||a?.hasAudioReference||files.length),hasAudioReference:a?(a.hasAudioReference||a.hasSpeech):undefined,hasSpeechAudio:a?.hasSpeech,speechLanguage:a?.language,accent:a?.accent,characterRef:ref,visualStyle:input.visualStyle});
  const req:PlannerRequest={...prep,privateRoute:prep.privateRoute&&{provider:prep.privateRoute.provider,modelId:prep.privateRoute.modelId},kind,input,...(files.length?{attachments:files.map(f=>({tag:f.tag,kind:f.kind,...(f.role?{role:f.role,roleSource:f.roleSource??"user"}:{}),...(f.textExcerpt?{textExcerpt:f.textExcerpt}:{})}))}:{})};
  const turnId=randomUUID();
- const rec=(x:Partial<PrivateAuditRecord>)=>audit.record({turnId,at:now().toISOString(),skillRegistryVersion:SKILL_REGISTRY_VERSION,activeSkillIds:[...prep.activeSkillIds],reasoningTier:prep.privateReasoningTier,route:req.privateRoute,planner:"deterministic",...(input.style?{style:input.style}:{}),promptSha256:createHash("sha256").update(input.text).digest("hex"),...(files.length?{attachments:files.map(f=>({tag:f.tag,...(f.role?{role:f.role,roleSource:f.roleSource??"user"}:{}),kind:f.kind,bytes:f.bytes,sha256:f.sha256}))}:{}),...x});
- let planner=deps.planner,label:PrivateAuditRecord["planner"]=planner&&planner!==deterministicPlanner?"live":"deterministic",fallbackReason:string|undefined;
- if(!planner){
-  const pol=llmPolicy(prep.privateReasoningTier);
-  if(pol.live&&req.privateRoute){const modelId=req.privateRoute.modelId;label="live";planner=async r=>(await import("./llm-anthropic")).planWithAnthropic(r,modelId);}
-  else{planner=deterministicPlanner;fallbackReason=pol.reason;}
- }
- let result:PlannerResult|undefined;
- try{result=await planner(req);}
- catch(e){
-  if(e instanceof PlannerRefusedError){rec({planner:label,fallbackReason:"planner_refused"});return {status:"restricted",decision:"review",category:"none",message:FA_REFUSED};}
-  label="deterministic";fallbackReason=e instanceof PlannerUnavailableError?"planner_unavailable":e instanceof PlannerInvalidOutputError?"invalid_output":"planner_error";
- }
+ const rec=(x:Partial<PrivateAuditRecord>)=>audit.record({turnId,at:now().toISOString(),skillRegistryVersion:SKILL_REGISTRY_VERSION,activeSkillIds:[...prep.activeSkillIds],reasoningTier:prep.privateReasoningTier,route:req.privateRoute,planner:"deterministic",...(input.style?{style:input.style}:{}),promptSha256:createHash("sha256").update(input.text).digest("hex"),...(routing?{routing}:{}),...(files.length?{attachments:files.map(f=>({tag:f.tag,...(f.role?{role:f.role,roleSource:f.roleSource??"user"}:{}),kind:f.kind,bytes:f.bytes,sha256:f.sha256}))}:{}),...x});
+ let label:PrivateAuditRecord["planner"]=deps.planner&&deps.planner!==deterministicPlanner?"live":"deterministic",fallbackReason:string|undefined;
+ let result:PlannerResult|undefined,fin:{e?:{plan:CreativePlan;corrections:string[]};reason?:string}={reason:"planner_error"};
  const finalize=(raw:unknown)=>{
   const v=CreativePlanSchema.safeParse(raw);if(!v.success)return {reason:"invalid_output"};
   const e=enforce(v.data,req);return leaks(toPublicPlan(e.plan),input.text)?{reason:"leak_filtered"}:{e};
  };
- let fin=result?finalize(result.plan):{reason:fallbackReason??"planner_error"};
- if(!fin.e){label="deterministic";fallbackReason=fin.reason;fin=finalize(deterministicPlanner(req).plan);}
+ // One attempt: call a planner, then validate, enforce invariants and leak-filter its output. `refused` is reported, never retried here.
+ type Outcome="ok"|"refused"|"planner_unavailable"|"invalid_output"|"leak_filtered"|"planner_error";
+ const attempt=async(pl:PrivatePlanner):Promise<{outcome:Outcome;result?:PlannerResult;fin?:{e?:{plan:CreativePlan;corrections:string[]};reason?:string}}>=>{
+  let r:PlannerResult;
+  try{r=await pl(req);}
+  catch(e){return {outcome:e instanceof PlannerRefusedError?"refused":e instanceof PlannerUnavailableError?"planner_unavailable":e instanceof PlannerInvalidOutputError?"invalid_output":"planner_error"};}
+  const f=finalize(r.plan);
+  return {outcome:f.e?"ok":(f.reason as Outcome),result:r,fin:f};
+ };
+ const refusedResult=():OrchestratorResult=>({status:"restricted",decision:"review",category:"none",message:FA_REFUSED});
+ let routing:RoutingAudit|undefined;
+ if(deps.planner){
+  const o=await attempt(deps.planner);
+  if(o.outcome==="refused"){rec({planner:label,fallbackReason:"planner_refused"});return refusedResult();}
+  result=o.result;if(o.fin)fin=o.fin;
+  if(!fin.e){label="deterministic";fallbackReason=o.outcome==="ok"?fin.reason:o.outcome;}
+ }else{
+  const gate=llmGate();
+  if(!gate.live)fallbackReason=gate.reason;
+  else{
+   // Task-based routing: profile the task, take the band's ladder (minus unavailable rungs), try rungs in order within the attempt budget.
+   // A refusal is a safety signal: it ends the turn as restricted and never moves to another model, unless the owner lists `refused` in `escalateOn`.
+   const cfg=deps.routing??loadRoutingConfig(),state=deps.routerState??defaultRouterState(),prof=profileTask(input,kind,prep.activeSkillIds,req.attachments);
+   const chars=req.systemInstructions.length+req.userText.length+(req.attachments??[]).reduce((n,x)=>n+(x.textExcerpt?.length??0),0);
+   const route=planRoute(prof,{cfg,now:now(),state,inputChars:chars});
+   routing={...prof,band:route.band,ladder:route.ladder,skipped:route.skipped,attempts:[],chosenModelId:null};
+   if(!route.ladder.length)fallbackReason=route.skipped.some(x=>x.why==="cooldown")?"provider cooldown":route.skipped.some(x=>x.why==="no_key")?"api key not configured":"no route available";
+   let best:{o:Awaited<ReturnType<typeof attempt>>;modelId:string}|undefined,last:Outcome="planner_error";
+   for(let i=0;i<route.ladder.length&&i<cfg.escalation.maxAttemptsPerTurn;i++){
+    const modelId=route.ladder[i],provider=providerForModelId(modelId)!;
+    req.privateRoute={provider,modelId};
+    if(modelId===cfg.astra.modelId)countAstraCall(now(),state);
+    const adapter=deps.plannerFor?.(modelId,provider)??(provider==="openai"?async(r:PlannerRequest)=>(await import("./llm-openai")).planWithOpenAI(r,modelId):async(r:PlannerRequest)=>(await import("./llm-anthropic")).planWithAnthropic(r,modelId));
+    const t0=Date.now(),o=await attempt(adapter),usage=o.result?.usage;
+    const u=usage as {input_tokens?:number;output_tokens?:number}|undefined;
+    routing.attempts.push({modelId,provider,outcome:o.outcome,latencyMs:Date.now()-t0,...(usage?{usage}:{}),estCostUsd:u&&typeof u.input_tokens==="number"&&cfg.prices[modelId]?(u.input_tokens*cfg.prices[modelId][0]+(u.output_tokens??0)*cfg.prices[modelId][1])/1e6:null} as RoutingAttempt);
+    last=o.outcome;
+    if(o.outcome==="planner_unavailable")markProviderCooldown(provider,now(),cfg,state);
+    if(o.outcome==="refused"&&!cfg.escalation.escalateOn.includes("refused")){rec({planner:"live",fallbackReason:"planner_refused",routing});return refusedResult();}
+    const more=i+1<route.ladder.length&&i+1<cfg.escalation.maxAttemptsPerTurn;
+    if(o.outcome==="ok"){
+     best=o.fin?.e?{o,modelId}:best;
+     if(more&&(o.fin!.e!.corrections.length>=cfg.escalation.escalateOnCorrectionsAtLeast))continue;
+     break;
+    }
+    if(!(more&&(cfg.escalation.escalateOn as string[]).includes(o.outcome)))break;
+   }
+   if(best){label="live";result=best.o.result;fin=best.o.fin!;routing.chosenModelId=best.modelId;req.privateRoute={provider:providerForModelId(best.modelId)!,modelId:best.modelId};}
+   else if(route.ladder.length){fallbackReason=last==="refused"?"planner_refused":last;}
+  }
+ }
+ if(!fin.e){
+  if(!fallbackReason)fallbackReason=fin.reason;
+  label="deterministic";fin=finalize(deterministicPlanner(req).plan);
+ }
  if(!fin.e)throw new Error("deterministic planner produced an invalid plan");
  const {plan,corrections}=fin.e;
  // Provider-facing text names attachments by description; the public Persian text keeps what the user typed. A missing tag is a question, never a block.
@@ -286,7 +335,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  if(missing.length)plan.clarifyingQuestionFa=[faMissing(missing),plan.clarifyingQuestionFa].filter(Boolean).join(" ").slice(0,400);
  // plan inspection: LLM output never bypasses the safety layer
  for(const t of [plan.mediaPrompt,...plan.hardConstraints]){
-  const r=evaluateTextSafety(t);
+  const r=evaluatePlanTextSafety(t); // planner text: negated generic categories ("no political banners") are compliance, not violations
   if(r.decision!=="allow"){rec({planner:label,fallbackReason:"plan_restricted",corrections,usage:result?.usage});return {status:"restricted",decision:r.decision,category:r.category,message:r.message};}
  }
  // Hard capability requirements: a character reference needs reference-image input, lip sync needs a lip-sync model.
