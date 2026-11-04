@@ -68,6 +68,8 @@ export type EvalRun={
  latencyMs:number;usage:{input_tokens:number;output_tokens:number}|null;costUsdEstimate:number|null;
  corrections:number;leakFiltered:boolean;persianRatio:number;complete:boolean|null;
  mentionHitRate:number|null;mentionMisses:string[];mustNotViolations:string[];planChars:number;plan?:PublicCreativePlan;
+ /** Task profile of the prompt (lib/llm-routing.ts profileTask). In --route mode `model` is "router" and `chosenModel` the rung that produced the plan. */
+ taskClass?:string;score?:number;chosenModel?:string|null;attempts?:number;
 };
 export type ModelSummary={model:string;runs:number;ok:number;failures:number;latencyMeanMs:number|null;latencyP50Ms:number|null;latencyP95Ms:number|null;costUsdEstimateTotal:number|null;costUsdEstimateMean:number|null;persianRatioMean:number|null;completeRate:number|null;mentionHitRateMean:number|null;violationRuns:number;correctionsMean:number|null;leakFiltered:number;tokensInMean:number|null;tokensOutMean:number|null};
 /** Latency and quality are computed over successful runs only (a fallback plan says nothing about the model); failures are counted separately. */
@@ -84,6 +86,27 @@ export function summarize(runs:readonly EvalRun[]):ModelSummary[]{
    violationRuns:all.filter(r=>r.mustNotViolations.length>0).length,correctionsMean:mean(ok.map(r=>r.corrections)),leakFiltered:all.filter(r=>r.leakFiltered).length,
    tokensInMean:mean(all.map(r=>r.usage?.input_tokens).filter((x):x is number=>x!==undefined)),tokensOutMean:mean(all.map(r=>r.usage?.output_tokens).filter((x):x is number=>x!==undefined))};
  });
+}
+
+// ---- per-class evaluation and suggested ladders ----
+export type ClassRow={taskClass:string;model:string;runs:number;ok:number;failures:number;okRate:number;correctionsMean:number|null;persianRatioMean:number|null;mentionHitRateMean:number|null;costUsdEstimateMean:number|null;latencyMeanMs:number|null};
+/** Per task class and per model (the model that produced the plan in --route mode). */
+export function classTable(runs:readonly EvalRun[]):ClassRow[]{
+ const keys=[...new Set(runs.map(r=>(r.taskClass??"unknown")+"\u0000"+(r.chosenModel??r.model)))];
+ return keys.map(k=>{
+  const [taskClass,model]=k.split("\u0000"),all=runs.filter(r=>(r.taskClass??"unknown")===taskClass&&(r.chosenModel??r.model)===model),ok=all.filter(r=>r.ok);
+  const costs=all.map(r=>r.costUsdEstimate).filter((x):x is number=>x!==null),ment=ok.map(r=>r.mentionHitRate).filter((x):x is number=>x!==null);
+  return {taskClass,model,runs:all.length,ok:ok.length,failures:all.length-ok.length,okRate:ok.length/all.length,correctionsMean:mean(ok.map(r=>r.corrections)),persianRatioMean:mean(ok.map(r=>r.persianRatio)),mentionHitRateMean:mean(ment),costUsdEstimateMean:mean(costs),latencyMeanMs:mean(ok.map(r=>r.latencyMs))};
+ }).sort((a,b)=>a.taskClass.localeCompare(b.taskClass)||a.model.localeCompare(b.model));
+}
+const NIL=(x:number|null,worst:number)=>x===null?worst:x;
+/** Ranking: ok-rate desc, corrections asc, Persian ratio desc, mustMention desc, cost asc (then model id for a stable order). */
+export const compareRows=(a:ClassRow,b:ClassRow):number=>b.okRate-a.okRate||NIL(a.correctionsMean,99)-NIL(b.correctionsMean,99)||NIL(b.persianRatioMean,0)-NIL(a.persianRatioMean,0)||NIL(b.mentionHitRateMean,0)-NIL(a.mentionHitRateMean,0)||NIL(a.costUsdEstimateMean,1e9)-NIL(b.costUsdEstimateMean,1e9)||a.model.localeCompare(b.model);
+/** A `classOverrides` snippet (best two models per class that had at least one success). For the OWNER to review and paste; nothing is ever written to config. */
+export function suggestClassOverrides(runs:readonly EvalRun[],rungs=2):Record<string,string[]>{
+ const out:Record<string,string[]>={},rows=classTable(runs).filter(r=>r.ok>0&&r.taskClass!=="unknown"&&r.model!=="router");
+ for(const c of new Set(rows.map(r=>r.taskClass)))out[c]=rows.filter(r=>r.taskClass===c).sort(compareRows).slice(0,rungs).map(r=>r.model);
+ return out;
 }
 
 // ---- .env parser (values are returned to the caller, never printed here) ----
@@ -128,11 +151,13 @@ export function renderReport(runs:readonly EvalRun[],prompts:readonly EvalPrompt
   const cols=meta.models.map(m=>runs.find(r=>r.promptId===p.id&&r.model===m));
   return "<section><h3><span dir=\"ltr\">"+esc(p.id)+"</span></h3><blockquote>"+esc(p.input.text)+"</blockquote><table class=\"cmp\"><thead><tr>"+meta.models.map(m=>"<th dir=\"ltr\">"+esc(m)+"</th>").join("")+"</tr></thead><tbody><tr>"+cols.map(r=>cell(r,p.expect.kind)).join("")+"</tr></tbody></table></section>";
  }).join("");
+ const ct=classTable(runs),sug=suggestClassOverrides(runs);
+ const classSection=ct.length?"<h2>به تفکیک نوع کار</h2><div class=\"wrap\"><table><thead><tr><th>کلاس</th><th>مدل</th><th>اجرا</th><th>موفق</th><th>ناموفق</th><th>اصلاح</th><th>فارسی</th><th>کلیدواژه</th><th>هزینهٔ میانگین (تخمین)</th><th>تأخیر</th></tr></thead><tbody>"+ct.map(r=>"<tr><th scope=\"row\" dir=\"ltr\">"+esc(r.taskClass)+"</th><td dir=\"ltr\">"+esc(r.model)+"</td><td>"+r.runs+"</td><td>"+r.ok+"</td><td>"+r.failures+"</td><td>"+num(r.correctionsMean)+"</td><td>"+pct(r.persianRatioMean)+"</td><td>"+pct(r.mentionHitRateMean)+"</td><td>"+usd(r.costUsdEstimateMean)+"</td><td>"+ms(r.latencyMeanMs)+"</td></tr>").join("")+"</tbody></table></div><h3>پیشنهاد نردبان برای هر کلاس</h3><p class=\"note\">فقط پیشنهاد آماری برای تصمیم مالک؛ هیچ فایل پیکربندی خودکار تغییر نمی‌کند. رتبه‌بندی: نرخ موفقیت، سپس اصلاح‌ها، فارسی، کلیدواژه و در آخر هزینه. نمونه‌ها کم‌اند؛ با دید انسانی بررسی کن.</p><pre dir=\"ltr\">"+esc(JSON.stringify({classOverrides:sug},null,1))+"</pre>":"";
  return "<!doctype html><html lang=\"fa\" dir=\"rtl\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\"><title>ارزیابی برنامه‌ریز</title><style>"+
  ":root{--bg:#fff;--fg:#1a1a1a;--mut:#666;--line:#d8d8d8;--card:#f6f6f6;--acc:#0b6bcb}@media(prefers-color-scheme:dark){:root{--bg:#121212;--fg:#ececec;--mut:#9a9a9a;--line:#333;--card:#1c1c1c;--acc:#6cb2ff}}"+
  "body{margin:0 auto;max-width:1400px;padding:16px;background:var(--bg);color:var(--fg);font:15px/1.7 system-ui,Tahoma,sans-serif}h1,h2{margin:.6em 0}h3{margin:1.6em 0 .3em}h4{margin:.9em 0 .2em;color:var(--mut);font-size:13px}"+
  "table{border-collapse:collapse;width:100%}th,td{border:1px solid var(--line);padding:6px 8px;vertical-align:top;text-align:start}.wrap{overflow-x:auto}blockquote{margin:.4em 0;padding:8px 12px;background:var(--card);border-inline-start:3px solid var(--acc)}"+
- "dl{margin:0;display:grid;grid-template-columns:max-content 1fr;gap:2px 10px}dt{color:var(--mut)}dd{margin:0}ul{margin:.2em 0;padding-inline-start:1.2em}.none{color:var(--mut)}.rate{display:block;margin-top:10px}.rate input{width:3.5em}.note{color:var(--mut)}"+
+ "dl{margin:0;display:grid;grid-template-columns:max-content 1fr;gap:2px 10px}dt{color:var(--mut)}dd{margin:0}ul{margin:.2em 0;padding-inline-start:1.2em}.none{color:var(--mut)}.rate{display:block;margin-top:10px}.rate input{width:3.5em}.note{color:var(--mut)}pre{background:var(--card);padding:10px;overflow-x:auto}"+
  "</style></head><body><h1>ارزیابی برنامه‌ریز خصوصی</h1><p class=\"note\">تولید: "+esc(meta.generatedAt)+" | هزینه‌ها تخمین‌اند و فقط برای مقایسهٔ داخلی؛ مدل‌ها و قیمت‌ها هرگز به مشتری نشان داده نمی‌شوند. تأخیر و کیفیت فقط روی اجراهای موفق حساب شده است.</p>"+
  "<h2>خلاصه</h2><div class=\"wrap\"><table><thead>"+head+"</thead><tbody>"+rows+"</tbody></table></div><h2>مقایسهٔ پرامپت‌ها</h2>"+sections+"</body></html>";
 }

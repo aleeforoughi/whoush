@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
-import {EvalPromptsSchema,applyEnv,cameraComplete,completeness,estimateCostUsd,mean,normalizeUsage,parseEnvFile,percentile,persianRatio,publicStrings,renderReport,scoreMentions,shotComplete,summarize,type EvalRun} from "../scripts/planner-eval-lib";
+import {EvalPromptsSchema,applyEnv,cameraComplete,completeness,estimateCostUsd,mean,normalizeUsage,parseEnvFile,percentile,persianRatio,publicStrings,classTable,compareRows,suggestClassOverrides,renderReport,scoreMentions,shotComplete,summarize,type EvalRun} from "../scripts/planner-eval-lib";
 import {CreativeTurnInputSchema,type PublicCreativePlan} from "../lib/creative-plan";
 
 const camera={look:"ظاهر",focalLengthMm:35,aperture:"f/2.8",shutter:"1/125s",iso:200,whiteBalanceK:5600,framing:"کادر",lighting:"نور",focus:"فوکوس",aspectRatio:"3:2"};
@@ -61,4 +61,23 @@ test("summaries count failures separately and the report is self-contained RTL H
  const html=renderReport(runs,[{id:"p",input:{text:"<script>alert(1)</script> مثال"},expect:{kind:"image"}}],{generatedAt:"t",models:["m1","m2"]});
  assert.match(html,/dir="rtl"/);assert.match(html,/prefers-color-scheme: ?dark/);assert.ok(!html.includes("<script"),"no scripts and prompt text is escaped");assert.ok(!/https?:\/\//.test(html),"no external assets");
  assert.equal((html.match(/type="number"/g)??[]).length,2,"a rating box per model per prompt");
+});
+test("per-class table and suggested overrides rank by ok-rate, corrections, Persian, mentions, then cost; nothing is written",()=>{
+ const r=(model:string,taskClass:string,o:Partial<EvalRun>={})=>run({model,taskClass,promptId:model+taskClass+Math.random(),...o});
+ const runs=[
+  r("claude-haiku-5-5","video",{ok:false,fallbackReason:"invalid_output"}),r("claude-haiku-5-5","video"),
+  r("gpt-6-luna","video"),r("gpt-6-luna","video"),
+  r("claude-sonnet-5-5","video",{corrections:2}),r("claude-sonnet-5-5","video",{corrections:2}),
+  r("gpt-6.1-sol","edit",{costUsdEstimate:0.02}),r("claude-sonnet-5-5","edit",{costUsdEstimate:0.01}),r("claude-opus-5-5","edit",{ok:false}),
+  run({model:"router",chosenModel:"gpt-6-luna",taskClass:"lip_sync"}),run({model:"router",chosenModel:null,ok:false,taskClass:"lip_sync"})
+ ];
+ const t=classTable(runs),row=(c:string,m:string)=>t.find(x=>x.taskClass===c&&x.model===m)!;
+ assert.equal(row("video","claude-haiku-5-5").okRate,0.5);assert.equal(row("video","gpt-6-luna").okRate,1);assert.equal(row("lip_sync","gpt-6-luna").runs,1,"route runs are grouped by the model that produced the plan");
+ const sug=suggestClassOverrides(runs);
+ assert.deepEqual(sug.video,["gpt-6-luna","claude-sonnet-5-5"],"ok-rate first, then fewer corrections");
+ assert.deepEqual(sug.edit,["claude-sonnet-5-5","gpt-6.1-sol"],"equal quality: cheaper first; the failed model is excluded");
+ assert.deepEqual(sug.lip_sync,["gpt-6-luna"],"a routed run counts for the model that produced the plan; the unrouted fallback row is never a model");
+ assert.ok(compareRows(row("video","gpt-6-luna"),row("video","claude-haiku-5-5"))<0);
+ const html=renderReport(runs,[],{generatedAt:"t",models:["router"]});
+ assert.match(html,/classOverrides/);assert.match(html,/به تفکیک نوع کار/);
 });
