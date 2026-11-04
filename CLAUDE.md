@@ -20,6 +20,16 @@ Sonnet: normal feature implementation, frontend/backend integration, migrations 
 Opus: early security/economics/API architecture decisions, race-condition review, final independent release review.
 Use ONE lead agent assigning limited, non-overlapping subtasks. Escalate only after measured failure. Avoid multiple expensive agents generating the same work.
 
+## Mandatory professional skill and safety layer
+- Read `docs/CREATIVE_SKILLS.md` and `docs/MODERATION_POLICY.md`. `lib/skills.ts` defines 15 versioned reusable skills; `lib/safety.ts` provides a fast non-production Persian-aware safety preflight.
+- EVERY real private LLM creative request must use `preparePrivateCreativeRequest` from `lib/llm.ts` to compile base skills plus dynamically activated specialties. Do not bypass the skill compiler with a raw LLM request.
+- Foundation on every creative request: prompt engineering, creative/art direction, Persian language, professional QA.
+- Image tasks always activate professional photography with proposed camera body/look, lens, aperture, shutter, ISO, WB, framing, lighting and focus. Video tasks always activate cinematography + videography. Edits add specialized source-preservation skills. Contextual social/culture/geography/poetry/copy/type/audio specialists are added as relevant.
+- Whoush customer-facing LLM choices remain invisible; these professional skills are internal instructions, not user selectable.
+- Zero-tolerance **political generation** including all political figures of any ideology. No nude/erotic/overtly sensual visual requests or revealing garments; allow benign cultural/fashion/sports contexts without keyword-only overblocking.
+- Sensitive Persian words and regulated subjects require context-aware semantic review and human escalation where warranted. `lib/safety.ts` is only a lexical prefilter; production requires verified semantic + multimodal + output moderation, even after a lexical allow.
+- Moderation failure or uninspected media must prevent provider submission. Never claim compliance or filtering immunity. Do not log raw sensitive user prompts unnecessarily.
+
 ## First actions
 1. Examine repo and run `npm install`, `npm run test`, `npm run typecheck`, `npm run build`.
 2. Fix scaffold failures before new features.
