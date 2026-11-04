@@ -1,6 +1,6 @@
 # Whoush UI & Design System Contract v1.0
 
-**Status:** implementation contract for Claude. The existing foundation and Character Studio are scaffolds; screenshot fidelity, accessibility and production workflows need verification. Inspired by the user's Runway UI/UX research, not copied Runway source or assets.
+**Status:** implementation contract for Claude. The foundation is built on Feather; Character Studio works browser-local only (server storage and provider upload pending); screenshot fidelity, accessibility and production workflows need verification. Inspired by the user's Runway UI/UX research, not copied Runway source or assets.
 
 ## Brand, localization and type
 - Product: **Whoush / هووش**. Website and interface **Persian Farsi**, RTL-first. English permitted only for product names, international model names, file extensions and technical terms where needed.
