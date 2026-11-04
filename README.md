@@ -14,4 +14,4 @@ npm run dev
 
 Open http://localhost:3000/studio or /neurons. `npm run test` checks invariant logic, `npm run typecheck` checks TypeScript.
 
-Read [implementation plan](docs/IMPLEMENTATION_PLAN.md), [Claude handoff](docs/CLAUDE_HANDOFF.md), [architecture](docs/ARCHITECTURE.md), and [launch gates](docs/LAUNCH_GATES.md).
+Read [implementation plan](docs/IMPLEMENTATION_PLAN.md), [Claude handoff](docs/CLAUDE_HANDOFF.md), [architecture](docs/ARCHITECTURE.md), [launch gates](docs/LAUNCH_GATES.md), and [capability scouting](docs/CAPABILITY_SCOUT.md).
