@@ -2,7 +2,7 @@ import {test} from "node:test";
 import assert from "node:assert/strict";
 import {INSERT_MENU} from "../lib/insert-menu";
 import {MAX_ATTACHMENTS,displayTag,newTagCounters} from "../lib/attachments";
-import {SLOTS_FULL_FA,SLOT_CATEGORY_FA,addSlot,removeSlot,reserveSlotTag,slotCategory,slotFor,slotLabelFa,uploadRejection} from "../lib/upload-slots";
+import {SLOTS_FULL_FA,SLOT_CATEGORY_FA,addSlot,composerCards,fillSlotWith,forgetAttachment,removeSlot,reserveSlotTag,slotCategory,slotFor,slotLabelFa,uploadRejection} from "../lib/upload-slots";
 
 const item=(id:string)=>INSERT_MENU.flatMap(g=>g.items).find(i=>i.id===id)!;
 
@@ -43,4 +43,17 @@ test("cards reserve the next tag of their kind; documents share the file prefix;
  const take=(id:string)=>{const r=reserveSlotTag(c,slotFor(item(id),"x")!.upload);if(r)c=r.counters;return r&&displayTag(r.tag);};
  assert.deepEqual([take("image:character"),take("image:outfit"),take("video:continue"),take("file"),take("auto"),take("image:makeup")],["#تصویر-۱","#تصویر-۲","#ویدیو-۱","#فایل-۱",undefined,"#تصویر-۳"]);
  assert.equal(reserveSlotTag({...newTagCounters(),image:99},{kind:"image",role:"character"}),undefined,"exhausted");
+});
+
+test("a filled card keeps its place and shows its file; other files follow; a filled card counts once toward the limit",()=>{
+ const s=(id:string)=>slotFor(item("image:outfit"),id)!;
+ let slots=[s("a"),s("b"),s("c")];
+ slots=fillSlotWith(slots,"b","f1");
+ const files=[{id:"f0"},{id:"f1"},{id:"f2"}];// f0 and f2 were dropped on the composer
+ assert.deepEqual(composerCards(slots,files).map(c=>c.type==="slot"?"slot:"+c.slot.id:"file:"+c.attachment.id),["slot:a","file:f1","slot:c","file:f0","file:f2"]);
+ assert.deepEqual(composerCards(fillSlotWith(slots,"c","f1"),files).filter(c=>c.type==="file").map(c=>c.type==="file"&&c.attachment.id),["f1","f0","f2"],"a file is shown once even if two cards point at it");
+ assert.deepEqual(composerCards(slots,[{id:"f0"}]).map(c=>c.type==="slot"?c.slot.id:c.attachment.id),["a","c","f0"],"a card whose file is gone is dropped");
+ assert.deepEqual(forgetAttachment(slots,"f1").map(x=>x.id),["a","c"],"removing the file removes its card");
+ // 2 empty cards + 7 files (one of them filling the third card) = 9 < 10: one more fits; then full
+ const r=addSlot(slots,s("d"),7);assert.equal(r.full,false);assert.equal(addSlot(r.slots,s("e"),7).full,true);
 });
