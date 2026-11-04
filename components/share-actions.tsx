@@ -99,7 +99,7 @@ export function ShareActions({file,compact=false,reason}:{file:ShareFile;compact
      </>}
    </div>}
    {message&&<p role="status" className="type-caption text-fg-secondary">{message}</p>}
-   <ol className="list-decimal ps-5 type-body-sm text-fg-primary marker:text-fg-secondary">{GENERIC_STEPS.map(s=><li key={s}>{s}</li>)}</ol>
+   <ol className="list-[persian] ps-5 type-body-sm text-fg-primary marker:text-fg-secondary">{GENERIC_STEPS.map(s=><li key={s}>{s}</li>)}</ol>
    <Button type="button" variant="outline" disabled={blocked} onClick={()=>triggerDownload(file)} aria-label={"دانلود "+tag}><Icon icon={Download} aria-hidden="true"/>دانلود</Button>
    <div className="flex flex-col gap-2">
     <Label htmlFor={fitId+"-caption"}>متن پست (اختیاری)</Label>
