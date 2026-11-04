@@ -1,10 +1,8 @@
 import { recommendMediaModels } from "./router";
 import { assertSafeText } from "./safety";
 import type { AgentPreference, GenerationProposal } from "./types";
-export function createDemoProposal(text:string,preference:AgentPreference="quality"):GenerationProposal{
- const trimmed=text.trim();
- if(!trimmed||trimmed.length>4000) throw new Error("Prompt must be between 1 and 4000 characters.");
- assertSafeText(trimmed);
+/** Shared proposal builder: callers MUST have passed safety first (createDemoProposal and the orchestrator both do). */
+export function buildProposal(trimmed:string,preference:AgentPreference="quality"):GenerationProposal{
  const {kind,ranked,explicit}=recommendMediaModels(trimmed,preference);
  const selected=ranked[0];
  return {
@@ -15,6 +13,12 @@ export function createDemoProposal(text:string,preference:AgentPreference="quali
   requiresApproval:true,quoteMode:"demo",
   message:"مدل پیشنهادی و هزینه نورون آماده است. قبل از تولید، جزئیات را بررسی کنید."
  };
+}
+export function createDemoProposal(text:string,preference:AgentPreference="quality"):GenerationProposal{
+ const trimmed=text.trim();
+ if(!trimmed||trimmed.length>4000) throw new Error("Prompt must be between 1 and 4000 characters.");
+ assertSafeText(trimmed);
+ return buildProposal(trimmed,preference);
 }
 export function selectProposalModel(proposal:GenerationProposal,modelId:string):GenerationProposal{
  const selected=proposal.suggestions.find(x=>x.modelId===modelId);
