@@ -1,0 +1,51 @@
+# Whoush Visual Design & Implementation Contract v1.0
+
+## Immutable product direction
+Whoush is a Persian-first AI image/video creation platform for Iranian audiences. Higgsfield is the planned media execution adapter, subject to written provider authorization and eligibility. The LLMs are private reasoning/prompt agents; users cannot see or choose the LLM. Users can choose eligible image/video generation models. All generation spending is quoted in fixed integer Neurons, while daily USD/IRR exchange rates affect package Neuron issuance, not the catalog SKU Neuron charges. Package prices in toman are rounded; larger packages visibly show bonus Neurons without exposing wholesale costs.
+
+## Visual language
+- Original Whoush interpretation of Runway's clean three-zone creative workspace. Do not copy proprietary logos, assets, layouts pixel-for-pixel, or claim Runway's official design system.
+- Persian (Farsi), RTL-first across app, chat, onboarding, errors, forms, Character Studio, store and marketing. English model names and technical terms use proper bidi isolation.
+- **IRANSans / IRANSansX** for Persian interface, licensed font files to be provided by the owner. Never commit or redistribute unlicensed font binaries. Until licensed assets arrive, use the existing safe fallback stack. Do not silently substitute a different brand font as final.
+- Dark default: #000000 background, electric blue #005BFF primary, accessible layered black/blue surfaces, white/gray type.
+- Light: #FFFFFF background, Google Blue #1A73E8 primary, neutral white/light surfaces, dark legible type.
+- Colors and spacing must use shared CSS variables from `app/design-system.css`. Do not add new purple brand accents. Semantic danger/success colors allowed only for actual status.
+- Base font 16px = 1rem. 8px spacing grid, tokens 8,16,24,32,40,48,64px. Generous whitespace, clean hierarchy, precise grid alignment, no crowded cards.
+- Mobile-first. On narrow viewports, chat/canvas segmented workspace, bottom composer, accessible touch targets at least 44px; larger screens use resizable three-zone workspace, collapsible left navigation and right chat.
+- Minimal animation: 140ms/220ms/340ms, cubic-bezier(.22,1,.36,1), transforms and opacity where possible; smooth scrolling with reduced-motion override. No unnecessary blur, glow or visual noise.
+- Contrast: WCAG AA minimum, 4.5:1 for normal text, 3:1 for large text and UI components. Test both themes, including disabled, hover, focus, error and success.
+- Navigation and user copy: natural colloquial/professional Persian, proofread, consistent punctuation and localized numerals.
+
+## Product IA
+Home / Studio / Character Studio / Projects / Assets / Workflows / Brand Kits / Neuron Store / Settings.
+Studio desktop: left navigation; central generation/preview/artboard/timeline; right conversation, references, model recommendations, typed action proposals and approvals. No public LLM selector.
+Character Studio: step 1 name/description; step 2 real reference photos (front, left/right three-quarter, left/right profile, full body); step 3 consent, save, contact-sheet PNG, use in studio. Reference angles are user-provided, not hallucinated. The browser-local prototype is not yet a server-backed reference library and not connected to media jobs.
+User consent, reference retention, identity and likeness rights, server-side authenticated storage, deletion and provider upload need dedicated implementation.
+
+## Professional skills
+Read `lib/skills.ts` and `lib/advanced-skills.ts`: 22 skills total. Mandatory prompt engineering, art direction, Persian, QA, anti-drift and continuity. Images activate photography; videos activate cinematography, videography and anti-teleport. Photoreal media activates scene-aware hyper-realism, avoiding wax/plastic skin, unwanted grain, excessive glow and unrealistic materials. Character creation triggers multi-view reference skill. Persian lip-sync and Tehrani pronunciation are activated contextually; source accent remains intact unless explicitly changed.
+
+## Claude implementation order and agent allocation
+1. **Haiku, P0**: inspect repo, run npm install, npm test, npm run typecheck and npm run build. Report exact failing steps and narrow repro. No claims of success without CI evidence.
+2. **Sonnet, P0**: repair compile/test failures, consolidate theme tokens, remove hardcoded purple in all pages, check RTL and responsive layout. Preserve existing features and workflows.
+3. **Sonnet, P0**: complete Character Studio (authenticated persistent reference storage, media upload security, consent, identity lock manifest, reference selection in chat and model-compatible Higgsfield adapter). Do not claim working face lock without measured outputs.
+4. **Sonnet, P0**: connect private LLM routing, typed intent and skill compiler to chat; verify provider permissions before connecting real generation.
+5. **Opus, P0**: architecture, content policy and threat-model review, including Iranian colloquial false positives, celebrity/likeness consent, privacy, sanctions/territorial/provider eligibility, FX/Neuron accounting and immutable billing approvals.
+6. **Sonnet, P1**: implement live Neuron packages, daily verified FX with stale-rate circuit breaker, fixed integer Neuron media SKU prices, discount/gift display, idempotent reservations/refunds and transaction logs.
+7. **Haiku, P1**: expand Persian/English skill and moderation regression corpus, test screenshots and accessibility checklists.
+8. **Sonnet, P1**: implement responsive chat/canvas, project assets, job progress, output QA and media lineage; avoid unapproved paid retries.
+9. **Opus, final gate**: review quality, safety, UX, accessibility, cost and release readiness. No deployment until authorized provider terms and production moderation are cleared.
+
+## Launch gates
+- Design parity across dark/light and mobile/desktop.
+- No purple leftover; correct electric/Google blue theme.
+- IRANSans licensed and integrated, or explicit pending-owner status.
+- Every creative LLM turn uses private professional skill compiler.
+- Persian semantic, reference and output moderation active and validated; lexical-only prototype is not enough.
+- Higgsfield and LLM use for Iranian users legally and contractually permitted, with written confirmation.
+- Live billing/FX provider data validated; integer Neurons and fixed per-model SKUs.
+- Real generation, audio and character preservation tested end-to-end.
+- CI tests, typecheck, build, Playwright screenshots and keyboard/screen-reader smoke tests passing.
+
+## Claude kickoff prompt
+Read CLAUDE.md, docs/CLAUDE_HANDOFF.md, docs/CREATIVE_SKILLS.md, docs/MODERATION_POLICY.md, docs/VISUAL_DESIGN_CONTRACT.md and the current feature branch. Start with tests/typecheck/build, then implement the design system and Character Studio end-to-end. Use Haiku for simple tests and documentation, Sonnet for implementation, Opus for architectural and security review. Preserve the Runway-inspired three-zone IA and the Whoush product rules. Persian RTL, IRANSans (licensed assets only), electric blue/black dark mode, Google Blue/white light mode, 8px grid, 16px rem, WCAG AA and reduced-motion support are non-negotiable. Never invent working provider connections or successful QA. Keep all real generation behind explicit eligibility, safety, billing and approval gates.
