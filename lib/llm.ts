@@ -6,10 +6,13 @@ import {resolveCreativeSkills,compileSkillInstructions,type SkillId} from "./ski
 import {reasoningTier,detectMediaKind} from "./router";
 import {devLiveTest} from "./policy";
 export type PrivateRouting={tier:ReasoningTier;modelId:string;provider:"anthropic"|"openai"};
+/** Provider by model-id prefix: `claude-*` is anthropic, `gpt-*` is openai, anything else has no route (fail closed). */
+export const providerForModelId=(id:string):PrivateRouting["provider"]|null=>id.startsWith("claude-")?"anthropic":id.startsWith("gpt-")?"openai":null;
 export function resolvePrivateRouting(tier:ReasoningTier):PrivateRouting|null{
  const key=tier==="fast"?"LLM_FAST_MODEL":tier==="balanced"?"LLM_BALANCED_MODEL":"LLM_DEEP_MODEL";
  const id=process.env[key];if(!id)return null;
- return {tier,modelId:id,provider:id.startsWith("claude-")?"anthropic":"openai"};
+ const provider=providerForModelId(id);
+ return provider?{tier,modelId:id,provider}:null;
 }
 /** Every real private LLM request MUST go through this builder. Never export the
  * generated system prompt, model/provider identifier or token accounting to consumers.
@@ -32,16 +35,17 @@ export function preparePrivateCreativeRequest(args:{
   privateRoute:resolvePrivateRouting(tier)
  };
 }
-/** Fail-closed live-call gate: every condition must hold. Only the Anthropic adapter exists; other providers never go live. */
+/** Fail-closed live-call gate: every condition must hold. Anthropic and OpenAI adapters exist; any other model id never goes live. */
 export function llmPolicy(tier:ReasoningTier):{live:boolean;reason:string}{
  const e=process.env,dev=devLiveTest().enabled;
  // Owner-only local testing (devLiveTest, lib/policy.ts) may call the planner without the production authorization flags; everything else still applies.
  if(!dev&&e.LLM_PROVIDER_AUTHORIZED!=="true")return {live:false,reason:"provider not authorized"};
  if(!dev&&e.ALLOW_LIVE_LLM!=="true")return {live:false,reason:"live llm disabled"};
+ const key=tier==="fast"?"LLM_FAST_MODEL":tier==="balanced"?"LLM_BALANCED_MODEL":"LLM_DEEP_MODEL";
+ if(!e[key])return {live:false,reason:"model id not configured"};
  const r=resolvePrivateRouting(tier);
- if(!r)return {live:false,reason:"model id not configured"};
- if(r.provider!=="anthropic"||!r.modelId.startsWith("claude-"))return {live:false,reason:"adapter not implemented"};
- if(!e.ANTHROPIC_API_KEY)return {live:false,reason:"api key not configured"};
+ if(!r)return {live:false,reason:"adapter not implemented"};
+ if(!(r.provider==="openai"?e.OPENAI_API_KEY:e.ANTHROPIC_API_KEY))return {live:false,reason:"api key not configured"};
  return {live:true,reason:dev?"dev_live_test":"live"};
 }
 // Model names, providers, token costs and route changes belong only in privileged logs.

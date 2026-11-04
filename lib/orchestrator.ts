@@ -199,7 +199,9 @@ function enforce(raw:CreativePlan,req:PlannerRequest):{plan:CreativePlan;correct
 }
 // Customer projection must not echo vendor/model names, skill titles/ids or prompt internals unless the user wrote them.
 const FORBIDDEN=["claude","anthropic","openai","gpt","sonnet","opus","haiku","systeminstructions","reasoningtier","promptsha256",...Object.entries(SKILLS).flatMap(([id,s])=>[s.title.toLowerCase(),...(id.includes("_")?[id]:[])])];
-const leaks=(pub:PublicCreativePlan,userText:string)=>{const j=JSON.stringify(pub).toLowerCase(),u=userText.toLowerCase();return FORBIDDEN.some(t=>j.includes(t)&&!u.includes(t));};
+// Model-family words are only forbidden as standalone Latin tokens (so "solid" or "terrain" never trip it), and only when the user did not type them.
+const FAMILY_WORDS=["sol","astra","luna","terra"].map(w=>new RegExp("(?<![a-z0-9])"+w+"(?![a-z0-9])"));
+const leaks=(pub:PublicCreativePlan,userText:string)=>{const j=JSON.stringify(pub).toLowerCase(),u=userText.toLowerCase();return FORBIDDEN.some(t=>j.includes(t)&&!u.includes(t))||FAMILY_WORDS.some(r=>r.test(j)&&!r.test(u));};
 // ---- private prompt store for the generation phase (bounded, server memory only) ----
 const MAX_PROMPTS=200;
 const store=()=>((globalThis as {__whoushPrompts?:Map<string,string>}).__whoushPrompts??=new Map());
@@ -264,7 +266,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  let planner=deps.planner,label:PrivateAuditRecord["planner"]=planner&&planner!==deterministicPlanner?"live":"deterministic",fallbackReason:string|undefined;
  if(!planner){
   const pol=llmPolicy(prep.privateReasoningTier);
-  if(pol.live&&req.privateRoute){const modelId=req.privateRoute.modelId;label="live";planner=async r=>(await import("./llm-anthropic")).planWithAnthropic(r,modelId);}
+  if(pol.live&&req.privateRoute){const {modelId,provider}=req.privateRoute;label="live";planner=provider==="openai"?async r=>(await import("./llm-openai")).planWithOpenAI(r,modelId):async r=>(await import("./llm-anthropic")).planWithAnthropic(r,modelId);}
   else{planner=deterministicPlanner;fallbackReason=pol.reason;}
  }
  let result:PlannerResult|undefined;

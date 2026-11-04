@@ -9,7 +9,7 @@ import {SKILLS,SKILL_REGISTRY_VERSION,resolveCreativeSkills,compileSkillInstruct
 import {POST} from "../app/api/agent/route";
 import {describeTagEn} from "../lib/attachments";
 
-const ENV_KEYS=["LLM_PROVIDER_AUTHORIZED","ALLOW_LIVE_LLM","LLM_FAST_MODEL","LLM_BALANCED_MODEL","LLM_DEEP_MODEL","ANTHROPIC_API_KEY"];
+const ENV_KEYS=["LLM_PROVIDER_AUTHORIZED","ALLOW_LIVE_LLM","LLM_FAST_MODEL","LLM_BALANCED_MODEL","LLM_DEEP_MODEL","ANTHROPIC_API_KEY","OPENAI_API_KEY"];
 let saved:Record<string,string|undefined>={};
 beforeEach(()=>{saved=Object.fromEntries(ENV_KEYS.map(k=>[k,process.env[k]]));for(const k of ENV_KEYS)delete process.env[k];});
 afterEach(()=>{for(const k of ENV_KEYS){if(saved[k]===undefined)delete process.env[k];else process.env[k]=saved[k];}});
@@ -206,12 +206,13 @@ test("private media prompt is kept server-side, bounded, and absent from public 
  for(let i=0;i<205;i++)defaultAuditSink.record({...last(),turnId:"t"+i});
  assert.ok(readPrivateAuditForTests().length<=200);
 });
-test("llmPolicy is not live by default and fails closed for every missing gate or non-Anthropic provider",()=>{
+test("llmPolicy is not live by default and fails closed for every missing gate or unknown provider",()=>{
  assert.equal(llmPolicy("fast").live,false);assert.equal(llmPolicy("deep").live,false);
  process.env.LLM_PROVIDER_AUTHORIZED="true";assert.equal(llmPolicy("fast").live,false);
  process.env.ALLOW_LIVE_LLM="true";assert.equal(llmPolicy("fast").reason,"model id not configured");
- process.env.LLM_FAST_MODEL="gpt-x";process.env.ANTHROPIC_API_KEY="k";
+ process.env.LLM_FAST_MODEL="mystery-1";process.env.ANTHROPIC_API_KEY="k";process.env.OPENAI_API_KEY="k";
  assert.deepEqual(llmPolicy("fast"),{live:false,reason:"adapter not implemented"});
+ delete process.env.OPENAI_API_KEY;
  process.env.LLM_FAST_MODEL="claude-test";delete process.env.ANTHROPIC_API_KEY;assert.equal(llmPolicy("fast").live,false);
  process.env.ANTHROPIC_API_KEY="k";assert.equal(llmPolicy("fast").live,true);
  delete process.env.ALLOW_LIVE_LLM;assert.equal(llmPolicy("fast").live,false);
