@@ -1,6 +1,7 @@
 "use client";
 import {useEffect,useState,type FormEvent} from "react";
 import Link from "next/link";
+import {ThemeToggle} from "@/components/theme-toggle";
 import type {AgentPreference,GenerationProposal} from "@/lib/types";
 import {getLocalCharacter} from "@/lib/character-store";
 import {characterCoverage,type CharacterProfile} from "@/lib/characters";
@@ -54,7 +55,7 @@ export function Studio(){
     <Link href="/characters" className="nav-item">◎ <span>استودیوی کاراکتر</span></Link>
     <div className="nav-item muted">▦ <span>پروژه‌ها · به‌زودی</span></div>
     <div className="nav-item muted">▤ <span>فایل‌ها · به‌زودی</span></div>
-    <div className="rail-bottom"><span>نسخه آزمایشی</span><span>۰ نورون</span></div>
+    <div className="rail-bottom"><span>نسخه آزمایشی</span><ThemeToggle/><span>۰ نورون</span></div>
   </aside>
   <section className="canvas-panel" dir="rtl">
    <header className="panel-header"><div className="tab-group"><button className={activeTab==="generations"?"tab active":"tab"} onClick={()=>setActiveTab("generations")}>تولیدها</button><button className={activeTab==="cuts"?"tab active":"tab"} onClick={()=>setActiveTab("cuts")}>تدوین</button></div><span className="panel-kicker">STUDIO / DEMO</span></header>
