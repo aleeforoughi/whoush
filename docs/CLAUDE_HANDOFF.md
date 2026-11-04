@@ -56,6 +56,28 @@ Add focused tests and minor Persian RTL accessibility improvements without chang
 Review Whoush security, cost model and API authorization independently. Focus on: Iran regional restrictions and Higgsfield anti-resale, no unauthorized live provider access, no hidden provider keys in client bundles, no unsupported API paths or imaginary estimated pricing, checkout quote tampering, concurrent double-charge/refund, stale FX rates and IRR/toman confusion, model choice override bypassing hard constraints, image/video reference consent and asset access control. Demand proof of production gating. Return severity P0/P1/P2 with precise reproducible test cases. Do not approve launch while any P0 is unresolved.
 ```
 
+## 9a. Specialized professional Skills & Moderation implementation prompts (P0)
+
+### Haiku: low-cost skill library audit (read-only + tests)
+```text
+Read lib/skills.ts, lib/safety.ts, docs/CREATIVE_SKILLS.md and docs/MODERATION_POLICY.md. Inventory each of the 15 expertise skills and activation triggers. Identify missing trigger coverage for Persian colloquial/Farsi orthographic variants, word-boundary issues, ambiguous place names and common benign beauty/fashion/sports requests. Add unit tests only to tests/skills-safety.test.ts, not new runtime policy code. Never assume word-list preflight is sufficient for production. Return reproducible failing and passing test evidence.
+```
+
+### Sonnet: integrate professional skills into live private agent
+```text
+Implement a structured professional creative skills execution layer using the existing SKILLS registry and preparePrivateCreativeRequest entry point. Ensure every genuine creative LLM request receives the mandatory skills prompt; image requests always receive photographic camera/lens/f-stop/shutter/ISO/WB/focus/framing/lighting instructions, video always receives cinematography/videography, edit requests receive source-preserving photo/video editing. Dynamically add Persian culture/geography/social trends/graphic design/copy/audio specialisms. Keep internal LLM identity and skill prompt out of user API responses. Output typed task plan, explicit hard/soft constraints, media-compatible settings and deterministic QA checklist. Never claim image outputs exist before Higgsfield returns verified media. Attach evidence with tests in Persian and English. User-specified settings override proposed defaults, never silently rewrite source metadata. Production requires provider authorization.
+```
+
+### Opus: review content risk / false positives / privacy before launch
+```text
+Independently threat-model Whoush Iran-oriented content moderation under docs/MODERATION_POLICY.md. Product policy: hard political content/person blocks across affiliations; restrictions on nude/sexualized imagery and revealing clothing; ambiguous regional language and normal fashion/culture must not be indiscriminately rejected. Review lexical matching for Unicode, Farsi slang, local idioms, euphemism, implicit political figures, celebrity likenesses, reference media/OCR/ASR, photo/video outputs and prompt injection. Design a provider-agnostic semantic classifier contract and multimodal moderation pipeline with fail-closed behavior, privacy retention, review appeal and measured overblocking. No claim of zero filtering risk. Output P0/P1/P2 findings with metrics and concrete adversarial Persian fixtures. Only enable live providers if human signs off compliance, provider eligibility and legal requirements.
+```
+
+### Sonnet: build moderation pipeline after Opus review
+```text
+Implement the reviewed content safety pipeline in stages: Persian normalization + lexical prefilter (existing) -> semantic text risk classifier -> reference image/video/audio review -> typed planned-operation safety review -> recheck immediately before authorized Higgsfield submission -> output image/video OCR/visual review and refund/release workflow. Hard politics and sexualized imagery block, uncertain content goes to review not live generation. Avoid false positives on colloquial benign Persian, named locations, geography, culture, makeup colors and modest fashion. Tests must include malicious paraphrases, misspellings, English/Persian mixing, model-generated prompt expansion and media references. Explicitly fail closed if any configured checker is unavailable; do not rely on regex alone.
+```
+
 ## 10. Cost optimization rules for Claude Code
 - Cheap mechanical work => Haiku. Clear feature implementation, UI and integration => Sonnet. Nonlinear security/financial architecture, systemic debugging or final review => Opus.
 - Give every worker a bounded task, explicit output artifact, owned files, and acceptance tests. No broad "make it perfect" prompt.
