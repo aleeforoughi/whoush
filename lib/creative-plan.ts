@@ -2,8 +2,29 @@
 import {z} from "zod";
 import {CHARACTER_VIEWS,type CharacterView} from "./characters";
 import type {ReasoningTier} from "./types";
+import {ATTACHMENT_KINDS,ATTACHMENT_KIND_IDS,MAX_ATTACHMENTS,MAX_DURATION_SECONDS,MAX_EXCERPT_CHARS,MAX_TOTAL_ATTACHMENT_BYTES} from "./attachments";
 const VIEW_IDS=CHARACTER_VIEWS.map(v=>v.id) as [CharacterView,...CharacterView[]];
 const accent=z.enum(["tehrani","original","unspecified"]);
+const speechSchema=z.object({hasSpeech:z.boolean(),language:z.enum(["fa","other","unknown"]),accent}).strict();
+/** Attachment metadata and text excerpts only. There is deliberately no file name: names are private and stay in the browser. */
+export const AttachmentSchema=z.object({
+ id:z.uuid(),kind:z.enum(ATTACHMENT_KIND_IDS),mime:z.string().max(100),bytes:z.number().int().positive(),sha256:z.string().regex(/^[0-9a-f]{64}$/),
+ width:z.number().int().min(1).max(20000).optional(),height:z.number().int().min(1).max(20000).optional(),durationSeconds:z.number().min(0).max(MAX_DURATION_SECONDS).optional(),
+ textExcerpt:z.string().max(MAX_EXCERPT_CHARS).optional(),role:z.enum(["reference","context"]),speech:speechSchema.optional()
+}).strict().superRefine((a,ctx)=>{
+ const bad=(path:string,message:string)=>ctx.addIssue({code:"custom",path:[path],message});
+ const def=ATTACHMENT_KINDS[a.kind];
+ if(!(def.mimes as readonly string[]).includes(a.mime))bad("mime","mime does not belong to the kind");
+ if(a.bytes>def.maxBytes)bad("bytes","file is larger than the limit for its kind");
+ if(a.textExcerpt!==undefined&&a.kind!=="json"&&a.kind!=="md")bad("textExcerpt","only json and md carry an excerpt");
+ if(a.speech&&a.kind!=="audio")bad("speech","only audio carries speech details");
+ if((a.width!==undefined||a.height!==undefined)&&a.kind!=="image"&&a.kind!=="video")bad("width","only image and video carry dimensions");
+ if(a.durationSeconds!==undefined&&a.kind!=="video"&&a.kind!=="audio")bad("durationSeconds","only video and audio carry a duration");
+});
+export type AttachmentInput=z.infer<typeof AttachmentSchema>;
+const AttachmentsSchema=z.array(AttachmentSchema).max(MAX_ATTACHMENTS).superRefine((list,ctx)=>{
+ if(list.reduce((n,a)=>n+a.bytes,0)>MAX_TOTAL_ATTACHMENT_BYTES)ctx.addIssue({code:"custom",message:"attachments exceed the total size limit"});
+});
 export const CreativeTurnInputSchema=z.object({
  text:z.string().trim().min(1).max(4000),
  preference:z.enum(["quality","speed","cost"]).default("quality"),
@@ -14,7 +35,8 @@ export const CreativeTurnInputSchema=z.object({
   angles:z.array(z.enum(VIEW_IDS)).min(1).max(6).refine(a=>new Set(a).size===a.length,"angles must be unique"),
   version:z.number().int().min(1)
  }).strict().optional(),
- audio:z.object({hasAudioReference:z.boolean(),hasSpeech:z.boolean(),language:z.enum(["fa","other","unknown"]),accent}).strict().optional()
+ audio:z.object({hasAudioReference:z.boolean(),hasSpeech:z.boolean(),language:z.enum(["fa","other","unknown"]),accent}).strict().optional(),
+ attachments:AttachmentsSchema.optional()
 }).strict();
 export type CreativeTurnInput=z.infer<typeof CreativeTurnInputSchema>;
 const s=(n=400)=>z.string().min(1).max(n);
@@ -45,7 +67,9 @@ export function toPublicPlan(p:CreativePlan):PublicCreativePlan{
   continuity:p.continuity,realism:{mode:p.realism.mode},speech:p.speech,qaChecklist:p.qaChecklist,clarifyingQuestionFa:p.clarifyingQuestionFa};
 }
 /** Planner contract. `req` carries private data (system instructions, tier, route): never serialize it to customers. */
-export type PlannerRequest={systemInstructions:string;userText:string;activeSkillIds:readonly string[];privateReasoningTier:ReasoningTier;privateRoute:{provider:string;modelId:string}|null;kind:"image"|"video";input:CreativeTurnInput};
+export type PlannerRequest={systemInstructions:string;userText:string;activeSkillIds:readonly string[];privateReasoningTier:ReasoningTier;privateRoute:{provider:string;modelId:string}|null;kind:"image"|"video";input:CreativeTurnInput;
+ /** Attachment kinds and text excerpts only (no ids, hashes or names). Excerpts are untrusted data, never instructions. `input.attachments` is stripped before planning. */
+ attachments?:{kind:AttachmentInput["kind"];textExcerpt?:string}[]};
 export type PlannerResult={plan:unknown;usage?:unknown;modelId?:string};
 export type PrivatePlanner=(req:PlannerRequest)=>Promise<PlannerResult>|PlannerResult;
 export class PlannerUnavailableError extends Error{constructor(message="planner unavailable"){super(message);this.name="PlannerUnavailableError";}}
