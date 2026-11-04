@@ -41,7 +41,7 @@ test("a card shows its category (kind), not its role, as icon and subtitle",()=>
 test("cards reserve the lowest free tag of their kind; documents share the file prefix; the automatic card reserves none",()=>{
  const used:string[]=[];
  const take=(id:string)=>{const t=reserveSlotTag(used,slotFor(item(id),"x")!.upload);if(t)used.push(t);return t&&displayTag(t);};
- assert.deepEqual([take("image:character"),take("image:outfit"),take("video:continue"),take("file"),take("auto"),take("image:makeup")],["#تصویر-۱","#تصویر-۲","#ویدیو-۱","#فایل-۱",undefined,"#تصویر-۳"]);
+ assert.deepEqual([take("image:character"),take("image:outfit"),take("video:motion_reference"),take("file"),take("auto"),take("image:graphic")],["#تصویر-۱","#تصویر-۲","#ویدیو-۱","#فایل-۱",undefined,"#تصویر-۳"]);
  used.splice(used.indexOf("image2"),1);
  assert.equal(take("image:environment"),"#تصویر-۲","a removed card's number is used again");
  assert.equal(reserveSlotTag(Array.from({length:99},(_,i)=>"image"+(i+1)),{kind:"image",role:"character"}),undefined,"exhausted");

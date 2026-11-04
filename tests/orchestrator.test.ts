@@ -657,7 +657,9 @@ test("roles: media may have no role at the route, but old, internal and mismatch
  const post=(a:unknown)=>POST(new Request("http://x/api/agent",{method:"POST",body:JSON.stringify({text:LAKE,attachments:[a]})}));
  for(const kind of ["image","video","audio"])assert.notEqual((await post(att(kind,{role:undefined}))).status,400,kind+" without a role is valid");
  for(const [kind,role] of [["image","general"],["video","general"],["audio","general"]])assert.equal((await post(att(kind,{role}))).status,400,"general is internal: "+kind);
- for(const role of ["reference","context"])assert.equal((await post(att("image",{role}))).status,400,role);
+ for(const role of ["context","other"])assert.equal((await post(att("image",{role}))).status,400,role);
+ for(const [kind,role] of [["image","reference"],["video","reference"],["image","frame"],["image","start_frame"],["video","continue"]])assert.notEqual((await post(att(kind,{role}))).status,400,kind+":"+role+" is valid");
+ assert.equal((await post(att("video",{role:"frame"}))).status,400,"frame is an image role");
  assert.equal((await post(att("md",{role:"object"}))).status,400,"files have no role");
  assert.equal((await post(att("md",{tag:"image1"}))).status,400,"tag prefix must match the kind");
  assert.equal((await post({...att("image"),tag:"image0"})).status,400);assert.equal((await post({...att("image"),tag:"image100"})).status,400);
@@ -802,7 +804,7 @@ test("curated roles: continue makes a video that continues from the last frame",
 });
 test("curated roles: outfit, hairstyle and makeup add their constraints, count as reference images and get no model suggestion",async()=>{
  const want:Array<[string,string,string,string[]]>=[
-  ["outfit","لباس و کفش","لباس و کفش #تصویر-۱ (طرح، رنگ، جنس و برش) روی سوژه اعمال می‌شود؛ چهره و بدن مدلِ عکس مرجع کپی نمی‌شود",["پوشش مطابق سیاست محتوای هووش، پوشیده و غیرتحریک‌آمیز"]],
+  ["outfit","پوشاک","پوشاک #تصویر-۱ (طرح، رنگ، جنس و برش) روی سوژه اعمال می‌شود؛ چهره و بدن مدلِ عکس مرجع کپی نمی‌شود",["پوشش مطابق سیاست محتوای هووش، پوشیده و غیرتحریک‌آمیز"]],
   ["hairstyle","پیرایش","مدل مو و فرم ریش و سبیل #تصویر-۱ (در صورت وجود) اعمال می‌شود؛ چهره، رنگ پوست و هویت سوژه تغییر نمی‌کند",[]],
   ["makeup","آرایش","آرایش #تصویر-۱ (رنگ‌ها و شدت) اعمال می‌شود؛ بافت طبیعی پوست حفظ می‌شود و پوست پلاستیکی یا صاف‌شده نمی‌شود",[]]
  ];
@@ -888,4 +890,11 @@ test("style: a character reference in a stylized look keeps its identity recogni
  const dropper:PrivatePlanner=r=>{const p=deterministicPlanner(r).plan;return {plan:{...p,hardConstraints:p.hardConstraints.filter(h=>h!==IDENT),realism:{...p.realism,directives:["x"]}}};};
  const fixed=planOf(await orchestrateCreativeTurn({text:"a girl in a garden",characterRef:ref,style:"cartoon"},{planner:dropper}));
  assert.ok(fixed.plan.hardConstraints.includes(IDENT));assert.ok(last().corrections?.includes("style_directives"));
+});
+test("owner role list: a chosen reference or frame reaches the planner as a concrete role",async()=>{
+ const edit=await orchestrateCreativeTurn({text:"پس‌زمینه #تصویر-۱ رو عوض کن",attachments:[att("image",{role:"reference"})]});
+ assert.ok(skillsOf().includes("photo_editor"),"a reference the brief asks to change makes the turn an edit");void edit;
+ const frame=await orchestrateCreativeTurn({text:"یک ویدیو آرام از #تصویر-۱",attachments:[att("image",{role:"frame"})]});
+ const p=(frame as {plan?:{mediaKind:string;references:{labelFa:string}[]}}).plan!;
+ assert.equal(p.mediaKind,"video","a frame makes the output a video");assert.equal(p.references[0].labelFa,"فریم اول");
 });

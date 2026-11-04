@@ -2,7 +2,7 @@
 import {faPlain} from "./format";
 import {normalizePersian} from "./safety";
 export type AttachmentKind="image"|"video"|"audio"|"pdf"|"json"|"md";
-export type AttachmentRole="character"|"start_frame"|"end_frame"|"environment"|"object"|"outfit"|"hairstyle"|"makeup"|"graphic"|"edit_reference"|"motion_reference"|"continue"|"lip_sync"|"music"|"voice_clone"|"general";
+export type AttachmentRole="reference"|"frame"|"character"|"start_frame"|"end_frame"|"environment"|"object"|"outfit"|"hairstyle"|"makeup"|"graphic"|"edit_reference"|"motion_reference"|"continue"|"lip_sync"|"music"|"voice_clone"|"general";
 export type AttachmentSpeech={hasSpeech:boolean;language:"fa"|"other"|"unknown";accent:"tehrani"|"original"|"unspecified"};
 const MB=1024*1024;
 export const ATTACHMENT_KINDS={
@@ -26,24 +26,24 @@ type RoleDef={id:AttachmentRole;labelFa:string;hintFa:string;en:string};
  * The roles the UI offers per media kind, in menu order (most used first): English ids on the wire, Persian labels and one-line hints in the UI. Files (pdf, json, md) have no role.
  * Choosing a role is OPTIONAL: without one, Whoush infers it from the brief (`inferAttachmentRoles`). `en` is the provider-facing phrase used when a mention is rewritten for the media prompt.
  * `general` is an internal inferred role only. `voice_clone` is NOT offered anywhere in the UI; the server still accepts it (with consent) only to refuse it, see `WIRE_ONLY_ROLES`.
+ * Owner list of 2026-11-05. Two roles are categories that Whoush narrows from the brief (`resolveChosenRole`), so the planner always sees a concrete role:
+ * `reference` (عکس رفرنس / فیلم رفرنس) becomes the edit source when the brief asks to change it (a video: to continue it), otherwise a general reference;
+ * `frame` (فریم) becomes the start or the end frame (the brief decides; two frames without a hint are first and last).
  */
 export const ATTACHMENT_ROLES={
  image:[
+  {id:"reference",labelFa:"عکس رفرنس",hintFa:"ظاهر، سبک یا محتوا؛ هووش از متنت می‌فهمه",en:"image reference"},
   {id:"character",labelFa:"کاراکتر",hintFa:"چهره و هویت ثابت می‌مونه",en:"character"},
-  {id:"start_frame",labelFa:"فریم اول",hintFa:"همین عکس متحرک می‌شه",en:"start frame"},
-  {id:"end_frame",labelFa:"فریم آخر",hintFa:"ویدیو به همین عکس ختم می‌شه",en:"end frame"},
+  {id:"hairstyle",labelFa:"پیرایش",hintFa:"مدل مو و فرم ریش",en:"hairstyle and beard reference"},
+  {id:"outfit",labelFa:"پوشاک",hintFa:"لباس، کفش و استایل پوشش روی سوژه",en:"outfit reference"},
   {id:"environment",labelFa:"محیط",hintFa:"فضا، پس‌زمینه و نور",en:"environment"},
   {id:"object",labelFa:"اشیا",hintFa:"شیء، محصول یا اکسسوری دقیق می‌مونه",en:"object"},
-  {id:"outfit",labelFa:"لباس و کفش",hintFa:"لباس، کفش و استایل پوشش روی سوژه",en:"outfit reference"},
-  {id:"hairstyle",labelFa:"پیرایش",hintFa:"مدل مو و فرم ریش",en:"hairstyle and beard reference"},
-  {id:"makeup",labelFa:"آرایش",hintFa:"آرایش صورت با همین رنگ‌ها",en:"makeup reference"},
-  {id:"graphic",labelFa:"لوگو و گرافیک",hintFa:"لوگو، متن یا طرح بدون تغییر",en:"graphic"},
-  {id:"edit_reference",labelFa:"ادیت عکس",hintFa:"فقط همون بخشی که می‌گی عوض می‌شه",en:"edit reference"}
+  {id:"graphic",labelFa:"گرافیک",hintFa:"لوگو، متن یا طرح بدون تغییر",en:"graphic"},
+  {id:"frame",labelFa:"فریم",hintFa:"فریم اول یا آخر ویدیو؛ از متنت مشخص می‌شه",en:"video frame"}
  ],
  video:[
-  {id:"motion_reference",labelFa:"الگوی حرکت",hintFa:"حرکت و ریتم این ویدیو با ظاهر جدید",en:"motion reference"},
-  {id:"edit_reference",labelFa:"ادیت ویدیو",hintFa:"همین ویدیو با تغییری که می‌خوای",en:"edit reference"},
-  {id:"continue",labelFa:"امتداد ویدیو",hintFa:"از آخر همین ویدیو امتداد پیدا می‌کنه",en:"video to continue"}
+  {id:"reference",labelFa:"فیلم رفرنس",hintFa:"ادیت، امتداد یا حال‌وهوای همین ویدیو؛ از متنت مشخص می‌شه",en:"video reference"},
+  {id:"motion_reference",labelFa:"الگوی حرکت",hintFa:"حرکت و ریتم این ویدیو با ظاهر جدید",en:"motion reference"}
  ],
  audio:[
   {id:"lip_sync",labelFa:"الگوی گفتار",hintFa:"لب‌ها با این صدا هم‌زمان می‌شن",en:"lip sync"},
@@ -54,10 +54,26 @@ export const ATTACHMENT_ROLES={
 export const FILE_MENU_FA={labelFa:"فایل",hintFa:"PDF، JSON یا Markdown برای زمینه"} as const;
 /** Roles the wire accepts but the UI never offers. `voice_clone` needs `consent: true` and always ends in an `unsupported` result (`voice_clone_unsupported`). */
 const WIRE_ONLY_ROLES={audio:[{id:"voice_clone",labelFa:"کلون صدا",hintFa:"",en:"voice reference"}]} as const satisfies Partial<Record<"image"|"video"|"audio",readonly RoleDef[]>>;
-export const ATTACHMENT_ROLE_IDS=["character","start_frame","end_frame","environment","object","outfit","hairstyle","makeup","graphic","edit_reference","motion_reference","continue","lip_sync","music","voice_clone"] as const satisfies readonly AttachmentRole[];
+/**
+ * Concrete roles that are no longer in the menu but stay valid: Whoush resolves and infers them, the planner and skills use them, older projects and API clients
+ * may still send them, and sent messages keep showing their labels.
+ */
+const RESOLVED_ROLES={
+ image:[
+  {id:"start_frame",labelFa:"فریم اول",hintFa:"همین عکس متحرک می‌شه",en:"start frame"},
+  {id:"end_frame",labelFa:"فریم آخر",hintFa:"ویدیو به همین عکس ختم می‌شه",en:"end frame"},
+  {id:"edit_reference",labelFa:"ادیت عکس",hintFa:"فقط همون بخشی که می‌گی عوض می‌شه",en:"edit reference"},
+  {id:"makeup",labelFa:"آرایش",hintFa:"آرایش صورت با همین رنگ‌ها",en:"makeup reference"}
+ ],
+ video:[
+  {id:"edit_reference",labelFa:"ادیت ویدیو",hintFa:"همین ویدیو با تغییری که می‌خوای",en:"edit reference"},
+  {id:"continue",labelFa:"امتداد ویدیو",hintFa:"از آخر همین ویدیو امتداد پیدا می‌کنه",en:"video to continue"}
+ ]
+} as const satisfies Partial<Record<"image"|"video"|"audio",readonly RoleDef[]>>;
+export const ATTACHMENT_ROLE_IDS=["reference","frame","character","start_frame","end_frame","environment","object","outfit","hairstyle","makeup","graphic","edit_reference","motion_reference","continue","lip_sync","music","voice_clone"] as const satisfies readonly AttachmentRole[];
 /** The roles a kind may carry and the UI offers (never `general`, never `voice_clone`); empty for files. */
 export const rolesFor=(kind:AttachmentKind):readonly RoleDef[]=>isMediaKind(kind)?ATTACHMENT_ROLES[kind as "image"|"video"|"audio"]:[];
-const wireRolesFor=(kind:AttachmentKind):readonly RoleDef[]=>kind==="audio"?[...ATTACHMENT_ROLES.audio,...WIRE_ONLY_ROLES.audio]:rolesFor(kind);
+const wireRolesFor=(kind:AttachmentKind):readonly RoleDef[]=>kind==="audio"?[...ATTACHMENT_ROLES.audio,...WIRE_ONLY_ROLES.audio]:kind==="image"||kind==="video"?[...rolesFor(kind),...RESOLVED_ROLES[kind]]:[];
 export const GENERAL_ROLE_LABEL_FA="مرجع کلی";
 /** The Persian label of a role. `edit_reference` reads «ادیت عکس» or «ادیت ویدیو» by kind; without a kind the image label is used. */
 export function roleLabelFa(role:AttachmentRole,kind?:AttachmentKind):string{
@@ -199,7 +215,7 @@ const wordsRe=(l:readonly string[])=>new RegExp("(?<![\\p{L}\\p{N}])(?:"+l.map(w
 const INFER_RULES={
  image:[
   ["edit_reference",wordsRe(["ویرایش","ادیت","حذف کن","پاک کن","جایگزین","عوض کن","تغییر بده","رتوش","edit","remove","replace","retouch"])],
-  ["end_frame",wordsRe(["فریم آخر","آخر ویدیو","تهش","پایان ویدیو","ختم بشه به","برسه","برسد","تمام بشه","end frame","last frame","ending"])],
+  ["end_frame",wordsRe(["فریم آخر","آخر ویدیو","تهش","پایان ویدیو","ختم بشه به","ختم بشه","ختم شود","ختم شه","تموم بشه","برسه","برسد","تمام بشه","end frame","last frame","ending"])],
   ["start_frame",wordsRe(["شروع کن","شروع کن از","شروع از","شروع بشه","start from","starts from","متحرکش کن","زنده‌اش کن","جون بده","انیمیت","متحرک کن","تبدیل به ویدیو","animate","bring to life","make it move"])],
   ["outfit",wordsRe(["لباس","مانتو","کت","شلوار","پیراهن","دامن","کفش","پوشش","ست لباس","استایل لباس","outfit","dress","clothes","wardrobe"])],
   ["hairstyle",wordsRe(["مدل مو","مو","رنگ مو","کوتاهی مو","ریش","سبیل","فرم ریش","پیرایش","اصلاح","hairstyle","haircut","hair","beard","moustache","grooming"])],
@@ -245,13 +261,45 @@ function mentionContext(text:string,tag:string):string|undefined{
  */
 export function inferAttachmentRoles(text:string,attachments:readonly {tag:string;kind:AttachmentKind;role?:AttachmentRole}[]):InferredRole[]{
  const whole=normalizePersian(withoutMentions(text));
+ const wordsFor=(tag:string)=>{const ctx=mentionContext(text,tag);return {words:ctx===undefined?whole:normalizePersian(ctx),mentioned:ctx!==undefined};};
+ const frames=attachments.filter(a=>a.kind==="image"&&a.role==="frame");
+ const framed=resolveFrames(frames.map(f=>({tag:f.tag,...wordsFor(f.tag)})),frames.length);
  return attachments.flatMap((a):InferredRole[]=>{
   if(!isMediaKind(a.kind))return [];
+  if(a.role==="frame"&&a.kind==="image")return [{tag:a.tag,role:framed.get(a.tag)??"start_frame",roleSource:"user"}];
+  if(a.role==="reference")return [{tag:a.tag,role:resolveReference(a.kind,wordsFor(a.tag).words),roleSource:"user"}];
   if(a.role)return [{tag:a.tag,role:a.role,roleSource:"user"}];
-  const ctx=mentionContext(text,a.tag),words=ctx===undefined?whole:normalizePersian(ctx);
+  const {words}=wordsFor(a.tag);
   const hit=INFER_RULES[a.kind as "image"|"video"|"audio"].find(([,re])=>re.test(words));
   return [{tag:a.tag,role:hit?hit[0]:"general",roleSource:"inferred"}];
  });
+}
+const ruleFor=(kind:"image"|"video",role:AttachmentRole)=>INFER_RULES[kind].find(([r])=>r===role)![1];
+/** «عکس رفرنس» / «فیلم رفرنس»: the edit source when the brief asks to change it, a video to continue when it asks to extend it, otherwise a general reference. */
+function resolveReference(kind:AttachmentKind,words:string):AttachmentRole{
+ if(kind!=="image"&&kind!=="video")return "general";
+ if(ruleFor(kind,"edit_reference").test(words))return "edit_reference";
+ if(kind==="video"&&ruleFor("video","continue").test(words))return "continue";
+ return "general";
+}
+/**
+ * «فریم»: the end frame when the words around its mention say so (فریم آخر، ختم بشه به…), the start frame when they say so; with several frames and no hint,
+ * the first is the start frame and the next the end frame. A single unmentioned frame reads the whole brief; otherwise it is the start frame.
+ */
+function resolveFrames(frames:readonly {tag:string;words:string;mentioned:boolean}[],count:number):Map<string,AttachmentRole>{
+ const out=new Map<string,AttachmentRole>(),open:string[]=[];
+ for(const f of frames){
+  const hinted=f.mentioned||count===1;
+  if(hinted&&ruleFor("image","end_frame").test(f.words))out.set(f.tag,"end_frame");
+  else if(hinted&&ruleFor("image","start_frame").test(f.words))out.set(f.tag,"start_frame");
+  else open.push(f.tag);
+ }
+ const taken=new Set(out.values());
+ for(const tag of open){
+  const role:AttachmentRole=!taken.has("start_frame")?"start_frame":!taken.has("end_frame")?"end_frame":"start_frame";
+  out.set(tag,role);taken.add(role);
+ }
+ return out;
 }
 const EXT_MIMES:Record<string,readonly string[]>={
  jpg:["image/jpeg"],jpeg:["image/jpeg"],png:["image/png"],webp:["image/webp"],

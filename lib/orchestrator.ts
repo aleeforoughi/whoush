@@ -72,10 +72,13 @@ const tagMap=(l:readonly Ref[]=[])=>new Map(l.map(a=>[a.tag,a]));
 function roleRule(kind:AttachmentKind,role:AttachmentRole,tag:string):{hard?:Pair;soft?:Pair;lock?:Pair}{
  const at="@"+tag,fa=displayTag(tag);
  switch(role){
+  // `reference` and `frame` are resolved from the brief in inferAttachmentRoles before planning; these fallbacks only guard a caller that skips that step.
+  case "reference":return roleRule(kind,"general",tag);
+  case "frame":return roleRule(kind,"start_frame",tag);
   case "character":return {hard:P(at+": preserve facial identity, hair, skin tone and body proportions exactly as in the reference",fa+": هویت چهره، مو، رنگ پوست و تناسب بدن مطابق مرجع حفظ شود")};
   case "start_frame":return {hard:P(at+": this image is the first frame of the video; its composition, subject and lighting are the starting point",fa+" فریم اول ویدیوست؛ ترکیب‌بندی، سوژه و نور همین عکس نقطهٔ شروع است")};
   case "end_frame":return {hard:P(at+": this image is the last frame of the video; the video ends on its composition, subject and lighting",fa+" فریم آخر ویدیوست؛ ویدیو با همین ترکیب‌بندی، سوژه و نور تمام می‌شود")};
-  case "outfit":return {hard:P(at+": apply this outfit (design, color, fabric and cut) to the subject; do not copy the face or body of the model in the outfit photo","لباس و کفش "+fa+" (طرح، رنگ، جنس و برش) روی سوژه اعمال می‌شود؛ چهره و بدن مدلِ عکس مرجع کپی نمی‌شود"),
+  case "outfit":return {hard:P(at+": apply this outfit (design, color, fabric and cut) to the subject; do not copy the face or body of the model in the outfit photo","پوشاک "+fa+" (طرح، رنگ، جنس و برش) روی سوژه اعمال می‌شود؛ چهره و بدن مدلِ عکس مرجع کپی نمی‌شود"),
    soft:P("Clothing stays modest and non-provocative, in line with the content policy","پوشش مطابق سیاست محتوای هووش، پوشیده و غیرتحریک‌آمیز")};
   case "hairstyle":return {hard:P(at+": apply the hairstyle and, where present, the beard and moustache shape; the subject's face, skin tone and identity do not change","مدل مو و فرم ریش و سبیل "+fa+" (در صورت وجود) اعمال می‌شود؛ چهره، رنگ پوست و هویت سوژه تغییر نمی‌کند")};
   case "makeup":return {hard:P(at+": apply this makeup (colors and intensity); keep natural skin texture, never plastic or over-smoothed skin","آرایش "+fa+" (رنگ‌ها و شدت) اعمال می‌شود؛ بافت طبیعی پوست حفظ می‌شود و پوست پلاستیکی یا صاف‌شده نمی‌شود")};

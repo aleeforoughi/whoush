@@ -1,10 +1,10 @@
 "use client";
 import {useId,useMemo,useRef,useState,type KeyboardEvent} from "react";
-import {Brush,Clapperboard,FastForward,FileText,Flag,Mountain,Move,Music,Package,PencilLine,Play,Plus,Scissors,Search,Shapes,Shirt,Sparkles,UserRound,Users,AudioLines,type LucideIcon} from "lucide-react";
+import {Brush,Clapperboard,FastForward,FileText,Film,Flag,Frame,Images,Mountain,Move,Music,Package,PencilLine,Play,Plus,Scissors,Search,Shapes,Shirt,Sparkles,UserRound,Users,AudioLines,type LucideIcon} from "lucide-react";
 import {Button,Icon,Input,Popover,PopoverContent,PopoverTrigger,ScrollArea} from "@aleeforoughi/feather-react";
 import {filterInsertMenu,visibleInsertMenu,type InsertIconKey,type InsertItem} from "@/lib/insert-menu";
 
-export const INSERT_ICONS:Record<InsertIconKey,LucideIcon>={auto:Sparkles,character:UserRound,characters:Users,start_frame:Play,end_frame:Flag,environment:Mountain,object:Package,outfit:Shirt,hairstyle:Scissors,makeup:Brush,graphic:Shapes,edit_image:PencilLine,motion:Move,edit_video:Clapperboard,continue:FastForward,speech:AudioLines,music:Music,document:FileText};
+export const INSERT_ICONS:Record<InsertIconKey,LucideIcon>={auto:Sparkles,reference_image:Images,reference_video:Film,frame:Frame,character:UserRound,characters:Users,start_frame:Play,end_frame:Flag,environment:Mountain,object:Package,outfit:Shirt,hairstyle:Scissors,makeup:Brush,graphic:Shapes,edit_image:PencilLine,motion:Move,edit_video:Clapperboard,continue:FastForward,speech:AudioLines,music:Music,document:FileText};
 export const SEARCH_PLACEHOLDER_FA="جستجو…";
 export const NO_RESULTS_FA="گزینه‌ای پیدا نشد";
 
