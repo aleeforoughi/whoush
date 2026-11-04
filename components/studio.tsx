@@ -20,7 +20,7 @@ export function Studio(){
   setMessages(m=>[...m,{role:"user",text}]);
   try{
    const r=await fetch("/api/agent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,preference})});
-   if(!r.ok)throw new Error("خطا در آماده‌سازی پیشنهاد");
+   if(!r.ok){const errorBody=await r.json().catch(()=>({}));throw new Error(typeof errorBody.message==="string"?errorBody.message:"خطا در آماده‌سازی پیشنهاد");}
    const data=await r.json() as GenerationProposal;
    setProposal(data);setSelected(data.selectedModelId);setPreview("در انتظار تأیید تولید");
    setMessages(m=>[...m,{role:"agent",text:data.message}]);
