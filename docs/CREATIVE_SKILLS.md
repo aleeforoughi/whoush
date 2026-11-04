@@ -1,4 +1,6 @@
-# Whoush Professional Creative Skills v1.0.0
+# Whoush Professional Creative Skills v1.1.0
+
+**Status (P2):** all 22 skills (15 base in `lib/skills.ts` + 7 in `lib/advanced-skills.ts`) now drive a private, typed orchestration layer used by `/api/agent`: `lib/orchestrator.ts` (safety -> `preparePrivateCreativeRequest` -> planner -> invariants -> plan inspection -> proposal), `lib/creative-plan.ts` (zod contracts, public projection), `lib/private-audit.ts` (hash-only audit) and `lib/llm-anthropic.ts` (live adapter). Live planning is off by default and fail-closed (`llmPolicy` in `lib/llm.ts`: needs `LLM_PROVIDER_AUTHORIZED=true`, `ALLOW_LIVE_LLM=true`, a configured `claude-*` model id and key); otherwise a deterministic, no-network planner is used. Camera/shot fields are proposed creative direction, not EXIF or verified provider controls. The registry version is `SKILL_REGISTRY_VERSION` in `lib/skills.ts`.
 Owner requirements: permanent knowledge modules for auto-routed *private* LLMs; all creative output belongs to Higgsfield media models, never to the reasoning LLM. Users do not choose or see reasoning model names.
 Skills source of truth: `lib/skills.ts`. Safety: `lib/safety.ts`, `docs/MODERATION_POLICY.md`.
 This is a reusable skill instruction library, not retrained model weights or a searchable retrieval database. The latter must be implemented separately for reference-heavy knowledge and trends.
