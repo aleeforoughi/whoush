@@ -10,3 +10,6 @@ coverage/
 # Licensed IRANSans font binaries: kept locally, never committed to this public repo (see public/fonts/iransans/README.md).
 public/fonts/iransans/*
 !public/fonts/iransans/README.md
+
+# Planner evaluation outputs (scripts/planner-eval.ts)
+evals/planner/results/
