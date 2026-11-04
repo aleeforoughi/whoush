@@ -1,18 +1,17 @@
 "use client";
 import {Fragment} from "react";
-import {Box,Brush,Camera,Clapperboard,Smile,FastForward,FileText,Flag,Film,Mountain,Move,Music,Package,PencilLine,Play,Plus,Scissors,Shapes,Shirt,Sparkles,UserRound,Users,AudioLines,type LucideIcon} from "lucide-react";
-import {Button,DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuLabel,DropdownMenuRadioGroup,DropdownMenuRadioItem,DropdownMenuSeparator,DropdownMenuTrigger,Icon,ScrollArea} from "@aleeforoughi/feather-react";
+import {Brush,Clapperboard,FastForward,FileText,Flag,Film,Mountain,Move,Music,Package,PencilLine,Play,Plus,Scissors,Shapes,Shirt,Sparkles,UserRound,Users,AudioLines,type LucideIcon} from "lucide-react";
+import {Button,DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuLabel,DropdownMenuSeparator,DropdownMenuTrigger,Icon,ScrollArea} from "@aleeforoughi/feather-react";
 import {INSERT_MENU,type InsertAction,type InsertIconKey} from "@/lib/insert-menu";
-import type {GenerationStyle} from "@/lib/creative-plan";
 
-const ICONS:Record<InsertIconKey,LucideIcon>={auto:Sparkles,character:UserRound,characters:Users,start_frame:Play,end_frame:Flag,environment:Mountain,object:Package,outfit:Shirt,hairstyle:Scissors,makeup:Brush,graphic:Shapes,edit_image:PencilLine,motion:Move,edit_video:Clapperboard,continue:FastForward,speech:AudioLines,music:Music,document:FileText,style_realistic:Camera,style_three_d:Box,style_cartoon:Smile};
+const ICONS:Record<InsertIconKey,LucideIcon>={auto:Sparkles,character:UserRound,characters:Users,start_frame:Play,end_frame:Flag,environment:Mountain,object:Package,outfit:Shirt,hairstyle:Scissors,makeup:Brush,graphic:Shapes,edit_image:PencilLine,motion:Move,edit_video:Clapperboard,continue:FastForward,speech:AudioLines,music:Music,document:FileText};
 
 /**
- * The «+» insert menu (Notion style): one entry to upload with an automatic role, then a group per kind. Each role entry opens the file picker for that kind and
+ * The «+» insert menu (Notion style): «پرکاربردترین» first (upload with an automatic role and the most used roles), then a group per kind. Each role entry opens the file picker for that kind and
  * the files get that role; «کاراکترهای من» opens the saved-character dialog. Built from `INSERT_MENU`, so the roles here are exactly the role table.
  * It opens upwards (the composer sits at the bottom), stays inside the viewport and scrolls.
  */
-export function InsertMenu({disabled,onPick,style}:{disabled?:boolean;onPick:(action:InsertAction)=>void;/** The style chosen for this message; its entry shows a check mark. */style?:GenerationStyle}){
+export function InsertMenu({disabled,onPick}:{disabled?:boolean;onPick:(action:InsertAction)=>void}){
  return <DropdownMenu>
   <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon" aria-label="افزودن پیوست یا مرجع" aria-haspopup="menu" disabled={disabled}/>}>
    <Icon icon={Plus} aria-hidden="true"/>
@@ -22,8 +21,8 @@ export function InsertMenu({disabled,onPick,style}:{disabled?:boolean;onPick:(ac
     <div className="p-1">
      {INSERT_MENU.map((g,gi)=><Fragment key={g.id}>
       {gi>0&&<DropdownMenuSeparator/>}
-      {g.upload?<DropdownMenuGroup>
-       {g.labelFa&&<DropdownMenuLabel>{g.labelFa}</DropdownMenuLabel>}
+      <DropdownMenuGroup>
+       <DropdownMenuLabel>{g.labelFa}</DropdownMenuLabel>
        {g.items.map(i=><DropdownMenuItem key={i.id} onClick={()=>onPick(i.action)} className="items-start py-2">
         <Icon icon={ICONS[i.icon]} aria-hidden="true" className="mt-0.5"/>
         <span className="flex min-w-0 flex-1 flex-col text-start">
@@ -32,18 +31,6 @@ export function InsertMenu({disabled,onPick,style}:{disabled?:boolean;onPick:(ac
         </span>
        </DropdownMenuItem>)}
       </DropdownMenuGroup>
-      :<DropdownMenuGroup>
-       <DropdownMenuLabel>{g.labelFa}</DropdownMenuLabel>
-       <DropdownMenuRadioGroup value={style??""}>
-        {g.items.map(i=>i.action.type==="style"&&<DropdownMenuRadioItem key={i.id} value={i.action.style} closeOnClick onClick={()=>onPick(i.action)} className="items-start py-2">
-         <Icon icon={ICONS[i.icon]} aria-hidden="true" className="mt-0.5"/>
-         <span className="flex min-w-0 flex-1 flex-col text-start">
-          <span className="type-label">{i.titleFa}</span>
-          <span className="type-caption text-fg-secondary">{i.hintFa}</span>
-         </span>
-        </DropdownMenuRadioItem>)}
-       </DropdownMenuRadioGroup>
-      </DropdownMenuGroup>}
      </Fragment>)}
     </div>
    </ScrollArea>

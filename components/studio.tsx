@@ -10,6 +10,7 @@ import {NoModelCard,ProposalCard} from "@/components/proposal-card";
 import {CharacterDialog} from "@/components/character-dialog";
 import {InsertMenu} from "@/components/insert-menu";
 import {ModeControl,useMode} from "@/components/mode-control";
+import {StyleControl,useStyleSetting} from "@/components/style-control";
 import {AttachmentChip,AttachmentPreview,type AttachmentPatch} from "@/components/attachment-chip";
 import {MentionTextarea} from "@/components/mention-textarea";
 import {MessageText} from "@/components/message-text";
@@ -22,7 +23,6 @@ import {fa} from "@/lib/format";
 import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,acceptFor,allocateTag,insertMention,newTagCounters,parseMentions,tooManyFa,toWireAttachment,validateAttachmentSet,withRole,withoutRole,type AttachmentKind,type AttachmentRole,type LocalAttachment} from "@/lib/attachments";
 import {readAttachment} from "@/lib/attachment-files";
 import type {InsertAction} from "@/lib/insert-menu";
-import {STYLE_LABEL_FA,type GenerationStyle} from "@/lib/creative-plan";
 
 type TranscriptItem={role:"user"|"agent";text:string;attachments?:LocalAttachment[]};
 type StudioView="chat"|"canvas";
@@ -47,8 +47,8 @@ export function Studio(){
  const [noModel,setNoModel]=useState<NoModelResult|null>(null);
  const [restricted,setRestricted]=useState("");
  const [charactersOpen,setCharactersOpen]=useState(false);
- /** The visual style chosen in the + menu for the next message (one at a time); cleared after send and on a new chat, never persisted. */
- const [style,setStyle]=useState<GenerationStyle|null>(null);
+ /** «سبک» beside the build mode: a remembered setting (null is «خودکار»). */
+ const [style,setStyle]=useStyleSetting();
  const [mode,setMode]=useMode();
  const [selected,setSelected]=useState("");
  const [busy,setBusy]=useState(false);
@@ -154,7 +154,6 @@ export function Studio(){
  /** A + menu entry: open the file picker for that kind (or the saved-character dialog). The picker is one hidden input whose `accept` follows the entry. */
  function pickInsert(action:InsertAction){
   if(action.type==="characters"){setCharactersOpen(true);return;}
-  if(action.type==="style"){setStyle(action.style);return;}
   const el=fileInput.current;if(!el)return;
   pendingUpload.current=action.type==="auto"?undefined:action.type==="file"?{kind:"file"}:{kind:action.kind,role:action.role};
   el.accept=action.type==="auto"?ATTACHMENT_ACCEPT:acceptFor(action.type==="file"?"file":action.kind);
@@ -170,7 +169,7 @@ export function Studio(){
  }
  function newChat(){
   urls.current.forEach(u=>URL.revokeObjectURL(u));urls.current.clear();
-  setAttachments([]);setProblems([]);setAnnounce("");setPreviewing(null);setStyle(null);tagCounters.current=newTagCounters();
+  setAttachments([]);setProblems([]);setAnnounce("");setPreviewing(null);tagCounters.current=newTagCounters();
   setMessages([{role:"agent",text:opening}]);setProposal(null);setNoModel(null);setRestricted("");setJob(null);
   setPreview(idlePreview);setError("");setDraft("");
  }
@@ -194,7 +193,7 @@ export function Studio(){
   }
   // The tray clears, but the files stay (with their object URLs) on the sent message; they are released on new chat or unmount.
   const sent=attachments;
-  setDraft("");setError("");setStyle(null);setRestricted("");setBusy(true);setProposal(null);setNoModel(null);setAttachments([]);setProblems([]);setAnnounce("");
+  setDraft("");setError("");setRestricted("");setBusy(true);setProposal(null);setNoModel(null);setAttachments([]);setProblems([]);setAnnounce("");
   setMessages(m=>[...m,{role:"user",text,...(sent.length?{attachments:sent}:{})}]);
   const characterRef=current?{id:current.id,name:current.name,angles:characterCoverage(current.references).uploaded,version:current.version}:undefined;
   try{
@@ -342,20 +341,19 @@ export function Studio(){
     {/* The chip tray and the composer scroll together under the chat, so on a short screen the prompt and the send button stay reachable. */}
     <div className="flex max-h-[64dvh] min-h-0 shrink-0 flex-col overflow-y-auto border-t border-line-tertiary bg-surface-base">
     <form ref={formRef} onSubmit={e=>void send(e)} className="flex shrink-0 flex-col gap-3 bg-surface-base p-4">
-     {style&&<div className="flex items-center gap-1">
-      <Badge variant="secondary">سبک: {STYLE_LABEL_FA[style]}</Badge>
-      <Button type="button" variant="ghost" size="icon" aria-label="حذف سبک" onClick={()=>setStyle(null)}><Icon icon={X} aria-hidden="true"/></Button>
-     </div>}
      <AttachmentTray items={attachments} problems={problems} reading={reading} onChange={patchAttachment} onRemove={removeAttachment} onPreview={setPreviewing} onMention={mentionTag} onDismiss={key=>setProblems(list=>list.filter(p=>p.key!==key))}/>
      <input ref={fileInput} type="file" multiple hidden accept={ATTACHMENT_ACCEPT} data-testid="attachment-input" onChange={e=>{const files=Array.from(e.target.files??[]),upload=pendingUpload.current;pendingUpload.current=undefined;e.target.value="";void addFiles(files,upload);}}/>
      <Label className="sr-only" htmlFor="whoush-prompt">توضیح تصویر یا ویدیو</Label>
      <MentionTextarea id="whoush-prompt" inputRef={promptRef} value={draft} onValueChange={setDraft} options={conversation} onPaste={onPaste} placeholder="چی دوست داری بسازیم؟ با # به پیوست‌ها اشاره کن" rows={3} maxLength={4000} className="max-h-40 resize-none"
       onSubmitShortcut={()=>{if(draft.trim()&&!busy&&!reading)formRef.current?.requestSubmit();}}
-      startAction={<InsertMenu disabled={reading} onPick={pickInsert} style={style??undefined}/>}
+      startAction={<InsertMenu disabled={reading} onPick={pickInsert}/>}
       endAction={<Button type="submit" size="icon" disabled={busy||reading||!draft.trim()} aria-busy={busy||undefined} aria-label={busy?"در حال ارسال…":"ارسال"}>
        <Icon icon={busy?LoaderCircle:ArrowUp} aria-hidden="true" className={busy?"animate-spin motion-reduce:animate-none":undefined}/>
       </Button>}/>
-     <ModeControl value={mode} onChange={setMode} notify={Boolean(proposal)}/>
+     <div className="flex flex-wrap items-start gap-2">
+      <ModeControl value={mode} onChange={setMode} notify={Boolean(proposal)}/>
+      <StyleControl value={style} onChange={setStyle}/>
+     </div>
     </form>
     </div>
    </section>
