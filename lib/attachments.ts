@@ -1,6 +1,7 @@
 /** Chat attachment contract: kinds, limits, magic-byte sniffing and wire shape. Pure; safe in the browser and on the server. */
 import {faPlain} from "./format";
 import {normalizePersian} from "./safety";
+import type {SlotId} from "./reference-slots";
 export type AttachmentKind="image"|"video"|"audio"|"pdf"|"json"|"md";
 export type AttachmentRole="character"|"environment"|"object"|"graphic"|"edit_reference"|"motion_reference"|"lip_sync"|"music"|"voice_clone"|"general";
 export type AttachmentSpeech={hasSpeech:boolean;language:"fa"|"other"|"unknown";accent:"tehrani"|"original"|"unspecified"};
@@ -302,6 +303,7 @@ export function validateAttachmentSet(list:readonly {bytes:number}[]):{ok:true}|
 export type LocalAttachment={
  id:string;tag:string;kind:AttachmentKind;mime:string;bytes:number;sha256:string;name:string;role?:AttachmentRole;consent?:boolean;
  width?:number;height?:number;durationSeconds?:number;textExcerpt?:string;speech?:AttachmentSpeech;previewUrl?:string;
+ /** The reference slot card the file was added through (browser only, never sent). */slot?:SlotId;
 };
 /** Goes back to "Whoush picks automatically": no role, and no speech details or consent that belonged to one. */
 export function withoutRole(a:LocalAttachment):LocalAttachment{
