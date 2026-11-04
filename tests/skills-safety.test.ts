@@ -1,6 +1,6 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {normalizePersian,evaluateTextSafety,assertSafeText,ContentPolicyError} from "../lib/safety";
+import {normalizePersian,evaluateTextSafety,evaluatePlanTextSafety,assertSafeText,ContentPolicyError} from "../lib/safety";
 import {SKILLS,resolveCreativeSkills,compileSkillInstructions} from "../lib/skills";
 import {createDemoProposal} from "../lib/agent";
 
@@ -90,4 +90,16 @@ test("core skill registry is complete",()=>{
  for(const [id,skill] of Object.entries(SKILLS)){
   assert.ok(skill.title&&skill.objective&&skill.checks.length,id);
  }
+});
+
+test("plan text: negated generic categories are compliance, named figures and explicit terms still block",()=>{
+ // Seen live: planners obeying the no-politics rule wrote these and were blocked by the lexical scan.
+ for(const t of ["Wide eye-level photograph of Enghelab Square in central Tehran on a calm spring morning, no political banners or slogans visible",
+  "هیچ تابلوی سیاسی یا نماد سیاسی قابل خواندن نباشد.","هیچ شعار، بنر، پرچم سیاسی یا چهره سیاسی در تصویر نباشد","بدون هیچ نماد سیاسی",
+  "Enghelab (Revolution) Square at sunrise","modest evening dress, nothing revealing, no lingerie","پوشش کامل و بدون لباس بدن نما"])
+  assert.equal(evaluatePlanTextSafety(t).decision,"allow",t);
+ for(const t of ["no political banners, a portrait of Khamenei","a political rally poster","پوستر سیاسی برای انتخابات","protest crowd with no police","bikini model on the beach","تصویر عریان","election campaign poster without logos"])
+  assert.notEqual(evaluatePlanTextSafety(t).decision,"allow",t);
+ // User input keeps the strict check: the exemption is for planner output only.
+ assert.equal(evaluateTextSafety("no political banners").decision,"block");
 });

@@ -7,7 +7,7 @@ import {getPrivateMediaPrompt} from "./orchestrator";
 import {evaluateOutputQA,type OutputQA} from "./output-qa";
 import {claimDevSubmit,devGenerationGate,generationGate,type GenerationMode} from "./policy";
 import {verifyQuote,verifyQuoteSignature,QuoteError,type CharacterRefDigest} from "./quotes";
-import {evaluateTextSafety} from "./safety";
+import {evaluatePlanTextSafety} from "./safety";
 export type JobState="quoted"|"approved"|"reserved"|"submitted"|"running"|"completed"|"completed_demo"|"failed"|"canceled"|"released";
 export const JOB_TRANSITIONS:Readonly<Record<JobState,readonly JobState[]>>={
  quoted:["approved"],approved:["reserved","released"],reserved:["submitted","released"],
@@ -42,7 +42,7 @@ export function transition(j:Job,to:JobState,now:Date):void{
 /** Pre-submission recheck for demo mode: lexical preflight only, labeled as such. Live mode requires a production moderator (source "production"). */
 export function moderateAtExecution(token:string):Moderation{
  const prompt=getPrivateMediaPrompt(verifyQuoteSignature(token).quote.turnId);
- return {decision:prompt===undefined?"block":evaluateTextSafety(prompt).decision,source:"lexical_demo"};
+ return {decision:prompt===undefined?"block":evaluatePlanTextSafety(prompt).decision,source:"lexical_demo"}; // the media prompt is planner text
 }
 export async function executeApprovedQuote(i:{token:string;approved:boolean;idempotencyKey:string;ownerId:string;moderation:Moderation},deps:JobDeps={}):Promise<Job>{
  const store=deps.store??dStore(),ledger=deps.ledger??dLedger(),now=deps.now?.()??new Date();

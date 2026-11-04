@@ -64,6 +64,32 @@ export function evaluateTextSafety(raw:string):SafetyResult {
   return {decision:"review",category:"sensitive_language",message:"این عبارت نیاز به بررسی معنایی دارد. لطفاً منظورت را دقیق‌تر و بدون عبارت توهین‌آمیز توضیح بده."};
  return {decision:"allow",category:"none",message:""};
 }
+/**
+ * Planner output only (plan inspection), never user input. Planners follow Whoush's own policy by writing avoidance lines such as
+ * "no political banners" or «هیچ نماد سیاسی نباشد»; a plain lexical scan then blocked benign turns (seen live on «میدان انقلاب»). Here a GENERIC
+ * category word is ignored when a negation sits within a few words of it; named political figures and every explicit term are never neutralized,
+ * so "no political banners, show <figure>" still blocks. Enghelab/Revolution Square and Enghelab Street are places (docs/MODERATION_POLICY.md).
+ */
+const NEUTRALIZABLE=["political","politics","propaganda","protest","protests","election","elections","سیاسی","سیاست","تبلیغات سیاسی","شعار سیاسی","تظاهرات","اعتراضات","انتخابات",
+ "nude","nudity","naked","revealing","lingerie","bikini","seductive","erotic","sexy","برهنه","نیمه برهنه","لخت","عریان","سکسی","تحریک آمیز","بدن نما","لباس بدن نما","لباس شفاف","لباس زیر","بیکینی"];
+const NEGATE_BEFORE=new Set(["no","not","without","avoid","avoiding","avoids","never","nor","exclude","excluding","free","بدون","هیچ","نه","نباید","پرهیز","اجتناب","عاری","فاقد"]);
+const NEGATE_AFTER=new Set(["نباشد","نباشند","نشود","نشوند","ممنوع","نیست","نیستند","نمی","نداشته","ندارد"]);
+const PLACE_NAMES=["enghelab square","revolution square","enghelab street","enghelab avenue","میدان انقلاب","خیابان انقلاب"];
+const WINDOW=4;
+export function neutralizeNegatedCategories(raw:string):string{
+ let text=" "+normalizePersian(raw)+" ";
+ for(const place of PLACE_NAMES)text=text.replaceAll(" "+normalizePersian(place)+" "," place ");
+ const tokens=text.trim().split(" ").filter(Boolean);
+ const terms=NEUTRALIZABLE.map(t=>normalizePersian(t).split(" ")).sort((a,b)=>b.length-a.length);
+ for(let i=0;i<tokens.length;i++){
+  const term=terms.find(t=>t.every((w,k)=>tokens[i+k]===w));if(!term)continue;
+  const before=tokens.slice(Math.max(0,i-WINDOW),i),after=tokens.slice(i+term.length,i+term.length+WINDOW);
+  if(before.some(w=>NEGATE_BEFORE.has(w))||after.some(w=>NEGATE_AFTER.has(w)||w.startsWith("نمی")))for(let k=0;k<term.length;k++)tokens[i+k]="x";
+ }
+ return tokens.join(" ");
+}
+/** The safety check for planner-written text (media prompt, hard constraints): negated generic categories and place names are not violations. */
+export function evaluatePlanTextSafety(raw:string):SafetyResult{return evaluateTextSafety(neutralizeNegatedCategories(raw));}
 export class ContentPolicyError extends Error{
  readonly code="content_restricted";
  constructor(readonly result:SafetyResult){super(result.message);this.name="ContentPolicyError";}
