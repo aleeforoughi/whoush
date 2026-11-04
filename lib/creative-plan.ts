@@ -2,13 +2,14 @@
 import {z} from "zod";
 import {CHARACTER_VIEWS,type CharacterView} from "./characters";
 import type {ReasoningTier} from "./types";
-import {ATTACHMENT_KINDS,ATTACHMENT_KIND_IDS,ATTACHMENT_ROLE_IDS,MAX_ATTACHMENTS,MAX_DURATION_SECONDS,MAX_EXCERPT_CHARS,MAX_TOTAL_ATTACHMENT_BYTES,TAG_PATTERN,isMediaKind,roleAllowed,tagPrefix,type AttachmentKind,type AttachmentRole} from "./attachments";
+import {ATTACHMENT_KINDS,ATTACHMENT_KIND_IDS,ATTACHMENT_ROLE_IDS,MAX_ATTACHMENTS,MAX_DURATION_SECONDS,MAX_EXCERPT_CHARS,MAX_TOTAL_ATTACHMENT_BYTES,TAG_PATTERN,isMediaKind,roleAllowed,tagPrefix,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
 const VIEW_IDS=CHARACTER_VIEWS.map(v=>v.id) as [CharacterView,...CharacterView[]];
 const accent=z.enum(["tehrani","original","unspecified"]);
 const speechSchema=z.object({hasSpeech:z.boolean(),language:z.enum(["fa","other","unknown"]),accent}).strict();
 /**
  * Attachment metadata and text excerpts only. There is deliberately no file name: names are private and stay in the browser.
- * Media (image, video, audio) must carry a role valid for its kind; files (pdf, json, md) carry none. `voice_clone` requires `consent: true`.
+ * A role is OPTIONAL for media (image, video, audio): without one the orchestrator infers it (`inferAttachmentRoles`). A role the client sends must be valid for the kind
+ * and is never `general`; files (pdf, json, md) carry none. `voice_clone` requires `consent: true` and is never inferred.
  */
 export const AttachmentSchema=z.object({
  id:z.uuid(),tag:z.string().regex(TAG_PATTERN),kind:z.enum(ATTACHMENT_KIND_IDS),mime:z.string().max(100),bytes:z.number().int().positive(),sha256:z.string().regex(/^[0-9a-f]{64}$/),
@@ -22,8 +23,7 @@ export const AttachmentSchema=z.object({
  if(a.textExcerpt!==undefined&&a.kind!=="json"&&a.kind!=="md")bad("textExcerpt","only json and md carry an excerpt");
  if(!a.tag.startsWith(tagPrefix(a.kind)))bad("tag","tag prefix does not match the kind");
  if(isMediaKind(a.kind)){
-  if(!a.role)bad("role","media needs a role");
-  else if(!roleAllowed(a.kind,a.role))bad("role","role does not belong to the kind");
+  if(a.role&&!roleAllowed(a.kind,a.role))bad("role","role does not belong to the kind");
  }else if(a.role)bad("role","files carry no role");
  if(a.role==="voice_clone"&&a.consent!==true)bad("consent","voice_clone needs consent: true");
  if(a.consent!==undefined&&a.role!=="voice_clone")bad("consent","only voice_clone carries consent");
@@ -68,7 +68,8 @@ export const CreativePlanSchema=z.object({
 });
 export type CreativePlan=z.infer<typeof CreativePlanSchema>;
 /** Whitelisted customer projection; never carries skills, tier, model/provider, usage or mediaPrompt. */
-export type PublicReference={tag:string;kind:AttachmentKind;role:AttachmentRole;labelFa:string};
+/** `labelFa` is the role label; `roleSource` says whether the user chose the role or Whoush inferred it. The UI adds the «انتخاب هووش» suffix for `inferred`. */
+export type PublicReference={tag:string;kind:AttachmentKind;role:AttachmentRole;roleSource:RoleSource;labelFa:string};
 export type PublicCreativePlan=Pick<CreativePlan,"intentSummaryFa"|"mediaKind"|"hardConstraints"|"softPreferences"|"camera"|"shot"|"continuity"|"speech"|"qaChecklist"|"clarifyingQuestionFa">&{
  identityLock?:Pick<NonNullable<CreativePlan["identityLock"]>,"characterId"|"providedAngles"|"lockedAttributes"|"allowedChanges">;realism:{mode:CreativePlan["realism"]["mode"]};
  /** The media attachments the plan uses, by tag and role. Never ids, hashes or file names. */
@@ -76,14 +77,14 @@ export type PublicCreativePlan=Pick<CreativePlan,"intentSummaryFa"|"mediaKind"|"
 };
 export function toPublicPlan(p:CreativePlan,references:readonly PublicReference[]=[]):PublicCreativePlan{
  const il=p.identityLock;
- return {references:references.map(r=>({tag:r.tag,kind:r.kind,role:r.role,labelFa:r.labelFa})),intentSummaryFa:p.intentSummaryFa,mediaKind:p.mediaKind,hardConstraints:p.hardConstraints,softPreferences:p.softPreferences,camera:p.camera,shot:p.shot,
+ return {references:references.map(r=>({tag:r.tag,kind:r.kind,role:r.role,roleSource:r.roleSource,labelFa:r.labelFa})),intentSummaryFa:p.intentSummaryFa,mediaKind:p.mediaKind,hardConstraints:p.hardConstraints,softPreferences:p.softPreferences,camera:p.camera,shot:p.shot,
   identityLock:il&&{characterId:il.characterId,providedAngles:il.providedAngles,lockedAttributes:il.lockedAttributes,allowedChanges:il.allowedChanges},
   continuity:p.continuity,realism:{mode:p.realism.mode},speech:p.speech,qaChecklist:p.qaChecklist,clarifyingQuestionFa:p.clarifyingQuestionFa};
 }
 /** Planner contract. `req` carries private data (system instructions, tier, route): never serialize it to customers. */
 export type PlannerRequest={systemInstructions:string;userText:string;activeSkillIds:readonly string[];privateReasoningTier:ReasoningTier;privateRoute:{provider:string;modelId:string}|null;kind:"image"|"video";input:CreativeTurnInput;
- /** Tag, kind, role and text excerpts only (no ids, hashes or names). Excerpts are untrusted data, never instructions. `input.attachments` is stripped before planning. */
- attachments?:{tag:string;kind:AttachmentInput["kind"];role?:AttachmentInput["role"];textExcerpt?:string}[]};
+ /** Tag, kind, role (chosen or inferred, with its source) and text excerpts only (no ids, hashes or names). Excerpts are untrusted data, never instructions. `input.attachments` is stripped before planning. */
+ attachments?:{tag:string;kind:AttachmentInput["kind"];role?:AttachmentRole;roleSource?:RoleSource;textExcerpt?:string}[]};
 export type PlannerResult={plan:unknown;usage?:unknown;modelId?:string};
 export type PrivatePlanner=(req:PlannerRequest)=>Promise<PlannerResult>|PlannerResult;
 export class PlannerUnavailableError extends Error{constructor(message="planner unavailable"){super(message);this.name="PlannerUnavailableError";}}

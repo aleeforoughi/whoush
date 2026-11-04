@@ -433,7 +433,7 @@ test("attachments: the audit keeps only tag, role, kind, size and sha256",async(
  planned(await orchestrateCreativeTurn({text:"a photo of a lake",attachments:[doc,att("pdf")]}));
  assert.deepEqual(last().attachments,[{tag:"file1",kind:"md",bytes:2048,sha256:"d".repeat(64)},{tag:"file3",kind:"pdf",bytes:2048,sha256:"c".repeat(64)}]);
  const all=JSON.stringify(readPrivateAuditForTests());assert.ok(!all.includes("secret distinctive")&&!all.includes(String(doc.id)));
- await orchestrateCreativeTurn({text:"a photo of a lake",attachments:[att("image")]});assert.deepEqual(last().attachments,[{tag:"image1",role:"character",kind:"image",bytes:2048,sha256:"c".repeat(64)}]);
+ await orchestrateCreativeTurn({text:"a photo of a lake",attachments:[att("image")]});assert.deepEqual(last().attachments,[{tag:"image1",role:"character",roleSource:"user",kind:"image",bytes:2048,sha256:"c".repeat(64)}]);
  await orchestrateCreativeTurn({text:"a photo of a river"});assert.equal(last().attachments,undefined);
 });
 test("attachments: every image counts as a reference image, video and audio roles raise their own requirements",()=>{
@@ -501,7 +501,7 @@ test("mentions: the provider-facing prompt describes attachments in English, the
  // the planner sees tags and roles (no ids, hashes or names); the deterministic planner rewrites the same way
  assert.deepEqual(req.attachments,[{tag:"file1",kind:"md",textExcerpt:"# notes"},{tag:"file3",kind:"pdf"}]);
  const media=await seenBy("draw @image1 in the style of @video1",[att("image",{role:"object"}),att("video",{role:"motion_reference"})]);
- assert.deepEqual(media.req.attachments,[{tag:"image1",kind:"image",role:"object"},{tag:"video1",kind:"video",role:"motion_reference"}]);
+ assert.deepEqual(media.req.attachments,[{tag:"image1",kind:"image",role:"object",roleSource:"user"},{tag:"video1",kind:"video",role:"motion_reference",roleSource:"user"}]);
  const mp=deterministicPlanner(media.req).plan.mediaPrompt;
  assert.ok(mp.startsWith("draw [reference image 1 · object] in the style of [motion reference video 1]"),mp);assert.ok(!mp.includes("@image1")&&!mp.includes("@video1"));
  assert.ok(mp.includes("[reference image 1 · object]: keep the object's shape")&&mp.includes("[motion reference video 1]: follow the path"),mp);
@@ -566,7 +566,7 @@ test("roles: image character brings character_creation and anti_drift, a Persian
  const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("image",{role:"character"})]}));
  assert.ok(skillsOf().includes("character_creation")&&skillsOf().includes("anti_drift"));
  assert.ok(r.plan.hardConstraints.includes(CONSTRAINT.character),JSON.stringify(r.plan.hardConstraints));
- assert.deepEqual(r.plan.references,[{tag:"image1",kind:"image",role:"character",labelFa:"کاراکتر"}]);
+ assert.deepEqual(r.plan.references,[{tag:"image1",kind:"image",role:"character",roleSource:"user",labelFa:"کاراکتر"}]);
  assert.equal(last().fallbackReason,"media_review_unavailable");
  // other image roles do not
  for(const role of ["environment","object","graphic","edit_reference"]){await orchestrateCreativeTurn({text:LAKE,attachments:[att("image",{role})]});assert.ok(!skillsOf().includes("character_creation"),role);}
@@ -597,7 +597,7 @@ test("roles: video edit_reference makes a video edit with video_editor and prese
  const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("video",{role:"edit_reference"})]}));
  assert.equal(r.plan.mediaKind,"video","a video attachment overrides an image-sounding text");assert.ok(r.plan.shot&&!r.plan.camera);
  assert.ok(skillsOf().includes("video_editor")&&skillsOf().includes("cinematographer")&&skillsOf().includes("videographer")&&skillsOf().includes("anti_teleport")&&!skillsOf().includes("photo_editor"));
- assert.ok(r.plan.hardConstraints.includes(CONSTRAINT.videoEdit));assert.deepEqual(r.plan.references,[{tag:"video1",kind:"video",role:"edit_reference",labelFa:"مرجع ادیت"}]);
+ assert.ok(r.plan.hardConstraints.includes(CONSTRAINT.videoEdit));assert.deepEqual(r.plan.references,[{tag:"video1",kind:"video",role:"edit_reference",roleSource:"user",labelFa:"مرجع ادیت"}]);
 });
 test("roles: video motion_reference makes the output a video and follows motion, not appearance",async()=>{
  const r=unsupported(await orchestrateCreativeTurn({text:"a photo of a dancer",attachments:[att("video",{role:"motion_reference"})]}));
@@ -620,7 +620,7 @@ test("roles: audio lip_sync makes a video, implies speech, and activates Tehrani
  await orchestrateCreativeTurn({text,attachments:[att("audio",{role:"lip_sync",speech:speech("other","unspecified")})]});assert.ok(!skillsOf().includes("tehrani_accent"));
  await orchestrateCreativeTurn({text,attachments:[att("audio",{role:"lip_sync",speech:speech("unknown","tehrani")})]});assert.ok(skillsOf().includes("tehrani_accent"),"an explicit Tehrani choice");
  assert.equal(last().fallbackReason,"media_review_unavailable");
- assert.deepEqual(base.plan.references,[{tag:"audio1",kind:"audio",role:"lip_sync",labelFa:"الگوی حرکت لب"}]);
+ assert.deepEqual(base.plan.references,[{tag:"audio1",kind:"audio",role:"lip_sync",roleSource:"user",labelFa:"الگوی حرکت لب"}]);
 });
 test("roles: audio music brings audiographer and a soft rhythm preference, with no lip sync and no generated music",async()=>{
  const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("audio",{role:"music"})]}));
@@ -642,7 +642,7 @@ test("roles: voice_clone needs consent at the route (400) and is never supported
  const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[ok]}));
  assert.equal(r.message,MESSAGE);assert.equal(last().fallbackReason,"voice_clone_unsupported");assert.equal(last().turnId,r.turnId);
  assert.equal(getPrivateMediaPrompt(r.turnId),undefined);assert.ok(r.plan.intentSummaryFa);
- assert.deepEqual(last().attachments,[{tag:"audio1",role:"voice_clone",kind:"audio",bytes:2048,sha256:"c".repeat(64)}]);
+ assert.deepEqual(last().attachments,[{tag:"audio1",role:"voice_clone",roleSource:"user",kind:"audio",bytes:2048,sha256:"c".repeat(64)}]);
  const res=await post(ok);assert.equal(res.status,422);const j=await res.json();assert.equal(j.error,"no_compatible_model");assert.equal(j.message,MESSAGE);assertNoLeak(JSON.stringify(j),"voice clone");
  // voice_clone outranks media review, and safety outranks both
  const withImage=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("image"),ok]}));
@@ -650,9 +650,10 @@ test("roles: voice_clone needs consent at the route (400) and is never supported
  const blocked=await orchestrateCreativeTurn({text:"campaign poster for President Trump",attachments:[ok]});assert.equal(blocked.status,"restricted");
  const textOnly=planned(await orchestrateCreativeTurn({text:LAKE,attachments:[att("md")]}));assert.ok(textOnly.proposal.fixedNeurons>0);
 });
-test("roles: media without a role, and the old reference/context roles, are invalid at the route",async()=>{
+test("roles: media may have no role at the route, but old, internal and mismatched roles are invalid",async()=>{
  const post=(a:unknown)=>POST(new Request("http://x/api/agent",{method:"POST",body:JSON.stringify({text:LAKE,attachments:[a]})}));
- for(const kind of ["image","video","audio"])assert.equal((await post(att(kind,{role:undefined}))).status,400,kind+" without a role");
+ for(const kind of ["image","video","audio"])assert.notEqual((await post(att(kind,{role:undefined}))).status,400,kind+" without a role is valid");
+ for(const [kind,role] of [["image","general"],["video","general"],["audio","general"]])assert.equal((await post(att(kind,{role}))).status,400,"general is internal: "+kind);
  for(const role of ["reference","context"])assert.equal((await post(att("image",{role}))).status,400,role);
  assert.equal((await post(att("md",{role:"object"}))).status,400,"files have no role");
  assert.equal((await post(att("md",{tag:"image1"}))).status,400,"tag prefix must match the kind");
@@ -661,6 +662,59 @@ test("roles: media without a role, and the old reference/context roles, are inva
  const ten=Array.from({length:10},(_,i)=>att("image",{tag:"image"+(i+1)}));
  assert.equal(CreativeTurnInputSchema.safeParse({text:LAKE,attachments:ten}).success,true);
  assert.equal(CreativeTurnInputSchema.safeParse({text:LAKE,attachments:[...ten,att("md")]}).success,false,"at most 10 attachments");
+});
+test("inferred roles: an unmentioned role is guessed from the brief and drives the same skills, constraints and audit as a chosen one",async()=>{
+ const noRole=(kind:string,over:Record<string,unknown>={})=>att(kind,{role:undefined,...over});
+ // "face" is not one of the text triggers of character_creation, so the skill comes from the inferred role
+ const r=unsupported(await orchestrateCreativeTurn({text:"keep the face of #تصویر-۱ and put it in a garden",attachments:[noRole("image")]}));
+ assert.ok(skillsOf().includes("character_creation")&&skillsOf().includes("anti_drift"),skillsOf().join());
+ assert.deepEqual(last().attachments,[{tag:"image1",role:"character",roleSource:"inferred",kind:"image",bytes:2048,sha256:"c".repeat(64)}]);
+ assert.deepEqual(r.plan.references,[{tag:"image1",kind:"image",role:"character",roleSource:"inferred",labelFa:"کاراکتر"}]);
+ assert.ok(r.plan.hardConstraints.includes(CONSTRAINT.character));assertNoLeak(JSON.stringify(r),"inferred character");
+ // the planner sees the role and where it came from
+ const seen=await seenBy("keep the face of #تصویر-۱",[noRole("image")]);
+ assert.deepEqual(seen.req.attachments,[{tag:"image1",kind:"image",role:"character",roleSource:"inferred"}]);
+ assert.ok(deterministicPlanner(seen.req).plan.mediaPrompt.startsWith("keep the face of [reference image 1 · character]"));
+ // an inferred edit_reference is recorded (photo_editor also follows from the word itself), an inferred lip_sync makes a video with unknown language, so Tehrani never comes from inference alone
+ await orchestrateCreativeTurn({text:"remove the car from #تصویر-۱",attachments:[noRole("image")]});assert.ok(skillsOf().includes("photo_editor"));assert.equal(last().attachments?.[0].role,"edit_reference");
+ await orchestrateCreativeTurn({text:"a woman, #صدا-۱ is her speech",attachments:[noRole("audio")]});
+ assert.ok(skillsOf().includes("persian_lip_sync_phonetics")&&!skillsOf().includes("tehrani_accent"),skillsOf().join());
+ assert.deepEqual(last().attachments?.map(a=>[a.role,a.roleSource]),[["lip_sync","inferred"]]);
+ // an unmentioned attachment uses the whole text
+ await orchestrateCreativeTurn({text:"a street scene with a person walking",attachments:[noRole("image")]});assert.equal(last().attachments?.[0].role,"character");
+});
+test("inferred roles: general is a loose reference with its own Persian constraint and never lip sync, Tehrani or voice clone",async()=>{
+ const noRole=(kind:string)=>att(kind,{role:undefined});
+ const GENERAL_IMAGE="#تصویر-۱ به‌عنوان مرجع کلی سبک و ترکیب‌بندی استفاده می‌شود؛ هویت یا جزئیات آن کپی نمی‌شود مگر خواسته شود";
+ const img=unsupported(await orchestrateCreativeTurn({text:"a calm lake in the style of #تصویر-۱",attachments:[noRole("image")]}));
+ assert.deepEqual(img.plan.references,[{tag:"image1",kind:"image",role:"general",roleSource:"inferred",labelFa:"مرجع کلی"}]);
+ assert.ok(img.plan.hardConstraints.includes(GENERAL_IMAGE),img.plan.hardConstraints.join("|"));
+ const seen=await seenBy("a calm lake in the style of #تصویر-۱",[noRole("image")]);
+ const mp=deterministicPlanner(seen.req).plan.mediaPrompt;assert.ok(mp.includes("[reference image 1]: use only as a loose reference for style and composition"),mp);
+ assert.equal(mediaRequirements({attachments:[{kind:"image",role:"general"}]},false).referenceImages,1,"a general image counts as one reference image");
+ const vid=unsupported(await orchestrateCreativeTurn({text:"a calm lake",attachments:[noRole("video")]}));
+ assert.deepEqual(vid.plan.references.map(x=>[x.role,x.roleSource,x.labelFa]),[["general","inferred","مرجع کلی"]]);assert.equal(vid.plan.mediaKind,"video","a video attachment makes a video");
+ assert.ok(vid.plan.softPreferences.some(x=>x.startsWith("#ویدیو-۱ به‌عنوان مرجع بصری کلی")));assert.ok(!skillsOf().includes("persian_lip_sync_phonetics"));
+ const aud=unsupported(await orchestrateCreativeTurn({text:"a calm lake",attachments:[noRole("audio")]}));
+ assert.equal(aud.plan.mediaKind,"image");assert.ok(skillsOf().includes("audiographer")&&!skillsOf().includes("persian_lip_sync_phonetics")&&!skillsOf().includes("tehrani_accent"));
+ assert.ok(aud.plan.softPreferences.some(x=>x.startsWith("#صدا-۱ به‌عنوان مرجع حال‌وهوای صدا")));assert.deepEqual(aud.plan.references.map(x=>x.role),["general"]);
+ assert.ok(!aud.plan.softPreferences.concat(aud.plan.hardConstraints).some(x=>x.includes("کلون")));
+ for(const text of ["clone this voice #صدا-۱","کلون صدا #صدا-۱"]){
+  const res=await orchestrateCreativeTurn({text,attachments:[noRole("audio")]});assert.equal(res.status,"unsupported");
+  assert.notEqual(last().attachments?.[0].role,"voice_clone");assert.ok(!(res as {message?:string}).message?.includes("کلون صدا در هووش"),"no voice clone refusal without an explicit voice_clone role");
+ }
+ assertNoLeak(JSON.stringify([img,vid,aud]),"general");
+});
+test("inferred roles: a role the user chose beats inference",async()=>{
+ const r=unsupported(await orchestrateCreativeTurn({text:"the logo and poster of #تصویر-۱, keep the face",attachments:[att("image",{role:"environment"})]}));
+ assert.deepEqual(r.plan.references,[{tag:"image1",kind:"image",role:"environment",roleSource:"user",labelFa:"محیط"}]);
+ assert.equal(last().attachments?.[0].roleSource,"user");assert.equal(last().attachments?.[0].role,"environment");
+ const m=await seenBy("keep the face of #تصویر-۱",[att("image",{role:"object"})]);assert.deepEqual(m.req.attachments,[{tag:"image1",kind:"image",role:"object",roleSource:"user"}]);
+});
+test("the live planner's attachment blocks carry role and role_source",async()=>{
+ const {buildBriefMessage}=await import("../lib/llm-anthropic");
+ assert.equal(buildBriefMessage("x",[{tag:"image1",kind:"image",role:"character",roleSource:"inferred"},{tag:"audio1",kind:"audio",role:"music",roleSource:"user"},{tag:"image2",kind:"image",role:"general",roleSource:"x\" y"}]),
+  '<user_brief>\nx\n<attachment tag="image1" kind="image" role="character" role_source="inferred"/>\n<attachment tag="audio1" kind="audio" role="music" role_source="user"/>\n<attachment tag="image2" kind="image" role="general"/>\n</user_brief>');
 });
 test("roles: a planner that drops a role constraint gets it back from the invariants",async()=>{
  const lazy:PrivatePlanner=r=>{const plan=structuredClone(deterministicPlanner(r).plan) as CreativePlan;plan.hardConstraints=["do the brief"];plan.continuity.locks=["keep it consistent"];plan.softPreferences=[];return {plan};};
@@ -676,8 +730,8 @@ test("public plan: references carry tag, kind, role and labelFa only, files-only
  const files=[att("image",{role:"character"}),att("video",{role:"motion_reference"}),att("audio",{role:"lip_sync",speech:{hasSpeech:true,language:"fa",accent:"unspecified"}}),att("md"),att("pdf")];
  const r=unsupported(await orchestrateCreativeTurn({text:"a presenter walking, see @image1 and @file1",attachments:files}));
  assert.deepEqual(r.plan.references,[
-  {tag:"image1",kind:"image",role:"character",labelFa:"کاراکتر"},{tag:"video1",kind:"video",role:"motion_reference",labelFa:"الگوی حرکت"},{tag:"audio1",kind:"audio",role:"lip_sync",labelFa:"الگوی حرکت لب"}]);
- for(const ref of r.plan.references)assert.deepEqual(Object.keys(ref).sort(),["kind","labelFa","role","tag"]);
+  {tag:"image1",kind:"image",role:"character",roleSource:"user",labelFa:"کاراکتر"},{tag:"video1",kind:"video",role:"motion_reference",roleSource:"user",labelFa:"الگوی حرکت"},{tag:"audio1",kind:"audio",role:"lip_sync",roleSource:"user",labelFa:"الگوی حرکت لب"}]);
+ for(const ref of r.plan.references)assert.deepEqual(Object.keys(ref).sort(),["kind","labelFa","role","roleSource","tag"]);
  const json=JSON.stringify(r);assertNoLeak(json,"references");
  for(const f of files)assert.ok(!json.includes(f.id)&&!json.includes(f.sha256),"no ids or hashes in the public plan");
  const res=await POST(new Request("http://x/api/agent",{method:"POST",body:JSON.stringify({text:"a presenter walking",attachments:files})}));

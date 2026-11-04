@@ -40,7 +40,7 @@ export function PlanDetails({plan,defaultOpen=false}:{plan:PublicCreativePlan;de
      <Facts title="کلیات" rows={[["نوع خروجی",plan.mediaKind==="video"?"ویدیو":"تصویر"],["سبک",plan.realism.mode==="photoreal"?"واقع‌گرایانه":"سبک‌دار"]]}/>
      {references.length>0&&<section className="flex flex-col gap-2">
       <h4 className="type-label text-fg-primary">مراجع</h4>
-      <ul className="flex flex-col gap-1 type-body-sm text-fg-primary">{references.map(r=><li key={r.tag}><bdi>{displayTag(r.tag)}</bdi> · {r.labelFa}</li>)}</ul>
+      <ul className="flex flex-col gap-1 type-body-sm text-fg-primary">{references.map(r=><li key={r.tag}><bdi>{displayTag(r.tag)}</bdi> · {r.labelFa}{r.roleSource==="inferred"&&" (انتخاب هووش)"}</li>)}</ul>
      </section>}
      {camera&&<Facts title="دوربین" rows={[
       ["حال‌وهوای دوربین",text(camera.look)],

@@ -1,7 +1,8 @@
 /** Chat attachment contract: kinds, limits, magic-byte sniffing and wire shape. Pure; safe in the browser and on the server. */
 import {faPlain} from "./format";
+import {normalizePersian} from "./safety";
 export type AttachmentKind="image"|"video"|"audio"|"pdf"|"json"|"md";
-export type AttachmentRole="character"|"environment"|"object"|"graphic"|"edit_reference"|"motion_reference"|"lip_sync"|"music"|"voice_clone";
+export type AttachmentRole="character"|"environment"|"object"|"graphic"|"edit_reference"|"motion_reference"|"lip_sync"|"music"|"voice_clone"|"general";
 export type AttachmentSpeech={hasSpeech:boolean;language:"fa"|"other"|"unknown";accent:"tehrani"|"original"|"unspecified"};
 const MB=1024*1024;
 export const ATTACHMENT_KINDS={
@@ -21,8 +22,9 @@ export const MAX_DURATION_SECONDS=3600;
 export const SNIFF_BYTES=64*1024;
 export const isMediaKind=(k:AttachmentKind)=>k==="image"||k==="video"||k==="audio";
 /**
- * Roles per media kind: English ids on the wire, Persian labels in the UI. Files (pdf, json, md) have no role. Media has NO default role:
- * the user must choose one before sending. `en` is the provider-facing phrase used when a mention is rewritten for the media prompt.
+ * Roles per media kind: English ids on the wire, Persian labels in the UI. Files (pdf, json, md) have no role. Choosing a role is OPTIONAL:
+ * without one, Whoush infers it from the brief (`inferAttachmentRoles`). `en` is the provider-facing phrase used when a mention is rewritten for the media prompt.
+ * `general` is an internal inferred role only: it is not in these lists, never offered in the UI and rejected on the wire.
  */
 export const ATTACHMENT_ROLES={
  image:[{id:"character",labelFa:"کاراکتر",en:"character"},{id:"environment",labelFa:"محیط",en:"environment"},{id:"object",labelFa:"اشیا",en:"object"},{id:"graphic",labelFa:"گرافیک",en:"graphic"},{id:"edit_reference",labelFa:"مرجع ادیت",en:"edit reference"}],
@@ -30,9 +32,10 @@ export const ATTACHMENT_ROLES={
  audio:[{id:"lip_sync",labelFa:"الگوی حرکت لب",en:"lip sync"},{id:"music",labelFa:"موسیقی",en:"music reference"},{id:"voice_clone",labelFa:"کلون صدا",en:"voice reference"}]
 } as const satisfies Record<"image"|"video"|"audio",readonly {id:AttachmentRole;labelFa:string;en:string}[]>;
 export const ATTACHMENT_ROLE_IDS=["character","environment","object","graphic","edit_reference","motion_reference","lip_sync","music","voice_clone"] as const satisfies readonly AttachmentRole[];
-/** The roles a kind may carry; empty for files. */
+/** The roles a kind may carry and the UI offers (never `general`); empty for files. */
 export const rolesFor=(kind:AttachmentKind):readonly {id:AttachmentRole;labelFa:string;en:string}[]=>isMediaKind(kind)?ATTACHMENT_ROLES[kind as "image"|"video"|"audio"]:[];
-export const roleLabelFa=(role:AttachmentRole)=>ATTACHMENT_ROLES.image.find(r=>r.id===role)?.labelFa??ATTACHMENT_ROLES.video.find(r=>r.id===role)?.labelFa??ATTACHMENT_ROLES.audio.find(r=>r.id===role)?.labelFa??role;
+export const GENERAL_ROLE_LABEL_FA="مرجع کلی";
+export const roleLabelFa=(role:AttachmentRole)=>role==="general"?GENERAL_ROLE_LABEL_FA:ATTACHMENT_ROLES.image.find(r=>r.id===role)?.labelFa??ATTACHMENT_ROLES.video.find(r=>r.id===role)?.labelFa??ATTACHMENT_ROLES.audio.find(r=>r.id===role)?.labelFa??role;
 export const roleAllowed=(kind:AttachmentKind,role:AttachmentRole)=>rolesFor(kind).some(r=>r.id===role);
 export const VOICE_CLONE_CONSENT_FA="صاحب این صدا هستم یا اجازهٔ کتبی صاحب صدا را دارم";
 
@@ -136,6 +139,65 @@ export function mentionTrigger(text:string,caret:number):{start:number;query:str
  const query=normalizeMention(m[2]);
  return isTagQuery(query)?{start:caret-m[2].length-1,query}:undefined;
 }
+// ---- role inference: words only, no image analysis ----
+/** Where an attachment's role came from: the user's choice, or Whoush's best guess from the brief. */
+export type RoleSource="user"|"inferred";
+export type InferredRole={tag:string;role:AttachmentRole;roleSource:RoleSource};
+const CLAUSE_END=/[.،,؛;?!؟\n\r]/;
+/** Whole-word match on the normalized text; a Persian keyword may carry a plural or possessive suffix (لوگوی, کفش‌ها, چهره‌ام). */
+const wordsRe=(l:readonly string[])=>new RegExp("(?<![\\p{L}\\p{N}])(?:"+l.map(w=>normalizePersian(w)+(/[\u0600-\u06ff]/.test(w)?"(?:ها|های|ی|ای|ام|ات|اش)?":"")).join("|")+")(?![\\p{L}\\p{N}])","u");
+/** First match wins, in this order. Keywords are matched as whole words on the normalized text. */
+const INFER_RULES={
+ image:[
+  ["edit_reference",wordsRe(["ویرایش","ادیت","حذف کن","پاک کن","جایگزین","عوض کن","تغییر بده","رتوش","edit","remove","replace","retouch"])],
+  ["character",wordsRe(["کاراکتر","شخصیت","چهره","صورت","پرتره","این آدم","این فرد","خودم","character","face","portrait","person"])],
+  ["graphic",wordsRe(["لوگو","پوستر","گرافیک","تایپوگرافی","فونت","متن روی","بنر","logo","poster","graphic","typography","banner"])],
+  ["object",wordsRe(["محصول","شیء","اشیا","کالا","لباس","کیف","کفش","بطری","product","object","item"])],
+  ["environment",wordsRe(["محیط","فضا","مکان","لوکیشن","پس‌زمینه","اتاق","خیابان","منظره","location","background","scene","room"])]
+ ],
+ video:[
+  ["edit_reference",wordsRe(["ویرایش","ادیت","حذف کن","پاک کن","جایگزین","عوض کن","تغییر بده","رتوش","edit","remove","replace","retouch"])],
+  ["motion_reference",wordsRe(["حرکت","رقص","الگوی حرکت","مثل این حرکت","motion","dance","movement"])]
+ ],
+ audio:[
+  ["lip_sync",wordsRe(["لب","لیپ سینک","دیالوگ","گفتار","صحبت","حرف بزند","lip sync","lipsync","speech","talk"])],
+  ["music",wordsRe(["موسیقی","آهنگ","ریتم","بیت","ملودی","music","song","beat"])]
+ ]
+} as const satisfies Record<"image"|"video"|"audio",readonly (readonly [AttachmentRole,RegExp])[]>;
+const withoutMentions=(s:string)=>{let out="",at=0;for(const m of scanMentions(s)){out+=s.slice(at,m.index)+" ";at=m.index+m.raw.length;}return out+s.slice(at);};
+/** The words between two mentions are shared: the earlier one keeps the first half (rounded up), the later one the rest. Returns where each share ends and starts. */
+function shareGap(text:string,a:number,b:number):{leftEnd:number;rightStart:number}{
+ const words=[...text.slice(a,b).matchAll(/\S+/g)],left=Math.ceil(words.length/2);
+ return {leftEnd:left===0?a:a+words[left-1].index+words[left-1][0].length,rightStart:left===words.length?b:a+words[left].index};
+}
+/** The text around every mention of `tag`: its clause (cut at . ، , ؛ ; ? ! and newlines), narrowed to its half of the words it shares with a neighbouring mention. Undefined when the tag is not mentioned. */
+function mentionContext(text:string,tag:string):string|undefined{
+ const all=scanMentions(text),mine=all.filter(m=>m.tag===tag);
+ if(!mine.length)return undefined;
+ return mine.map(m=>{
+  let cs=m.index,ce=m.index+m.raw.length;
+  while(cs>0&&!CLAUSE_END.test(text[cs-1]))cs--;
+  while(ce<text.length&&!CLAUSE_END.test(text[ce]))ce++;
+  const near=all.filter(o=>o.index>=cs&&o.index+o.raw.length<=ce),i=near.findIndex(o=>o.index===m.index),prev=near[i-1],next=near[i+1];
+  const from=prev?shareGap(text,prev.index+prev.raw.length,m.index).rightStart:cs,to=next?shareGap(text,m.index+m.raw.length,next.index).leftEnd:ce;
+  return withoutMentions(text.slice(from,to));
+ }).join(" ");
+}
+/**
+ * Best-guess role for every image, video and audio attachment, from the words of the brief only (no image or audio analysis).
+ * A role the user chose is kept (`roleSource: "user"`). Otherwise the context is the clause around the attachment's mention (any accepted spelling),
+ * or the whole text when it is not mentioned, and the first matching keyword group decides; no match is `general`. `voice_clone` is never inferred.
+ */
+export function inferAttachmentRoles(text:string,attachments:readonly {tag:string;kind:AttachmentKind;role?:AttachmentRole}[]):InferredRole[]{
+ const whole=normalizePersian(withoutMentions(text));
+ return attachments.flatMap((a):InferredRole[]=>{
+  if(!isMediaKind(a.kind))return [];
+  if(a.role)return [{tag:a.tag,role:a.role,roleSource:"user"}];
+  const ctx=mentionContext(text,a.tag),words=ctx===undefined?whole:normalizePersian(ctx);
+  const hit=INFER_RULES[a.kind as "image"|"video"|"audio"].find(([,re])=>re.test(words));
+  return [{tag:a.tag,role:hit?hit[0]:"general",roleSource:"inferred"}];
+ });
+}
 const EXT_MIMES:Record<string,readonly string[]>={
  jpg:["image/jpeg"],jpeg:["image/jpeg"],png:["image/png"],webp:["image/webp"],
  mp4:["video/mp4","video/quicktime"],m4v:["video/mp4"],mov:["video/quicktime","video/mp4"],webm:["video/webm","audio/webm"],weba:["audio/webm"],
@@ -236,11 +298,17 @@ export function validateAttachmentSet(list:readonly {bytes:number}[]):{ok:true}|
  if(list.reduce((n,a)=>n+a.bytes,0)>MAX_TOTAL_ATTACHMENT_BYTES)return {ok:false,error:totalTooLargeFa()};
  return {ok:true};
 }
-/** What the browser knows about one attached file. `name`, `previewUrl` and the File itself never leave the browser. Media has no `role` until the user picks one. */
+/** What the browser knows about one attached file. `name`, `previewUrl` and the File itself never leave the browser. A media `role` is optional: without one the server infers it. */
 export type LocalAttachment={
  id:string;tag:string;kind:AttachmentKind;mime:string;bytes:number;sha256:string;name:string;role?:AttachmentRole;consent?:boolean;
  width?:number;height?:number;durationSeconds?:number;textExcerpt?:string;speech?:AttachmentSpeech;previewUrl?:string;
 };
+/** Goes back to "Whoush picks automatically": no role, and no speech details or consent that belonged to one. */
+export function withoutRole(a:LocalAttachment):LocalAttachment{
+ const next={...a};
+ delete next.role;delete next.speech;delete next.consent;
+ return next;
+}
 /** Sets the role and drops what belongs to another role: speech details ride only with `lip_sync`, consent only with `voice_clone`. A role the kind cannot have is ignored. */
 export function withRole(a:LocalAttachment,role:AttachmentRole):LocalAttachment{
  if(!roleAllowed(a.kind,role))return a;
@@ -250,16 +318,10 @@ export function withRole(a:LocalAttachment,role:AttachmentRole):LocalAttachment{
  if(role==="voice_clone"&&a.role==="voice_clone"&&a.consent!==undefined)next.consent=a.consent;
  return next;
 }
-/** A media attachment that cannot be sent yet: no role chosen, or `voice_clone` without the consent box. */
-export type SendBlocker={id:string;tag:string;reason:"role"|"consent"};
+/** A media attachment that cannot be sent yet. A role is optional, so the only blocker is `voice_clone` without the consent box. */
+export type SendBlocker={id:string;tag:string;reason:"consent"};
 export function sendBlockers(list:readonly Pick<LocalAttachment,"id"|"tag"|"kind"|"role"|"consent">[]):SendBlocker[]{
- const out:SendBlocker[]=[];
- for(const a of list){
-  if(!isMediaKind(a.kind))continue;
-  if(!a.role)out.push({id:a.id,tag:a.tag,reason:"role"});
-  else if(a.role==="voice_clone"&&a.consent!==true)out.push({id:a.id,tag:a.tag,reason:"consent"});
- }
- return out;
+ return list.filter(a=>isMediaKind(a.kind)&&a.role==="voice_clone"&&a.consent!==true).map(a=>({id:a.id,tag:a.tag,reason:"consent" as const}));
 }
 /** The request payload: metadata and text excerpts only. No bytes, no file name, no object URL. Speech details travel only with the `lip_sync` role. */
 export function toWireAttachment(a:LocalAttachment){

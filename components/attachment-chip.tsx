@@ -7,7 +7,10 @@ import {faBytes,faDimensions,faDuration} from "@/lib/format";
 const ICONS:Record<AttachmentKind,LucideIcon>={image:FileIcon,video:FileIcon,audio:FileAudio,pdf:FileIcon,json:FileJson,md:FileText};
 const LANGUAGES=[{value:"fa",label:"فارسی"},{value:"other",label:"زبان دیگر"},{value:"unknown",label:"نامشخص"}];
 const ACCENTS=[{value:"original",label:"حفظ لهجهٔ اصلی"},{value:"tehrani",label:"تهرانی"},{value:"unspecified",label:"نامشخص"}];
-export type AttachmentPatch=Partial<Pick<LocalAttachment,"role"|"speech"|"consent">>;
+/** `role: null` goes back to «انتخاب خودکار هووش» (no role chosen). */
+export type AttachmentPatch=Partial<Pick<LocalAttachment,"speech"|"consent">>&{role?:AttachmentRole|null};
+export const AUTO_ROLE_FA="انتخاب خودکار هووش";
+const AUTO_ROLE="auto";
 export const canPreview=(a:LocalAttachment)=>Boolean(a.previewUrl)&&(a.kind==="image"||a.kind==="video");
 /** The Persian tag (`#تصویر-۱`) in a `<bdi>`; it is Persian text now, so it takes its direction from its own letters. */
 const tagText=(tag:string)=><bdi>{displayTag(tag)}</bdi>;
@@ -36,14 +39,14 @@ export function TagBadge({tag,onMention}:{tag:string;onMention?:()=>void}){
   ?<button type="button" onClick={onMention} aria-label={"درج "+displayTag(tag)+" در متن"} className="hit-area inline-flex rounded-full motion-hover not-disabled:hover:opacity-80">{badge}</button>
   :badge;
 }
-/** The Persian reason a media attachment blocks sending. */
-export function BlockerMessage({tag,reason}:{tag:string;reason:SendBlocker["reason"]}){
- return reason==="role"?<>نقش {tagText(tag)} را انتخاب کن</>:<>برای {tagText(tag)} تأیید مالکیت یا اجازهٔ صدا را علامت بزن</>;
+/** The Persian reason a media attachment blocks sending: only a `voice_clone` audio without its consent box does. */
+export function BlockerMessage({tag}:{tag:string;reason?:SendBlocker["reason"]}){
+ return <>برای {tagText(tag)} تأیید مالکیت یا اجازهٔ صدا را علامت بزن</>;
 }
 
 /** One attachment: editable in the composer tray (`onChange`/`onRemove`), read-only in a sent message. `error` marks the missing role or consent that blocks sending. */
 export function AttachmentChip({item:a,error,onChange,onRemove,onPreview,onMention}:{item:LocalAttachment;error?:SendBlocker["reason"];onChange?:(patch:AttachmentPatch)=>void;onRemove?:()=>void;onPreview?:()=>void;onMention?:()=>void}){
- const media=isMediaKind(a.kind),editable=Boolean(onChange),roles=rolesFor(a.kind).map(r=>({value:r.id,label:r.labelFa}));
+ const media=isMediaKind(a.kind),editable=Boolean(onChange),roles=[{value:AUTO_ROLE,label:AUTO_ROLE_FA},...rolesFor(a.kind).map(r=>({value:r.id,label:r.labelFa}))];
  const speech=a.speech,lip=a.role==="lip_sync"&&speech,clone=a.role==="voice_clone";
  const controls=editable&&(media||a.kind==="audio");
  const set=(patch:Partial<AttachmentSpeech>)=>speech&&onChange?.({speech:{...speech,...patch}});
@@ -61,9 +64,9 @@ export function AttachmentChip({item:a,error,onChange,onRemove,onPreview,onMenti
   </div>
   <div className="flex flex-wrap items-center gap-2">
    <TagBadge tag={a.tag} onMention={onMention}/>
-   {media&&!editable&&a.role&&<Badge variant="outline">{roleLabelFa(a.role)}</Badge>}
-   {controls&&media&&<Select value={a.role??null} onValueChange={v=>onChange?.({role:v as AttachmentRole})} items={roles}>
-    <SelectTrigger aria-label={"نقش "+displayTag(a.tag)} aria-invalid={error==="role"} className="max-w-full"><SelectValue placeholder="نقش را انتخاب کن"/></SelectTrigger>
+   {media&&!editable&&<Badge variant="outline">{a.role?roleLabelFa(a.role):AUTO_ROLE_FA}</Badge>}
+   {controls&&media&&<Select value={a.role??AUTO_ROLE} onValueChange={v=>onChange?.({role:v===AUTO_ROLE?null:v as AttachmentRole})} items={roles}>
+    <SelectTrigger aria-label={"نقش "+displayTag(a.tag)} className="max-w-full"><SelectValue/></SelectTrigger>
     <SelectContent>{roles.map(r=><SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}</SelectContent>
    </Select>}
   </div>

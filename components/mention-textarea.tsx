@@ -55,7 +55,7 @@ export function MentionTextarea({value,onValueChange,options,inputRef,...props}:
     className={"flex min-h-control cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 rounded-control px-3 py-2 "+(i===current?"bg-surface-hover":"")}>
     <bdi className="type-label text-fg-primary">{displayTag(o.tag)}</bdi>
     <Badge variant="outline">{ATTACHMENT_KINDS[o.kind].labelFa}</Badge>
-    {isMediaKind(o.kind)&&<span className="type-caption text-fg-secondary">{o.role?roleLabelFa(o.role):"نقش انتخاب نشده"}</span>}
+    {isMediaKind(o.kind)&&<span className="type-caption text-fg-secondary">{o.role?roleLabelFa(o.role):"انتخاب خودکار هووش"}</span>}
    </div>)}
   </Card>
  </div>;

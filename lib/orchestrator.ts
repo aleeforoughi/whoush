@@ -5,7 +5,7 @@ import {CHARACTER_VIEWS,REQUIRED_CHARACTER_VIEWS} from "./characters";
 import {CreativePlanSchema,CreativeTurnInputSchema,toPublicPlan,type PublicReference,PlannerInvalidOutputError,PlannerRefusedError,PlannerUnavailableError,type CreativePlan,type PlannerRequest,type PlannerResult,type PrivatePlanner,type PublicCreativePlan} from "./creative-plan";
 import {llmPolicy,preparePrivateCreativeRequest} from "./llm";
 import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./private-audit";
-import {displayTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole} from "./attachments";
+import {displayTag,inferAttachmentRoles,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
 import {detectMediaKind} from "./router";
 import {evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
 import {SKILLS,SKILL_REGISTRY_VERSION} from "./skills";
@@ -62,6 +62,11 @@ function roleRule(kind:AttachmentKind,role:AttachmentRole,tag:string):{hard?:Pai
    :{hard:P(at+": change only the requested region and preserve all remaining pixels, identity, framing and light",fa+": فقط بخش درخواست‌شده تغییر کند و بقیهٔ پیکسل‌ها، هویت، کادر و نور حفظ شود")};
   case "motion_reference":return {hard:P(at+": follow the path, speed, timing and blocking of the motion, but not the appearance of the reference",fa+": مسیر، سرعت، زمان‌بندی و بلاکینگ حرکت از مرجع دنبال شود، اما ظاهر مرجع کپی نشود")};
   case "music":return {soft:P(at+": let its beat, tempo and structure guide the cut rhythm and motion timing; do not generate or alter any music",fa+": ضرباهنگ، تمپو و ساختار موسیقی راهنمای ریتم برش‌ها و زمان‌بندی حرکت باشد؛ موسیقی ساخته یا تغییر داده نمی‌شود")};
+  case "general":return kind==="image"
+   ?{hard:P(at+": use only as a loose reference for style and composition; do not copy its identity or details unless the brief asks for it",fa+" به‌عنوان مرجع کلی سبک و ترکیب‌بندی استفاده می‌شود؛ هویت یا جزئیات آن کپی نمی‌شود مگر خواسته شود")}
+   :kind==="video"
+    ?{soft:P(at+": use as a general visual reference for look, pacing and framing; do not copy it",fa+" به‌عنوان مرجع بصری کلی برای حال‌وهوا، ریتم و کادر استفاده می‌شود؛ عیناً کپی نمی‌شود")}
+    :{soft:P(at+": use as a mood reference for the sound only; do not generate, imitate or alter any audio",fa+" به‌عنوان مرجع حال‌وهوای صدا استفاده می‌شود؛ صدایی ساخته، تقلید یا تغییر داده نمی‌شود")};
   default:return {};
  }
 }
@@ -197,7 +202,10 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const parsed=CreativeTurnInputSchema.parse(rawInput),audit=deps.audit??defaultAuditSink,now=deps.now??(()=>new Date());
  const safety=evaluateTextSafety(parsed.text);
  if(safety.decision!=="allow")return {status:"restricted",decision:safety.decision,category:safety.category,message:safety.message};
- const files=parsed.attachments??[];
+ // A role is optional: media without one gets Whoush's best guess from the words of the brief (no media analysis), before skills resolve.
+ // Inferred roles drive the same skills, constraints, kind override and requirements as chosen ones; `voice_clone` is never inferred.
+ const given=parsed.attachments??[],roles=new Map(inferAttachmentRoles(parsed.text,given).map(r=>[r.tag,r]));
+ const files:Array<Omit<(typeof given)[number],"role">&{role?:AttachmentRole;roleSource?:RoleSource}>=given.map(f=>{const r=roles.get(f.tag);return r?{...f,role:r.role,roleSource:r.roleSource}:f;});
  // Text attachments are user text: they get the same preflight before any planner sees them.
  for(const f of files){
   if(!f.textExcerpt)continue;
@@ -207,16 +215,16 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // Planners see attachments only through `req.attachments` (kinds and excerpts as data); the audio flags are merged into `input.audio`.
  // An edit_reference (image or video) makes the turn an edit, which brings photo_editor or video_editor.
  const task=parsed.task!=="character"&&files.some(f=>f.role==="edit_reference")?"edit":parsed.task;
- const input={...parsed,task,audio:deriveAudio(parsed),attachments:undefined};
+ const input={...parsed,task,audio:deriveAudio({...parsed,attachments:files}),attachments:undefined};
  // A video attachment (every media attachment carries a role) or a lip_sync audio makes the output a video even when the text sounds like
  // an image request. Such a turn always has media, so it stops at the media-review check below and never reaches `buildProposal`, which re-detects from the text.
  const kind=files.some(f=>f.kind==="video"||(f.kind==="audio"&&f.role==="lip_sync"))?"video":detectMediaKind(input.text),a=input.audio,ref=input.characterRef;
- const refs:PublicReference[]=files.flatMap(f=>isMediaKind(f.kind)&&f.role?[{tag:f.tag,kind:f.kind,role:f.role,labelFa:roleLabelFa(f.role)}]:[]);
+ const refs:PublicReference[]=files.flatMap(f=>isMediaKind(f.kind)&&f.role?[{tag:f.tag,kind:f.kind,role:f.role,roleSource:f.roleSource??"user",labelFa:roleLabelFa(f.role)}]:[]);
  const have=new Set(files.map(f=>f.tag)),missing=parseMentions(input.text).filter(t=>!have.has(t)),byTag=tagMap(files);
  const prep=preparePrivateCreativeRequest({prompt:input.text,kind,task:input.task,attachmentRoles:files.flatMap(f=>f.role?[f.role]:[]),hasReferences:Boolean(ref||a?.hasAudioReference||files.length),hasAudioReference:a?(a.hasAudioReference||a.hasSpeech):undefined,hasSpeechAudio:a?.hasSpeech,speechLanguage:a?.language,accent:a?.accent,characterRef:ref,visualStyle:input.visualStyle});
- const req:PlannerRequest={...prep,privateRoute:prep.privateRoute&&{provider:prep.privateRoute.provider,modelId:prep.privateRoute.modelId},kind,input,...(files.length?{attachments:files.map(f=>({tag:f.tag,kind:f.kind,...(f.role?{role:f.role}:{}),...(f.textExcerpt?{textExcerpt:f.textExcerpt}:{})}))}:{})};
+ const req:PlannerRequest={...prep,privateRoute:prep.privateRoute&&{provider:prep.privateRoute.provider,modelId:prep.privateRoute.modelId},kind,input,...(files.length?{attachments:files.map(f=>({tag:f.tag,kind:f.kind,...(f.role?{role:f.role,roleSource:f.roleSource??"user"}:{}),...(f.textExcerpt?{textExcerpt:f.textExcerpt}:{})}))}:{})};
  const turnId=randomUUID();
- const rec=(x:Partial<PrivateAuditRecord>)=>audit.record({turnId,at:now().toISOString(),skillRegistryVersion:SKILL_REGISTRY_VERSION,activeSkillIds:[...prep.activeSkillIds],reasoningTier:prep.privateReasoningTier,route:req.privateRoute,planner:"deterministic",promptSha256:createHash("sha256").update(input.text).digest("hex"),...(files.length?{attachments:files.map(f=>({tag:f.tag,...(f.role?{role:f.role}:{}),kind:f.kind,bytes:f.bytes,sha256:f.sha256}))}:{}),...x});
+ const rec=(x:Partial<PrivateAuditRecord>)=>audit.record({turnId,at:now().toISOString(),skillRegistryVersion:SKILL_REGISTRY_VERSION,activeSkillIds:[...prep.activeSkillIds],reasoningTier:prep.privateReasoningTier,route:req.privateRoute,planner:"deterministic",promptSha256:createHash("sha256").update(input.text).digest("hex"),...(files.length?{attachments:files.map(f=>({tag:f.tag,...(f.role?{role:f.role,roleSource:f.roleSource??"user"}:{}),kind:f.kind,bytes:f.bytes,sha256:f.sha256}))}:{}),...x});
  let planner=deps.planner,label:PrivateAuditRecord["planner"]=planner&&planner!==deterministicPlanner?"live":"deterministic",fallbackReason:string|undefined;
  if(!planner){
   const pol=llmPolicy(prep.privateReasoningTier);

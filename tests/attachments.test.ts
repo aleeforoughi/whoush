@@ -1,6 +1,6 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {ATTACHMENT_ACCEPT,ATTACHMENT_KINDS,ATTACHMENT_ROLE_IDS,MAX_ATTACHMENTS,MAX_EXCERPT_CHARS,MAX_TOTAL_ATTACHMENT_BYTES,TAG_PATTERN,allocateTag,describeTagEn,displayTag,insertMention,mentionTrigger,newTagCounters,parseMentions,rewriteMentions,roleLabelFa,rolesFor,sendBlockers,sniffKind,splitMentions,tagMatchesQuery,tagPrefix,textExcerpt,toWireAttachment,validateAttachmentSet,withRole,type AttachmentKind,type LocalAttachment} from "../lib/attachments";
+import {ATTACHMENT_ACCEPT,ATTACHMENT_KINDS,ATTACHMENT_ROLE_IDS,MAX_ATTACHMENTS,MAX_EXCERPT_CHARS,MAX_TOTAL_ATTACHMENT_BYTES,TAG_PATTERN,allocateTag,describeTagEn,displayTag,insertMention,mentionTrigger,newTagCounters,parseMentions,rewriteMentions,roleLabelFa,rolesFor,sendBlockers,sniffKind,splitMentions,tagMatchesQuery,tagPrefix,textExcerpt,toWireAttachment,validateAttachmentSet,withRole,withoutRole,inferAttachmentRoles,type AttachmentKind,type AttachmentRole,type LocalAttachment} from "../lib/attachments";
 import {CreativeTurnInputSchema} from "../lib/creative-plan";
 import {faDuration} from "../lib/format";
 
@@ -133,9 +133,9 @@ test("tags: prefix must match the kind, be unique, and stay within 1 to 99",()=>
  for(const t of ["image0","image100","file","document1"])assert.ok(!TAG_PATTERN.test(t),t);
  assert.deepEqual((["image","video","audio","pdf","json","md"] as AttachmentKind[]).map(tagPrefix),["image","video","audio","file","file","file"]);
 });
-test("roles: media needs one that fits its kind, files have none, voice_clone needs consent, speech only rides with lip_sync",()=>{
+test("roles: media may have none, a role must fit its kind, files have none, voice_clone needs consent, speech only rides with lip_sync",()=>{
  const bad:Array<[string,unknown]>=[
-  ["image without role",[wire({role:undefined})]],["video without role",[clip({role:undefined})]],["audio without role",[sound({role:undefined})]],
+  ["general is internal only",[wire({role:"general"})]],["general on video",[clip({role:"general"})]],["general on audio",[sound({role:"general"})]],["speech on audio without a role",[sound({role:undefined,speech:{hasSpeech:true,language:"fa",accent:"unspecified"}})]],
   ["image with a video role",[wire({role:"motion_reference"})]],["video with an image role",[clip({role:"character"})]],["audio with an image role",[sound({role:"object"})]],
   ["image with an audio role",[wire({role:"lip_sync"})]],["md with a role",[doc({role:"object"})]],["pdf with a role",[doc({kind:"pdf",mime:"application/pdf",textExcerpt:undefined,role:"music"})]],
   ["voice_clone without consent",[sound({role:"voice_clone"})]],["voice_clone with consent false",[sound({role:"voice_clone",consent:false})]],
@@ -144,9 +144,11 @@ test("roles: media needs one that fits its kind, files have none, voice_clone ne
   ["speech on voice_clone",[sound({role:"voice_clone",consent:true,speech:{hasSpeech:true,language:"fa",accent:"unspecified"}})]]
  ];
  for(const [label,list] of bad)assert.equal(parse(list).success,false,label);
+ for(const [label,list] of [["image","wire"],["video","clip"],["audio","sound"]].map(([l,f])=>[l,[({wire,clip,sound} as Record<string,typeof wire>)[f]({role:undefined})]] as const))assert.equal(parse(list).success,true,label+" without a role is valid: Whoush infers it");
  assert.equal(parse([sound({role:"voice_clone",consent:true})]).success,true);
  assert.equal(parse([sound({speech:{hasSpeech:true,language:"unknown",accent:"unspecified"}})]).success,true);
  assert.equal(roleLabelFa("character"),"کاراکتر");assert.equal(roleLabelFa("edit_reference"),"مرجع ادیت");assert.equal(roleLabelFa("lip_sync"),"الگوی حرکت لب");
+ assert.equal(roleLabelFa("general"),"مرجع کلی");assert.ok(!ATTACHMENT_ROLE_IDS.includes("general" as never)&&!rolesFor("image").some(r=>r.id==="general")&&!rolesFor("audio").some(r=>r.id==="voice_clone"&&false),"general is never offered or accepted");
  assert.deepEqual(rolesFor("pdf"),[]);assert.deepEqual(rolesFor("image").map(r=>r.id),["character","environment","object","graphic","edit_reference"]);
 });
 
@@ -239,12 +241,66 @@ test("tagMatchesQuery filters by Persian or English word, either digit set, with
  assert.ok(tagMatchesQuery("audio1","صدا")&&tagMatchesQuery("audio1","صدا-")&&tagMatchesQuery("audio1","au")&&tagMatchesQuery("video2","ویدئو-")&&tagMatchesQuery("video2","ویدیو-۲")&&tagMatchesQuery("file12","فا")&&tagMatchesQuery("file12","fi")&&tagMatchesQuery("file12","فایل-۱")&&tagMatchesQuery("file12","فایل۱۲"));
 });
 
-test("send blockers: media without a role, and voice_clone without consent",()=>{
+test("send blockers: a role is optional, only voice_clone without consent blocks",()=>{
  const a=(tag:string,kind:AttachmentKind,over:Partial<LocalAttachment>={})=>({id:tag,tag,kind,...over});
- assert.deepEqual(sendBlockers([a("image1","image"),a("video1","video",{role:"motion_reference"}),a("audio1","audio"),a("file1","md"),a("file2","pdf")]),
-  [{id:"image1",tag:"image1",reason:"role"},{id:"audio1",tag:"audio1",reason:"role"}]);
+ assert.deepEqual(sendBlockers([a("image1","image"),a("video1","video"),a("audio1","audio"),a("file1","md"),a("file2","pdf")]),[],"media without a role is fine");
  assert.deepEqual(sendBlockers([a("audio1","audio",{role:"voice_clone"})]),[{id:"audio1",tag:"audio1",reason:"consent"}]);
  assert.deepEqual(sendBlockers([a("audio1","audio",{role:"voice_clone",consent:true}),a("image1","image",{role:"object"})]),[]);
+});
+const media=(tag:string,over:Partial<{role:AttachmentRole}>={})=>({tag,kind:(tag.replace(/\d+$/,"")==="file"?"md":tag.replace(/\d+$/,"")) as AttachmentKind,...over});
+const inferOf=(text:string,...tags:string[])=>inferAttachmentRoles(text,tags.map(t=>media(t))).map(r=>r.role);
+test("inferAttachmentRoles: keywords in Persian and English, first match wins in the documented order",()=>{
+ const cases:Array<[string,string,AttachmentRole]>=[
+  // image: edit_reference > character > graphic > object > environment > general
+  ["ویرایش","این عکس را ویرایش کن","edit_reference"],["ادیت","یک ادیت ساده","edit_reference"],["حذف کن","پسزمینه را حذف کن","edit_reference"],["پاک کن","لکه را پاک کن","edit_reference"],["جایگزین","جایگزین کن","edit_reference"],["عوض کن","رنگ را عوض کن","edit_reference"],["تغییر بده","تغییر بده","edit_reference"],["رتوش","رتوش پوست","edit_reference"],
+  ["edit","edit the photo","edit_reference"],["remove","remove the car","edit_reference"],["replace","replace the sky","edit_reference"],["retouch","retouch skin","edit_reference"],
+  ["کاراکتر","کاراکتر داستان","character"],["شخصیت","این شخصیت","character"],["چهره","چهره او","character"],["صورت","صورت من","character"],["پرتره","یک پرتره","character"],["این آدم","این آدم در پارک","character"],["این فرد","این فرد","character"],["خودم","من خودم","character"],
+  ["character","keep this character","character"],["face","same face","character"],["portrait","a portrait","character"],["person","this person","character"],
+  ["لوگو","لوگوی برند","graphic"],["پوستر","پوستر فیلم","graphic"],["گرافیک","گرافیک","graphic"],["تایپوگرافی","تایپوگرافی","graphic"],["فونت","همین فونت","graphic"],["متن روی","متن روی تصویر","graphic"],["بنر","بنر سایت","graphic"],
+  ["logo","the logo","graphic"],["poster","a poster","graphic"],["graphic","graphic","graphic"],["typography","typography","graphic"],["banner","banner","graphic"],
+  ["محصول","محصول ما","object"],["شیء","یک شیء","object"],["اشیا","اشیا","object"],["کالا","کالا","object"],["لباس","لباس قرمز","object"],["کیف","کیف چرمی","object"],["کفش","کفش ورزشی","object"],["بطری","بطری آب","object"],
+  ["product","the product","object"],["object","an object","object"],["item","this item","object"],
+  ["محیط","محیط جنگلی","environment"],["فضا","فضا","environment"],["مکان","مکان","environment"],["لوکیشن","لوکیشن","environment"],["پسزمینه","پس\u200cزمینه","environment"],["اتاق","اتاق","environment"],["خیابان","خیابان","environment"],["منظره","منظره","environment"],
+  ["location","the location","environment"],["background","background","environment"],["scene","scene","environment"],["room","a room","environment"],
+  ["general","یک دریاچه آرام","general"],["general en","a calm lake","general"],
+  ["edit beats character","edit the face","edit_reference"],["character beats graphic","character with a logo","character"],["graphic beats object","logo on a product","graphic"],["object beats environment","product in a room","object"]
+ ];
+ for(const [label,text,role] of cases)assert.deepEqual(inferOf(text,"image1"),[role],label+": "+text);
+ assert.deepEqual(inferOf("not a keyword: facetime, objective, backgrounds","image1"),["general"],"whole words only");
+ assert.deepEqual(inferOf("کفش‌ها و چهره‌ام","image1"),["character"],"a Persian keyword may take a plural or possessive suffix");assert.deepEqual(inferOf("لوگوی برند","image1"),["graphic"]);
+});
+test("inferAttachmentRoles: video and audio keywords",()=>{
+ for(const [text,role] of [["این ویدیو را ادیت کن","edit_reference"],["remove the logo","edit_reference"],["مثل این حرکت","motion_reference"],["رقص","motion_reference"],["الگوی حرکت","motion_reference"],["motion","motion_reference"],["dance","motion_reference"],["movement","motion_reference"],["یک دریاچه آرام","general"],["a calm lake","general"],["edit the dance","edit_reference"]] as const)assert.deepEqual(inferOf(text,"video1"),[role],text);
+ for(const [text,role] of [["لب","lip_sync"],["لیپ سینک","lip_sync"],["دیالوگ","lip_sync"],["گفتار","lip_sync"],["صحبت","lip_sync"],["حرف بزند","lip_sync"],["lip sync","lip_sync"],["lipsync","lip_sync"],["speech","lip_sync"],["talk","lip_sync"],
+  ["موسیقی","music"],["آهنگ","music"],["ریتم","music"],["بیت","music"],["ملودی","music"],["music","music"],["song","music"],["beat","music"],["یک دریاچه","general"],["a lake","general"],["music and speech","lip_sync"]] as const)assert.deepEqual(inferOf(text,"audio1"),[role],text);
+});
+test("inferAttachmentRoles: the clause around a mention decides, an unmentioned attachment uses the whole text",()=>{
+ assert.deepEqual(inferAttachmentRoles("#تصویر-۱ رو کاراکتر کن و #تصویر-۲ پس‌زمینه باشه",[media("image1"),media("image2")]).map(r=>[r.tag,r.role,r.roleSource]),[["image1","character","inferred"],["image2","environment","inferred"]]);
+ assert.deepEqual(inferOf("کاراکتر #تصویر-۱ را در محیط #تصویر-۲ بگذار","image1","image2"),["character","environment"],"the words before a mention count too");
+ assert.deepEqual(inferOf("make #image1 the logo. #image2 is the product, ok","image1","image2"),["graphic","object"],"sentences are separate");
+ assert.deepEqual(inferOf("#تصویر-۱ پوستر است؛ #تصویر-۲ کاراکتر است","image1","image2"),["graphic","character"]);
+ assert.deepEqual(inferOf("لوگو\n#تصویر۲ را بگذار","image2"),["general"],"a newline ends the clause");
+ assert.deepEqual(inferOf("@image1 and @image-1 as the face","image1"),["character"],"any accepted spelling; both mentions share one clause");
+ assert.deepEqual(inferOf("the logo on #تصویر-۱, ok #تصویر-۱ is a room","image1"),["graphic"],"the first matching group over all of its clauses");
+ assert.deepEqual(inferOf("a portrait in a room","image1","image2"),["character","character"],"unmentioned attachments use the whole text");
+ assert.deepEqual(inferOf("#تصویر-۱ محیط است؛ a portrait of a person","image1","image2"),["environment","character"],"one mentioned, one not");
+ assert.deepEqual(inferOf("#تصویر-۱ را بگذار؛ پوستر","image1"),["general"],"words in other clauses do not count for a mentioned attachment");
+ assert.deepEqual(inferOf("#صدا-۱ موسیقی پس‌زمینه #ویدیو-۱ مثل این حرکت","audio1","video1"),["music","motion_reference"]);
+ assert.deepEqual(inferOf("#صدا-۱ صحبت و #صدا-۲ ریتم","audio1","audio2"),["lip_sync","music"]);
+});
+test("inferAttachmentRoles: a chosen role wins, files get none, voice_clone is never inferred",()=>{
+ assert.deepEqual(inferAttachmentRoles("this is the face of a person",[media("image1",{role:"environment"})]),[{tag:"image1",role:"environment",roleSource:"user"}]);
+ assert.deepEqual(inferAttachmentRoles("x",[{tag:"audio1",kind:"audio",role:"voice_clone"}]),[{tag:"audio1",role:"voice_clone",roleSource:"user"}]);
+ assert.deepEqual(inferAttachmentRoles("لوگو",[{tag:"file1",kind:"md"},{tag:"file2",kind:"pdf"},{tag:"file3",kind:"json"}]),[],"files have no role");
+ for(const text of ["clone this voice","کلون صدا","voice clone, copy the voice","صدای من را شبیه سازی کن","use his voice","","#صدا-۱ voice clone"])for(const r of inferAttachmentRoles(text,[media("audio1")]))assert.notEqual(r.role,"voice_clone",text);
+ assert.deepEqual(inferAttachmentRoles("clone this voice",[media("audio1")]),[{tag:"audio1",role:"general",roleSource:"inferred"}]);
+ assert.deepEqual(inferAttachmentRoles("x",[]),[]);
+});
+test("withoutRole goes back to automatic and drops speech details and consent",()=>{
+ const audio:LocalAttachment={id:"a",tag:"audio1",kind:"audio",mime:"audio/mpeg",bytes:1,sha256:"a".repeat(64),name:"x.mp3"};
+ const cleared=withoutRole(withRole(audio,"lip_sync"));assert.ok(!("role" in cleared)&&!("speech" in cleared)&&!("consent" in cleared));
+ const clone=withoutRole({...withRole(audio,"voice_clone"),consent:true});assert.ok(!("role" in clone)&&!("consent" in clone));
+ assert.deepEqual(toWireAttachment(cleared),{id:"a",tag:"audio1",kind:"audio",mime:"audio/mpeg",bytes:1,sha256:"a".repeat(64)});
 });
 
 test("choosing a role drops what belongs to another role and ignores roles the kind cannot have",()=>{

@@ -18,7 +18,7 @@ import type {AgentProposal,JobView,NoModelResult} from "@/lib/studio-types";
 import {getLocalCharacter,listLocalCharacters} from "@/lib/character-store";
 import {characterCoverage,characterUsability,type CharacterProfile} from "@/lib/characters";
 import {fa} from "@/lib/format";
-import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,allocateTag,insertMention,newTagCounters,parseMentions,sendBlockers,tooManyFa,toWireAttachment,validateAttachmentSet,withRole,type LocalAttachment} from "@/lib/attachments";
+import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,allocateTag,insertMention,newTagCounters,parseMentions,sendBlockers,tooManyFa,toWireAttachment,validateAttachmentSet,withRole,withoutRole,type LocalAttachment} from "@/lib/attachments";
 import {readAttachment} from "@/lib/attachment-files";
 
 type TranscriptItem={role:"user"|"agent";text:string;attachments?:LocalAttachment[]};
@@ -59,7 +59,7 @@ export function Studio(){
  const [dragging,setDragging]=useState(false);
  const [announce,setAnnounce]=useState("");
  const [previewing,setPreviewing]=useState<LocalAttachment|null>(null);
- /** Set by a send attempt with a media attachment still missing its role or consent; the chips then show their errors. */
+ /** Set by a send attempt with a voice_clone attachment still missing its consent; the chip then shows its error. */
  const [attempted,setAttempted]=useState(false);
  const endRef=useRef<HTMLDivElement>(null);
  const fileInput=useRef<HTMLInputElement>(null);
@@ -131,7 +131,7 @@ export function Studio(){
   const a=attachments.find(x=>x.id===id);if(a)releaseUrl(a);
   setAttachments(list=>list.filter(x=>x.id!==id));
  }
- function patchAttachment(id:string,patch:AttachmentPatch){setAttachments(list=>list.map(x=>x.id!==id?x:patch.role?withRole(x,patch.role):{...x,...patch}));}
+ function patchAttachment(id:string,patch:AttachmentPatch){setAttachments(list=>list.map(x=>x.id!==id?x:patch.role===null?withoutRole(x):patch.role?withRole(x,patch.role):{...x,...(patch.speech?{speech:patch.speech}:{}),...(patch.consent!==undefined?{consent:patch.consent}:{})}));}
  /** Puts the Persian tag (`#تصویر-۱ `) into the prompt at the caret (or over the selection) and returns focus to it. */
  function mentionTag(tag:string){
   const el=promptRef.current;if(!el)return;
@@ -155,7 +155,7 @@ export function Studio(){
  }
  async function send(e:FormEvent){
   e.preventDefault();const text=draft.trim();if(!text||busy)return;
-  // Every image, video and audio needs a role (and voice cloning a consent) before anything is sent.
+  // A role is optional (Whoush infers it), but voice cloning always needs its consent box.
   const missing=sendBlockers(attachments);
   if(missing.length){
    setAttempted(true);setError("");
