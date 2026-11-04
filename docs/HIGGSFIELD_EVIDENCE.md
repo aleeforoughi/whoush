@@ -1,5 +1,5 @@
 # Higgsfield API evidence log
-Retrieval date: **2026-11-04** (all pages below fetched on this date via WebFetch, which returns a model-summarized markdown rendering, not raw HTML/JSON). Only facts written here may be used as verified. Anything marked **not verified** must not be relied on. Re-verify before any live use; docs change.
+Retrieval date: **2026-11-04**, two retrievals the same day (all pages fetched on this date via WebFetch, which returns a model-summarized markdown rendering, not raw HTML/JSON). Only facts written here may be used as verified. Anything marked **not verified** must not be relied on. Re-verify before any live use; docs change.
 
 Catalog evidence version: `MEDIA_CATALOG_VERSION` in `lib/catalog.ts`.
 
@@ -28,6 +28,31 @@ Catalog evidence version: `MEDIA_CATALOG_VERSION` in `lib/catalog.ts`.
 | https://console.higgsfield.ai | 301 to https://open.higgsfield.ai/ |
 | Webhooks (`docs.higgsfield.ai/docs/how-to/webhooks.md`), idempotency page, file-uploads, rate-limits, estimate endpoint, per-model `llms.txt` | **not read / not found: not verified** |
 
+
+### Second retrieval, 2026-11-04 (per-model API reference)
+The docs now have per-model reference pages under `docs.higgsfield.ai/docs/models/` (linked from https://docs.higgsfield.ai/docs/api-reference/overview.md; the catalogue page says 84 entries, 17 image and 67 video). Fetched with WebFetch on 2026-11-04:
+
+| URL | Result |
+|---|---|
+| https://docs.higgsfield.ai/docs/api-reference/overview.md | read: links model reference pages |
+| https://docs.higgsfield.ai/docs/models/image-generation.md | read: 14 image model pages; Soul Standard and Soul 2 listed; **no Nano Banana Pro** |
+| https://docs.higgsfield.ai/docs/models/video-generation.md | read: 22 video model families; Seedance 2.5 and Genjutsu listed; **no Kling 4.0** (newest Kling is 3.0) and **no Intone** or other lip-sync model |
+| https://docs.higgsfield.ai/docs/models/soul-standard/generate.md | read: path and schema |
+| https://docs.higgsfield.ai/docs/models/seedance-2-5/text-to-video.md | read: path and schema |
+| https://docs.higgsfield.ai/docs/models/seedance-2-5/reference-to-video.md | read: path and schema (not used) |
+| https://docs.higgsfield.ai/docs/models/genjutsu.md | read: three workflows |
+| https://docs.higgsfield.ai/docs/models/genjutsu/object-swap.md | read: path and schema |
+| https://docs.higgsfield.ai/docs/models/genjutsu/motion-transfer.md | read: path and schema |
+| https://docs.higgsfield.ai/docs/models/intone.md | HTTP 404 |
+| https://docs.higgsfield.ai/docs/concepts/rate-limits.md | read (below) |
+| https://docs.higgsfield.ai/docs/enterprise/usage-and-billing.md | read: no price list; `GET /models/usage` is usage analytics, "not a billing record" |
+| https://open.higgsfield.ai/models/higgsfield-ai/soul/standard/playground | read: prices |
+| https://open.higgsfield.ai/models/bytedance/seedance-2.5/text-to-video/playground | read: prices |
+| https://open.higgsfield.ai/models/higgsfield/genjutsu/object-swap/v1.0/playground, https://open.higgsfield.ai/models/higgsfield/genjutsu/motion-transfer/v1.0/playground | read: prices |
+| https://open.higgsfield.ai/models/higgsfield-ai/soul/standard/llms.txt | HTTP 404 |
+
+Rate limits (rate-limits.md): concurrency is per account and model and shown in the console; requests above it are accepted and queued; when the queue is full a generation gets `429` with `Retry-After` and code `account_queue_full` ("nothing is created or charged"); resubmit after `Retry-After` with the same `Idempotency-Key`; `503 admission_control_unavailable` means retry with backoff; successful responses carry no remaining-capacity headers. Whoush does not yet retry Higgsfield 429s (a submission error releases the reservation).
+
 ## Transport (verified)
 - Base URL: `https://api.higgsfield.ai` (quick-start; authentication.md example).
 - Auth header: `Authorization: Key <credential>` + `Content-Type: application/json`. **Sources differ on the credential shape:** quick-start says `Key <api-key>` ; authentication.md, get-request-status.md and openapi.json say `Key {api_key_id}:{api_key_secret}`. authentication.md also says legacy headers `hf-api-key` / `hf-secret` exist and new integrations should use `Authorization`. `lib/higgsfield.ts` sends `Key ` + `HIGGSFIELD_API_KEY`, so that env var must hold the exact credential string Higgsfield issues; which shape is right is **not verified**.
@@ -46,38 +71,68 @@ Catalog evidence version: `MEDIA_CATALOG_VERSION` in `lib/catalog.ts`.
 - Terms: see `docs/LAUNCH_GATES.md` (provider authorization is unresolved).
 
 ## Per-model facts
-Model-specific API pages (endpoint + Input JSON Schema) are not reachable through the pages above: every `open.higgsfield.ai/models/**/playground` page fetched stated no endpoint and no input schema, and docs index says per-model docs are reached via the console (which redirects to open.higgsfield.ai) and "not linked". The only submit paths and schemas actually read are in `openapi.json`:
+Facts below come from the per-model API reference pages (second retrieval). Where they differ from `openapi.json` or the playground, the per-model page wins: it is the model's own documentation.
 
-### Soul Standard — VERIFIED (path + inputs)
-- Path: `POST /higgsfield-ai/soul/standard` (openapi.json).
-- Input: `prompt` (string, required); `num_images` (integer 1-4, default 1); `resolution` (enum `2K`,`4K`, default `2K`); `aspect_ratio` (enum `1:1,4:3,3:4,3:2,2:3,5:4,4:5,16:9,9:16,21:9`, default `4:3`).
-- Reference/input image fields: **none in the schema** => Whoush records `referenceImages.supported:false`.
-- Output: `images[].url` (status doc).
-- **Unresolved conflict:** the Soul Standard playground page (higgsfield-ai/soul/standard) lists resolutions 720p/1080p at $0.0938/$0.1875 per image, while openapi.json lists `2K`/`4K`. The adapter therefore sends only `prompt`, `aspect_ratio`, `num_images:1` and never `resolution`; the billed resolution/price is **not verified** and must be settled with Higgsfield before live use (the estimate endpoint is not documented).
-- Catalog mapping: `soul-image` ("Higgsfield Soul") is mapped to this path. That the Whoush SKU name equals "Soul Standard" is an assumption by name; the playground lists "Soul Standard" and "Soul 2" separately and the SKU is the former.
+### Soul Standard — VERIFIED <a id="soul-standard"></a>
+- Path: `POST /higgsfield-ai/soul/standard` (soul-standard/generate.md; same as openapi.json).
+- Input (`SoulParamsSchema`): `prompt` (string, required); `aspect_ratio` (`9:16,16:9,4:3,3:4,1:1,2:3,3:2`, default `4:3`); `resolution` (`720p,1080p`, default `720p`); `batch_size` (`1` or `4`, default 1); `enhance_prompt` (bool, default false); `style_id` (uuid), `style_strength` (0-1); `seed` (1-1,000,000); `custom_reference_id` (uuid, a trained Soul ID), `custom_reference_strength` (0-1); `image_reference_url` (uri). `additionalProperties` not stated.
+- **Corrections to the first retrieval:** the resolution enum is `720p/1080p` (matching the playground), not openapi.json's `2K/4K`, so the earlier conflict is settled; the count field is `batch_size`, not `num_images`; `5:4`, `4:5` and `21:9` are not accepted.
+- Whoush sends `{prompt, resolution: "720p", batch_size: 1, aspect_ratio?}` (`lib/media-provider.ts`). `image_reference_url` exists but is not used: user media is not hosted yet, so `referenceImages.supported` stays false.
+- Output: `images[].url`.
+- **Live check, 2026-11-04 (owner dev path, not charged):** `{prompt, resolution:"720p", batch_size:1, aspect_ratio:"16:9"}` was accepted and completed with one PNG of 1696x960 (16:9 within the 2% output-QA tolerance; "720p" is a tier, not a pixel height).
+- Seedance 2.5 and Genjutsu were **not** live-tested: one 5 s 1080p Seedance clip is about $5.70 at list price.
 
-### Other paths present in openapi.json (not in the Whoush catalog)
-`/kling-video/v2.5-turbo/{pro,standard}/image-to-video` (prompt, image_url, duration 5|10, cfg_scale, negative_prompt), `/kling-video/v2.5-turbo/pro/text-to-video`, `/minimax/hailuo-2.3/standard/{image,text}-to-video`. Not used.
+### Seedance 2.5 — VERIFIED (text-to-video) <a id="seedance-2-5"></a>
+- Path: `POST /bytedance/seedance-2.5/text-to-video`.
+- Input: `prompt` (string, required, non-blank); `duration` (integer 4-30, default 5); `resolution` (`480p,720p,1080p`, default `720p`); `aspect_ratio` (`16:9,4:3,1:1,3:4,9:16,21:9`, default `16:9`); `bitrate_mode` (`standard,high`, default `high`); `output_format` (`mp4,mov`, default `mp4`); `generate_audio` (bool, default **true**). `additionalProperties: false`. No media inputs.
+- Whoush SKUs `seedance-2-5-5s` and `seedance-2-5-10s` send `{prompt, duration, resolution: "1080p", generate_audio: false, aspect_ratio?}`. Audio is turned off on purpose: generated audio is not inspected by moderation yet.
+- Other workflows exist (image-to-video, reference-to-video, video-edit, video-extend). reference-to-video takes up to 30 image, 10 video and 10 audio URLs (50 total), public URLs only, `asset://` rejected. Not used: user media is not hosted.
 
-### Seedance 2.5 — NOT VERIFIED
-- Explore: listed, "from 0.144 / s". Playground page: durations 4-30 s, resolutions 480p/720p/1080p; separate text-to-video, reference-to-video, image-to-video, video-edit, video-extend variants. Endpoint path and input schema: **not verified** (the quick-start's `/bytedance/seedance-2.0/text-to-video` curl is a different model and the page itself says to verify the endpoint). Aspect ratios (only "16:9" appears in a pricing note), audio, lip sync: **not verified**.
+### Genjutsu — VERIFIED (object swap, motion transfer); not submittable yet <a id="genjutsu"></a>
+- Object swap: `POST /higgsfield/genjutsu/object-swap/v1.0` (catalog `genjutsu-replace`). Motion transfer: `POST /higgsfield/genjutsu/motion-transfer/v1.0` (catalog `genjutsu-motion`). The legacy misspelt ids `higgsfiled/genjutsu/...` still work but are hidden; Whoush uses the corrected ids. A third workflow, restyle, is not used.
+- Input (both): `video_url` (uri, required), `image_urls` (1-8 uris, required, ordered), `prompt` (max 10,000 chars, default empty), `resolution` (`480p,720p,1080p`, default `720p`). `additionalProperties: false`.
+- Limits: source video at least 4 s; longer than 30 s is trimmed to 30 s; output length follows the prepared source; every frame at least 409,600 pixels. File types not listed.
+- **Not submittable:** both inputs must be public URLs the provider can fetch, and Whoush keeps user media in the browser. `lib/policy.ts` adds `needs_hosted_media` and `lib/media-provider.ts` has no payload for it. Also price pending (below).
 
 ### Kling 4.0 — NOT VERIFIED
-- Explore: listed. Playground: durations 3-30 s, 720p-1080p; text/image/reference/video-edit variants. Endpoint, schema, aspect ratios, audio, lip sync: **not verified**.
+- No API reference page: the video catalogue's newest Kling is 3.0 (plus 3.0 Motion Control, O3 and Omni). An earlier playground page for `kling-video/v4.0` showed no endpoint. Unverified, never live.
 
 ### Nano Banana Pro — NOT VERIFIED
-- Not listed on https://open.higgsfield.ai/explore as read on 2026-11-04 (25 models + 3 workflows shown); the help-center page says "50+" models. No page read. Everything about it: **not verified**.
+- Not in the image catalogue (14 model pages). Unverified, never live.
 
-### Seedance 2.0 (quick-start example only)
-quick-start shows `POST /bytedance/seedance-2.0/text-to-video` with `prompt`, `resolution`, `generate_audio`, `duration`, `aspect_ratio` as an example the page itself says to verify. Not in the Whoush catalog; not treated as verified.
+### Intone — NOT VERIFIED
+- No API reference page (`docs/models/intone.md` is 404; no lip-sync or talking-head model in the video catalogue). Facts come only from the agent catalogue below. Stays locked.
 
-## Provider prices
-Provider USD prices appear on explore/playground pages and are intentionally NOT copied into code or any consumer response (cited above only where needed to record a conflict). Neuron SKU prices in `lib/catalog.ts` are illustrative seeds, not derived from or certified against these.
+### Other paths present in openapi.json (not in the Whoush catalog)
+`/kling-video/v2.5-turbo/{pro,standard}/image-to-video`, `/kling-video/v2.5-turbo/pro/text-to-video`, `/minimax/hailuo-2.3/standard/{image,text}-to-video`. Not used.
+
+## Provider prices <a id="provider-prices"></a>
+The API docs publish no price list (usage-and-billing.md: invoice pricing "agreed with Higgsfield"). The playground pages show list prices "before any applicable customer discount". Provider USD prices stay out of code and every consumer response; they are recorded here for the owner's SKU decision only.
+
+| Endpoint | Unit | 480p | 720p | 1080p | Notes |
+|---|---|---|---|---|---|
+| Soul Standard | per image | | $0.0938 | $0.1875 | |
+| Seedance 2.5 text-to-video | per output second | ~$0.2056 | ~$0.4622 | ~$1.1372 | "roughly", token-based (1,000 video tokens $0.0214 at 480p/720p, $0.0234 at 1080p), 16:9 estimate. The page's own table range is $0.144-$0.7961/s, about 0.7x of these; audio and bitrate effects not stated |
+| Genjutsu object swap / motion transfer | per input-video second, rounded up | $0.318 | $0.681 | $1.632 | the related-models table shows $0.159-$0.816/s, exactly half: **conflict**, the higher figure is used below |
+
+### Proposed Neuron SKUs (not applied; owner decision)
+Method, from `docs/NEURON_PRICING.md`: provider plus planner cost per Neuron must stay at or below `c = V(1-0.20)/(1+b) = $0.128` for the development example `V = $0.176`, `b = 10%`. SKU = ceil((provider price + $0.05 planner allowance) / $0.128), integer, using the higher price where sources conflict. `V` is a development example, not a production margin certification.
+
+| SKU | Today (illustrative) | Proposed | Margin of today's price at the higher cost |
+|---|---|---|---|
+| `soul-image` (720p) | 4 | 2 | about 78% |
+| `seedance-2-5-5s` (1080p) | 42 | 45 | about 15%: **below the 20% target** |
+| `seedance-2-5-10s` (1080p) | 80 | 90 | about 11%: **below the 20% target** |
+| Genjutsu 720p, source up to 5 / 10 / 15 / 30 s | price pending | 27 / 54 / 81 / 160 | |
+| Genjutsu 480p, up to 5 / 10 / 15 / 30 s | | 13 / 26 / 38 / 75 | |
+| Genjutsu 1080p, up to 5 / 10 / 15 / 30 s | | 65 / 128 / 192 / 383 | |
+
+Genjutsu is billed per input second, so a fixed SKU needs the source length known server-side before the quote (a duration band, each band one integer SKU). That needs hosted, inspected media first.
 
 ## Higgsfield agent (MCP) catalogue, 2026-11-04
 Source: the `models_explore` tool of the Higgsfield MCP connector (Higgsfield's agent platform), retrieved by the lead on **2026-11-04**. This is **NOT** the public API documentation.
 
-**What this does and does not verify.** The public API index (https://docs.higgsfield.ai/docs/llms.txt, fetched 2026-11-04) lists **no per-model pages** and says to find models at https://console.higgsfield.ai and in each model's own documentation. Therefore the `api.higgsfield.ai` paths and input schemas for the three models below are **NOT verified**, and the MCP ids (`intone`, `hf_mult_replace_object`, `hf_mult_motion_control`) are **not API paths**. No max counts were given for image or video references (only Intone's text says "one or two characters" and "one to six voice recordings"). **No prices were given.** In `lib/catalog.ts` all three are `capabilities.verified:false`, have no `verifiedApiPath`, are `pricePending: true` with `evidenceSource: "agent_catalogue"`, and can be suggested as "coming soon" but never proposed, quoted or submitted.
+**What this does and does not verify.** The public API index (https://docs.higgsfield.ai/docs/llms.txt, fetched 2026-11-04) lists **no per-model pages** and says to find models at https://console.higgsfield.ai and in each model's own documentation. At that time the `api.higgsfield.ai` paths and input schemas for the three models below were **not verified**. **Update (second retrieval): both Genjutsu workflows now have API reference pages and are verified above; Intone still has none.**, and the MCP ids (`intone`, `hf_mult_replace_object`, `hf_mult_motion_control`) are **not API paths**. No max counts were given for image or video references (only Intone's text says "one or two characters" and "one to six voice recordings"). **No prices were given.** In `lib/catalog.ts` Intone remains `capabilities.verified:false` with no `verifiedApiPath`, `pricePending: true` and `evidenceSource: "agent_catalogue"`; it can be suggested as "coming soon" but never proposed, quoted or submitted. Genjutsu is now `evidenceSource: "api_docs"` and verified, still price pending.
 
 | MCP id | name | description | output | params | media roles | aspect ratios | tags |
 |---|---|---|---|---|---|---|---|
@@ -90,10 +145,10 @@ Source: the `models_explore` tool of the Higgsfield MCP connector (Higgsfield's 
 - `bitrate_mode` is recorded here but not modelled. API path, input field names, billing unit and price: **not verified**.
 
 ### Genjutsu, replace object <a id="mcp-genjutsu-replace"></a>
-- Catalog id `genjutsu-replace` (display name "Genjutsu"), MCP id `hf_mult_replace_object`. Operation `replace`; `videoReference: true`; `referenceImages {supported:true, max:null}` (supported, count not listed). No aspect ratios listed, so `aspectRatios: []`. Resolutions 480p/720p/1080p. Path, schema, price: **not verified**.
+- Catalog id `genjutsu-replace` (display name "Genjutsu"), MCP id `hf_mult_replace_object`. Operation `replace`; `videoReference: true`; `referenceImages {supported:true, max:null}` (supported, count not listed). No aspect ratios listed, so `aspectRatios: []`. Resolutions 480p/720p/1080p. As recorded from the agent catalogue; superseded by the API reference (see [Genjutsu](#genjutsu)): max 8 references, verified path, still price pending.
 
 ### Genjutsu, motion control <a id="mcp-genjutsu-motion"></a>
-- Catalog id `genjutsu-motion` (display name "Genjutsu"), MCP id `hf_mult_motion_control`. Operation `motion_transfer`; `motionReference: true`; `referenceImages {supported:true, max:null}`. No aspect ratios listed. Resolutions 480p/720p/1080p. Path, schema, price: **not verified**.
+- Catalog id `genjutsu-motion` (display name "Genjutsu"), MCP id `hf_mult_motion_control`. Operation `motion_transfer`; `motionReference: true`; `referenceImages {supported:true, max:null}`. No aspect ratios listed. Resolutions 480p/720p/1080p. As recorded from the agent catalogue; superseded by the API reference (see [Genjutsu](#genjutsu)): max 8 references, verified path, still price pending.
 
 ### Before any of these can be enabled
 API path and input schema read from the model's own documentation; a fixed integer Neuron SKU approved; media inspection and moderation in place (`docs/MODERATION_POLICY.md` step 4); provider authorization (`docs/LAUNCH_GATES.md` gate 1). See `docs/CAPABILITY_SCOUT.md`.

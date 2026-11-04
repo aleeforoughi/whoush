@@ -50,6 +50,8 @@ export interface MediaModel {
   audioClipsMax?: number;
   audioSecondsRange?: readonly [number, number];
   locationImage?: boolean;
+  /** Accepted source-video length in seconds for edit models that take a video (documented limits). */
+  sourceVideoSecondsRange?: readonly [number, number];
   capabilities: ModelCapabilities;
   verifiedApiPath?: string; // absent until schema is verified; private, never serialized to consumers
 }

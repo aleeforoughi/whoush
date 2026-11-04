@@ -28,9 +28,22 @@ export class MockMediaProvider implements MediaProvider{
   this.canceled.add(id);
  }
 }
-/** Payloads only for models whose input schema was read (docs/HIGGSFIELD_EVIDENCE.md). Anything else throws. */
+/**
+ * Payloads only for models whose per-model input schema was read (docs/HIGGSFIELD_EVIDENCE.md). Every field is set explicitly so the billed
+ * configuration is the SKU's, never a provider default. Anything else throws, including models that need hosted media inputs (Genjutsu).
+ */
 export function buildHiggsfieldPayload(model:MediaModel,prompt:string,c:MediaConfiguration):Record<string,unknown>{
- if(model.verifiedApiPath==="/higgsfield-ai/soul/standard") return {prompt,num_images:1,...(c.aspectRatio?{aspect_ratio:c.aspectRatio}:{})}; // resolution deliberately omitted: documented sources conflict
+ const aspect=c.aspectRatio?{aspect_ratio:c.aspectRatio}:{};
+ if(model.verifiedApiPath==="/higgsfield-ai/soul/standard"){
+  if(model.resolution!=="720p"&&model.resolution!=="1080p")throw new Error("Unsupported SKU resolution");
+  return {prompt,resolution:model.resolution,batch_size:1,...aspect};
+ }
+ if(model.verifiedApiPath==="/bytedance/seedance-2.5/text-to-video"){
+  const duration=c.durationSeconds??model.durationSeconds;
+  if(!duration||!(model.capabilities.durationsSeconds??[]).includes(duration))throw new Error("Unsupported SKU duration");
+  if(!["480p","720p","1080p"].includes(model.resolution))throw new Error("Unsupported SKU resolution");
+  return {prompt,duration,resolution:model.resolution,generate_audio:false,...aspect}; // audio off: generated audio is not moderated yet
+ }
  throw new Error("No verified payload mapping for model");
 }
 function mapOutputs(r:HiggsfieldStatus):ProviderOutput[]{

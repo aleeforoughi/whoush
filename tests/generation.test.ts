@@ -158,7 +158,9 @@ test("each flag individually blocks; all flags + verified model opens; verified:
  const soul=findMediaModel("soul-image")!,kling=findMediaModel("kling-4-0-5s")!;
  await withEnv(LIVE_ENV,()=>{
   assert.deepEqual(generationGate(soul),{live:true,blockers:[]});
-  for(const m of MEDIA_CATALOG.filter(x=>!x.capabilities.verified))assert.deepEqual(generationGate(m),{live:false,blockers:["model_unverified"]});
+  for(const m of MEDIA_CATALOG.filter(x=>!x.capabilities.verified))assert.deepEqual(generationGate(m),{live:false,blockers:["model_unverified",...(m.operations.includes("generate")?[]:["needs_hosted_media"])]},m.id);
+  for(const id of ["genjutsu-replace","genjutsu-motion"])assert.deepEqual(generationGate(findMediaModel(id)),{live:false,blockers:["needs_hosted_media"]},id);
+  for(const id of ["seedance-2-5-5s","seedance-2-5-10s"])assert.deepEqual(generationGate(findMediaModel(id)),{live:true,blockers:[]},id);
   assert.equal(generationGate(kling).live,false);
  });
  for(const k of Object.keys(LIVE_ENV))await withEnv({...LIVE_ENV,[k]:k==="HIGGSFIELD_API_KEY"?undefined:k==="QUOTE_SIGNING_SECRET"?"short":"false"},()=>assert.equal(generationGate(soul).live,false,k));
@@ -212,9 +214,18 @@ test("Higgsfield adapter maps documented statuses exactly and never guesses",asy
    const r=await p.submit({modelId:"soul-image",prompt:"p",configuration:{aspectRatio:"16:9"},idempotencyKey:"k1"});
    assert.equal(r.providerRequestId,"abc-123");
    assert.equal(calls[0].url,"https://api.higgsfield.ai/higgsfield-ai/soul/standard");
-   assert.deepEqual(JSON.parse(String(calls[0].init?.body)),{prompt:"p",num_images:1,aspect_ratio:"16:9"});
+   assert.deepEqual(JSON.parse(String(calls[0].init?.body)),{prompt:"p",resolution:"720p",batch_size:1,aspect_ratio:"16:9"});
    const h=calls[0].init?.headers as Record<string,string>;assert.equal(h.Authorization,"Key test-id:test-secret");assert.equal(h["Idempotency-Key"],"k1");
    await assert.rejects(()=>p.submit({modelId:"kling-4-0-5s",prompt:"p",configuration:{},idempotencyKey:"k"}),/blocked/);
+   // Seedance 2.5 text-to-video: every billed field explicit, audio off
+   reply={status:200,body:{request_id:"sd-1",status:"queued"}};
+   await p.submit({modelId:"seedance-2-5-10s",prompt:"p",configuration:{aspectRatio:"9:16"},idempotencyKey:"k2"});
+   assert.equal(calls.at(-1)?.url,"https://api.higgsfield.ai/bytedance/seedance-2.5/text-to-video");
+   assert.deepEqual(JSON.parse(String(calls.at(-1)?.init?.body)),{prompt:"p",duration:10,resolution:"1080p",generate_audio:false,aspect_ratio:"9:16"});
+   // Genjutsu is verified but its media inputs cannot be hosted: blocked before any request
+   const before=calls.length;
+   for(const id of ["genjutsu-replace","genjutsu-motion"])await assert.rejects(()=>p.submit({modelId:id,prompt:"p",configuration:{},idempotencyKey:"k"}),/blocked/);
+   assert.equal(calls.length,before,"no request was sent");
    for(const [raw,mapped] of [["queued","queued"],["in_progress","running"],["failed","failed"],["nsfw","nsfw"],["canceled","canceled"]] as const){reply={status:200,body:{status:raw}};assert.equal((await p.status("abc-123")).state,mapped);}
    reply={status:200,body:{status:"completed",images:[{url:"https://a/1.png"},{url:"https://a/2.png"}],expires_at:"2026-11-11T00:00:00Z"}};
    const c=await p.status("abc-123");assert.equal(c.state,"completed");assert.equal(c.outputs.length,2);assert.ok(c.outputs.every(o=>o.needsMirroring&&o.kind==="image"));assert.equal(c.expiresAt,"2026-11-11T00:00:00Z");
@@ -258,10 +269,10 @@ test("router: two-argument calls and eligible explicit models behave as before",
  const b=recommendMediaModels("a video of a horse","cost");assert.ok(b.ranked.length===3);
  assert.equal(recommendMediaModels("a 10s clip with seedance 10s","quality",{durationSeconds:10}).explicit,"seedance-2-5-10s");
 });
-test("catalog: capability sanity, integer FX-independent prices, only the doc-read model is verified",async()=>{
+test("catalog: capability sanity, integer FX-independent prices, only models with a read API reference are verified",async()=>{
  assertValidCatalog();
  assert.ok(MEDIA_CATALOG_VERSION);
- assert.deepEqual(MEDIA_CATALOG.filter(m=>m.capabilities.verified).map(m=>m.id),["soul-image"]);
+ assert.deepEqual(MEDIA_CATALOG.filter(m=>m.capabilities.verified).map(m=>m.id),["soul-image","seedance-2-5-5s","seedance-2-5-10s","genjutsu-replace","genjutsu-motion"]);
  const priced=MEDIA_CATALOG.filter(m=>!m.pricePending),base=priced.map(m=>priceFor(m));
  for(const n of base)assert.ok(Number.isSafeInteger(n)&&n>0);
  for(const fx of ["150000","250000","900000"])await withEnv({DEMO_FX_TOMAN_PER_USD:fx},async()=>{
@@ -306,7 +317,7 @@ test("P5 router: bestModelFor maps specialised work to the catalogue model with 
  const req={lip_sync:{operation:"lip_sync",lipSync:true,referenceImages:1},replace:{operation:"replace",videoReference:true,referenceImages:2},motion_transfer:{operation:"motion_transfer",motionReference:true,referenceImages:1}} as const;
  for(const op of ["lip_sync","replace","motion_transfer"] as const){
   const b=bestModelFor(req[op],"video");assert.equal(b?.model.id,ids[op],op);assert.equal(b?.active,false);
-  assert.deepEqual(b?.blockersFa,["مسیر API تأیید نشده","قیمت نورون هنوز تأیید نشده","بررسی ایمنی رسانه هنوز فعال نیست"]);
+  assert.deepEqual(b?.blockersFa,[...(op==="lip_sync"?["مسیر API تأیید نشده"]:[]),"قیمت نورون هنوز تأیید نشده","بررسی ایمنی رسانه هنوز فعال نیست","بارگذاری رسانه روی سرور هنوز فعال نیست"],op);
   assert.ok(b!.blockersFa.every(x=>/[؀-ۿ]/.test(x)));
  }
  assert.equal(bestModelFor({},"image"),undefined);assert.equal(bestModelFor({referenceImages:1},"image"),undefined);assert.equal(bestModelFor({},"video"),undefined);
@@ -323,7 +334,10 @@ test("P5 router: price-pending and operation models are never proposed, even whe
  const named=recommendMediaModels("a video with genjutsu");assert.equal(named.explicitRejected?.id,"genjutsu-replace");assert.ok(named.ranked.length>0&&named.ranked.every(m=>m.operations.includes("generate")&&!m.pricePending));
  assert.equal(buildProposal("a video with intone","quality").selectedModelId.startsWith("seedance"),true);
  assert.ok(modelIneligibility(findMediaModel("intone")!,{referenceImages:1}),"an operation model is not a generation model");
- assert.ok(modelIneligibility(findMediaModel("genjutsu-replace")!,{operation:"replace",referenceImages:1,videoReference:true}),"unknown max never satisfies a hard requirement");
+ const g=findMediaModel("genjutsu-replace")!;
+ assert.equal(modelIneligibility(g,{operation:"replace",referenceImages:8,videoReference:true}),undefined,"the documented limit is 8");
+ assert.ok(modelIneligibility(g,{operation:"replace",referenceImages:9,videoReference:true}),"more than 8 references exceeds it");
+ assert.ok(modelIneligibility({...g,capabilities:{...g.capabilities,referenceImages:{supported:true,max:null}}},{operation:"replace",referenceImages:1,videoReference:true}),"unknown max never satisfies a hard requirement");
 });
 test("P5 quotes: price-pending models are refused with 409 price_pending (quote route and library)",async()=>{
  const turnId=await turn();
@@ -345,10 +359,11 @@ test("P5 catalog: price-pending models need no neurons, priced ones need a posit
  assert.throws(()=>assertValidCatalog([{...intone,capabilities:{...intone.capabilities,lipSync:false}}]),/lip/i);
  assert.throws(()=>assertValidCatalog([{...intone,audioSecondsRange:[30,2]}]),/range/);
  assert.throws(()=>assertValidCatalog([{...findMediaModel("genjutsu-motion")!,capabilities:{...findMediaModel("genjutsu-motion")!.capabilities,referenceImages:{supported:false,max:null}}}]),/reference/i);
- assert.deepEqual(MEDIA_CATALOG.filter(m=>m.evidenceSource==="agent_catalogue").map(m=>m.id),["intone","genjutsu-replace","genjutsu-motion"]);
+ assert.deepEqual(MEDIA_CATALOG.filter(m=>m.evidenceSource==="agent_catalogue").map(m=>m.id),["intone"],"only Intone lacks an API reference page");
  assert.ok(MEDIA_CATALOG.filter(m=>m.evidenceSource==="agent_catalogue").every(m=>!m.capabilities.verified&&!m.verifiedApiPath&&m.pricePending&&m.neurons===undefined));
- assert.deepEqual(MEDIA_CATALOG.filter(m=>m.capabilities.verified).map(m=>m.id),["soul-image"]);
- assert.equal(intone.characterImagesMax,2);assert.equal(intone.audioClipsMax,6);assert.deepEqual(intone.audioSecondsRange,[2,30]);assert.equal(findMediaModel("genjutsu-replace")!.capabilities.referenceImages.max,null);
+ assert.ok(MEDIA_CATALOG.filter(m=>m.pricePending).every(m=>m.neurons===undefined)&&["genjutsu-replace","genjutsu-motion"].every(id=>findMediaModel(id)!.pricePending),"Genjutsu stays price pending until the owner approves SKUs");
+ assert.equal(intone.characterImagesMax,2);assert.equal(intone.audioClipsMax,6);assert.deepEqual(intone.audioSecondsRange,[2,30]);assert.equal(findMediaModel("genjutsu-replace")!.capabilities.referenceImages.max,8);
+ assert.deepEqual(findMediaModel("genjutsu-motion")!.sourceVideoSecondsRange,[4,30]);
  for(const m of MEDIA_CATALOG.filter(x=>x.evidenceSource==="agent_catalogue"))assert.ok(m.capabilities.verified===false&&generationGate(m).blockers.includes("model_unverified"));
 });
 test("P5 public catalog: pending models are listed available:false with no price and no internals",async()=>{
@@ -357,4 +372,21 @@ test("P5 public catalog: pending models are listed available:false with no price
  assert.equal(j.models.find(m=>m.id==="soul-image")!.available,true);
  const raw=JSON.stringify(j);
  for(const t of ["evidence","evidenceSource","verifiedApiPath","pricePending","agent_catalogue","higgsfield"])assert.equal(raw.toLowerCase().includes(t.toLowerCase()),false,t);
+});
+
+test("payload builder and path rule: documented paths only, Genjutsu never gets a payload without hosted media",async()=>{
+ const {buildHiggsfieldPayload}=await import("../lib/media-provider");
+ const {submitHiggsfieldVerifiedPath}=await import("../lib/higgsfield");
+ assert.throws(()=>buildHiggsfieldPayload(findMediaModel("genjutsu-replace")!,"p",{}),/No verified payload/);
+ assert.throws(()=>buildHiggsfieldPayload(findMediaModel("seedance-2-5-5s")!,"p",{durationSeconds:7}),/duration/);
+ assert.deepEqual(buildHiggsfieldPayload(findMediaModel("seedance-2-5-5s")!,"p",{}),{prompt:"p",duration:5,resolution:"1080p",generate_audio:false});
+ await withEnv(LIVE_ENV,async()=>{
+  const realFetch=globalThis.fetch,urls:string[]=[];
+  globalThis.fetch=(async(url:string)=>{urls.push(String(url));return new Response(JSON.stringify({request_id:"r"}),{status:200});}) as typeof fetch;
+  try{
+   for(const ok of ["/higgsfield-ai/soul/standard","/bytedance/seedance-2.5/text-to-video","/higgsfield/genjutsu/object-swap/v1.0"])await submitHiggsfieldVerifiedPath(ok,{});
+   for(const bad of ["/a/../b","/a/b.","/a/.b","/a//b","/a","/A/b","/a/b?x=1","https://evil/a/b","/a/b-"])await assert.rejects(()=>submitHiggsfieldVerifiedPath(bad,{}),/Invalid configured model path/,bad);
+   assert.equal(urls.length,3);
+  }finally{globalThis.fetch=realFetch;}
+ });
 });
