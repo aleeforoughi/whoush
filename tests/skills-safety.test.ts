@@ -1,0 +1,93 @@
+import {test} from "node:test";
+import assert from "node:assert/strict";
+import {normalizePersian,evaluateTextSafety,assertSafeText,ContentPolicyError} from "../lib/safety";
+import {SKILLS,resolveCreativeSkills,compileSkillInstructions} from "../lib/skills";
+import {createDemoProposal} from "../lib/agent";
+
+test("Persian normalization handles Arabic Yeh, Kaf, joiners and diacritics",()=>{
+ assert.equal(normalizePersian("كيـتاب‌ های  زیبا"),"کتاب های زیبا");
+ assert.equal(normalizePersian("خامنه‌ای"),"خامنه ای");
+});
+test("nonpolitical Iran locations, flag and daily fashion remain available",()=>{
+ for(const p of [
+  "یک عکس حرفه‌ای در میدان انقلاب تهران با خیابان‌های واقعی",
+  "یک پوستر نوروز با پرچم ایران و شکوفه‌ها",
+  "عکس یک عروس با لباس مجلسی در شیراز",
+  "برند آرایش با رنگ نود و رژ نود",
+  "ورزشکار با لباس ورزشی در سالن"
+ ])assert.equal(evaluateTextSafety(p).decision,"allow",p);
+});
+test("explicit politics and named political figures block in two scripts",()=>{
+ for(const p of [
+  "Make a campaign poster for President Trump",
+  "Generate a political election video",
+  "پوستر انتخاباتی با رئیس جمهور",
+  "پرتره خامنه‌ای با چهره واقعی",
+  "عکس حسن روحانی در جلسه",
+  "ویدیو تظاهرات و اعتراضات"
+ ]){
+  const result=evaluateTextSafety(p);
+  assert.equal(result.decision,"block",p);
+  assert.equal(result.category,"politics",p);
+  assert.throws(()=>createDemoProposal(p),ContentPolicyError);
+ }
+});
+test("nudity, revealing clothing and sexualized posing block",()=>{
+ for(const p of [
+  "Generate a bikini swimsuit portrait",
+  "woman in lingerie",
+  "make a topless portrait",
+  "ژست سکسی با لباس زیر",
+  "عکس نیمه‌برهنه",
+  "با لباس شفاف و ژست اغواگر"
+ ]){
+  const r=evaluateTextSafety(p);
+  assert.equal(r.decision,"block",p);
+  assert.equal(r.category,"sexualized_content");
+ }
+});
+test("ambiguous political usage and sensitive slang route to review, not generation",()=>{
+ for(const p of ["لباس پهلوی","از روحانی داخل عکس بگیر","متن فحاشی برای پوستر"]){
+  const result=evaluateTextSafety(p);
+  assert.equal(result.decision,"review",p);
+  assert.throws(()=>assertSafeText(p),ContentPolicyError);
+ }
+});
+test("image creation always includes four universal skills plus pro photographer",()=>{
+ const skills=resolveCreativeSkills({prompt:"یک عکس پرتره طبیعی",kind:"image"});
+ for(const id of ["prompt_engineer","creative_director","persian_language","qa","photographer"])
+  assert.ok(skills.includes(id as keyof typeof SKILLS),id);
+ const system=compileSkillInstructions({prompt:"عکس پرتره",kind:"image"});
+ for(const phrase of ["aperture","ISO","shutter","white balance","lighting","framing","focal length"])
+  assert.ok(system.toLowerCase().includes(phrase.toLowerCase()),phrase);
+ assert.ok(!skills.includes("cinematographer"));
+});
+test("video creation always includes cinematography and videography",()=>{
+ const skills=resolveCreativeSkills({prompt:"یک ویدیو سینمایی از دریا",kind:"video"});
+ for(const id of ["cinematographer","videographer","prompt_engineer","qa"])
+  assert.ok(skills.includes(id as keyof typeof SKILLS),id);
+ const system=compileSkillInstructions({prompt:"ویدیو",kind:"video"});
+ for(const phrase of ["shutter","FPS","continuity","motion"])
+  assert.ok(system.includes(phrase),phrase);
+});
+test("editing brings source preserving specialty skills",()=>{
+ assert.ok(resolveCreativeSkills({prompt:"پشت زمینه عکس را تغییر بده",kind:"image",task:"edit"}).includes("photo_editor"));
+ assert.ok(resolveCreativeSkills({prompt:"mask video and preserve motion",kind:"video",task:"edit"}).includes("video_editor"));
+});
+test("social, Persian cultural, graphic design and copy skill routing",()=>{
+ const skills=resolveCreativeSkills({prompt:"پوستر اینستاگرام نوروز تهران با کپشن فارسی",kind:"image"});
+ for(const id of ["visual_designer","social_media","creative_copywriter","iranian_culture","iranian_geography"])
+  assert.ok(skills.includes(id as keyof typeof SKILLS),id);
+ assert.ok(resolveCreativeSkills({prompt:"music video",kind:"video",hasAudioReference:true}).includes("audiographer"));
+});
+test("unrelated skills not loaded for plain product photo",()=>{
+ const ids=resolveCreativeSkills({prompt:"product photo of a cup",kind:"image"});
+ assert.equal(ids.includes("social_media"),false);
+ assert.equal(ids.includes("audiographer"),false);
+});
+test("core skill registry is complete",()=>{
+ assert.equal(Object.keys(SKILLS).length,15);
+ for(const [id,skill] of Object.entries(SKILLS)){
+  assert.ok(skill.title&&skill.objective&&skill.checks.length,id);
+ }
+});
