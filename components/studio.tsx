@@ -1,7 +1,9 @@
 "use client";
-import {useState,type FormEvent} from "react";
+import {useEffect,useState,type FormEvent} from "react";
 import Link from "next/link";
 import type {AgentPreference,GenerationProposal} from "@/lib/types";
+import {getLocalCharacter} from "@/lib/character-store";
+import {characterCoverage,type CharacterProfile} from "@/lib/characters";
 type TranscriptItem={role:"user"|"agent";text:string};
 const opening="سلام! دوست داری چه تصویر یا ویدیویی بسازیم؟ می‌تونی مدل موردعلاقه‌ات رو هم توی پیام بنویسی.";
 export function Studio(){
@@ -14,6 +16,8 @@ export function Studio(){
  const [preview,setPreview]=useState("شروع کن: ایده‌ات رو در چت بنویس.");
  const [activeTab,setActiveTab]=useState<"generations"|"cuts">("generations");
  const [error,setError]=useState("");
+ const [character,setCharacter]=useState<CharacterProfile|null>(null);
+ useEffect(()=>{const id=new URLSearchParams(window.location.search).get("character");if(id){void getLocalCharacter(id).then(profile=>{if(profile)setCharacter(profile);}).catch(()=>{});}},[]);
  async function send(e:FormEvent){
   e.preventDefault();const text=draft.trim();if(!text||busy)return;
   setDraft("");setError("");setBusy(true);setProposal(null);
@@ -47,6 +51,7 @@ export function Studio(){
     <div className="nav-caption">WORKSPACE</div>
     <Link href="/studio" className="nav-item selected">◈ <span>دستیار خلاق</span></Link>
     <Link href="/neurons" className="nav-item">✳ <span>خرید نورون</span></Link>
+    <Link href="/characters" className="nav-item">◎ <span>استودیوی کاراکتر</span></Link>
     <div className="nav-item muted">▦ <span>پروژه‌ها · به‌زودی</span></div>
     <div className="nav-item muted">▤ <span>فایل‌ها · به‌زودی</span></div>
     <div className="rail-bottom"><span>نسخه آزمایشی</span><span>۰ نورون</span></div>
@@ -64,6 +69,7 @@ export function Studio(){
   </section>
   <section className="agent-panel" dir="rtl">
    <header className="agent-header"><div><strong>دستیار هووش</strong><p>ساخت تصویر و ویدیو با گفت‌وگو</p></div><span className="status-dot"/></header>
+   {character&&<div className="selected-character"><div><strong>کاراکتر انتخاب‌شده: {character.name}</strong><small>{characterCoverage(character.references).count.toLocaleString("fa-IR")} عکس مرجع · فقط در این مرورگر</small></div><Link href="/characters">ویرایش</Link><small>اتصال به Higgsfield در مرحله بعد</small></div>}
    <div className="conversation" aria-live="polite">
     {messages.map((m,i)=><div key={i} className={"message "+m.role}>{m.text}</div>)}
     {proposal&&<div className="proposal">
