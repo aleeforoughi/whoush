@@ -4,6 +4,7 @@ import type {AttachmentRole} from "./attachments";
 import {assertSafeText} from "./safety";
 import {resolveCreativeSkills,compileSkillInstructions,type SkillId} from "./skills";
 import {reasoningTier,detectMediaKind} from "./router";
+import {devLiveTest} from "./policy";
 export type PrivateRouting={tier:ReasoningTier;modelId:string;provider:"anthropic"|"openai"};
 export function resolvePrivateRouting(tier:ReasoningTier):PrivateRouting|null{
  const key=tier==="fast"?"LLM_FAST_MODEL":tier==="balanced"?"LLM_BALANCED_MODEL":"LLM_DEEP_MODEL";
@@ -33,14 +34,15 @@ export function preparePrivateCreativeRequest(args:{
 }
 /** Fail-closed live-call gate: every condition must hold. Only the Anthropic adapter exists; other providers never go live. */
 export function llmPolicy(tier:ReasoningTier):{live:boolean;reason:string}{
- const e=process.env;
- if(e.LLM_PROVIDER_AUTHORIZED!=="true")return {live:false,reason:"provider not authorized"};
- if(e.ALLOW_LIVE_LLM!=="true")return {live:false,reason:"live llm disabled"};
+ const e=process.env,dev=devLiveTest().enabled;
+ // Owner-only local testing (devLiveTest, lib/policy.ts) may call the planner without the production authorization flags; everything else still applies.
+ if(!dev&&e.LLM_PROVIDER_AUTHORIZED!=="true")return {live:false,reason:"provider not authorized"};
+ if(!dev&&e.ALLOW_LIVE_LLM!=="true")return {live:false,reason:"live llm disabled"};
  const r=resolvePrivateRouting(tier);
  if(!r)return {live:false,reason:"model id not configured"};
  if(r.provider!=="anthropic"||!r.modelId.startsWith("claude-"))return {live:false,reason:"adapter not implemented"};
  if(!e.ANTHROPIC_API_KEY)return {live:false,reason:"api key not configured"};
- return {live:true,reason:"live"};
+ return {live:true,reason:dev?"dev_live_test":"live"};
 }
 // Model names, providers, token costs and route changes belong only in privileged logs.
 // Never return this object to the frontend. Live LLM calls are deferred until

@@ -5,7 +5,7 @@ import {ReservationLedger} from "./ledger";
 import {NotCancelableError,providerForMode,type MediaProvider,type ProviderOutput,type ProviderStatus} from "./media-provider";
 import {getPrivateMediaPrompt} from "./orchestrator";
 import {evaluateOutputQA,type OutputQA} from "./output-qa";
-import {generationGate} from "./policy";
+import {claimDevSubmit,devGenerationGate,generationGate,type GenerationMode} from "./policy";
 import {verifyQuote,verifyQuoteSignature,QuoteError,type CharacterRefDigest} from "./quotes";
 import {evaluateTextSafety} from "./safety";
 export type JobState="quoted"|"approved"|"reserved"|"submitted"|"running"|"completed"|"completed_demo"|"failed"|"canceled"|"released";
@@ -15,7 +15,7 @@ export const JOB_TRANSITIONS:Readonly<Record<JobState,readonly JobState[]>>={
  completed:[],completed_demo:[],failed:[],canceled:[],released:[]
 };
 export const isTerminal=(s:JobState)=>JOB_TRANSITIONS[s].length===0;
-export type Job={id:string;ownerId:string;idempotencyKey:string;quoteId:string;turnId:string;modelId:string;mode:"demo"|"live";configuration:MediaConfiguration;characterRef?:CharacterRefDigest;
+export type Job={id:string;ownerId:string;idempotencyKey:string;quoteId:string;turnId:string;modelId:string;mode:GenerationMode;configuration:MediaConfiguration;characterRef?:CharacterRefDigest;
  neurons:number;chargedNeurons:number;state:JobState;providerRequestId?:string;outputs:ProviderOutput[];qa:OutputQA;createdAt:string;updatedAt:string};
 export interface JobStore{get(id:string):Job|undefined;byIdempotency(ownerId:string,key:string):Job|undefined;byQuote(quoteId:string):Job|undefined;insert(j:Job):void;save(j:Job):void}
 export class InMemoryJobStore implements JobStore{
@@ -56,6 +56,7 @@ export async function executeApprovedQuote(i:{token:string;approved:boolean;idem
  if(i.moderation.decision!=="allow")throw new JobError("moderation_blocked"); // fail closed
  if(q.mode==="live"&&i.moderation.source!=="production")throw new JobError("moderation_blocked");
  if(q.mode==="live"&&!ledger.checksBalance)throw new JobError("insufficient_balance"); // live spend needs a real wallet balance source
+ // dev_live (owner-only local testing) accepts the lexical pre-submission check and never charges Neurons; see devLiveTest in lib/policy.ts.
  const prompt=getPrivateMediaPrompt(q.turnId);if(prompt===undefined)throw new QuoteError("unknown_turn");
  const t=now.toISOString();
  const job:Job={id:randomUUID(),ownerId:i.ownerId,idempotencyKey:i.idempotencyKey,quoteId:q.quoteId,turnId:q.turnId,modelId:q.modelId,mode:q.mode,configuration:q.configuration,characterRef:q.characterRef,neurons:q.neurons,chargedNeurons:0,state:"quoted",outputs:[],qa:{status:"not_applicable",checks:[]},createdAt:t,updatedAt:t};
@@ -66,17 +67,21 @@ export async function executeApprovedQuote(i:{token:string;approved:boolean;idem
  const provider=deps.provider??providerForMode(job.mode);
  try{
   if(job.mode==="live"&&!generationGate(model).live)throw new Error("gate closed");
+  if(job.mode==="dev_live"&&!(devGenerationGate(model).live&&claimDevSubmit()))throw new Error("dev gate closed or cap reached");
   const r=await provider.submit({modelId:job.modelId,prompt,configuration:job.configuration,idempotencyKey:job.id});
   job.providerRequestId=r.providerRequestId;transition(job,"submitted",deps.now?.()??new Date());
- }catch{
+  if(job.mode==="dev_live")console.info("[whoush dev-live] media submit",job.modelId,r.providerRequestId); // never the prompt
+ }catch(e){
   // CONCERN: an ambiguous live submit failure may have created a provider request; needs reconciliation before launch.
+  if(job.mode==="dev_live")console.warn("[whoush dev-live] media submit failed:",e instanceof Error?e.message:"unknown"); // message only: no key, no prompt
   ledger.release(job.id);transition(job,"released",deps.now?.()??new Date());
  }
  store.save(job);return job;
 }
 function finish(job:Job,ledger:ReservationLedger,to:"completed"|"completed_demo"|"failed"|"canceled",now:Date,outputs:ProviderOutput[]=[]){
  transition(job,to,now);
- if(to==="completed"){ledger.settle(job.id);job.chargedNeurons=job.neurons;job.outputs=outputs;job.qa=evaluateOutputQA(job,outputs);} // settle only with verified output
+ if(to==="completed"&&job.mode==="dev_live"){ledger.release(job.id);job.chargedNeurons=0;job.outputs=outputs;job.qa=evaluateOutputQA(job,outputs);} // dev testing never charges
+ else if(to==="completed"){ledger.settle(job.id);job.chargedNeurons=job.neurons;job.outputs=outputs;job.qa=evaluateOutputQA(job,outputs);} // settle only with verified output
  else{ledger.release(job.id);job.chargedNeurons=0;}
 }
 const httpsUrl=(u:string)=>{try{return new URL(u).protocol==="https:";}catch{return false;}};
@@ -95,7 +100,7 @@ export async function pollJob(id:string,ownerId:string,deps:JobDeps={}):Promise<
   case "running":if(cur.state==="submitted")transition(cur,"running",now);break;
   case "completed_demo":if(cur.mode==="demo"){if(cur.state==="submitted")transition(cur,"running",now);finish(cur,ledger,"completed_demo",now);}break;
   case "completed":{
-   if(cur.mode!=="live")break;
+   if(cur.mode==="demo")break;
    if(cur.state==="submitted")transition(cur,"running",now);
    const ok=s.outputs.length>0&&s.outputs.every(o=>httpsUrl(o.url));
    finish(cur,ledger,ok?"completed":"failed",now,ok?s.outputs:[]);break;
@@ -122,7 +127,8 @@ const MSG:Record<JobState,string>={
  failed:"تولید ناموفق بود؛ نورونی کسر نشد.",canceled:"درخواست لغو شد؛ نورونی کسر نشد.",released:"درخواست ارسال نشد؛ نورون رزروشده آزاد شد و نورونی کسر نشد."
 };
 /** Consumer projection: no provider ids/keys/costs/evidence/turn or quote internals. Output URLs only for completed live jobs. */
+const DEV_COMPLETED_FA="تست توسعه: خروجی واقعی ساخته شد و هیچ نورونی کسر نشد. خروجی باید بازبینی شود.";
 export function toPublicJob(j:Job){
  return {id:j.id,state:j.state,mode:j.mode,modelId:j.modelId,neurons:j.neurons,chargedNeurons:j.chargedNeurons,
-  outputs:j.state==="completed"?j.outputs.map(o=>({kind:o.kind,url:o.url})):[],qa:j.qa,messageFa:MSG[j.state]};
+  outputs:j.state==="completed"?j.outputs.map(o=>({kind:o.kind,url:o.url})):[],qa:j.qa,messageFa:j.mode==="dev_live"&&j.state==="completed"?DEV_COMPLETED_FA:MSG[j.state]};
 }

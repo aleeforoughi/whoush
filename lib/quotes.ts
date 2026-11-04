@@ -3,7 +3,7 @@ import {createHash,createHmac,randomBytes,randomUUID,timingSafeEqual} from "node
 import {z} from "zod";
 import {MEDIA_CATALOG_VERSION,configurationProblem,findMediaModel,priceFor,type MediaConfiguration} from "./catalog";
 import {getPrivateMediaPrompt} from "./orchestrator";
-import {generationGate} from "./policy";
+import {generationModeFor} from "./policy";
 export type QuoteErrorCode="unsupported_model"|"unknown_turn"|"invalid_configuration"|"invalid_quote"|"expired_quote"|"stale_quote"|"signing_unavailable"|"price_pending";
 const STATUS:Record<QuoteErrorCode,number>={unsupported_model:422,unknown_turn:410,invalid_configuration:422,invalid_quote:400,expired_quote:410,stale_quote:409,signing_unavailable:503,price_pending:409};
 /** Persian explanation for `price_pending` (409): the model is known but has no approved Neuron price yet. */
@@ -16,7 +16,7 @@ const payloadSchema=z.object({
  configuration:z.object({aspectRatio:z.string().max(12).optional(),durationSeconds:z.number().int().positive().optional()}).strict(),
  characterRef:z.object({id:z.string().max(80),version:z.number().int().positive(),angles:z.array(z.string().max(32)).max(6)}).strict().optional(),
  inputsDigest:z.string().regex(/^[0-9a-f]{64}$/),neurons:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),catalogVersion:z.string().max(64),
- issuedAt:z.string().max(40),expiresAt:z.string().max(40),mode:z.enum(["demo","live"])
+ issuedAt:z.string().max(40),expiresAt:z.string().max(40),mode:z.enum(["demo","live","dev_live"])
 }).strict();
 export type SignedQuote=z.infer<typeof payloadSchema>;
 export type IssuedQuote=Omit<SignedQuote,"turnId"|"characterRef">&{token:string};
@@ -42,7 +42,7 @@ export function createQuote(i:{modelId:string;configuration?:MediaConfiguration;
  if(model.pricePending)throw new QuoteError("price_pending"); // a suggested-only model is never quoted
  const prompt=getPrivateMediaPrompt(i.turnId);if(prompt===undefined)throw new QuoteError("unknown_turn"); // never a client-supplied prompt
  if(configurationProblem(model,configuration))throw new QuoteError("invalid_configuration");
- const mode=generationGate(model).live?"live":"demo",secret=envSecret()??(mode==="demo"?demoSecret():undefined);
+ const mode=generationModeFor(model),secret=envSecret()??(mode!=="live"?demoSecret():undefined);
  if(!secret)throw new QuoteError("signing_unavailable"); // live fails closed
  const p:SignedQuote={quoteId:randomUUID(),modelId:model.id,turnId:i.turnId,configuration:{...configuration},characterRef:i.characterRef&&{id:i.characterRef.id,version:i.characterRef.version,angles:[...i.characterRef.angles]},
   inputsDigest:computeInputsDigest(prompt,i.characterRef,configuration),neurons:priceFor(model,configuration),catalogVersion:MEDIA_CATALOG_VERSION,issuedAt:now.toISOString(),expiresAt:new Date(now.getTime()+QUOTE_TTL_MS).toISOString(),mode};
@@ -59,7 +59,7 @@ export function verifyQuoteSignature(token:string):{quote:SignedQuote;viaDemoSec
  if(!okEnv&&!okDemo)throw bad();
  let p:SignedQuote;
  try{p=payloadSchema.parse(JSON.parse(Buffer.from(body,"base64url").toString("utf8")));}catch{throw bad();}
- if(okDemo&&p.mode!=="demo")throw bad();
+ if(okDemo&&p.mode==="live")throw bad();
  return {quote:p,viaDemoSecret:okDemo};
 }
 /** Throws QuoteError unless the token is untampered, unexpired, current-catalog, same-price, same-mode and its server-side inputs are unchanged. */
@@ -69,7 +69,7 @@ export function verifyQuote(token:string,now:Date=new Date()):SignedQuote{
  const model=findMediaModel(p.modelId);
  if(model?.pricePending)throw new QuoteError("price_pending");
  if(p.catalogVersion!==MEDIA_CATALOG_VERSION||!model||configurationProblem(model,p.configuration)||priceFor(model,p.configuration)!==p.neurons)throw new QuoteError("stale_quote");
- if(p.mode!==(generationGate(model).live?"live":"demo"))throw new QuoteError("stale_quote");
+ if(p.mode!==generationModeFor(model))throw new QuoteError("stale_quote");
  const prompt=getPrivateMediaPrompt(p.turnId);if(prompt===undefined)throw new QuoteError("unknown_turn");
  if(computeInputsDigest(prompt,p.characterRef,p.configuration)!==p.inputsDigest)throw new QuoteError("stale_quote");
  return p;

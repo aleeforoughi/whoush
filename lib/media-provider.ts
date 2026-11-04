@@ -2,7 +2,7 @@ import "server-only";
 import {randomUUID} from "node:crypto";
 import {findMediaModel,type MediaConfiguration} from "./catalog";
 import {cancelHiggsfield,getHiggsfieldStatus,NotCancelableError,submitHiggsfieldVerifiedPath,type HiggsfieldStatus} from "./higgsfield";
-import {generationGate} from "./policy";
+import {devGenerationGate,generationGate,type GenerationMode} from "./policy";
 import type {MediaModel} from "./types";
 /** Provider outputs are provider-hosted URLs that expire (>= 7 days); mirroring to owned storage is NOT implemented (docs/LAUNCH_GATES.md gate 8). */
 export type ProviderOutput={kind:"image"|"video"|"audio";url:string;needsMirroring:true;mime?:string;width?:number;height?:number;durationSeconds?:number};
@@ -39,10 +39,12 @@ function mapOutputs(r:HiggsfieldStatus):ProviderOutput[]{
  for(const i of r.images??[])add("image",i);add("video",r.video);add("audio",r.audio);for(const a of r.audios??[])add("audio",a);
  return o;
 }
-/** Only constructible/usable when generationGate(model).live; re-checked on every submit. */
+/** Only usable when generationGate(model).live, or devGenerationGate for owner-only dev testing; re-checked on every submit. */
 export class HiggsfieldMediaProvider implements MediaProvider{
+ constructor(private readonly mode:"live"|"dev_live"="live"){}
  async submit(job:ProviderJob):Promise<{providerRequestId:string}>{
-  const model=findMediaModel(job.modelId);if(!model||!model.verifiedApiPath||!generationGate(model).live)throw new Error("Live generation blocked");
+  const model=findMediaModel(job.modelId);
+  if(!model||!model.verifiedApiPath||!(this.mode==="live"?generationGate(model).live:devGenerationGate(model).live))throw new Error("Live generation blocked");
   const r=await submitHiggsfieldVerifiedPath(model.verifiedApiPath,buildHiggsfieldPayload(model,job.prompt,job.configuration),job.idempotencyKey);
   if(!r||typeof r.request_id!=="string"||!r.request_id)throw new Error("Malformed provider submission");
   return {providerRequestId:r.request_id};
@@ -57,4 +59,4 @@ export class HiggsfieldMediaProvider implements MediaProvider{
 }
 const g=globalThis as {__whoushMockProvider?:MediaProvider};
 export const sharedMockProvider=():MediaProvider=>(g.__whoushMockProvider??=new MockMediaProvider());
-export const providerForMode=(mode:"demo"|"live"):MediaProvider=>mode==="live"?new HiggsfieldMediaProvider():sharedMockProvider();
+export const providerForMode=(mode:GenerationMode):MediaProvider=>mode==="demo"?sharedMockProvider():new HiggsfieldMediaProvider(mode);
