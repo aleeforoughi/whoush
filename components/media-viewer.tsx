@@ -167,7 +167,7 @@ function ViewerBody({items,index,onIndexChange,onClose,projectTitleOf,stageRef}:
      :<span className="max-w-full truncate type-label text-fg-primary"><bdi>{projectTitle}</bdi></span>)}
    </div>
    <div className="order-2 ms-auto flex items-center gap-2 sm:order-3 sm:ms-0">
-    <ShareActions overlay file={shareFile(item,projectTitle)}/>
+    <ShareActions overlay instagram file={shareFile(item,projectTitle)}/>
     {projectHref&&<Button variant="secondary" size="icon" aria-label="باز کردن پروژه" title="باز کردن پروژه" render={<Link href={projectHref} onClick={onClose}/>} nativeButton={false}><Icon icon={FolderOpen} aria-hidden="true"/></Button>}
    </div>
   </div>
