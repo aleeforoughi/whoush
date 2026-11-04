@@ -17,5 +17,6 @@ repository is public, so the font binaries are **git-ignored** and must never be
 The owner keeps a local copy here. CI and any build without the files fall back to Inter Variable (Latin) and Tahoma
 (Persian), and the browser logs 404s for these URLs.
 
-Before production: confirm the IRANSans license covers the Whoush website/app (fontiran licenses are typically issued
-per website or project), then serve the files from private storage or the deployment's static assets, never from Git.
+License: the owner confirmed on 2026-11-04 that the IRANSans license covers Whoush. The license allows serving the font
+from the Whoush site; it does not allow publishing the files in a public repository. For production, deliver the files
+to the deployment from private storage (or a private repo) at build time, never from this Git repository.
