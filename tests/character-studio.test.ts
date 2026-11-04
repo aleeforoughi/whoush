@@ -30,6 +30,6 @@ test("lock briefs list only provided angles and do not claim an actual face lock
  const prompt=buildCharacterLockBrief({name:"Character A",notes:"same beard",references:{front:photo()}});
  assert.match(prompt,/front/);
  assert.match(prompt,/Missing recommended angles/);
- assert.match(prompt,/model-dependent/i);
+ assert.match(prompt,/Model-specific identity adherence/i);
  assert.doesNotMatch(prompt,/perfect face lock guaranteed/i);
 });
