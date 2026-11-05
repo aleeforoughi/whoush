@@ -53,6 +53,9 @@ The docs now have per-model reference pages under `docs.higgsfield.ai/docs/model
 
 Rate limits (rate-limits.md): concurrency is per account and model and shown in the console; requests above it are accepted and queued; when the queue is full a generation gets `429` with `Retry-After` and code `account_queue_full` ("nothing is created or charged"); resubmit after `Retry-After` with the same `Idempotency-Key`; `503 admission_control_unavailable` means retry with backoff; successful responses carry no remaining-capacity headers. Whoush does not yet retry Higgsfield 429s (a submission error releases the reservation).
 
+### Third retrieval, 2026-11-05 (the full catalogue)
+Every one of the 84 API workflow pages (17 image, 67 video, across 36 families) was downloaded raw and its path recorded, alongside the full MCP catalogue (136 models). See **`docs/HIGGSFIELD_MODELS.md`**.
+
 ## Transport (verified)
 - Base URL: `https://api.higgsfield.ai` (quick-start; authentication.md example).
 - Auth header: `Authorization: Key <credential>` + `Content-Type: application/json`. **Sources differ on the credential shape:** quick-start says `Key <api-key>` ; authentication.md, get-request-status.md and openapi.json say `Key {api_key_id}:{api_key_secret}`. authentication.md also says legacy headers `hf-api-key` / `hf-secret` exist and new integrations should use `Authorization`. `lib/higgsfield.ts` sends `Key ` + `HIGGSFIELD_API_KEY`, so that env var must hold the exact credential string Higgsfield issues; which shape is right is **not verified**.
@@ -95,10 +98,12 @@ Facts below come from the per-model API reference pages (second retrieval). Wher
 - **Not submittable:** both inputs must be public URLs the provider can fetch, and Whoush keeps user media in the browser. `lib/policy.ts` adds `needs_hosted_media` and `lib/media-provider.ts` has no payload for it. Also price pending (below).
 
 ### Kling 4.0 — NOT VERIFIED
+- 2026-11-05: listed on the open playground (Kling 4.0 and Kling 4.0 Flash) and in the MCP catalogue (`kling4_0`, `kling_4_0_flash`). Still **no API docs page**; the newest documented Kling is 3.0 (`docs/HIGGSFIELD_MODELS.md`).
 - No API reference page: the video catalogue's newest Kling is 3.0 (plus 3.0 Motion Control, O3 and Omni). An earlier playground page for `kling-video/v4.0` showed no endpoint. Unverified, never live.
 
 ### Nano Banana Pro — NOT VERIFIED
 - Not in the image catalogue (14 model pages). Unverified, never live.
+- **Re-checked 2026-11-05: still absent.** It is also absent from the open playground. It exists only in the MCP catalogue, as `nano_banana_pro`, `nano_banana_2` and `nano_banana_2_1`. See `docs/HIGGSFIELD_MODELS.md`.
 
 ### Intone — NOT VERIFIED
 - No API reference page (`docs/models/intone.md` is 404; no lip-sync or talking-head model in the video catalogue). Facts come only from the agent catalogue below. Stays locked.
