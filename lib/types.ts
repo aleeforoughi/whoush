@@ -28,8 +28,12 @@ export interface ModelCapabilities {
   videoContinuation: boolean;
 }
 export interface MediaRequirements { operation?: Exclude<MediaOperation, "generate">; referenceImages?: number; aspectRatio?: string; durationSeconds?: number; lipSync?: boolean; motionReference?: boolean; videoReference?: boolean; startImage?: boolean; endImage?: boolean; videoContinuation?: boolean; }
+/** The direct provider whose API runs a model (docs/PROVIDERS.md). Private: never serialized to consumers. */
+export type MediaProviderId = "higgsfield" | "google" | "byteplus" | "kling";
 export interface MediaModel {
   id: string;
+  /** Private: which provider's API runs it. */
+  provider: MediaProviderId;
   name: string;
   kind: MediaKind;
   description: string;

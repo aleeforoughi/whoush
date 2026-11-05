@@ -3,7 +3,7 @@ import {randomUUID} from "node:crypto";
 import {findMediaModel,type MediaConfiguration} from "./catalog";
 import {cancelHiggsfield,getHiggsfieldStatus,HiggsfieldHttpError,NotCancelableError,submitHiggsfieldVerifiedPath,type HiggsfieldStatus} from "./higgsfield";
 import {devGenerationGate,generationGate,type GenerationMode} from "./policy";
-import type {MediaModel} from "./types";
+import type {MediaModel,MediaProviderId} from "./types";
 /** Provider outputs are provider-hosted URLs that expire (>= 7 days); mirroring to owned storage is NOT implemented (docs/LAUNCH_GATES.md gate 8). */
 export type ProviderOutput={kind:"image"|"video"|"audio";url:string;needsMirroring:true;mime?:string;width?:number;height?:number;durationSeconds?:number};
 export type ProviderState="queued"|"running"|"completed"|"completed_demo"|"failed"|"nsfw"|"canceled";
@@ -86,4 +86,26 @@ export class HiggsfieldMediaProvider implements MediaProvider{
 }
 const g=globalThis as {__whoushMockProvider?:MediaProvider};
 export const sharedMockProvider=():MediaProvider=>(g.__whoushMockProvider??=new MockMediaProvider());
-export const providerForMode=(mode:GenerationMode):MediaProvider=>mode==="demo"?sharedMockProvider():new HiggsfieldMediaProvider(mode);
+/** Each direct provider's adapter (docs/PROVIDERS.md). One is added only with its API evidence recorded; a model whose provider has none is never submitted. */
+export type AdapterFactory=(mode:"live"|"dev_live")=>MediaProvider;
+const adapters=():Partial<Record<MediaProviderId,AdapterFactory>>=>((globalThis as {__whoushAdapters?:Partial<Record<MediaProviderId,AdapterFactory>>}).__whoushAdapters??={higgsfield:m=>new HiggsfieldMediaProvider(m)});
+export function registerAdapter(p:MediaProviderId,f:AdapterFactory){adapters()[p]=f;}
+/**
+ * A provider request id names its provider, so status and cancel reach the same API later: «google:…», «byteplus:…», «kling:…». Higgsfield ids keep their
+ * original form (no prefix), so jobs created before other providers existed still resolve.
+ */
+const PREFIXED=/^(google|byteplus|kling):(.+)$/s;
+export const tagRequestId=(p:MediaProviderId,id:string)=>p==="higgsfield"?id:p+":"+id;
+export function splitRequestId(id:string):{provider:MediaProviderId;id:string}{const m=PREFIXED.exec(id);return m?{provider:m[1] as MediaProviderId,id:m[2]}:{provider:"higgsfield",id};}
+/** Routes each call to the adapter of the model's provider. */
+export class RoutingMediaProvider implements MediaProvider{
+ constructor(private readonly mode:"live"|"dev_live"){}
+ private adapter(p:MediaProviderId):MediaProvider{const f=adapters()[p];if(!f)throw new Error("No adapter for provider");return f(this.mode);}
+ async submit(job:ProviderJob):Promise<{providerRequestId:string}>{
+  const model=findMediaModel(job.modelId);if(!model)throw new Error("Unknown model");
+  const r=await this.adapter(model.provider).submit(job);return {providerRequestId:tagRequestId(model.provider,r.providerRequestId)};
+ }
+ async status(id:string):Promise<ProviderStatus>{const s=splitRequestId(id);return this.adapter(s.provider).status(s.id);}
+ async cancel(id:string):Promise<void>{const s=splitRequestId(id);return this.adapter(s.provider).cancel(s.id);}
+}
+export const providerForMode=(mode:GenerationMode):MediaProvider=>mode==="demo"?sharedMockProvider():new RoutingMediaProvider(mode);

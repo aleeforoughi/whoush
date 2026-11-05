@@ -21,3 +21,6 @@ public/visuals/raw/
 .models-3d-work/
 scripts/models-3d/reports/*/view-*.png
 scripts/models-3d/reports/*/wire-*.png
+
+# Whoush-hosted generated media (development store, lib/media-store.ts)
+.media/

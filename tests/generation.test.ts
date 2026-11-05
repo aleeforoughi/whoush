@@ -14,7 +14,7 @@ import {evaluateOutputQA} from "../lib/output-qa";
 import {orchestrateCreativeTurn} from "../lib/orchestrator";
 import {GET as publicCatalog} from "../app/api/public/catalog/route";
 import {POST as quoteRoute} from "../app/api/generation/quote/route";
-const GATE_ENV=["PROVIDER_END_USER_AUTHORIZED","PROVIDER_RESELLER_AUTHORIZED","ALLOW_LIVE_GENERATION","HIGGSFIELD_API_KEY","PRODUCTION_MODERATION_VERIFIED","BILLING_LEDGER_VERIFIED","QUOTE_SIGNING_SECRET","DEMO_FX_TOMAN_PER_USD"];
+const GATE_ENV=["PROVIDER_END_USER_AUTHORIZED","PROVIDER_RESELLER_AUTHORIZED","ALLOW_LIVE_GENERATION","HIGGSFIELD_API_KEY","PRODUCTION_MODERATION_VERIFIED","BILLING_LEDGER_VERIFIED","QUOTE_SIGNING_SECRET","DEMO_FX_TOMAN_PER_USD","OWNED_MEDIA_STORAGE_VERIFIED","GEMINI_API_KEY","BYTEPLUS_API_KEY","KLING_ACCESS_KEY","KLING_SECRET_KEY"];
 async function withEnv<T>(vars:Record<string,string|undefined>,fn:()=>Promise<T>|T):Promise<T>{
  const saved:Record<string,string|undefined>={};
  for(const k of GATE_ENV)saved[k]=process.env[k];
@@ -23,7 +23,7 @@ async function withEnv<T>(vars:Record<string,string|undefined>,fn:()=>Promise<T>
  try{return await fn();}
  finally{for(const k of GATE_ENV){if(saved[k]===undefined)delete process.env[k];else process.env[k]=saved[k];}}
 }
-const LIVE_ENV={PROVIDER_END_USER_AUTHORIZED:"true",PROVIDER_RESELLER_AUTHORIZED:"true",ALLOW_LIVE_GENERATION:"true",HIGGSFIELD_API_KEY:"test-id:test-secret",PRODUCTION_MODERATION_VERIFIED:"true",BILLING_LEDGER_VERIFIED:"true",QUOTE_SIGNING_SECRET:"s".repeat(40)};
+const LIVE_ENV={PROVIDER_END_USER_AUTHORIZED:"true",PROVIDER_RESELLER_AUTHORIZED:"true",ALLOW_LIVE_GENERATION:"true",HIGGSFIELD_API_KEY:"test-id:test-secret",PRODUCTION_MODERATION_VERIFIED:"true",BILLING_LEDGER_VERIFIED:"true",QUOTE_SIGNING_SECRET:"s".repeat(40),OWNED_MEDIA_STORAGE_VERIFIED:"true"};
 const PROMPT="یک عکس از کوه‌های البرز هنگام غروب";
 async function turn(text=PROMPT){
  const r=await orchestrateCreativeTurn({text});
@@ -156,7 +156,7 @@ test("generationGate is blocked by default and lists every blocker",async()=>{
  await withEnv({},()=>{
   const g=generationGate(findMediaModel("soul-image"));
   assert.equal(g.live,false);
-  assert.deepEqual(g.blockers.sort(),["billing_ledger_unverified","live_switch","production_moderation_unverified","provider_authorization","provider_credentials","quote_signing_secret"].sort());
+  assert.deepEqual(g.blockers.sort(),["billing_ledger_unverified","live_switch","owned_media_storage","production_moderation_unverified","provider_authorization","provider_credentials","quote_signing_secret"].sort());
   assert.deepEqual(generationGate(findMediaModel("kling-4-0-5s")).blockers.includes("model_unverified"),true);
   assert.equal(generationGate().blockers.includes("model_unspecified"),true);
  });
