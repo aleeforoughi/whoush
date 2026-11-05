@@ -33,6 +33,8 @@ const FRAME_MOVES_PROPS=false;
 const FRAME_FILL=0.78;
 /** Beta: the frame's full-screen view (and its button) is off. */
 const FRAME_FULLSCREEN=false;
+/** Beta: the «فهمیدم سوژهٔ اصلی…» check (confirm or pick another dominant subject) is off. */
+const SHOW_DOMINANT=false;
 let webglOk:boolean|undefined;
 /** Whether this browser can draw WebGL (checked once; the test context is released at once). */
 function hasWebGL():boolean{
@@ -315,7 +317,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
   </div>
  </div>
  {/* Whoush's reading of the dominant subject is part of the conversation, not of the advanced settings: under «بوم», before the card and any question. */}
- {props.length>0&&mainIdx>=0&&show("frame")&&<Dominant tags={propTags(props)} props={props} main={mainIdx} detail={draft.focusDetail} mediaKind={mediaKind} confirmed={confirmed}
+ {SHOW_DOMINANT&&props.length>0&&mainIdx>=0&&show("frame")&&<Dominant tags={propTags(props)} props={props} main={mainIdx} detail={draft.focusDetail} mediaKind={mediaKind} confirmed={confirmed}
   editable={editable} onConfirm={()=>setConfirmed(true)} onChoose={setDominant}/>}
  </>;
 }
