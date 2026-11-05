@@ -31,8 +31,6 @@ const FrameScene=FRAME_RENDERER==="css"?FrameCSS:Scene3D;
 const FRAME_MOVES_PROPS=false;
 /** The full-width frame: how much of the view's height the crop's rectangle takes (the rest shows what lies around it). */
 const FRAME_FILL=0.78;
-/** The full-width frame is never taller than this (px): on a wide screen it would otherwise take the whole card. */
-const FRAME_MAX_H=300;
 /** Beta: the frame's full-screen view (and its button) is off. */
 const FRAME_FULLSCREEN=false;
 let webglOk:boolean|undefined;
@@ -877,8 +875,8 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   const over=r?{left:(left-r.w*2/W)*100+"%",top:(top-r.h*2/H)*100+"%",width:r.w*(W+4)/W*100+"%",height:r.h*(H+4)/H*100+"%"}:undefined;
   return <div className="relative w-full overflow-hidden rounded-[10px]">
    <div ref={box} role="slider" tabIndex={0} aria-label={"جای کادر: "+placementFa(staging.framing)} aria-valuetext={placementFa(staging.framing)} aria-valuenow={Math.round(fr.x*100)} aria-valuemin={-100} aria-valuemax={100}
-    onKeyDown={key} {...(onZoom?pinch:{})} className={"relative w-full touch-none overflow-hidden bg-background outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring "+(drag?"cursor-grabbing":"cursor-grab")}
-    style={{aspectRatio:String(boxAspect),maxHeight:FRAME_MAX_H}}
+    onKeyDown={key} {...(onZoom?pinch:{})} className={"relative w-full touch-none overflow-hidden bg-background outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring @lg:max-h-[300px] "+(drag?"cursor-grabbing":"cursor-grab")}
+    style={{aspectRatio:String(boxAspect)}}
     onPointerDown={e=>{if(propHit.current){propHit.current=false;return;}if(e.button>0)return;capture(e.currentTarget,e.pointerId);cropDrag(e);}}
     onPointerMove={e=>{if(!drag||!r||!box.current)return;const b=box.current.getBoundingClientRect(),fw=r.w*b.width,fh=r.h*b.height;
      // The rectangle follows the finger: the crop moves by −2× the drag over the frame's size (the frame's centre is offset by −crop/2 of its size).
