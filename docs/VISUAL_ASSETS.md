@@ -38,7 +38,7 @@
 - **Removed:** the bottle, car, building and tree images (they're cubes now).
 
 ## Beta: characters only
-**Props stay where Whoush put them (beta):** «بوم» doesn't reposition props at all. A drag anywhere on the frame, on a character too, moves only the frame (the crop). A tap on a character selects it: its tag shows on the frame and its settings show below, which is only its turn (no place sliders). A tap elsewhere goes back to the frame's settings. The selection badge, the «#کادر» tag and the lock are hidden. All of this is behind `FRAME_MOVES_PROPS` in `components/staging-editor.tsx`.
+**Props stay where Whoush put them (beta):** «بوم» doesn't reposition props at all. A drag anywhere on the frame, on a character too, moves only the frame (the crop). A tap on a character selects it: its tag shows on the frame and its settings show below, which is only its turn (no place sliders). Tapping it again, or anywhere else, goes back to the frame's settings. The frame's zoom stays right under it whatever is selected. The selection badge, the «#کادر» tag and the lock are hidden. All of this is behind `FRAME_MOVES_PROPS` in `components/staging-editor.tsx`.
 
 «بوم»'s frame draws only the characters: people and the pets with their own images (cat, dog, horse). Other props (objects, vehicles, buildings, trees, other animals) stay in the scene, the plan and the provider prompt, but the frame doesn't draw them and the focus can't be placed on them (`isCharacter`). A scene without a character (only a place, or only other props) shows no frame, only the camera and the lighting (`showsFrame`).
 

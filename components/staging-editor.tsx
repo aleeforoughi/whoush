@@ -200,6 +200,12 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     {fullscreen&&<FrameFullscreen staging={draft} anchor={anchor} aspect={aspect} sel={propSel} onSelect={i=>{setPropSel(i);setCenterSel(false);setLocked(false);}}
      onProp={(i,x,z)=>setProp(i,{x,z})} onFraming={f=>set({framing:f})} distance={distanceOf(draft)} onZoom={setDistance} onClose={()=>setFullscreen(false)}
      inspector={i=>props[i]?<PropInspector prop={withFrameCuts(draft,anchor,aspect).props![i]} tag={propTags(props,true)[i]} reach={reachOf(props[i],draft,anchor,aspect)} onChange={p=>setProp(i,p)}/>:null}/>}
+    {/* The frame's zoom, always right under it: whatever is selected (a character can fill a close-up, with nothing else to tap). */}
+    {editable&&<>
+     <input type="range" dir="ltr" min={0} max={1} step={0.001} value={1-distanceOf(draft)} onChange={e=>setDistance(1-Number(e.target.value))}
+      aria-label="زوم (اندازهٔ نما، همون فاصلهٔ دوربین)" aria-valuetext={SHOT_SIZE_FA[draft.shotSize]+"، زوم "+zoomFactor(draft)+"×"} className="h-8 w-full cursor-pointer accent-primary"/>
+     <span dir="ltr" className="-mt-2 flex justify-between type-caption text-fg-secondary" aria-hidden="true"><span>باز</span><span>نزدیک</span></span>
+    </>}
     {/* The centre point's own settings, while its dot is selected. */}
     {editable&&centerSel&&<div className="flex flex-col items-center gap-2 py-1 text-center">
      <p className="type-body-sm text-fg-primary">{draft.focusPoint||draft.pivot?"نقطهٔ فوکوس جابه‌جا شده؛ فوکوس و زوم روی همین نقطه‌ست.":"مرکز کادر روی سوژهٔ اصلیه"+(props[mainIdx]?" ("+propTags(props)[mainIdx]+")":"")+"؛ زوم دور همین نقطه انجام می‌شه."}</p>
@@ -208,9 +214,6 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     {editable&&propSel!==null&&props[propSel]&&<PropInspector prop={withFrameCuts(draft,anchor,aspect).props![propSel]} tag={propTags(props,true)[propSel]} reach={reachOf(props[propSel],draft,anchor,aspect)}
      onChange={p=>setProp(propSel,p)}/>}
     {editable&&(propSel===null||!props[propSel])&&!centerSel&&<>
-     <input type="range" dir="ltr" min={0} max={1} step={0.001} value={1-distanceOf(draft)} onChange={e=>setDistance(1-Number(e.target.value))}
-      aria-label="زوم (اندازهٔ نما، همون فاصلهٔ دوربین)" aria-valuetext={SHOT_SIZE_FA[draft.shotSize]+"، زوم "+zoomFactor(draft)+"×"} className="h-8 w-full cursor-pointer accent-primary"/>
-     <span dir="ltr" className="-mt-2 flex justify-between type-caption text-fg-secondary" aria-hidden="true"><span>باز</span><span>نزدیک</span></span>
      <div className="flex flex-wrap justify-center gap-1">{["16:9","3:2","4:5","1:1","9:16"].map(r=><Chip key={r} on={aspect===r} onClick={()=>setAspect(r)}><bdi>{r}</bdi></Chip>)}</div>
      <SliderRow label="جابه‌جایی کادر، افقی" ends={["چپ","راست"]} valueText={pct(draft.framing?.x??0)} min={-1} max={1} step={0.01} value={draft.framing?.x??0}
       onChange={x=>{const y=draft.framing?.y??0;set({framing:x===0&&y===0?undefined:{x,y}});}}/>
@@ -851,9 +854,10 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
    onPointerDown={e=>{if(propHit.current){propHit.current=false;return;}if(e.button>0)return;capture(e.currentTarget,e.pointerId);if(!locked&&FRAME_MOVES_PROPS)onSelect?.(null);cropDrag(e);}}
    onPointerMove={e=>{if(!drag)return;const u=unit(),[ddx,ddy]=cam.unroll((e.clientX-drag.px)*u.sx,(e.clientY-drag.py)*u.sy);const c={x:snapAxis(drag.x+ddx/(W/2)),y:snapAxis(drag.y+ddy/(H/2))};if(Number.isFinite(c.x)&&Number.isFinite(c.y))setDrag({...drag,cur:c});}}
    onPointerUp={e=>{if(!drag)return;
-    // A tap (no drag) picks what is under it: a character selects it (its sliders show), anywhere else goes back to the frame's own settings.
+    // A tap (no drag) picks what is under it: a character selects it (its settings show); the selected one again, or anywhere else, goes back to the
+    // frame's own settings.
     if(!FRAME_MOVES_PROPS&&Math.hypot(e.clientX-drag.px,e.clientY-drag.py)<5){const b=e.currentTarget.getBoundingClientRect(),hit=pickPivot({...staging,framing:fr},anchor,aspect,(e.clientX-b.left)/b.width,(e.clientY-b.top)/b.height).on;
-     onSelect?.(typeof hit==="number"&&base[hit]&&isCharacter(base[hit])?hit:null);setDrag(null);return;}
+     onSelect?.(typeof hit==="number"&&hit!==sel&&base[hit]&&isCharacter(base[hit])?hit:null);setDrag(null);return;}
     commit(drag.cur);setDrag(null);}} onPointerCancel={()=>setDrag(null)}>
    <FrameScene staging={{...staging,framing:fr}} anchor={anchor} aspect={aspect} editable={FRAME_MOVES_PROPS} sel={centerSel?null:sel} lockedTo={locked&&sel!=null?sel:undefined}
     onSelect={i=>{if(!locked)onSelect?.(i);}} onProp={onProp} onPropDown={()=>{propHit.current=true;}} onProject={setProj} within={within}/>
