@@ -573,7 +573,8 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
  const third=(on:boolean,neg:boolean,i:number)=>on&&(i===1)===neg;
  // The selection's tag (on the top-right of the selected prop's box, or inside the frame's top-right for «#کادر»; right-aligned, as Persian reads) with its lock, as HTML over the drawing.
  const maxW=Math.round(320*(W+4)/(H+4));
- const tag=!editable?undefined:sel!=null&&base[sel]?(()=>{const p=base[sel],a=at(p),wf=spriteW(sprite(p),a.h);
+ // The centre point selected: neither a prop nor the frame is (no tag, no frame outline).
+ const tag=!editable||centerSel?undefined:sel!=null&&base[sel]?(()=>{const p=base[sel],a=at(p),wf=spriteW(sprite(p),a.h);
   const [rx,ty]=cam.toScreen(a.x+wf/2+1,a.y-a.h-1);return {x:Math.max(52,Math.min(W-1,rx)),y:Math.max(0,Math.min(H-2,ty)),above:ty>12,text:propTags(base,true)[sel]};})()
   :{x:W-3,y:3,above:false,text:"#کادر"};
  const svgEl=<svg ref={svg} viewBox={"-2 -2 "+(W+4)+" "+(H+4)} {...(editable&&onZoom?pinch:{})} className="mx-auto block w-full touch-none select-none text-fg-primary" style={{aspectRatio:String((W+4)/(H+4)),maxWidth:Math.round(320*(W+4)/(H+4))+"px"}} aria-hidden={!editable}
@@ -634,12 +635,12 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
     <circle cx={dx} cy={dy} r={1.8} className={staging.focusPoint?"fill-primary":"fill-primary-foreground stroke-primary"} strokeWidth={0.8} vectorEffect="non-scaling-stroke"/>
    </g>;})()}
   {/* With no prop selected, the frame itself is: a blue outline and its «#کادر» tag, and the controls below are the frame's. */}
-  {editable&&(sel==null||!base[sel])
+  {editable&&(sel==null||!base[sel])&&!centerSel
    ?<><rect width={W} height={H} rx={6} fill="none" className="pointer-events-none stroke-primary" strokeWidth={1.6} vectorEffect="non-scaling-stroke"/>
 </>
    :<rect width={W} height={H} rx={6} fill="none" stroke="currentColor" strokeOpacity=".75" strokeWidth={1.2} vectorEffect="non-scaling-stroke" className="pointer-events-none"/>}
  </svg>;
- if(!tag)return svgEl;
+ if(!editable)return svgEl;
  return <div className="relative mx-auto w-full" style={{maxWidth:maxW+"px"}}>
   {svgEl}
   {/* What the controls below are adjusting, while a prop is selected: a blue badge in the frame's top-right corner, «تنظیم #آدم ×»; × goes back to the
@@ -657,13 +658,13 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   </div>}
   {/* Tag text, then (on its right) the lock in a small button: outline when unlocked, filled blue with a white lock when locked. On touch screens the
       button is larger and its tap area reaches about 44px around it (an invisible ::before), so it is easy to hit with a finger. */}
-  <div dir="rtl" className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
+  {tag&&<div dir="rtl" className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
    style={{right:((W+2-tag.x)/(W+4)*100)+"%",top:((tag.y+2)/(H+4)*100)+"%"}}>
    {onLock&&<button type="button" aria-pressed={locked} aria-label={(locked?"باز کردن قفل انتخاب ":"قفل کردن انتخاب ")+tag.text} onClick={()=>onLock(!locked)}
     className={"pointer-events-auto relative flex size-6 items-center justify-center rounded-[4px] before:absolute before:-inset-2.5 before:content-[''] pointer-coarse:size-7 border border-primary motion-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring "+(locked?"bg-primary text-primary-foreground":"bg-transparent text-primary")}>
     <Icon icon={locked?Lock:LockOpen} size={16} aria-hidden="true" className={"size-3.5! "+(locked?"[&_rect]:fill-current":"")}/></button>}
    <bdi className="whitespace-nowrap text-xs font-medium leading-none text-primary pointer-coarse:text-[13px]">{tag.text}</bdi>
-  </div>
+  </div>}
  </div>;
 }
 
