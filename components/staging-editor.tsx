@@ -24,6 +24,11 @@ const Scene3D=dynamic(()=>import("./scene-3d"),{ssr:false,loading:()=>null});
  */
 const FRAME_RENDERER:"css"|"webgl"="css";
 const FrameScene=FRAME_RENDERER==="css"?FrameCSS:Scene3D;
+/**
+ * Beta: props are not repositioned in «بوم» at all. A drag anywhere on the frame (on a character too) moves only the frame (the crop); a tap on a
+ * character selects it (its tag shows on it, and its settings below: only its turn, no place sliders). The selection's badge and the lock are hidden.
+ */
+const FRAME_MOVES_PROPS=false;
 let webglOk:boolean|undefined;
 /** Whether this browser can draw WebGL (checked once; the test context is released at once). */
 function hasWebGL():boolean{
@@ -211,7 +216,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
       onChange={x=>{const y=draft.framing?.y??0;set({framing:x===0&&y===0?undefined:{x,y}});}}/>
      <SliderRow label="جابه‌جایی کادر، عمودی" ends={["بالا","پایین"]} valueText={pct(draft.framing?.y??0)} min={-1} max={1} step={0.01} value={draft.framing?.y??0}
       onChange={y=>{const x=draft.framing?.x??0;set({framing:x===0&&y===0?undefined:{x,y}});}}/>
-     <p className="text-center type-caption text-fg-secondary">{props.length?"روی یه پراپ بزن تا تنظیماتش بیاد و بکشیش (بالا عقب، پایین جلو، حتی تا بیرون کادر)؛ ":""}پس‌زمینه رو بکشی، کادر جابه‌جا می‌شه.</p>
+     <p className="text-center type-caption text-fg-secondary">{FRAME_MOVES_PROPS?(props.length?"روی یه پراپ بزن تا تنظیماتش بیاد و بکشیش (بالا عقب، پایین جلو، حتی تا بیرون کادر)؛ ":"")+"پس‌زمینه رو بکشی، کادر جابه‌جا می‌شه.":(props.some(isCharacter)?"روی کاراکتر بزن تا انتخاب بشه؛ ":"")+"کادر رو بکشی، جابه‌جا می‌شه."}</p>
     </>}
    </Viewport>
    </div>}
@@ -788,14 +793,14 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
    <g transform={world}>
     {!three&&order.map(({p,i})=>{const a=at(p),sp=sprite(p),w=spriteW(sp,a.h),on=sel===i;
      const pkey=(e:KeyboardEvent)=>{if(e.key==="Escape"&&on){e.preventDefault();e.stopPropagation();if(!locked)onSelect?.(null);return;}
-      if(locked&&!on)return;
+      if((locked&&!on)||!FRAME_MOVES_PROPS)return;
       const d={ArrowLeft:[-0.1,0],ArrowRight:[0.1,0],ArrowUp:[0,0.1],ArrowDown:[0,-0.1]}[e.key as "ArrowLeft"];if(!d)return;e.preventDefault();e.stopPropagation();onSelect?.(i);const g=within(p,{x:p.x+d[0],z:p.z+d[1]});onProp?.(i,g.x,g.z);};
      return <g key={i} role={editable?"button":undefined} tabIndex={editable?0:undefined} aria-label={propTags(base)[i]+"، "+propPlaceFa(placed[i]??p)} aria-pressed={editable?on:undefined}
       onKeyDown={editable?pkey:undefined} onClick={editable?()=>{if(!locked)onSelect?.(i);}:undefined}
       onPointerDown={editable?e=>{e.stopPropagation();capture(svg.current,e.pointerId);
        // Locked: this prop is not selected; the drag goes to the locked prop, or to the crop when the frame is locked.
        if(locked&&!on){if(sel!=null&&base[sel])moveLocked(e);else cropDrag(e);return;}
-       onSelect?.(i);setMove({i,px:e.clientX,py:e.clientY,x0:p.x,z0:p.z,x:p.x,z:p.z});}:undefined}
+       onSelect?.(i);if(FRAME_MOVES_PROPS)setMove({i,px:e.clientX,py:e.clientY,x0:p.x,z0:p.z,x:p.x,z:p.z});else cropDrag(e);}:undefined}
       className={editable?(move?.i===i?"cursor-grabbing outline-none":"cursor-grab outline-none"):""}>
       {p.y>0.05&&<ellipse cx={a.x} cy={a.ground} rx={w*0.35} ry={Math.max(1,a.h*0.04)} fill="currentColor" fillOpacity=".18"/>}
       <rect x={a.x-Math.max(w,18/k)/2} y={a.y-Math.max(a.h,18/k)} width={Math.max(w,18/k)} height={Math.max(a.h,18/k)} fill="transparent"/>
@@ -843,13 +848,17 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   {three&&<div role="slider" tabIndex={0} aria-label={"جای سوژه در کادر: "+placementFa(staging.framing)} aria-valuetext={placementFa(staging.framing)} aria-valuenow={Math.round(fr.x*100)} aria-valuemin={-100} aria-valuemax={100}
    onKeyDown={key} {...(onZoom?pinch:{})} className={"absolute touch-none overflow-hidden bg-background outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring "+(drag?"cursor-grabbing":"cursor-grab")}
    style={{insetInlineStart:(2/(W+4)*100)+"%",top:(2/(H+4)*100)+"%",width:(W/(W+4)*100)+"%",height:(H/(H+4)*100)+"%",borderRadius:(6/W*100)+"% / "+(6/H*100)+"%"}}
-   onPointerDown={e=>{if(propHit.current){propHit.current=false;return;}if(e.button>0)return;capture(e.currentTarget,e.pointerId);if(!locked)onSelect?.(null);cropDrag(e);}}
+   onPointerDown={e=>{if(propHit.current){propHit.current=false;return;}if(e.button>0)return;capture(e.currentTarget,e.pointerId);if(!locked&&FRAME_MOVES_PROPS)onSelect?.(null);cropDrag(e);}}
    onPointerMove={e=>{if(!drag)return;const u=unit(),[ddx,ddy]=cam.unroll((e.clientX-drag.px)*u.sx,(e.clientY-drag.py)*u.sy);const c={x:snapAxis(drag.x+ddx/(W/2)),y:snapAxis(drag.y+ddy/(H/2))};if(Number.isFinite(c.x)&&Number.isFinite(c.y))setDrag({...drag,cur:c});}}
-   onPointerUp={()=>{if(drag){commit(drag.cur);setDrag(null);}}} onPointerCancel={()=>setDrag(null)}>
-   <FrameScene staging={{...staging,framing:fr}} anchor={anchor} aspect={aspect} editable sel={centerSel?null:sel} lockedTo={locked&&sel!=null?sel:undefined}
+   onPointerUp={e=>{if(!drag)return;
+    // A tap (no drag) picks what is under it: a character selects it (its sliders show), anywhere else goes back to the frame's own settings.
+    if(!FRAME_MOVES_PROPS&&Math.hypot(e.clientX-drag.px,e.clientY-drag.py)<5){const b=e.currentTarget.getBoundingClientRect(),hit=pickPivot({...staging,framing:fr},anchor,aspect,(e.clientX-b.left)/b.width,(e.clientY-b.top)/b.height).on;
+     onSelect?.(typeof hit==="number"&&base[hit]&&isCharacter(base[hit])?hit:null);setDrag(null);return;}
+    commit(drag.cur);setDrag(null);}} onPointerCancel={()=>setDrag(null)}>
+   <FrameScene staging={{...staging,framing:fr}} anchor={anchor} aspect={aspect} editable={FRAME_MOVES_PROPS} sel={centerSel?null:sel} lockedTo={locked&&sel!=null?sel:undefined}
     onSelect={i=>{if(!locked)onSelect?.(i);}} onProp={onProp} onPropDown={()=>{propHit.current=true;}} onProject={setProj} within={within}/>
   </div>}
-  {three&&<div className="sr-only">{base.map((p,i)=>isCharacter(p)&&<button key={i} type="button" aria-pressed={sel===i} onClick={()=>{if(!locked)onSelect?.(i);}} onKeyDown={propKey(i)}>{propTags(base)[i]+"، "+propPlaceFa(placed[i]??p)}</button>)}</div>}
+  {three&&<div className="sr-only">{base.map((p,i)=>isCharacter(p)&&<button key={i} type="button" aria-pressed={sel===i} onClick={()=>{if(!locked)onSelect?.(i);}} onKeyDown={FRAME_MOVES_PROPS?propKey(i):undefined}>{propTags(base)[i]+"، "+propPlaceFa(placed[i]??p)}</button>)}</div>}
   {svgEl}
   {onAngle&&<AngleJoystick staging={staging} onAngle={onAngle} inset={(2/(W+4)*100)+"%"} insetY={(2/(H+4)*100)+"%"}/>}
   {three&&onFullscreen&&<button type="button" onClick={onFullscreen} aria-label="نمایش تمام‌صفحهٔ کادر"
@@ -857,7 +866,7 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
    <Icon icon={Maximize2} size={16} aria-hidden="true"/></button>}
   {/* What the controls below are adjusting, while a prop is selected: a blue badge in the frame's top-right corner, «تنظیم #آدم ×»; × goes back to the
       frame's own settings (and unlocks). */}
-  {((sel!=null&&base[sel])||centerSel)&&onBack&&<div className="absolute top-3 start-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1.5">
+  {FRAME_MOVES_PROPS&&((sel!=null&&base[sel])||centerSel)&&onBack&&<div className="absolute top-3 start-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1.5">
    {/* Each badge hugs its text in full (never cut); when two do not fit side by side, the second wraps under the first. */}
    <button type="button" onClick={onBack} aria-label={"تنظیم "+(centerSel?"مرکز":propTags(base)[sel!])+"، برگشت به تنظیمات کادر"}
    className="flex h-7 w-max shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-primary ps-2.5 pe-1.5 text-xs font-medium text-primary-foreground shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:h-8">
@@ -870,9 +879,9 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   </div>}
   {/* Tag text, then (on its right) the lock in a small button: outline when unlocked, filled blue with a white lock when locked. On touch screens the
       button is larger and its tap area reaches about 44px around it (an invisible ::before), so it is easy to hit with a finger. */}
-  {tag&&<div dir="rtl" className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
+  {tag&&(FRAME_MOVES_PROPS||(sel!=null&&base[sel]))&&<div dir="rtl" className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
    style={{right:((W+2-tag.x)/(W+4)*100)+"%",top:((tag.y+2)/(H+4)*100)+"%"}}>
-   {onLock&&<button type="button" aria-pressed={locked} aria-label={(locked?"باز کردن قفل انتخاب ":"قفل کردن انتخاب ")+tag.text} onClick={()=>onLock(!locked)}
+   {FRAME_MOVES_PROPS&&onLock&&<button type="button" aria-pressed={locked} aria-label={(locked?"باز کردن قفل انتخاب ":"قفل کردن انتخاب ")+tag.text} onClick={()=>onLock(!locked)}
     className={"pointer-events-auto relative flex size-6 items-center justify-center rounded-[4px] before:absolute before:-inset-2.5 before:content-[''] pointer-coarse:size-7 border border-primary motion-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring "+(locked?"bg-primary text-primary-foreground":"bg-transparent text-primary")}>
     <Icon icon={locked?Lock:LockOpen} size={16} aria-hidden="true" className={"size-3.5! "+(locked?"[&_rect]:fill-current":"")}/></button>}
    <bdi className="whitespace-nowrap text-xs font-medium leading-none text-primary pointer-coarse:text-[13px]">{tag.text}</bdi>
@@ -944,7 +953,7 @@ function FrameFullscreen({staging,anchor,aspect,sel,onSelect,onProp,onFraming,di
       const c={x:snapAxis(drag.x-2*(e.clientX-drag.px)/fw),y:snapAxis(drag.y-2*(e.clientY-drag.py)/fh)};if(Number.isFinite(c.x)&&Number.isFinite(c.y))setDrag({...drag,cur:c});}}
      onPointerUp={()=>{if(drag){onFraming(drag.cur.x===0&&drag.cur.y===0?undefined:drag.cur);setDrag(null);}}} onPointerCancel={()=>setDrag(null)}
      onWheel={e=>onZoom(Math.max(0,Math.min(1,distance+e.deltaY*0.0015)))}>
-     <FrameScene staging={{...staging,framing:fr}} anchor={anchor} aspect={aspect} editable wide sel={sel} onSelect={onSelect} onProp={onProp}
+     <FrameScene staging={{...staging,framing:fr}} anchor={anchor} aspect={aspect} editable={FRAME_MOVES_PROPS} wide sel={sel} onSelect={onSelect} onProp={onProp}
       onPropTap={i=>setInspect(i)} onPropDown={()=>{propHit.current=true;}} onFrameRect={setRect} within={within}/>
     </div>
     {/* The frame: a green outline with its thirds; everything outside it is darkened (a wide shadow around it). */}
@@ -1041,17 +1050,18 @@ function SliderRow({label,valueText,min,max,step,value,onChange,disabled,ends}:{
  </label>;
 }
 const pct=(v:number)=>fa(Math.round(v*100));
-/** The selected prop: its place on the ground (left–right, front–back) and its lift, as sliders synced with dragging it in the frame. */
+/** The selected prop: its place on the ground (left–right, front–back) and its lift, as sliders synced with dragging it in the frame (off in the beta:
+ * FRAME_MOVES_PROPS), and which way it turns. */
 function PropInspector({prop:p,tag,reach:r,onChange}:{prop:SceneProp;tag:string;
  /** How far it may go at this zoom and crop (lib/staging.ts, propReach): the same as dragging it, partly out of the frame on either side. */reach:{xMin:number;xMax:number;zMin:number;zMax:number};
  onChange:(x:Partial<SceneProp>)=>void}){
  return <div className="flex flex-col gap-3">
   <div className="flex flex-wrap items-center gap-2">{PROP_ASSETS[p.kind]&&!isCube(p)?<SourceIcon id={sprite(p).id}/>:<Icon icon={Box} size={16} aria-hidden="true" className="size-5 text-fg-secondary"/>}<bdi className="type-label text-primary">{tag}</bdi><span className="type-caption text-fg-secondary">{propPlaceFa(p)}</span>
 </div>
-  <SliderRow label="جای افقی (تا بیرون از کادر)" ends={["چپ","راست"]} valueText={pct(p.x)} min={Math.min(r.xMin,p.x)} max={Math.max(r.xMax,p.x)} step={0.01} value={p.x} onChange={x=>onChange({x})}/>
-  <SliderRow label="عمق (تا بریده از پایین)" ends={["جلو","عقب"]} valueText={pct(p.z)} min={Math.min(r.zMin,p.z)} max={r.zMax} step={0.01} value={p.z} onChange={z=>onChange({z})}/>
+  {FRAME_MOVES_PROPS&&<SliderRow label="جای افقی (تا بیرون از کادر)" ends={["چپ","راست"]} valueText={pct(p.x)} min={Math.min(r.xMin,p.x)} max={Math.max(r.xMax,p.x)} step={0.01} value={p.x} onChange={x=>onChange({x})}/>}
+  {FRAME_MOVES_PROPS&&<SliderRow label="عمق (تا بریده از پایین)" ends={["جلو","عقب"]} valueText={pct(p.z)} min={Math.min(r.zMin,p.z)} max={r.zMax} step={0.01} value={p.z} onChange={z=>onChange({z})}/>}
   <SliderRow label="چرخش رو به دوربین" valueText={facingFa(facingOf(p))+" · "+fa(Math.round(facingOf(p)))+"°"} min={-180} max={180} step={SIDE_STEP} value={snapSide(facingOf(p))} onChange={f=>onChange({facing:snapSide(f)})}/>
-  <SliderRow label="ارتفاع از زمین" ends={["زمین","بالا"]} valueText={p.y>0.01?pct(p.y):"روی زمین"} min={0} max={1} step={0.01} value={p.y} onChange={y=>onChange({y})}/>
+  {FRAME_MOVES_PROPS&&<SliderRow label="ارتفاع از زمین" ends={["زمین","بالا"]} valueText={p.y>0.01?pct(p.y):"روی زمین"} min={0} max={1} step={0.01} value={p.y} onChange={y=>onChange({y})}/>}
  </div>;
 }
 
