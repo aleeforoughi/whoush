@@ -113,9 +113,11 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  return <div role="group" aria-label="بوم" className="@container flex min-w-0 flex-col gap-3">
   {props.length>0&&mainIdx>=0&&show("frame")&&<Dominant tags={propTags(props)} props={props} main={mainIdx} detail={draft.focusDetail} mediaKind={mediaKind} confirmed={confirmed}
    editable={editable} onConfirm={()=>setConfirmed(true)} onChoose={setDominant}/>}
+  {/* A focused follow-up, collapsed: one card holding the header and just that part's controls. */}
+  <div className={focused&&!open?"flex min-w-0 flex-col gap-2 rounded-card border border-line-secondary bg-surface-subtle p-2":"contents"}>
   <button type="button" aria-expanded={open} aria-controls={bodyId} onClick={()=>setOpen(o=>!o)}
    aria-label={"بوم، تنظیمات پیشرفته: "+CAMERA_ANGLE_FA[draft.cameraAngle]+"، "+SHOT_SIZE_FA[draft.shotSize]+"، "+(draft.lights.length===1?"یک نور":fa(draft.lights.length)+" نور")+(changed?"، تغییر کرده":"")}
-   className="flex w-full flex-col gap-2 rounded-card border border-line-secondary bg-surface-subtle p-2 text-start motion-hover hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+   className={"flex w-full flex-col gap-2 rounded-card text-start motion-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring "+(focused&&!open?"p-1 hover:bg-surface-hover":"border border-line-secondary bg-surface-subtle p-2 hover:bg-surface-hover")}>
    <span className="flex items-center gap-2 px-1">
     <Icon icon={Box} size={16} aria-hidden="true" className="size-4 shrink-0 text-fg-secondary"/>
     <span className="type-label text-fg-primary">بوم</span><span className="type-caption text-fg-secondary">{full||!focused?"تنظیمات پیشرفته":"تنظیم "+focus!.map(f=>CANVAS_SECTION_FA[f]).join(" و ")}</span>
@@ -208,6 +210,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
      onAdd={draft.lights.length<4?()=>{setDraft(d=>({...d,lights:[...d.lights,{role:"fill",direction:"front_right",height:"eye",quality:"soft",source:"softbox",colorTemperatureK:5600}]}));setLightSel(draft.lights.length);}:undefined}/></div>}
    </div>}
    {!full&&<Button type="button" variant="ghost" size="sm" className="self-center" onClick={()=>setOpen(true)}><Icon icon={ChevronDown} aria-hidden="true"/>همهٔ تنظیمات بوم</Button>}
+  </div>
   </div>
   {!editable&&<ul className="flex flex-col gap-1">{draft.lights.map((l,i)=><LightRow key={i} l={l}/>)}</ul>}
   {editable&&changed&&<div className="flex flex-wrap items-center gap-2">
