@@ -152,3 +152,28 @@ Source: the `models_explore` tool of the Higgsfield MCP connector (Higgsfield's 
 
 ### Before any of these can be enabled
 API path and input schema read from the model's own documentation; a fixed integer Neuron SKU approved; media inspection and moderation in place (`docs/MODERATION_POLICY.md` step 4); provider authorization (`docs/LAUNCH_GATES.md` gate 1). See `docs/CAPABILITY_SCOUT.md`.
+
+## Model fit test, 2026-11-05 (agent connector, not the API) <a id="model-fit-2026-11-05"></a>
+Source: 9 jobs run through the Higgsfield MCP connector by the lead, 1k resolution, one take each, hybrid prompt (plain must-match sentences followed by a JSON spec). This shows how well each model follows camera and light settings from the canvas. It does **not** verify any API path or price for Whoush. Credits are the connector's quotes before submission: Seedream 5.0 Pro 1.25, Nano Banana Pro 2, 3D Jutsu Angles 1.25, Flux Kontext 1.5; 13.75 in total.
+
+**Model id mismatch:** the three jobs submitted as `nano_banana_pro` came back labelled `nano_banana_2`. Until that is explained, treat their results as coming from `nano_banana_2`.
+
+Scores are 0 to 2 per setting (2 means it followed the setting), judged by eye by the lead from one take. They are a first signal, not a benchmark.
+
+| Job | Model | Angle | View | Framing | Light | Identity kept | Realism |
+|---|---|---|---|---|---|---|---|
+| New image S1: low angle, side profile, tight close-up, window light from front-left | Seedream 5.0 Pro | 2 | 2 | 1 (chest-up, not tight) | 2 | n/a | 1 |
+| New image S1 | Nano Banana (reported as `_2`) | 1 (near eye level) | 2 | 2 | 2 | n/a | 2 |
+| New image S3: worm's-eye, facing camera, waist-up, red key light from front-left | Seedream 5.0 Pro | 1 (table height, not floor) | 2 | 2 | 2 | n/a | 1 |
+| New image S3 | Nano Banana (reported as `_2`) | 1 (lower, wide-lens feel; still not floor) | 2 | 2 | 1 (red on one side only) | n/a | 2 |
+| Edit E1: change camera to low angle, profile, close-up | 3D Jutsu Angles | 2 | 1 (three-quarter, not a full profile) | 2 | kept | 1 | 1 |
+| Edit E1 | Seedream 5.0 Pro, `is_inpaint` | 0 (eye level) | 2 | 2 | kept | 2 | 1 |
+| Edit E2: change light only, blue key from the right | Seedream 5.0 Pro, `is_inpaint` | kept | kept | kept | 1 (blue, but not clearly from the right) | 2 | 1 |
+| Edit E2 | Flux Kontext | kept | kept | kept | 0 (whole image tinted blue, no direction) | 1 | 0 |
+| Edit E2 | Nano Banana (reported as `_2`) | kept | kept | kept | 1 (blue mood, direction unclear) | 2 | 2 |
+
+Takeaways for routing (one model, one take first; at most two models):
+- **New images:** Nano Banana gave the best realism and close-up framing, and Seedream followed the angle better. No model reached a true worm's-eye view, so the canvas should not offer a steeper angle than the models can deliver, or must warn before charging.
+- **Camera edits:** 3D Jutsu Angles is the only one that moved the camera; Seedream inpaint kept identity best but did not change the angle.
+- **Light edits:** Seedream inpaint and Nano Banana both kept identity; neither placed the light reliably. Flux Kontext applied a colour filter and is unfit for light edits.
+- In the earlier soul-image run, the reference image acted as a style reference, so edits failed.

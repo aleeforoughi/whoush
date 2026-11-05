@@ -1,7 +1,7 @@
 "use client";
 import {useEffect,useId,useImperativeHandle,useLayoutEffect,useRef,useState,type ClipboardEvent,type KeyboardEvent,type ReactNode,type RefObject} from "react";
 import {Badge,Card} from "@aleeforoughi/feather-react";
-import {ATTACHMENT_KINDS,displayTag,insertMention,isMediaKind,mentionTrigger,roleLabelFa,tagMatchesQuery,type LocalAttachment} from "@/lib/attachments";
+import {ATTACHMENT_KINDS,displayTag,insertMention,isMediaKind,isPropTag,mentionTrigger,propMatchesQuery,propMention,roleLabelFa,tagMatchesQuery,type LocalAttachment} from "@/lib/attachments";
 import {editorSegments,removeBadge,type EditorSegment} from "@/lib/mention-editor";
 
 /** One entry of the `#` picker: a file or a generation of this chat, with a short badge («تصویر», «تولید») and an optional caption (role, intent). */
@@ -9,7 +9,7 @@ export type MentionOption={id:string;tag:string;badgeFa:string;captionFa?:string
 /** A conversation file as a picker entry: its kind, and for media its role or «انتخاب خودکار هووش». */
 export const attachmentOption=(a:Pick<LocalAttachment,"id"|"tag"|"kind"|"role">):MentionOption=>({id:a.id,tag:a.tag,badgeFa:ATTACHMENT_KINDS[a.kind].labelFa,...(isMediaKind(a.kind)?{captionFa:a.role?roleLabelFa(a.role,a.kind):"انتخاب خودکار هووش"}:{})});
 /** What the studio can do with the prompt: focus it, or put a tag badge at the caret (at the end when the prompt is not focused). */
-export type MentionEditorHandle={focus:()=>void;insertTag:(tag:string)=>void};
+export type MentionEditorHandle={focus:()=>void;insertTag:(tag:string)=>void;/** Inserts plain text (an emoji) at the caret, or at the end when the prompt is not focused. */insertText:(text:string)=>void};
 const NAV_KEYS=["ArrowUp","ArrowDown","Enter","Tab","Escape"];
 const ZWSP="​";
 const BADGE_CLASS="mx-0.5 inline-flex h-6 items-center gap-1 rounded-control bg-secondary ps-2 pe-0.5 align-middle type-caption font-medium text-fg-primary select-none";
@@ -83,21 +83,24 @@ function renderSegments(root:HTMLElement,segments:readonly EditorSegment[]){
  * `startAction` (the «+» menu) and `endAction` (send) are pinned to the bottom corners; the text reserves both with padding. Ctrl/Cmd+Enter calls
  * `onSubmitShortcut`, but never while the mention list is open (there Enter and Tab insert a mention).
  */
-export function MentionTextarea({id,value,onValueChange,options,handleRef,startAction,endAction,top,onSubmitShortcut,onPaste,placeholder,maxLength,labelledBy,describedBy}:{
+export function MentionTextarea({id,value,onValueChange,options,handleRef,startAction,endAction,top,onSubmitShortcut,onPaste,placeholder,maxLength,labelledBy,describedBy,startPad="ps-14"}:{
  id?:string;value:string;onValueChange:(v:string)=>void;options:readonly MentionOption[];handleRef:RefObject<MentionEditorHandle|null>;startAction?:ReactNode;endAction?:ReactNode;
  /** Content inside the field's border, above the text (the upload cards). */top?:ReactNode;onSubmitShortcut?:()=>void;onPaste?:(e:ClipboardEvent<HTMLDivElement>)=>void;
- placeholder?:string;maxLength?:number;labelledBy?:string;describedBy?:string}){
+ placeholder?:string;maxLength?:number;labelledBy?:string;describedBy?:string;/** Inline-start padding reserved for `startAction` (wider when it holds several buttons). */startPad?:string}){
  const listId=useId(),optionId=(i:number)=>listId+"-"+i;
  const el=useRef<HTMLDivElement>(null);
  const rendered=useRef<string|null>(null);
  const composing=useRef(false);
- const [trigger,setTrigger]=useState<{start:number;query:string}|null>(null);
+ const [trigger,setTrigger]=useState<{start:number;query:string;prop?:string}|null>(null);
  const [active,setActive]=useState(0);
  /** The `#` or `@` position the user closed with Escape: the list stays closed until the token changes. */
  const dismissed=useRef(-1);
  const known=new Set(options.map(o=>o.tag));
  const knownKey=[...known].sort().join(",");
- const matches=trigger?options.filter(o=>tagMatchesQuery(o.tag,trigger.query)):[];
+ const props=options.filter(o=>isPropTag(o.tag)).map(o=>o.tag);
+ // After «#زن:» the list is the images to map the prop to; otherwise files, generations and the scene's props.
+ const matches=!trigger?[]:trigger.prop?options.filter(o=>/^image\d/.test(o.tag)&&tagMatchesQuery(o.tag,trigger.query))
+  :options.filter(o=>isPropTag(o.tag)?propMatchesQuery(o.tag,trigger.query):tagMatchesQuery(o.tag,trigger.query));
  const open=trigger!==null&&matches.length>0,current=Math.min(active,Math.max(0,matches.length-1));
  useEffect(()=>{if(open)document.getElementById(optionId(current))?.scrollIntoView({block:"nearest"});});
 
@@ -118,10 +121,10 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
  function sync(){
   const root=el.current;if(!root)return;
   const caret=caretOf(root);
-  const t=caret===undefined?undefined:mentionTrigger(serialize(root),caret);
+  const t=caret===undefined?undefined:mentionTrigger(serialize(root),caret,props);
   if(!t)dismissed.current=-1;
   if(!t||t.start===dismissed.current){setTrigger(null);return;}
-  if(!trigger||trigger.start!==t.start||trigger.query!==t.query)setActive(0);
+  if(!trigger||trigger.start!==t.start||trigger.query!==t.query||trigger.prop!==t.prop)setActive(0);
   setTrigger(t);
  }
  function onInput(){
@@ -148,10 +151,17 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
   const root=el.current;if(!root||!trigger)return;
   const base=rendered.current??value,caret=caretOf(root)??base.length;
   const end=caret+(/^[\p{L}\p{N}‌ـ‐‑–−\-]*/u.exec(base.slice(caret))?.[0].length??0);
-  insertAt(trigger.start,end,o.tag);
+  insertAt(trigger.start,end,trigger.prop?propMention(trigger.prop,o.tag):o.tag);
  }
  useImperativeHandle(handleRef,()=>({
   focus:()=>{const root=el.current;if(!root)return;root.focus();if(caretOf(root)===undefined)placeCaret(root,(rendered.current??value).length);},
+  insertText:(text:string)=>{
+   const root=el.current;if(!root)return;
+   const base=rendered.current??value,caret=caretOf(root)??base.length,next=base.slice(0,caret)+text+base.slice(caret);
+   if(maxLength&&next.length>maxLength)return;
+   root.focus();
+   onValueChange(show(next,caret+text.length));
+  },
   insertTag:(tag:string)=>{
    const root=el.current;if(!root)return;
    const base=rendered.current??value,caret=caretOf(root)??base.length;
@@ -175,11 +185,11 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
   {endAction&&<div className="absolute bottom-1 end-1 z-10">{endAction}</div>}
   {top&&<div className="px-2 pt-2">{top}</div>}
   <div className="relative">
-   {empty&&placeholder&&<span aria-hidden="true" className={"pointer-events-none absolute inset-y-0 start-0 truncate px-control py-control type-body text-fg-tertiary "+(startAction?"ps-14 ":"")+(endAction?"pe-14":"")}>{placeholder}</span>}
+   {empty&&placeholder&&<span aria-hidden="true" className={"pointer-events-none absolute inset-y-0 start-0 truncate px-control py-control type-body text-fg-tertiary "+(startAction?startPad+" ":"")+(endAction?"pe-14":"")}>{placeholder}</span>}
    <div ref={el} id={id} contentEditable="plaintext-only" suppressContentEditableWarning spellCheck={false} tabIndex={0}
     role="combobox" aria-labelledby={labelledBy} aria-describedby={describedBy}
     aria-autocomplete="list" aria-haspopup="listbox" aria-controls={listId} aria-expanded={open} aria-activedescendant={open?optionId(current):undefined}
-    className={"block max-h-40 min-h-13 overflow-y-auto whitespace-pre-wrap break-words px-control py-control type-body text-fg-primary outline-hidden "+(startAction?"ps-14 ":"")+(endAction?"pe-14":"")}
+    className={"block max-h-40 min-h-13 overflow-y-auto whitespace-pre-wrap break-words px-control py-control type-body text-fg-primary outline-hidden "+(startAction?startPad+" ":"")+(endAction?"pe-14":"")}
     onInput={onInput}
     onCompositionStart={()=>{composing.current=true;}}
     onCompositionEnd={()=>{composing.current=false;onInput();}}
@@ -202,11 +212,11 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
     }}/>
   </div>
   </div>
-  <Card id={listId} role="listbox" aria-label="پیوست‌ها و تولیدهای این گفت‌وگو" size="sm" className={open?"absolute inset-x-0 bottom-full z-20 mb-1 max-h-56 overflow-y-auto bg-popover p-1 shadow-2":"hidden"}>
+  <Card id={listId} role="listbox" aria-label={trigger?.prop?"تصویرهای مرجع برای "+trigger.prop:"پیوست‌ها، تولیدها و پراپ‌های صحنهٔ این گفت‌وگو"} size="sm" className={open?"absolute inset-x-0 bottom-full z-20 mb-1 max-h-56 overflow-y-auto bg-popover p-1 shadow-2":"hidden"}>
    {matches.map((o,i)=><div key={o.id} id={optionId(i)} role="option" aria-selected={i===current}
     onMouseDown={e=>{e.preventDefault();pick(o);}} onMouseMove={()=>{if(i!==current)setActive(i);}}
     className={"flex min-h-control cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 rounded-control px-3 py-2 "+(i===current?"bg-surface-hover":"")}>
-    <bdi className="type-label text-fg-primary">{displayTag(o.tag)}</bdi>
+    <bdi className="type-label text-fg-primary">{trigger?.prop?propMention(trigger.prop,o.tag):displayTag(o.tag)}</bdi>
     <Badge variant="outline">{o.badgeFa}</Badge>
     {o.captionFa&&<span className="min-w-0 truncate type-caption text-fg-secondary">{o.captionFa}</span>}
    </div>)}

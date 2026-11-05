@@ -1,0 +1,24 @@
+<!doctype html>
+<html><head></head><body>
+<script>
+// Whoush model exporter for the Spline file's HTML layer (scripts/models-3d/README.md). Dev only: set it with the Spline MCP's set_html_content,
+// press play, and every mesh named "<model>:<part>:<material>" is sent, in world space, to the local receiver (receiver.mjs). Remove it afterwards.
+const ONLY = []; // e.g. ['man'] to send one model
+(async () => {
+  await spline.ready;
+  const objs = await spline.getAllObjects();
+  const models = {};
+  for (const o of objs) {
+    const m = /^([a-z0-9_]+):([a-z0-9_]+):([a-z]+)$/i.exec(o.name || '');
+    if (!m || o.visible === false || (ONLY.length && !ONLY.includes(m[1]))) continue;
+    const g = await spline.getGeometry(o.id, { space: 'world' });
+    if (!g) { console.log('no geometry', o.name); continue; }
+    (models[m[1]] ||= []).push({ part: m[2], material: m[3], vertices: Array.from(g.vertices, v => Math.round(v * 1000) / 1000), normals: g.normals ? Array.from(g.normals, v => Math.round(v * 1e4) / 1e4) : null, indices: g.indices ? Array.from(g.indices) : null });
+  }
+  for (const [id, parts] of Object.entries(models)) {
+    try { const r = await fetch('http://127.0.0.1:47913/?name=' + id, { method: 'POST', body: JSON.stringify({ id, parts }) }); console.log('sent', id, parts.length, r.status); }
+    catch (e) { console.log('send failed', id, String(e)); }
+  }
+})();
+</script>
+</body></html>

@@ -1,0 +1,615 @@
+{
+ "man": {
+  "unit": 0.01,
+  "skeleton": {
+   "parts": {
+    "head": "head",
+    "torso": [
+     [
+      "hips",
+      92.8
+     ],
+     [
+      "spine",
+      110.3
+     ],
+     [
+      "chest",
+      133.9
+     ],
+     [
+      "neck",
+      999
+     ]
+    ],
+    "arm_l": [
+     [
+      "leftLowerArm",
+      102.4
+     ],
+     [
+      "leftUpperArm",
+      999
+     ]
+    ],
+    "hand_l": "leftHand",
+    "leg_l": [
+     [
+      "leftLowerLeg",
+      42.9
+     ],
+     [
+      "leftUpperLeg",
+      999
+     ]
+    ],
+    "foot_l": "leftFoot",
+    "arm_r": [
+     [
+      "rightLowerArm",
+      102.4
+     ],
+     [
+      "rightUpperArm",
+      999
+     ]
+    ],
+    "hand_r": "rightHand",
+    "leg_r": [
+     [
+      "rightLowerLeg",
+      42.9
+     ],
+     [
+      "rightUpperLeg",
+      999
+     ]
+    ],
+    "foot_r": "rightFoot"
+   },
+   "bones": {
+    "hips": {
+     "at": [
+      0,
+      80.5,
+      0.9
+     ]
+    },
+    "spine": {
+     "at": [
+      0,
+      92.8,
+      0.9
+     ],
+     "parent": "hips",
+     "blend": 6,
+     "reach": 25
+    },
+    "chest": {
+     "at": [
+      0,
+      110.3,
+      1.2
+     ],
+     "parent": "spine",
+     "blend": 6,
+     "reach": 25
+    },
+    "neck": {
+     "at": [
+      0,
+      133.9,
+      0.4
+     ],
+     "parent": "chest",
+     "blend": 3,
+     "reach": 10
+    },
+    "head": {
+     "at": [
+      0,
+      140,
+      0.9
+     ],
+     "parent": "neck",
+     "blend": 3,
+     "reach": 25
+    },
+    "headEnd": {
+     "at": [
+      0,
+      175,
+      0.9
+     ],
+     "parent": "head",
+     "end": true
+    },
+    "leftUpperArm": {
+     "at": [
+      19.2,
+      127.8,
+      0.9
+     ],
+     "parent": "chest",
+     "blend": 4,
+     "reach": 7
+    },
+    "leftLowerArm": {
+     "at": [
+      21.4,
+      102.4,
+      0.9
+     ],
+     "parent": "leftUpperArm",
+     "blend": 3.5,
+     "reach": 7
+    },
+    "leftHand": {
+     "at": [
+      23.6,
+      77,
+      0.9
+     ],
+     "parent": "leftLowerArm",
+     "blend": 2,
+     "reach": 6
+    },
+    "leftHandEnd": {
+     "at": [
+      23.8,
+      63,
+      0.9
+     ],
+     "parent": "leftHand",
+     "end": true
+    },
+    "rightUpperArm": {
+     "at": [
+      -19.2,
+      127.8,
+      0.9
+     ],
+     "parent": "chest",
+     "blend": 4,
+     "reach": 7
+    },
+    "rightLowerArm": {
+     "at": [
+      -21.4,
+      102.4,
+      0.9
+     ],
+     "parent": "rightUpperArm",
+     "blend": 3.5,
+     "reach": 7
+    },
+    "rightHand": {
+     "at": [
+      -23.6,
+      77,
+      0.9
+     ],
+     "parent": "rightLowerArm",
+     "blend": 2,
+     "reach": 6
+    },
+    "rightHandEnd": {
+     "at": [
+      -23.8,
+      63,
+      0.9
+     ],
+     "parent": "rightHand",
+     "end": true
+    },
+    "leftUpperLeg": {
+     "at": [
+      8.8,
+      77.9,
+      0.9
+     ],
+     "parent": "hips",
+     "blend": 5,
+     "reach": 11
+    },
+    "leftLowerLeg": {
+     "at": [
+      10.3,
+      42.9,
+      0.4
+     ],
+     "parent": "leftUpperLeg",
+     "blend": 4,
+     "reach": 9
+    },
+    "leftFoot": {
+     "at": [
+      11.6,
+      7.9,
+      -1.1
+     ],
+     "parent": "leftLowerLeg",
+     "blend": 2.5,
+     "reach": 9
+    },
+    "leftToes": {
+     "at": [
+      12.6,
+      2,
+      15
+     ],
+     "parent": "leftFoot",
+     "end": true
+    },
+    "rightUpperLeg": {
+     "at": [
+      -8.8,
+      77.9,
+      0.9
+     ],
+     "parent": "hips",
+     "blend": 5,
+     "reach": 11
+    },
+    "rightLowerLeg": {
+     "at": [
+      -10.3,
+      42.9,
+      0.4
+     ],
+     "parent": "rightUpperLeg",
+     "blend": 4,
+     "reach": 9
+    },
+    "rightFoot": {
+     "at": [
+      -11.6,
+      7.9,
+      -1.1
+     ],
+     "parent": "rightLowerLeg",
+     "blend": 2.5,
+     "reach": 9
+    },
+    "rightToes": {
+     "at": [
+      -12.6,
+      2,
+      15
+     ],
+     "parent": "rightFoot",
+     "end": true
+    }
+   }
+  },
+  "mode": "A",
+  "quads": true
+ },
+ "woman": {
+  "unit": 0.01,
+  "triangles": {
+   "clay": 14000,
+   "hair": 3500
+  },
+  "skeleton": {
+   "parts": {
+    "head": "head",
+    "neck": "neck",
+    "chest": [
+     [
+      "spine",
+      92.4
+     ],
+     [
+      "chest",
+      999
+     ]
+    ],
+    "hips": "hips",
+    "upperarm_l": "leftUpperArm",
+    "forearm_l": "leftLowerArm",
+    "hand_l": "leftHand",
+    "thigh_l": "leftUpperLeg",
+    "shin_l": "leftLowerLeg",
+    "foot_l": "leftFoot",
+    "upperarm_r": "rightUpperArm",
+    "forearm_r": "rightLowerArm",
+    "hand_r": "rightHand",
+    "thigh_r": "rightUpperLeg",
+    "shin_r": "rightLowerLeg",
+    "foot_r": "rightFoot"
+   },
+   "bones": {
+    "hips": {
+     "at": [
+      100,
+      74.3,
+      1.3
+     ]
+    },
+    "spine": {
+     "at": [
+      100,
+      85.8,
+      1.3
+     ],
+     "parent": "hips",
+     "blend": 6,
+     "reach": 23
+    },
+    "chest": {
+     "at": [
+      100,
+      102.3,
+      2.5
+     ],
+     "parent": "spine",
+     "blend": 6,
+     "reach": 23
+    },
+    "neck": {
+     "at": [
+      100,
+      126.2,
+      1.3
+     ],
+     "parent": "chest",
+     "blend": 3,
+     "reach": 9
+    },
+    "head": {
+     "at": [
+      100,
+      132,
+      1.6
+     ],
+     "parent": "neck",
+     "blend": 3,
+     "reach": 25
+    },
+    "headEnd": {
+     "at": [
+      100,
+      165,
+      1.6
+     ],
+     "parent": "head",
+     "end": true
+    },
+    "leftUpperArm": {
+     "at": [
+      115.2,
+      121.3,
+      1
+     ],
+     "parent": "chest",
+     "blend": 3.5,
+     "reach": 5.5
+    },
+    "leftLowerArm": {
+     "at": [
+      117.7,
+      96.5,
+      1
+     ],
+     "parent": "leftUpperArm",
+     "blend": 3,
+     "reach": 5.5
+    },
+    "leftHand": {
+     "at": [
+      120.5,
+      69.3,
+      1
+     ],
+     "parent": "leftLowerArm",
+     "blend": 2,
+     "reach": 5
+    },
+    "leftHandEnd": {
+     "at": [
+      121.1,
+      59.4,
+      1
+     ],
+     "parent": "leftHand",
+     "end": true
+    },
+    "leftUpperLeg": {
+     "at": [
+      108.25,
+      72.6,
+      1.6
+     ],
+     "parent": "hips",
+     "blend": 5,
+     "reach": 10
+    },
+    "leftLowerLeg": {
+     "at": [
+      109.3,
+      38.8,
+      0
+     ],
+     "parent": "leftUpperLeg",
+     "blend": 4,
+     "reach": 8
+    },
+    "leftFoot": {
+     "at": [
+      109.4,
+      6.6,
+      -1.3
+     ],
+     "parent": "leftLowerLeg",
+     "blend": 2.5,
+     "reach": 8
+    },
+    "leftToes": {
+     "at": [
+      109.8,
+      1.5,
+      14.5
+     ],
+     "parent": "leftFoot",
+     "end": true
+    },
+    "rightUpperArm": {
+     "at": [
+      84.8,
+      121.3,
+      1
+     ],
+     "parent": "chest",
+     "blend": 3.5,
+     "reach": 5.5
+    },
+    "rightLowerArm": {
+     "at": [
+      82.3,
+      96.5,
+      1
+     ],
+     "parent": "rightUpperArm",
+     "blend": 3,
+     "reach": 5.5
+    },
+    "rightHand": {
+     "at": [
+      79.5,
+      69.3,
+      1
+     ],
+     "parent": "rightLowerArm",
+     "blend": 2,
+     "reach": 5
+    },
+    "rightHandEnd": {
+     "at": [
+      78.9,
+      59.4,
+      1
+     ],
+     "parent": "rightHand",
+     "end": true
+    },
+    "rightUpperLeg": {
+     "at": [
+      91.75,
+      72.6,
+      1.6
+     ],
+     "parent": "hips",
+     "blend": 5,
+     "reach": 10
+    },
+    "rightLowerLeg": {
+     "at": [
+      90.7,
+      38.8,
+      0
+     ],
+     "parent": "rightUpperLeg",
+     "blend": 4,
+     "reach": 8
+    },
+    "rightFoot": {
+     "at": [
+      90.6,
+      6.6,
+      -1.3
+     ],
+     "parent": "rightLowerLeg",
+     "blend": 2.5,
+     "reach": 8
+    },
+    "rightToes": {
+     "at": [
+      90.2,
+      1.5,
+      14.5
+     ],
+     "parent": "rightFoot",
+     "end": true
+    }
+   }
+  },
+  "fuse": {
+   "clay": [
+    [
+     "upperarm_l",
+     "forearm_l",
+     "hand_l"
+    ],
+    [
+     "upperarm_r",
+     "forearm_r",
+     "hand_r"
+    ]
+   ]
+  }
+ },
+ "cat": {
+  "unit": 0.01,
+  "triangles": {
+   "clay": 12000
+  }
+ },
+ "car": {
+  "unit": 0.01,
+  "triangles": {
+   "clay": 18000,
+   "glass": 4000,
+   "tail": 400
+  },
+  "shells": [
+   "windows"
+  ],
+  "fuse": {
+   "clay": [
+    [
+     "hub"
+    ],
+    [
+     "mirror"
+    ],
+    [
+     "wheel"
+    ]
+   ],
+   "glass": [
+    [
+     "headlight"
+    ],
+    [
+     "grille"
+    ]
+   ]
+  }
+ },
+ "bottle": {
+  "unit": 0.01,
+  "triangles": {
+   "clay": 4000
+  }
+ },
+ "tree": {
+  "unit": 0.01,
+  "triangles": {
+   "clay": 9000
+  }
+ },
+ "building": {
+  "unit": 0.01,
+  "triangles": {
+   "clay": 9000
+  }
+ },
+ "mountains": {
+  "unit": 1,
+  "doubleSided": true,
+  "triangles": {
+   "clay": 20000
+  }
+ }
+}

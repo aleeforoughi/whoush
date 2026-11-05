@@ -1,0 +1,131 @@
+{
+ "man_arm_l_clay": {
+  "vertices": 1402,
+  "triangles": 2800,
+  "non_manifold_edges": 0,
+  "parts": 1,
+  "materials": [
+   "clay"
+  ],
+  "skinned": true
+ },
+ "man_arm_r_clay": {
+  "vertices": 1402,
+  "triangles": 2800,
+  "non_manifold_edges": 0,
+  "parts": 1,
+  "materials": [
+   "clay"
+  ],
+  "skinned": true
+ },
+ "man_foot_l_clay": {
+  "vertices": 1282,
+  "triangles": 2560,
+  "non_manifold_edges": 0,
+  "parts": 1,
+  "materials": [
+   "clay"
+  ],
+  "skinned": true
+ },
+ "man_foot_r_clay": {
+  "vertices": 1282,
+  "triangles": 2560,
+  "non_manifold_edges": 0,
+  "parts": 1,
+  "materials": [
+   "clay"
+  ],
+  "skinned": true
+ },
+ "man_hand_l_clay": {
+  "vertices": 802,
+  "triangles": 1600,
+  "non_manifold_edges": 0,
+  "parts": 1,
+  "materials": [
+   "clay"
+  ],
+  "skinned": true
+ },
+ "man_hand_r_clay": {
+  "vertices": 802,
+  "triangles": 1600,
+  "non_manifold_edges": 0,
+  "parts": 1,
+  "materials": [
+   "clay"
+  ],
+  "skinned": true
+ },
+ "man_head_clay": {
+  "vertices": 2522,
+  "triangles": 5040,
+  "non_manifold_edges": 0,
+  "parts": 1,
+  "materials": [
+   "clay"
+  ],
+  "skinned": true
+ },
+ "man_head_hair": {
+  "vertices": 3242,
+  "triangles": 6480,
+  "non_manifold_edges": 0,
+  "parts": 1,
+  "materials": [
+   "hair"
+  ],
+  "skinned": true
+ },
+ "man_leg_l_clay": {
+  "vertices": 1762,
+  "triangles": 3520,
+  "non_manifold_edges": 0,
+  "parts": 1,
+  "materials": [
+   "clay"
+  ],
+  "skinned": true
+ },
+ "man_leg_r_clay": {
+  "vertices": 1762,
+  "triangles": 3520,
+  "non_manifold_edges": 0,
+  "parts": 1,
+  "materials": [
+   "clay"
+  ],
+  "skinned": true
+ },
+ "man_torso_clay": {
+  "vertices": 3810,
+  "triangles": 7616,
+  "non_manifold_edges": 0,
+  "parts": 1,
+  "materials": [
+   "clay"
+  ],
+  "skinned": true
+ },
+ "_skeleton": [
+  "hips",
+  "leftUpperLeg",
+  "leftLowerLeg",
+  "leftFoot",
+  "rightUpperLeg",
+  "rightLowerLeg",
+  "rightFoot",
+  "spine",
+  "chest",
+  "leftUpperArm",
+  "leftLowerArm",
+  "leftHand",
+  "neck",
+  "head",
+  "rightUpperArm",
+  "rightLowerArm",
+  "rightHand"
+ ]
+}

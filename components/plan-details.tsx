@@ -1,15 +1,18 @@
 "use client";
-import type {ReactNode} from "react";
-import {Aperture,Camera,CircleHelp,Clapperboard,Film,Focus,Frame,Gauge,Lightbulb,ListChecks,Move,Paperclip,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Thermometer,Timer,type LucideIcon} from "lucide-react";
-import {Accordion,AccordionContent,AccordionItem,AccordionTrigger,Badge,Icon} from "@aleeforoughi/feather-react";
-import {StagingDiagrams} from "@/components/plan-diagrams";
+import {useState,type ReactNode} from "react";
+import {Aperture,Camera,CircleCheck,CircleHelp,Clapperboard,ImagePlus,Image as ImageIcon,Film,Focus,Frame,Gauge,Lightbulb,ListChecks,Move,Paperclip,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Thermometer,Timer,type LucideIcon} from "lucide-react";
+import {Accordion,AccordionContent,AccordionItem,AccordionTrigger,Badge,Button,Icon} from "@aleeforoughi/feather-react";
+import type {ReferenceRequest} from "@/lib/reference-needs";
+import {StagingEditor} from "@/components/staging-editor";
+import type {Staging} from "@/lib/creative-plan";
 import {STYLE_LABEL_FA,type PublicCreativePlan} from "@/lib/creative-plan";
 import {CHARACTER_VIEWS} from "@/lib/characters";
 import {displayTag} from "@/lib/attachments";
-import {fa} from "@/lib/format";
+import {fa,faText,faAuto} from "@/lib/format";
+import {expandFocus,lensFor} from "@/lib/staging";
 
-const latin=(v:string|number)=><bdi dir="ltr">{v}</bdi>;
-const text=(v:string)=><span dir="auto">{v}</span>;
+const latin=(v:string|number)=><bdi dir="ltr">{faText(String(v))}</bdi>;
+const text=(v:string)=><span dir="auto">{faAuto(v)}</span>;
 const LIP_SYNC:Record<string,string>={needs_audio:"به فایل صوتی نیاز دارد",planned_from_audio:"از روی صدای مرجع برنامه‌ریزی شده",not_requested:"درخواست نشده"};
 const ACCENT:Record<string,string>={tehrani:"تهرانی",original:"اصلی",unspecified:"نامشخص"};
 const VIEW_TITLE:Record<string,string>=Object.fromEntries(CHARACTER_VIEWS.map(v=>[v.id,v.title]));
@@ -61,14 +64,21 @@ function Line({icon,label,children}:{icon:LucideIcon;label:string;children:React
 }
 
 /**
- * A generation plan as part of the conversation (not inside the card): the intent, the references, the camera, framing and lighting
- * diagrams, the camera or shot settings as icon chips and lines, and the hard constraints; preferences, identity lock, continuity, speech and the QA checklist
- * fold under «جزئیات بیشتر». All of it is Whoush's proposal, not verified model settings.
+ * A generation plan as part of the conversation (not inside the card): the intent, the references, the camera or shot settings as icon chips and lines, and the hard constraints; preferences, identity lock, continuity, speech and the QA checklist
+ * fold under «جزئیات بیشتر»; «بوم» (the adjustable scene) comes last. All of it is Whoush's proposal, not verified model settings.
  */
-export function PlanStory({plan}:{plan:PublicCreativePlan}){
- const {camera,shot,identityLock,speech,references,staging}=plan;
+export function PlanStory({plan,onStagingChange,focus}:{plan:PublicCreativePlan;
+ /** A follow-up about one or two parts of the scene: «بوم» shows just those parts (expandable to all), and the rest of the plan folds under «جزئیات پرامپت». */
+ focus?:readonly string[];
+ /** When set (the live generation), «بوم» is adjustable and every change flows to the generation card. */onStagingChange?:(s:Staging,aspect:string,changed:boolean)=>void}){
+ const {shot,identityLock,speech,references,staging}=plan;
+ // When the user arranges «بوم», Whoush re-picks the lens for that scene (the same choice the build uses): shown here live.
+ const [arranged,setArranged]=useState<Staging|null>(null);
+ const lens=arranged?lensFor(arranged):undefined;
+ const camera=plan.camera&&lens?{...plan.camera,focalLengthMm:lens.focalLengthMm,aperture:lens.aperture,iso:lens.iso,focus:lens.fa}:plan.camera;
+ const onArrange=onStagingChange?(s:Staging,aspect:string,changed:boolean)=>{setArranged(changed?s:null);onStagingChange(s,aspect,changed);}:undefined;
  const more=plan.softPreferences.length+plan.continuity.locks.length+plan.continuity.antiTeleport.length+plan.qaChecklist.length>0||identityLock||speech;
- return <div className="flex flex-col gap-5">
+ const details=<>
   <Section icon={Sparkles} title="هدف">
    <p className="type-body-sm text-fg-primary">{text(plan.intentSummaryFa)}</p>
    <ul className="flex flex-wrap gap-2">
@@ -80,10 +90,8 @@ export function PlanStory({plan}:{plan:PublicCreativePlan}){
    <ul className="flex flex-wrap gap-2">{references.map(r=><li key={r.tag} className="inline-flex h-7 items-center gap-1.5 rounded-control bg-surface-subtle px-2 type-caption text-fg-primary">
     <bdi className="type-label">{displayTag(r.tag)}</bdi><span className="text-fg-secondary">{r.labelFa}{r.roleSource==="inferred"&&" (انتخاب هووش)"}</span></li>)}</ul>
   </Section>}
-  {staging&&<Section icon={Frame} title="کارگردانی تصویر">
-   <StagingDiagrams staging={staging} aspectRatio={camera?.aspectRatio}/>
-  </Section>}
   {camera&&<Section icon={Camera} title="دوربین">
+   {lens&&<p className="type-caption text-primary">هووش لنز رو برای صحنه‌ای که چیدی دوباره انتخاب کرد.</p>}
    <ul className="flex flex-wrap gap-2">
     <Spec icon={Ruler} label="لنز">{fa(camera.focalLengthMm)} میلی‌متر</Spec>
     <Spec icon={Aperture} label="دیافراگم">{latin(camera.aperture)}</Spec>
@@ -108,7 +116,7 @@ export function PlanStory({plan}:{plan:PublicCreativePlan}){
    <ul className="flex flex-col gap-1.5">
     <Line icon={Frame} label="اندازه نما">{text(shot.shotSize)}</Line>
     <Line icon={Move} label="حرکت دوربین">{text(shot.cameraMovement)}</Line>
-    <Line icon={Ruler} label="لنز">{text(shot.lens)}</Line>
+    <Line icon={Ruler} label="لنز">{lens?latin(lens.focalLengthMm+"mm "+lens.aperture):text(shot.lens)}</Line>
    </ul>
   </Section>}
   {plan.hardConstraints.length>0&&<Section icon={ShieldCheck} title="قیدهای قطعی">
@@ -116,7 +124,7 @@ export function PlanStory({plan}:{plan:PublicCreativePlan}){
   </Section>}
   {more&&<Accordion>
    <AccordionItem value="more" className="border-b-0">
-    <AccordionTrigger className="py-0"><span className="flex items-center gap-2"><Icon icon={ListChecks} size={16} aria-hidden="true" className="size-4 text-fg-secondary"/>جزئیات بیشتر</span></AccordionTrigger>
+    <AccordionTrigger className="rounded-card px-3 py-2.5 hover:no-underline hover:bg-surface-hover aria-expanded:bg-surface-selected aria-expanded:hover:bg-surface-selected"><span className="flex items-center gap-2"><Icon icon={ListChecks} size={16} aria-hidden="true" className="size-4 text-fg-secondary group-aria-expanded/accordion-trigger:text-primary"/>جزئیات بیشتر</span></AccordionTrigger>
     <AccordionContent>
      <div className="flex flex-col gap-5 pt-3">
       <p className="type-caption text-fg-secondary">این‌ها پیشنهاد کارگردانی هووش است، نه تنظیمات تأییدشدهٔ مدل.</p>
@@ -133,7 +141,20 @@ export function PlanStory({plan}:{plan:PublicCreativePlan}){
     </AccordionContent>
    </AccordionItem>
   </Accordion>}
+ </>;
+ const editor=staging&&<StagingEditor staging={staging} aspectRatio={plan.camera?.aspectRatio} mediaKind={plan.mediaKind} onChange={onArrange} focus={focus?expandFocus(focus):undefined}/>;
+ // A focused follow-up: only the part of «بوم» it is about, with the rest of the plan folded away.
+ if(focus?.length)return <div className="flex flex-col gap-3">
+  {editor}
+  <Accordion>
+   <AccordionItem value="plan" className="border-b-0">
+    <AccordionTrigger className="rounded-card px-3 py-2.5 hover:no-underline hover:bg-surface-hover aria-expanded:bg-surface-selected aria-expanded:hover:bg-surface-selected"><span className="flex items-center gap-2"><Icon icon={ListChecks} size={16} aria-hidden="true" className="size-4 text-fg-secondary group-aria-expanded/accordion-trigger:text-primary"/>جزئیات پرامپت</span></AccordionTrigger>
+    <AccordionContent><div className="flex flex-col gap-5 pt-3">{details}</div></AccordionContent>
+   </AccordionItem>
+  </Accordion>
  </div>;
+ // «بوم» closes the plan, right above the generation card (and before any question), so the scene sits next to what builds it.
+ return <div className="flex flex-col gap-5">{details}{editor}</div>;
 }
 
 export const NEEDS_INPUT_FA="نیاز به پاسخ تو";
@@ -142,15 +163,33 @@ export const NEEDS_INPUT_FA="نیاز به پاسخ تو";
  * has been sent since), it is highlighted with a flashing «نیاز به پاسخ تو» badge (a gentle pulse; still under reduced motion) and «پاسخ بده» moves focus to the
  * prompt. Once answered it stays as a quiet record.
  */
-export function AgentQuestion({question,waiting,onAnswer}:{question:string;waiting:boolean;onAnswer:()=>void}){
+/**
+ * Whoush's question, always the last item of its message while it waits («نیاز به پاسخ تو»). When Whoush asked for photos (a reference request: the user's
+ * tattoos, logo, product...), it lists the angles it needs, each with «آپلود» (the photo lands in the chat input as a card with the right role) and a check
+ * once it is in, then «ادامه» sends them with the original request.
+ */
+export function AgentQuestion({question,waiting,onAnswer,references,uploaded,onUpload,onContinue}:{question:string;waiting:boolean;onAnswer:()=>void;
+ references?:ReferenceRequest;uploaded?:Record<string,boolean>;onUpload?:(angle:{id:string;titleFa:string})=>void;onContinue?:()=>void}){
+ const done=references?references.angles.filter(a=>uploaded?.[a.id]).length:0;
  return <div role={waiting?"status":undefined} className={"flex items-start gap-3 rounded-card p-3 "+(waiting?"border border-primary bg-surface-subtle":"bg-surface-subtle")}>
-  <Icon icon={CircleHelp} size={20} aria-hidden="true" className={"mt-0.5 shrink-0 "+(waiting?"text-primary":"text-fg-secondary")}/>
+  <Icon icon={references?ImagePlus:CircleHelp} size={20} aria-hidden="true" className={"mt-0.5 shrink-0 "+(waiting?"text-primary":"text-fg-secondary")}/>
   <div className="flex min-w-0 flex-1 flex-col gap-2">
    {waiting&&<span className="inline-flex w-fit items-center gap-1.5 rounded-control bg-primary px-2.5 py-0.5 type-caption font-medium text-primary-foreground animate-pulse motion-reduce:animate-none">
     <span aria-hidden="true" className="size-1.5 rounded-full bg-current"/>{NEEDS_INPUT_FA}
    </span>}
    <p className="type-body-sm text-fg-primary">{text(question)}</p>
-   {waiting&&<button type="button" onClick={onAnswer} className="w-fit rounded-control type-label text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">پاسخ بده</button>}
+   {references&&<ul className="flex flex-col gap-1.5" aria-label={"عکس‌های لازم: "+references.titleFa}>
+    {references.angles.map(a=><li key={a.id} className="flex items-center gap-2 rounded-control border border-line-secondary px-2.5 py-1.5">
+     <Icon icon={uploaded?.[a.id]?CircleCheck:ImageIcon} size={16} aria-hidden="true" className={"size-4 shrink-0 "+(uploaded?.[a.id]?"text-primary":"text-fg-secondary")}/>
+     <span className="min-w-0 flex-1 type-caption text-fg-primary">{a.titleFa}</span>
+     {waiting&&onUpload&&<Button type="button" size="sm" variant={uploaded?.[a.id]?"ghost":"secondary"} onClick={()=>onUpload(a)}>{uploaded?.[a.id]?"عوض کن":"آپلود"}</Button>}
+    </li>)}
+   </ul>}
+   {references&&waiting&&onContinue&&<div className="flex flex-wrap items-center gap-2">
+    <Button type="button" size="sm" onClick={onContinue} disabled={!done}>ادامه با {fa(done)} عکس</Button>
+    <span className="type-caption text-fg-secondary">هووش خودش نقش عکس‌ها رو تعیین می‌کنه و به {references.titleFa} وصلشون می‌کنه.</span>
+   </div>}
+   {waiting&&!references&&<button type="button" onClick={onAnswer} className="w-fit rounded-control type-label text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">پاسخ بده</button>}
   </div>
  </div>;
 }

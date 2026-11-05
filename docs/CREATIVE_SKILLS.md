@@ -186,3 +186,20 @@ If the text sounds like an image request but there is a video attachment, or an 
 - Every generation with a preview has a card in the chat: media on top at full width (a video gets its own player), then «پیش‌نمایش #تولید-۱» and the state. Clicking it opens the panel on that generation.
 - While generating, the generation box shows a transparent animated blue gradient, the live status (state, kind and model, real facts only) and a smooth progress bar with an estimated percentage («تخمینی»). The provider reports states, not progress, so the estimate eases towards 95% and reaches 100% only on completion.
 - Output media is shown only from a Whoush-owned (same-origin) URL. Provider URLs are never fetched or shown until outputs are mirrored to owned storage (launch gate 8).
+
+## Whoush voice, everyday Persian and Finglish
+- Three always-relevant skills (registry 1.2.0):
+  - `whoush_voice`: a cool, witty, professional creative friend; 1 to 3 sentences; 0 to 2 emojis; light humor never about the person or anything sensitive; no jokes or emojis around refusals, prices, failures or critical questions.
+  - `persian_colloquial`: everyday spoken Persian (محاوره‌ای) with mild friendly slang, «تو», never book Persian or vulgar, political or ethnic slang.
+  - `finglish_writing`: active when the brief is Finglish (`lib/finglish.ts`).
+- The planner writes `reply.text` (the chat message) in the user's script. A Finglish reply must be Latin letters only (tags excepted); a reply that mixes scripts, leaks internals or fails the plan-text safety check is replaced by Whoush's own line (`VOICE` in `lib/orchestrator.ts`).
+- Finglish safety: the lexical prefilter folds Finglish spellings (kh/x, gh/q, oo/u, ee/i, aa/a, digit letters) and checks Finglish forms of every category. It is still only a prefilter.
+- Conversation awareness: the last 8 messages go with each message as `history`; each turn is safety-checked, a failing turn is left out, and the planner sees them as untrusted `<history>` data.
+
+## Chat GIFs, emojis and reactions
+- Whoush may send a GIF (`reply.gif`, a mood) at a fun moment, never two within its last three turns. The server picks a G-rated GIPHY result for a fixed mood query and keeps only results whose title, creator and slug pass the prefilter and a stricter word list. The images themselves are not inspected; a curated list of approved GIF ids is the production-safe option.
+- People send GIFs from the composer's GIF picker (`/api/gifs`, the key stays on the server). A GIF is part of the conversation and of what Whoush remembers, not a brief. The composer's emoji button inserts an emoji at the caret.
+- GIPHY media loads from GIPHY's own URLs (no caching or proxying, per GIPHY's developer docs), with «Powered by GIPHY». So the viewer's browser contacts GIPHY directly.
+- Off unless `GIPHY_API_KEY` is set; in production also `GIPHY_AUTHORIZED=true`, the owner's assertion that GIPHY's terms and regional availability were checked (the terms page could not be read from here).
+- Slack-style reactions: anyone can react to any message from the palette (👍 ❤️ 😂 🔥 😮 🎉 👏 😎 🙌 ✨ 👌 🤩 💯 🙏 🎬 📸); Whoush reacts to the user's message with `reply.react` from the same set. Reactions are saved with the project.
+- Anthropic receives a leaner output schema: the full plan schema exceeds its grammar limit, so reply and staging travel as JSON in `extras` (`CreativePlanAnthropicSchema`).

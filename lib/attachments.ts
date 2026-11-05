@@ -134,6 +134,7 @@ const MENTION_WORDS:Record<string,MentionPrefix>={"تصویر":"image","ویدی
 const faNumber=(n:number|string)=>String(n).replace(/\d/g,d=>String.fromCharCode(0x06f0+Number(d)));
 /** The user-facing form of an internal tag: the Persian word, an ASCII hyphen and Persian digits. `image1` is `#تصویر-۱`, `file12` is `#فایل-۱۲`. */
 export function displayTag(tag:string):string{
+ if(isPropTag(tag))return tag;
  const m=/^(image|video|audio|file|generation)(\d+)$/.exec(tag);
  return m?"#"+WORD_FA[m[1] as MentionPrefix]+"-"+faNumber(m[2]):"#"+tag;
 }
@@ -146,12 +147,38 @@ const normalizeMention=(s:string)=>s.replace(/[\u200c\u0640]/g,"").replace(/[\u0
  * mark, ZWNJ or underscore (so `#تصویر۱۲۳` and `#نوروز` are not mentions).
  */
 const mentionRe=()=>/(?<![\p{L}\p{N}\p{M}\u200c_@#])[#@]([\p{L}\u200c\u0640]+)[-\u2010\u2011\u2013\u2212]?(\p{N}+)(?![\p{L}\p{N}\p{M}\u200c_])/gu;
-/** Every valid mention in the text, in order, with its position and its internal tag. */
-function scanMentions(text:string):Array<{index:number;raw:string;tag:string}>{
+// ---- prop tags: a prop of the scene is named by its own tag, «#زن», «#ماشین-قرمز», «#درخت-۲», and can be mapped to a file: «#زن:تصویر-۱» ----
+/** The tolerant form used to compare typed tags (ی/ک, digits, dashes, ZWNJ, case). */
+export const normalizeMentionText=(s:string)=>normalizeMention(s);
+/** A prop mention's tag is the text itself (it starts with `#`), unlike a file's or generation's internal tag (`image1`). */
+export const isPropTag=(tag:string)=>tag.startsWith("#");
+const propRe=()=>/(?<![\p{L}\p{N}\p{M}\u200c_@#])#([\p{L}\p{N}\u200c\u0640-]+?)(?::([\p{L}\u200c\u0640]+[-\u2010\u2011\u2013\u2212]?\p{N}+))?(?![\p{L}\p{N}\p{M}\u200c\u0640_-])/gu;
+/** The file tag (`image1`) a typed reference word names («تصویر-۱», «image1»), if any. */
+export function fileTagOf(word:string):string|undefined{const m=scanMentions("#"+word)[0];return m&&m.raw.length===word.length+1&&!isGenerationTag(m.tag)?m.tag:undefined;}
+/** A prop mention's parts: its prop tag («#زن») and the file it is mapped to (`image1`), if any. */
+export function propMentionParts(tag:string):{prop:string;file?:string}{
+ const i=tag.indexOf(":");if(i<0)return {prop:tag};
+ const file=fileTagOf(tag.slice(i+1));return file?{prop:tag.slice(0,i),file}:{prop:tag};
+}
+/** The canonical mention of a prop mapped to a file: «#زن» + `image1` is «#زن:تصویر-۱». */
+export const propMention=(prop:string,file?:string)=>file?prop+":"+displayTag(file).slice(1):prop;
+/** Every valid mention in the text, in order, with its position and its internal tag; with `props` (the scene's prop tags), prop mentions too. */
+function scanMentions(text:string,props?:readonly string[]):Array<{index:number;raw:string;tag:string}>{
  const out:Array<{index:number;raw:string;tag:string}>=[];
  for(const m of text.matchAll(mentionRe())){
   const prefix=MENTION_WORDS[normalizeMention(m[1])],n=normalizeMention(m[2]);
   if(prefix&&/^[1-9]\d?$/.test(n))out.push({index:m.index,raw:m[0],tag:prefix+n});
+ }
+ if(props?.length){
+  const byNorm=new Map(props.map(p=>[normalizeMention(p),p] as const));
+  for(const m of text.matchAll(propRe())){
+   const prop=byNorm.get(normalizeMention("#"+m[1]));if(!prop||out.some(o=>o.index===m.index))continue;
+   const file=m[2]?fileTagOf(m[2]):undefined;
+   // A «:» that names no file is plain text after the prop's tag.
+   const raw=file?m[0]:"#"+m[1];
+   out.push({index:m.index,raw,tag:propMention(prop,file)});
+  }
+  out.sort((a,b)=>a.index-b.index);
  }
  return out;
 }
@@ -160,9 +187,9 @@ export function parseMentions(text:string):string[]{
  return [...new Set(scanMentions(text).map(m=>m.tag))];
 }
 /** The text cut into plain runs and mentions (`raw` as typed, `tag` internal). */
-export function splitMentions(text:string):Array<{text:string}|{tag:string;raw:string}>{
+export function splitMentions(text:string,props?:readonly string[]):Array<{text:string}|{tag:string;raw:string}>{
  const out:Array<{text:string}|{tag:string;raw:string}>=[];let at=0;
- for(const m of scanMentions(text)){
+ for(const m of scanMentions(text,props)){
   if(m.index>at)out.push({text:text.slice(at,m.index)});
   out.push({tag:m.tag,raw:m.raw});at=m.index+m.raw.length;
  }
@@ -215,12 +242,18 @@ export function tagMatchesQuery(tag:string,query:string):boolean{
  * The open `#query` or `@query` token right before the caret (at the start or after whitespace), if any. The query is normalized (lowercase, ASCII digits,
  * ی/ک unified). An ordinary hashtag such as `#نوروز` is not a trigger, because it is not the start of any tag word.
  */
-export function mentionTrigger(text:string,caret:number):{start:number;query:string}|undefined{
- const m=/(^|\s)[#@]([\p{L}\p{N}\u200c\u0640\u2010\u2011\u2013\u2212\-]*)$/u.exec(text.slice(0,caret));
+export function mentionTrigger(text:string,caret:number,props:readonly string[]=[]):{start:number;query:string;prop?:string}|undefined{
+ const before=text.slice(0,caret);
+ // «#زن:» opens the files to map the prop to; what follows the colon filters them.
+ const r=/(^|\s)(#[\p{L}\p{N}\u200c\u0640\-]+):([\p{L}\p{N}\u200c\u0640\u2010\u2011\u2013\u2212\-]*)$/u.exec(before);
+ if(r){const prop=props.find(p=>normalizeMention(p)===normalizeMention(r[2]));if(prop)return {start:caret-r[3].length-r[2].length-1,query:normalizeMention(r[3]),prop};}
+ const m=/(^|\s)[#@]([\p{L}\p{N}\u200c\u0640\u2010\u2011\u2013\u2212\-]*)$/u.exec(before);
  if(!m)return undefined;
  const query=normalizeMention(m[2]);
- return isTagQuery(query)?{start:caret-m[2].length-1,query}:undefined;
+ return isTagQuery(query)||props.some(p=>propMatchesQuery(p,query))?{start:caret-m[2].length-1,query}:undefined;
 }
+/** Whether a prop's tag («#ماشین-قرمز») starts with a normalized picker query («ماش»). */
+export const propMatchesQuery=(prop:string,query:string)=>normalizeMention(prop.slice(1)).startsWith(query);
 // ---- role inference: words only, no image analysis ----
 /** Where an attachment's role came from: the user's choice, or Whoush's best guess from the brief. */
 export type RoleSource="user"|"inferred";

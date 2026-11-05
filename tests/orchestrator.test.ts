@@ -22,7 +22,7 @@ const last=()=>{const a=readPrivateAuditForTests();return a[a.length-1];};
 const run=async(text:string,extra:Record<string,unknown>={})=>planOf(await orchestrateCreativeTurn({text,...extra}));
 const sha=async(t:string)=>(await import("node:crypto")).createHash("sha256").update(t).digest("hex");
 
-test("all 22 skills are reachable from table-driven contexts",()=>{
+test("all 25 skills are reachable from table-driven contexts",()=>{
  const base:SkillContext={prompt:"x",kind:"image"};
  const table:Array<[SkillId,SkillContext]>=[
   ["prompt_engineer",base],["creative_director",base],["persian_language",base],["qa",base],["anti_drift",base],["continuity",base],["hyper_realism",base],
@@ -30,9 +30,10 @@ test("all 22 skills are reachable from table-driven contexts",()=>{
   ["cinematographer",{...base,kind:"video"}],["videographer",{...base,kind:"video"}],["video_editor",{prompt:"x",kind:"video",task:"edit"}],["anti_teleport",{prompt:"x",kind:"video"}],
   ["audiographer",{...base,hasAudioReference:true}],["visual_designer",{prompt:"poster",kind:"image"}],["creative_copywriter",{prompt:"caption",kind:"image"}],
   ["social_media",{prompt:"instagram reels",kind:"video"}],["iranian_culture",{prompt:"نوروز",kind:"image"}],["iranian_geography",{prompt:"شیراز",kind:"image"}],
-  ["persian_lip_sync_phonetics",{prompt:"lip sync",kind:"video"}],["tehrani_accent",{prompt:"x",kind:"video",accent:"tehrani"}],["character_creation",{...base,characterRef:{id:"char-12345678",angles:["front"],version:1}}]
+  ["persian_lip_sync_phonetics",{prompt:"lip sync",kind:"video"}],["tehrani_accent",{prompt:"x",kind:"video",accent:"tehrani"}],["character_creation",{...base,characterRef:{id:"char-12345678",angles:["front"],version:1}}],
+  ["whoush_voice",base],["persian_colloquial",base],["finglish_writing",{prompt:"salam, ye aks az shab mikham",kind:"image"}]
  ];
- assert.equal(Object.keys(SKILLS).length,22);
+ assert.equal(Object.keys(SKILLS).length,25);
  assert.deepEqual(new Set(table.map(t=>t[0])),new Set(Object.keys(SKILLS)));
  for(const [id,ctx] of table)assert.ok(resolveCreativeSkills(ctx).includes(id),id);
 });
@@ -127,7 +128,8 @@ test("image plans carry a camera with integer iso/focal length; video plans carr
  const img=await run("a portrait photo of an old man");
  assert.ok(img.plan.camera&&Number.isInteger(img.plan.camera.iso)&&Number.isInteger(img.plan.camera.focalLengthMm));
  assert.equal(img.plan.camera.focalLengthMm,85);assert.equal(img.plan.camera.aperture,"f/2.0");assert.equal(img.plan.camera.shutter,"1/200s");assert.equal(img.plan.camera.iso,200);assert.equal(img.plan.camera.whiteBalanceK,5600);
- const scene=await run("a photo of a mountain lake");assert.equal(scene.plan.camera?.focalLengthMm,35);assert.equal(scene.plan.camera?.aperture,"f/5.6");
+ // The lens is Whoush's pick for the scene (lib/staging.ts, lensFor): a landscape gets a wide lens stopped down.
+ const scene=await run("a photo of a mountain lake");assert.equal(scene.plan.camera?.focalLengthMm,24);assert.equal(scene.plan.camera?.aperture,"f/8");
  const vid=await run("a video of a river");
  assert.equal(vid.plan.mediaKind,"video");assert.equal(vid.plan.shot?.targetFps,24);assert.equal(vid.plan.shot?.shutterAngle,180);assert.equal(vid.plan.shot?.durationSeconds,5);
  assert.ok(vid.plan.continuity.antiTeleport.length>0&&vid.plan.continuity.locks.length>0);
@@ -237,18 +239,20 @@ const stubFetch=(status:number,body:unknown,seen?:{req?:{url:string;init:Request
  globalThis.fetch=(async(url:string|URL|Request,init?:RequestInit)=>{if(seen)seen.req={url:String(url),init:init!};return new Response(JSON.stringify(body),{status,headers:{"content-type":"application/json","retry-after-ms":"1","x-should-retry":"false"}});}) as typeof fetch;
 };
 const reqFor=(text:string):PlannerRequest=>{const input=CreativeTurnInputSchema.parse({text});const prep=preparePrivateCreativeRequest({prompt:text,kind:"image"});return {...prep,privateRoute:null,kind:"image",input};};
+/** A plan in Anthropic's leaner output shape: reply and staging as JSON in `extras` (lib/creative-plan.ts, CreativePlanAnthropicSchema). */
+const toAnthropicWire=(p:CreativePlan)=>{const {staging,reply,...rest}=p;return {...rest,extras:JSON.stringify({...(staging?{staging}:{}),...(reply?{reply}:{})})};};
 test("anthropic adapter: request shape, parsed plan, usage returned for audit only",async()=>{
  process.env.ANTHROPIC_API_KEY="test-key";
  const {planWithAnthropic}=await import("../lib/llm-anthropic");
  const req=reqFor("a photo of a lake");const plan=deterministicPlanner(req).plan;const seen:{req?:{url:string;init:RequestInit}}={};
- stubFetch(200,apiMessage({content:[{type:"text",text:JSON.stringify(plan)}]}),seen);
+ stubFetch(200,apiMessage({content:[{type:"text",text:JSON.stringify(toAnthropicWire(plan))}]}),seen);
  try{
   const out=await planWithAnthropic(req,"claude-test");
   assert.equal(out.modelId,"claude-test");assert.equal(out.usage.input_tokens,10);assert.equal(out.plan.mediaKind,"image");
   const body=JSON.parse(String(seen.req!.init.body));
   assert.equal(body.model,"claude-test");assert.equal(body.max_tokens,16000);
   for(const k of ["temperature","top_p","top_k","thinking"])assert.equal(k in body,false,k);
-  assert.equal(body.system[0].cache_control.type,"ephemeral");assert.equal(body.system[0].text,req.systemInstructions);
+  assert.equal(body.system[0].cache_control.type,"ephemeral");assert.ok(body.system[0].text.startsWith(req.systemInstructions+"\n\nOutput format note:"));
   assert.equal(body.messages[0].content,"<user_brief>\na photo of a lake\n</user_brief>");
   assert.equal(body.output_config.format.type,"json_schema");
  }finally{globalThis.fetch=noNet;}
@@ -272,7 +276,7 @@ test("anthropic adapter: refusal, invalid output and API errors map to vendor-ne
 test("orchestrator uses the live adapter only when llmPolicy allows, and audits usage privately",async()=>{
  Object.assign(process.env,{LLM_PROVIDER_AUTHORIZED:"true",ALLOW_LIVE_LLM:"true",LLM_FAST_MODEL:"claude-test",ANTHROPIC_API_KEY:"test-key"});
  const plan=deterministicPlanner(reqFor("a photo of a lake")).plan;
- stubFetch(200,apiMessage({content:[{type:"text",text:JSON.stringify(plan)}]}));
+ stubFetch(200,apiMessage({content:[{type:"text",text:JSON.stringify(toAnthropicWire(plan))}]}));
  try{
   const r=planned(await orchestrateCreativeTurn({text:"a photo of a lake"}));
   assert.equal(last().planner,"live");assert.deepEqual(last().route,{provider:"anthropic",modelId:"claude-test"});assert.ok(last().usage);
@@ -430,7 +434,7 @@ test("attachments: md and pdf only plan normally with a proposal, and the determ
  const r=planned(await orchestrateCreativeTurn({text:"a photo of a lake",attachments:[att("md"),att("json"),att("pdf")]}));
  assert.ok(r.proposal.fixedNeurons>0&&Number.isInteger(r.proposal.fixedNeurons));
  const soft=r.plan.softPreferences.join("\n");
- assert.match(soft,/۲ سند متنی/);assert.ok(soft.includes("محتوای فایل PDF هنوز خوانده نمی‌شود و در برنامه اثری ندارد"));
+ assert.match(soft,/۲ سند متنی/);assert.ok(soft.includes("محتوای فایل PDF هنوز خوانده نمی‌شود و در پرامپت اثری ندارد"));
  const none=planned(await orchestrateCreativeTurn({text:"a photo of a lake"}));assert.ok(!none.plan.softPreferences.join("").includes("سند متنی")&&!none.plan.softPreferences.join("").includes("PDF"));
  assert.notEqual(last().fallbackReason,"media_review_unavailable");
 });
@@ -470,7 +474,7 @@ test("anthropic adapter: attachment excerpts go inside <user_brief> as <attachme
  process.env.ANTHROPIC_API_KEY="test-key";
  const {planWithAnthropic}=await import("../lib/llm-anthropic");
  const req={...reqFor("a photo of a lake"),attachments:[{tag:"file1",kind:"md" as const,textExcerpt:"# moodboard"},{tag:"image1",kind:"image" as const,role:"character" as const}]};
- const seen:{req?:{url:string;init:RequestInit}}={};stubFetch(200,apiMessage({content:[{type:"text",text:JSON.stringify(deterministicPlanner(req).plan)}]}),seen);
+ const seen:{req?:{url:string;init:RequestInit}}={};stubFetch(200,apiMessage({content:[{type:"text",text:JSON.stringify(toAnthropicWire(deterministicPlanner(req).plan))}]}),seen);
  try{
   await planWithAnthropic(req,"claude-test");
   assert.equal(JSON.parse(String(seen.req!.init.body)).messages[0].content,'<user_brief>\na photo of a lake\n<attachment tag="file1" kind="md">\n# moodboard\n</attachment>\n<attachment tag="image1" kind="image" role="character"/>\n</user_brief>');
@@ -516,7 +520,7 @@ test("mentions: the provider-facing prompt describes attachments in English, the
  // a live planner that writes the tag into its own prompt is rewritten after the fact
  const live:PrivatePlanner=r2=>{const plan=structuredClone(deterministicPlanner(r2).plan) as CreativePlan;plan.mediaPrompt="lake scene following @FILE1 closely";return {plan};};
  const l=planned(await orchestrateCreativeTurn({text:"a lake per @file1",attachments:[att("md")]},{planner:live}));
- assert.equal(getPrivateMediaPrompt(l.turnId),"lake scene following [attached document 1] closely");
+ {const lp=getPrivateMediaPrompt(l.turnId)!;assert.ok(lp.startsWith("Camera and light, exactly as arranged:")&&lp.includes(" lake scene following [attached document 1] closely Scene (must match): Staging:"),lp);}
  // a long brief still leaves room for every role line at the end of the prompt
  const longText="a lake. ".repeat(450)+"@image1";
  const lp=deterministicPlanner((await seenBy(longText,[att("image")])).req).plan.mediaPrompt;
@@ -543,7 +547,7 @@ test("Persian mentions: rewritten in the private media prompt, kept in the publi
  assert.ok(!prompt.includes("#فایل")&&!prompt.includes("#تصو")&&!prompt.includes("فایل1"),"no tag in any accepted spelling survives in the provider-facing prompt");
  assert.ok(dp.intentSummaryFa.includes("#فایل-۱")&&dp.intentSummaryFa.includes("#فایل1"),"the public summary keeps what the user wrote");
  const p=planned((await seenBy("یادداشت‌های #فایل-۱ را بخوان؛ دوباره #فایل1",[att("md"),att("pdf")])).r);
- assert.ok(getPrivateMediaPrompt(p.turnId)!.startsWith("یادداشت‌های [attached document 1] را بخوان؛ دوباره [attached document 1]"));
+ {const pp=getPrivateMediaPrompt(p.turnId)!;assert.ok(pp.startsWith("Camera and light, exactly as arranged:")&&pp.includes(" یادداشت‌های [attached document 1] را بخوان؛ دوباره [attached document 1]"),pp);}
  assert.ok(!JSON.stringify(p.plan).includes("[attached document"));
  assertNoLeak(JSON.stringify(r),"persian mention");
  assert.deepEqual(req.attachments,[{tag:"file1",kind:"md",textExcerpt:"# notes"},{tag:"file3",kind:"pdf"}]);
@@ -561,7 +565,7 @@ test("Persian mentions: rewritten in the private media prompt, kept in the publi
  // a live planner that writes the Persian tag into its own prompt is rewritten after the fact
  const live:PrivatePlanner=r2=>{const plan=structuredClone(deterministicPlanner(r2).plan) as CreativePlan;plan.mediaPrompt="lake scene following #فایل-۱ closely";return {plan};};
  const l=planned(await orchestrateCreativeTurn({text:"a lake per #فایل-۱",attachments:[att("md")]},{planner:live}));
- assert.equal(getPrivateMediaPrompt(l.turnId),"lake scene following [attached document 1] closely");
+ {const lp=getPrivateMediaPrompt(l.turnId)!;assert.ok(lp.startsWith("Camera and light, exactly as arranged:")&&lp.includes(" lake scene following [attached document 1] closely Scene (must match): Staging:"),lp);}
 });
 
 const skillsOf=()=>last().activeSkillIds;

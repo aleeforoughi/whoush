@@ -1,4 +1,16 @@
 import { hasApprovedPrice, isPriced, type MediaModel } from "./types";
+/**
+ * How well a model, or one capability of it, is established (docs/CANVAS_TO_IMAGE.md section 8): `verified` from the model's own API reference;
+ * `unsupported` when that reference says it lacks the capability; `documented_unverified` when only the agent catalogue lists it; `unknown` otherwise.
+ * A capability flag that is false on an unverified model is unknown, never unsupported: absence from a catalogue proves nothing.
+ */
+export type CapabilityState="verified"|"documented_unverified"|"unknown"|"unsupported";
+export type CapabilityName="referenceImages"|"audio"|"lipSync"|"motionReference"|"videoReference"|"startImage"|"endImage"|"videoContinuation";
+export function capabilityState(m:MediaModel,cap?:CapabilityName):CapabilityState{
+ const has=cap===undefined||(cap==="referenceImages"?m.capabilities.referenceImages.supported:Boolean(m.capabilities[cap]));
+ if(m.capabilities.verified&&m.verifiedApiPath)return has?"verified":"unsupported";
+ return m.evidenceSource==="agent_catalogue"&&has?"documented_unverified":"unknown";
+}
 /** Bump on ANY change to ids, capabilities or Neuron prices; quotes are bound to it. */
 export const MEDIA_CATALOG_VERSION = "2026-11-04.5";
 // Per-model API reference pages (docs.higgsfield.ai/docs/models/**), read 2026-11-04: see docs/HIGGSFIELD_EVIDENCE.md.

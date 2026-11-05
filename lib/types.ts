@@ -69,6 +69,11 @@ export interface MediaSuggestion {
   name: string;
   neurons: number;
   reason: string;
+  /** Public facts of this SKU from the catalogue, for the generation card's settings (never provider details): its output resolution, its fixed duration
+   * for video, and the aspect ratios its verified API schema accepts (empty when unverified). */
+  resolution?: string;
+  durationSeconds?: number;
+  aspectRatios?: readonly string[];
 }
 export interface GenerationProposal {
   operation: "generate_image" | "generate_video";

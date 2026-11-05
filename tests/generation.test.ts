@@ -1,14 +1,15 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
-import {MEDIA_CATALOG,MEDIA_CATALOG_VERSION,assertValidCatalog,findMediaModel,priceFor} from "../lib/catalog";
+import {MEDIA_CATALOG,MEDIA_CATALOG_VERSION,assertValidCatalog,capabilityState,findMediaModel,priceFor} from "../lib/catalog";
+import {SCENE_COMPILER_VERSION} from "../lib/scene-compiler";
 import {bestModelFor,modelIneligibility,recommendMediaModels,suggestModel} from "../lib/router";
 import {buildProposal,NoCompatibleModelError} from "../lib/agent";
 import {generationGate} from "../lib/policy";
 import {ReservationLedger} from "../lib/ledger";
 import {createQuote,verifyQuote,QuoteError,QUOTE_TTL_MS} from "../lib/quotes";
-import {InMemoryJobStore,JobError,cancelJob,executeApprovedQuote,moderateAtExecution,pollJob,toPublicJob,transition,type Job,type JobDeps} from "../lib/jobs";
-import {HiggsfieldMediaProvider,MockMediaProvider,NotCancelableError,type MediaProvider,type ProviderStatus} from "../lib/media-provider";
+import {InMemoryJobStore,JobError,RECONCILE_MAX_ATTEMPTS,cancelJob,executeApprovedQuote,moderateAtExecution,pollJob,toPublicJob,transition,type Job,type JobDeps} from "../lib/jobs";
+import {HiggsfieldMediaProvider,MockMediaProvider,NotCancelableError,SubmissionUnknownError,type MediaProvider,type ProviderStatus} from "../lib/media-provider";
 import {evaluateOutputQA} from "../lib/output-qa";
 import {orchestrateCreativeTurn} from "../lib/orchestrator";
 import {GET as publicCatalog} from "../app/api/public/catalog/route";
@@ -133,6 +134,12 @@ test("mock provider never yields media or charges; terminal state is completed_d
  for(let i=0;i<5;i++){const j=(await pollJob(job.id,"owner-a",deps))!;states.push(j.state);assert.deepEqual(j.outputs,[]);assert.equal(j.chargedNeurons,0);}
  assert.deepEqual(states,["submitted","running","completed_demo","completed_demo","completed_demo"]);
  const pub=toPublicJob((await pollJob(job.id,"owner-a",deps))!);
+ // Provenance: the job keeps the hash of the exact prompt it sent, privately; the public job never shows it.
+ const pv=job.provenance!;
+ assert.match(pv.promptSha256,/^[0-9a-f]{64}$/);assert.equal(pv.requestedModelId,"soul-image");assert.equal(pv.endpoint,"mock");
+ assert.equal(pv.catalogVersion,MEDIA_CATALOG_VERSION);assert.equal(pv.compilerVersion,SCENE_COMPILER_VERSION,"an image prompt compiled from the canvas");
+ assert.equal(pv.reportedModelId,undefined,"no provider reported a model: nothing is assumed");
+ assert.ok(!JSON.stringify(pub).includes(pv.promptSha256)&&!("provenance" in pub));
  assert.deepEqual(pub.outputs,[]);assert.equal(pub.chargedNeurons,0);assert.equal(pub.qa.status,"not_applicable");assert.match(pub.messageFa,/هیچ رسانه واقعی/);
  assert.equal(deps.ledger.get(job.id)?.state,"released");
  const mock=new MockMediaProvider(),{providerRequestId}=await mock.submit();
@@ -207,9 +214,16 @@ test("live path: lexical moderation is not enough; settle exactly once on verifi
 test("Higgsfield adapter maps documented statuses exactly and never guesses",async()=>{
  await withEnv(LIVE_ENV,async()=>{
   const realFetch=globalThis.fetch,calls:{url:string;init?:RequestInit}[]=[];let reply:{status:number;body?:unknown}={status:200,body:{}};
-  globalThis.fetch=(async(url:string,init?:RequestInit)=>{calls.push({url:String(url),init});return new Response(reply.body===undefined?null:JSON.stringify(reply.body),{status:reply.status});}) as typeof fetch;
+  globalThis.fetch=(async(url:string,init?:RequestInit)=>{calls.push({url:String(url),init});if(reply.status===-1)throw new TypeError("fetch failed");return new Response(reply.body===undefined?null:JSON.stringify(reply.body),{status:reply.status});}) as typeof fetch;
   try{
    const p=new HiggsfieldMediaProvider();
+   // An ambiguous outcome (5xx, a dropped connection, an unreadable 2xx) is unknown, never "not sent"; a 4xx is a definite refusal.
+   const sub=()=>p.submit({modelId:"soul-image",prompt:"p",configuration:{},idempotencyKey:"k0"});
+   for(const [st,body,reason] of [[500,{detail:"x"},"http_500"],[502,undefined,"http_502"],[200,{},"malformed_response"],[-1,undefined,"network"]] as const){
+    reply={status:st,body};await assert.rejects(sub,(e:unknown)=>e instanceof SubmissionUnknownError&&e.reason===reason);
+   }
+   for(const st of [400,403,422,429]){reply={status:st,body:{detail:"no"}};await assert.rejects(sub,(e:unknown)=>!(e instanceof SubmissionUnknownError)&&/failed: \d+/.test(String(e)));}
+   calls.length=0;
    reply={status:200,body:{request_id:"abc-123",status:"queued",status_url:"x",cancel_url:"y"}};
    const r=await p.submit({modelId:"soul-image",prompt:"p",configuration:{aspectRatio:"16:9"},idempotencyKey:"k1"});
    assert.equal(r.providerRequestId,"abc-123");
@@ -416,4 +430,53 @@ test("public catalog: Genjutsu is listed unavailable with no price; priced gener
  for(const id of ["genjutsu-replace","genjutsu-motion","intone"]){assert.equal(by(id).available,false,id);assert.equal(by(id).neurons,undefined,id);}
  assert.deepEqual([by("soul-image").neurons,by("seedance-2-5-5s").neurons,by("seedance-2-5-10s").neurons],[2,45,90]);
  assert.ok(!JSON.stringify(j).includes("sourceSecondsSkus"));
+});
+
+test("provenance: a model the provider reports is recorded, and one that differs from the requested model is flagged",async()=>{
+ const mock=new MockMediaProvider(),reporting:MediaProvider={submit:()=>mock.submit(),cancel:id=>mock.cancel(id),
+  status:async id=>({...(await mock.status(id)),reportedModelId:"some-other-model"})};
+ const deps={...fresh(),provider:reporting},{job}=await run(deps);
+ const polled=(await pollJob(job.id,"owner-a",deps))!;
+ assert.equal(polled.provenance?.reportedModelId,"some-other-model");assert.equal(polled.provenance?.modelMismatch,true);
+ assert.ok(!("provenance" in toPublicJob(polled)));
+});
+test("capability states: verified from the API reference, unsupported only there; the agent catalogue is documented but unverified; the rest is unknown",()=>{
+ const m=(id:string)=>findMediaModel(id)!;
+ assert.equal(capabilityState(m("soul-image")),"verified");
+ assert.equal(capabilityState(m("soul-image"),"referenceImages"),"unsupported");
+ assert.equal(capabilityState(m("intone")),"documented_unverified");assert.equal(capabilityState(m("intone"),"lipSync"),"documented_unverified");
+ assert.equal(capabilityState(m("intone"),"startImage"),"unknown","a false flag on an unverified model proves nothing");
+ assert.equal(capabilityState(m("nano-banana-pro-2k")),"unknown");assert.equal(capabilityState(m("nano-banana-pro-2k"),"referenceImages"),"unknown");
+});
+
+test("an unknown submission keeps its reservation and is resent with the same key until the provider answers; never a second paid job",async()=>{
+ let t=Date.parse("2026-11-05T12:00:00Z");const now=()=>new Date(t);
+ const sent:{key:string;prompt:string}[]=[];let next:"unknown"|"ok"|"refuse"="unknown";
+ const mock=new MockMediaProvider();
+ const flaky:MediaProvider={async submit(j){sent.push({key:j.idempotencyKey,prompt:j.prompt});
+   if(next==="unknown")throw new SubmissionUnknownError("timeout");if(next==="refuse")throw new Error("Higgsfield submission failed: 400");return mock.submit();},
+  status:id=>mock.status(id),cancel:id=>mock.cancel(id)};
+ const deps={...fresh(),provider:flaky,now},{job}=await run(deps);
+ assert.equal(job.state,"submission_unknown");assert.equal(deps.ledger.get(job.id)?.state,"reserved","the Neurons stay reserved, not released");
+ assert.equal(job.chargedNeurons,0);assert.match(toPublicJob(job).messageFa,/دوباره نزن/);assert.ok(!("unknownSubmission" in toPublicJob(job)));
+ // Too soon: nothing is resent.
+ t+=500;await pollJob(job.id,"owner-a",deps);assert.equal(sent.length,1);
+ // Still unknown on the second try: waits, doubling.
+ t+=2000;assert.equal((await pollJob(job.id,"owner-a",deps))!.state,"submission_unknown");assert.equal(sent.length,2);
+ t+=2000;await pollJob(job.id,"owner-a",deps);assert.equal(sent.length,2,"the next try waits 4 s");
+ // The provider answers: the same request with the same key; submitted, then the normal flow.
+ next="ok";t+=2500;const ok=(await pollJob(job.id,"owner-a",deps))!;
+ assert.equal(ok.state,"submitted");assert.equal(sent.length,3);assert.ok(sent.every(x=>x.key===job.id&&x.prompt===sent[0].prompt),"same key, same prompt");
+ assert.equal(ok.unknownSubmission,undefined);
+ // A definite refusal on a resend: nothing was made, the reservation is released.
+ next="unknown";const d2={...fresh(),provider:flaky,now},{job:j2}=await run(d2);
+ next="refuse";t+=3000;const released=(await pollJob(j2.id,"owner-a",d2))!;
+ assert.equal(released.state,"released");assert.equal(d2.ledger.get(j2.id)?.state,"released");
+ // After the last try it stays unknown with its reservation, for the owner: no more resends.
+ next="unknown";const d3={...fresh(),provider:flaky,now},{job:j3}=await run(d3);
+ for(let i=0;i<RECONCILE_MAX_ATTEMPTS+3;i++){t+=600_000;await pollJob(j3.id,"owner-a",d3);}
+ const before=sent.length;t+=600_000;await pollJob(j3.id,"owner-a",d3);
+ assert.equal(sent.length,before);assert.equal(d3.store.get(j3.id)?.state,"submission_unknown");assert.equal(d3.ledger.get(j3.id)?.state,"reserved");
+ // It cannot be canceled into a release either: nobody knows whether the provider has it.
+ assert.equal((await cancelJob(j3.id,"owner-a",d3))?.canceled,false);
 });
