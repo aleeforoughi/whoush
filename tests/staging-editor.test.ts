@@ -25,9 +25,9 @@ test("the scene follows the subject: people, animals, vehicles, objects, or the 
  assert.equal(s("عکس محصول از یه بطری عطر"),"object");assert.equal(s("a mountain lake at sunrise"),"environment");assert.equal(detectSubject("a lake",true),"person","a character means a person");
 });
 test("every subject and light source has its assets in the pack",()=>{
- for(const v of Object.values(SUBJECT_ASSETS))for(const id of Object.values(v))assert.ok(VISUALS[id],id);
+ for(const v of Object.values(SUBJECT_ASSETS))for(const id of Object.values(v!))assert.ok(VISUALS[id],id);
  for(const id of Object.values(LIGHT_ASSETS))assert.ok(VISUALS[id],id);
- assert.ok(VISUALS["camera-side"]&&VISUALS["camera-top"]&&VISUALS["env-tree"]&&VISUALS["env-building"]);
+ assert.ok(VISUALS["camera-side"]&&VISUALS["camera-top"]&&VISUALS["env-mountains"]);
  for(const a of Object.values(VISUALS))assert.match(a.src,/^\/visuals\/[a-z0-9-]+\.png$/);
 });
 
@@ -159,7 +159,9 @@ test("the frame: centred on the main subject by default; any prop (the main one 
  for(const p of [person,car]){
   const r=propReach(p,s,s,"16:9"),pv=propInView(p,W,H,cam.unitH);
   const edge=(x:number)=>{const q=propInView({...p,x},W,H,cam.unitH);return cam.toScreen(q.x,q.groundY)[0];};
-  assert.ok(Math.abs((0-edge(r.xMin))-(edge(r.xMax)-W))<0.6,"as far past the left edge as past the right ("+p.kind+")");
+  // Equal within one step of the reach's rounding (0.01 stage units).
+  const step=Math.abs(edge(r.xMax+0.01)-edge(r.xMax));
+  assert.ok(Math.abs((0-edge(r.xMin))-(edge(r.xMax)-W))<step+0.1,"as far past the left edge as past the right ("+p.kind+")");
   assert.ok(edge(r.xMin)<0&&edge(r.xMax)>W&&pv.h>0);
  }
  const full={...s,shotSize:"full" as const};

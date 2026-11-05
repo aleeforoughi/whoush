@@ -126,7 +126,8 @@ export const PROP_X_RANGE=[-6,6] as const,PROP_Z_RANGE=[-3,3] as const,PROP_CUTS
  */
 const PropSchema=z.object({kind:z.enum(PROP_KINDS),label:z.string().trim().min(1).max(40),x:z.number().min(PROP_X_RANGE[0]).max(PROP_X_RANGE[1]),z:z.number().min(PROP_Z_RANGE[0]).max(PROP_Z_RANGE[1]),y:z.number().min(0).max(1),main:z.boolean().optional(),cut:z.array(z.enum(PROP_CUTS)).max(3).optional(),
  /** Which way it faces the camera, in degrees: 0 faces the camera, 90 faces frame right, -90 frame left, ±180 its back to the camera. */facing:z.number().min(-180).max(180).optional(),
- /** The attachments it looks like (their tags: «image1»): Whoush maps a character reference to the person, a product reference to the object. */refs:z.array(z.string().regex(/^[a-z]+\d{1,3}$/)).max(4).optional()});
+ /** The attachments it looks like (their tags: «image1»): Whoush maps a character reference to the person, a product reference to the object. */refs:z.array(z.string().regex(/^[a-z]+\d{1,3}$/)).max(4).optional(),
+ /** An object's real size in metres (width, height, depth), as Whoush estimates it: the canvas draws an unknown object as a cube of this size. */size:z.object({w:z.number().min(0.005).max(60),h:z.number().min(0.005).max(60),d:z.number().min(0.005).max(60)}).optional()});
 export type ScenePropInput=z.infer<typeof PropSchema>;
 /** Where the subject sits in the frame (the crop): x from -1 (left edge) to 1 (right), y from -1 (top) to 1 (bottom); 0, 0 is centred. */
 const FramingSchema=z.object({x:z.number().min(-1).max(1),y:z.number().min(-1).max(1)});
@@ -138,6 +139,8 @@ export const StagingSchema=z.object({subject:z.enum(SUBJECTS).optional(),cameraA
  /** A Dutch (canted) angle: the camera rolled this many degrees (positive clockwise); unset or 0: level. */cameraRoll:z.number().min(-45).max(45).optional(),
  /** The kind of place, for the canvas's background and its distance (Whoush detects it from the brief; open landscape when it does not say). */
  environment:z.enum(ENVIRONMENTS).optional(),
+ /** How far behind the main subject the background is, in metres (a wall right behind: 1 to 3; mountains: hundreds), estimated by Whoush from the brief;
+  unset: the place's usual distance. It sets how much the background blurs and how big it looks through the lens. */environmentDistance:z.number().min(0.5).max(5000).optional(),
  /** A shot type: over the shoulder of another person, or the subject's own point of view. */shotStyle:z.enum(["ots","pov"]).optional(),
  /** The user's own lens and aperture (unset: Whoush picks them for the scene, lib/staging.ts lensFor). */
  lensMm:z.number().min(8).max(600).optional(),apertureF:z.number().min(0.95).max(22).optional(),
@@ -176,8 +179,10 @@ export type CreativePlan=z.infer<typeof CreativePlanSchema>;
 const ws=z.string(),wl=z.array(ws);
 const WireCameraSchema=z.object({look:ws,focalLengthMm:z.number().int().min(8).max(600),aperture:ws,shutter:ws,iso:z.number().int().min(50).max(25600),whiteBalanceK:z.number().int().min(2000).max(12000),framing:ws,lighting:ws,focus:ws,aspectRatio:ws}).strict();
 const WireShotSchema=z.object({shotSize:ws,cameraMovement:ws,lens:ws,targetFps:z.number().int().min(8).max(120),shutterAngle:z.number().int().min(1).max(360),durationSeconds:z.number().min(1).max(60),blocking:ws,continuityNotes:wl}).strict();
-const WireStagingSchema=z.object({subject:z.enum(SUBJECTS),cameraAngle:z.enum(CAMERA_ANGLES),shotSize:z.enum(SHOT_SIZES),framing:z.object({x:z.number().min(-1).max(1),y:z.number().min(-1).max(1)}).strict().nullable(),
- props:z.array(z.object({kind:z.enum(PROP_KINDS),label:ws,x:z.number().min(PROP_X_RANGE[0]).max(PROP_X_RANGE[1]),z:z.number().min(PROP_Z_RANGE[0]).max(PROP_Z_RANGE[1]),y:z.number().min(0).max(1),main:z.boolean()}).strict()).max(MAX_PROPS),lights:z.array(z.object({role:z.enum(LIGHT_ROLES),direction:z.enum(LIGHT_DIRECTIONS),
+const WireStagingSchema=z.object({subject:z.enum(SUBJECTS),cameraAngle:z.enum(CAMERA_ANGLES),shotSize:z.enum(SHOT_SIZES),
+ environment:z.enum(ENVIRONMENTS).nullable(),environmentDistance:z.number().min(0.5).max(5000).nullable(),framing:z.object({x:z.number().min(-1).max(1),y:z.number().min(-1).max(1)}).strict().nullable(),
+ props:z.array(z.object({kind:z.enum(PROP_KINDS),label:ws,x:z.number().min(PROP_X_RANGE[0]).max(PROP_X_RANGE[1]),z:z.number().min(PROP_Z_RANGE[0]).max(PROP_Z_RANGE[1]),y:z.number().min(0).max(1),main:z.boolean(),
+  size:z.object({w:z.number().min(0.005).max(60),h:z.number().min(0.005).max(60),d:z.number().min(0.005).max(60)}).strict().nullable()}).strict()).max(MAX_PROPS),lights:z.array(z.object({role:z.enum(LIGHT_ROLES),direction:z.enum(LIGHT_DIRECTIONS),
  height:z.enum(["low","eye","high"]),quality:z.enum(["soft","hard"]),source:z.enum(LIGHT_SOURCES),colorTemperatureK:z.number().int().min(1500).max(12000),colorHex:ws.nullable()}).strict()).min(1).max(4)}).strict();
 export const CreativePlanWireSchema=z.object({
  intentSummaryFa:ws,mediaKind:z.enum(["image","video"]),mediaPrompt:ws,

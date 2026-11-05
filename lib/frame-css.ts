@@ -9,8 +9,8 @@
  */
 import type {Staging} from "./creative-plan";
 import {camera3D,propSize,propWorld,stageFromWorld,wideFrameRect,type Camera3D,type FrameRect} from "./scene3d";
-import {VERTICAL_STOPS,facingOf,frameSize,verticalIndex,wrap180,type SceneProp,type VerticalStop} from "./staging";
-import {familyOf,spanM,spriteFor,type SpriteSide} from "./sprites";
+import {VERTICAL_STOPS,cubeDims,facingOf,frameSize,isCube,supportOf,verticalIndex,wrap180,type SceneProp,type VerticalStop} from "./staging";
+import {sizeOf,spanM,spriteFor,widthM,familyOf,type SpriteSide} from "./sprites";
 import {VISUALS} from "./visual-assets";
 
 export type V3=[number,number,number];
@@ -60,10 +60,10 @@ export function groundAt(v:CssView,sx:number,sy:number,lift=0):V3|undefined{
 export function horizonY(v:CssView):number{const c=[dot([0,0,-1],v.r),dot([0,0,-1],v.u),dot([0,0,-1],v.f)];return c[2]<=1e-6?-1e6:v.pp[1]-v.D*c[1]/c[2];}
 const n3=(x:number)=>Number.isFinite(x)?Math.round(x*1e4)/1e4:0;
 /** A CSS transform placing an element's local origin at a world point, at `scale` metres per local px (a billboard: it faces the camera). */
-export function billboard(v:CssView,p:V3,mpp:number,mirror=false,minDepth=0.3):{transform:string;depth:number;px:number;at:"centre"|"look"}|undefined{
+export function billboard(v:CssView,p:V3,mpp:number,mirror=false,minDepth=0.3,/** Stretches it sideways (a cube made as wide as the object it stands for). */sx=1):{transform:string;depth:number;px:number}|undefined{
  const c=toCam(v,p);if(c[2]<minDepth)return undefined;
  const k=mpp*v.s;
- return {transform:"translate3d("+n3(c[0]*v.s)+"px,"+n3(-c[1]*v.s)+"px,"+n3(v.D-c[2]*v.s)+"px) scale("+n3(mirror?-k:k)+","+n3(k)+")",depth:c[2],px:mpp*v.D/c[2],at:minDepth===0.3?"centre":"look"};
+ return {transform:"translate3d("+n3(c[0]*v.s)+"px,"+n3(-c[1]*v.s)+"px,"+n3(v.D-c[2]*v.s)+"px) scale("+n3(k*sx*(mirror?-1:1))+","+n3(k)+")",depth:c[2],px:mpp*v.D/c[2]};
 }
 /** A CSS matrix3d for a flat plane: local px (x, y) maps to the world point o + x·ex + y·ey (metres). */
 export function plane(v:CssView,o:V3,ex:V3,ey:V3):string{
@@ -91,21 +91,23 @@ export function viewOf(v:CssView,centre:V3,facing:number):{stop:VerticalStop;app
  return {stop:VERTICAL_STOPS[verticalIndex(el)].id,apparent:wrap180(facing-bearing),elevation:el};
 }
 export type PropSprite={i:number;id:string;src:string;w:number;h:number;transform:string;depth:number;
+ /** A cube (anything but a character): its faces instead of an image. */faces?:BoxFace[];
  /** The blur, px in the image's own pixels (CSS blurs before projecting). */blur:number;side:SpriteSide;stop:VerticalStop;
  /** The ground point under it (its lift included) and a point just above it, world. */ground:V3;top:V3};
 /**
  * A thing standing at `ground` (world, its lift included), `h` metres tall, turned `facing`: the pack's image for the height and side the camera sees it
  * from, centred on its middle at its real size, blurred by the lens.
  */
-export function thingSprite(v:CssView,p:Pick<SceneProp,"kind"|"label">,ground:V3,h:number,facing:number,/** Where on it the angle is measured, as a share of its height. */look=0.5){
- const centre:V3=[ground[0],ground[1]+h/2,ground[2]];
+export function thingSprite(v:CssView,p:Pick<SceneProp,"kind"|"label">,ground:V3,size:{h:number;len:number;wid:number},facing:number,/** Where on it the angle is measured, as a share of its height. */look=0.5){
+ const h=size.h,centre:V3=[ground[0],ground[1]+h/2,ground[2]];
  const view=viewOf(v,[ground[0],ground[1]+h*look,ground[2]],facing),sp=spriteFor(p,view.stop,view.apparent),a=VISUALS[sp.id];if(!a)return undefined;
- const fam=familyOf(p),stopDeg=VERTICAL_STOPS.find(x=>x.id===sp.height)!.deg;
- // The image's height in metres: the thing's height foreshortened plus its depth seen from above or below, at its real size.
- const mpp=spanM(fam,stopDeg,sp.side)*(h/spanM(fam,0,"front"))/a.height;
+ const stopDeg=VERTICAL_STOPS.find(x=>x.id===sp.height)!.deg;
+ // The image's height in metres: the thing's height foreshortened plus its depth seen from above or below, at its real size. A cube also takes the
+ // object's width (a desk is wide and low, a phone thin and tall), so it is stretched sideways to it.
+ const mpp=spanM(size,stopDeg,sp.side)/a.height,sx=familyOf(p)==="cube"?(widthM(size,sp.side)/a.width)/mpp:1;
  // Placed by its middle; a camera so close that its middle is beside or behind the lens (a worm's-eye close-up) places it by the point it looks at.
- const lookAt:V3=[ground[0],ground[1]+h*look,ground[2]],b=billboard(v,centre,mpp,sp.mirror)??billboard(v,lookAt,mpp,sp.mirror,0.05);if(!b)return undefined;
- const yShare=b.at==="centre"?50:Math.round((1-look)*100);
+ const lookAt:V3=[ground[0],ground[1]+h*look,ground[2]],mid=billboard(v,centre,mpp,sp.mirror,0.3,sx),b=mid??billboard(v,lookAt,mpp,sp.mirror,0.05,sx);if(!b)return undefined;
+ const yShare=mid?50:Math.round((1-look)*100);
  return {id:sp.id,src:a.src,w:a.width,h:a.height,transform:b.transform+" translate(-50%,-"+yShare+"%)",depth:b.depth,blur:blurPx(v,b.depth)/b.px,side:sp.side,stop:sp.height};
 }
 /**
@@ -117,8 +119,13 @@ export function propSprites(v:CssView,props:readonly SceneProp[],s:Staging,ancho
  const m=(anchor??s).props?.find(p=>p.main)??props.find(p=>p.main)??props[0];
  const aim=m?Math.max(0,Math.min(1,(v.cam.target[1]-propWorld(m,s,anchor).pos[1])/propSize(m).h)):0.5;
  return props.flatMap((p,i)=>{
-  const g=propWorld(p,s,anchor).pos as V3,size=propSize(p),t=thingSprite(v,p,g,size.h,facingOf(p),m&&p.kind===m.kind?aim:0.5);
-  return t?[{i,...t,ground:g,top:[g[0],g[1]+size.h*1.05,g[2]] as V3}]:[];
+  const g=propWorld(p,s,anchor,props).pos as V3,size=sizeOf(p);
+  if(isCube(p)){const b=boxFaces(v,g,cubeDims(p),facingOf(p));if(!b)return [];
+   return [{i,id:"box",src:"",w:0,h:0,transform:"",depth:supportOf(p,props)?b.depth-0.01:b.depth,blur:b.blur,side:"front" as SpriteSide,stop:"eye" as VerticalStop,faces:b.faces,ground:g,top:[g[0],g[1]+size.h*1.05,g[2]] as V3}];}
+  const t=thingSprite(v,p,g,size,facingOf(p),m&&p.kind===m.kind?aim:0.5);
+  // Something resting on another (a phone on a desk) is drawn after it.
+  const under=supportOf(p,props);
+  return t?[{i,...t,depth:under?t.depth-0.01:t.depth,ground:g,top:[g[0],g[1]+size.h*1.05,g[2]] as V3}]:[];
  });
 }
 /** A view point back to the stage: the ground point (at the prop's lift) under it, in stage units. */
@@ -139,3 +146,39 @@ export function gridLines(v:CssView,step=1,reach=50):{x1:number;y1:number;x2:num
 }
 /** Where a world point lands before the roll (for drawing inside the rolled layer). */
 function toScreenRaw(v:CssView,p:V3):[number,number]|undefined{const c=toCam(v,p);if(c[2]<0.02)return undefined;return [v.pp[0]+v.D*c[0]/c[2],v.pp[1]-v.D*c[1]/c[2]];}
+// ---- the cube: everything but the characters, drawn as a real box of its exact size (vector, no image) ----
+export type BoxFace={key:string;transform:string;w:number;h:number;
+ /** Clay shading, 0 to 1 (the light comes from above and to the upper left of the camera, as on the pack's images). */shade:number};
+/**
+ * A box w×h×d metres standing at `ground` (world, its lift included), turned `facing` (its front toward frame right for positive angles): the faces the
+ * camera sees, as CSS planes (at most three, which never overlap, so they need no sorting among themselves). Undefined when any of them would reach
+ * behind the camera.
+ */
+export function boxFaces(v:CssView,ground:V3,dims:{w:number;h:number;d:number},facing:number):{faces:BoxFace[];depth:number;blur:number}|undefined{
+ const a=facing*Math.PI/180,R:V3=[Math.cos(a),0,-Math.sin(a)],F:V3=[Math.sin(a),0,Math.cos(a)],U:V3=[0,1,0];
+ const {w,h,d}=dims,c=add(ground,mul(U,h/2)),K=400/Math.max(w,h,d);
+ // Each face: its outward normal, its top-left corner, its two edges (across, down) and their lengths.
+ const faces:[string,V3,V3,V3,V3,number,number][]=[
+  ["front",F,add(add(add(c,mul(F,d/2)),mul(R,-w/2)),mul(U,h/2)),R,mul(U,-1),w,h],
+  ["back",mul(F,-1),add(add(add(c,mul(F,-d/2)),mul(R,w/2)),mul(U,h/2)),mul(R,-1),mul(U,-1),w,h],
+  ["right",R,add(add(add(c,mul(R,w/2)),mul(F,d/2)),mul(U,h/2)),mul(F,-1),mul(U,-1),d,h],
+  ["left",mul(R,-1),add(add(add(c,mul(R,-w/2)),mul(F,-d/2)),mul(U,h/2)),F,mul(U,-1),d,h],
+  ["top",U,add(add(add(c,mul(U,h/2)),mul(R,-w/2)),mul(F,-d/2)),R,F,w,d],
+  ["bottom",mul(U,-1),add(add(add(c,mul(U,-h/2)),mul(R,-w/2)),mul(F,d/2)),R,mul(F,-1),w,d]
+ ];
+ const L=norm(add(add(mul(v.r,-0.45),mul(v.u,0.8)),mul(v.f,-0.4))),out:BoxFace[]=[];
+ for(const [key,n,o,ex,ey,lw,lh] of faces){
+  const centre=add(add(o,mul(ex,lw/2)),mul(ey,lh/2));
+  if(dot(n,sub(v.pos,centre))<=1e-6)continue;
+  const corners=[o,add(o,mul(ex,lw)),add(o,mul(ey,lh)),add(add(o,mul(ex,lw)),mul(ey,lh))];
+  if(corners.some(p=>toCam(v,p)[2]<0.05))return undefined;
+  out.push({key,transform:plane(v,o,mul(ex,1/K),mul(ey,1/K)),w:lw*K,h:lh*K,shade:0.6+0.4*Math.max(0,dot(n,L))});
+ }
+ const depth=toCam(v,c)[2];
+ return depth>0.05?{faces:out,depth,blur:blurPx(v,depth)*K*depth/v.D}:undefined;
+}
+/** A colour (#rrggbb) at a share of its brightness, as CSS rgb(): the clay box's faces, lit and in shade. */
+export function shade(hex:string,k:number):string{
+ const n=parseInt(hex.slice(1),16),c=(x:number)=>Math.round(Math.min(255,Math.max(0,x*k)));
+ return "rgb("+c((n>>16)&255)+","+c((n>>8)&255)+","+c(n&255)+")";
+}

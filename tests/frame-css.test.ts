@@ -72,3 +72,48 @@ test("aperture: sharp at the focus, softer away from it, much softer wide open",
  assert.ok(blurPx(open,f+10)>blurPx(open,f+1));
  assert.ok(blurPx(open,f+10)>blurPx(closed,f+10)*4);
 });
+
+test("cubes: everything but people and the pets is a cube at its real size; several are told apart by colour",async()=>{
+ const {isCube,cubeDims,petOf,propTints}=await import("../lib/staging");
+ const k=(kind:"object"|"vehicle"|"building"|"tree"|"animal"|"person",label:string)=>({kind,label,x:0,z:0,y:0});
+ for(const p of [k("object","میز"),k("vehicle","ماشین"),k("building","برج"),k("tree","درخت"),k("animal","پرنده")])assert.ok(isCube(p),p.label);
+ for(const p of [k("animal","گربه"),k("animal","سگ"),k("animal","اسب"),k("person","مرد")])assert.ok(!isCube(p),p.label);
+ assert.equal(petOf(k("animal","horse")),"horse");
+ assert.deepEqual(cubeDims(k("object","میز چوبی")),{w:1.2,h:0.75,d:0.7});
+ assert.deepEqual(cubeDims({...k("object","چیز عجیب"),size:{w:0.5,h:0.2,d:0.1}}),{w:0.5,h:0.2,d:0.1},"Whoush's own estimate wins");
+ assert.deepEqual(cubeDims(k("object","چیز عجیب")),{w:0.3,h:0.3,d:0.3},"an unknown object is a 30 cm box");
+ const t=propTints([k("object","میز"),k("vehicle","ماشین"),k("person","مرد")]);
+ assert.ok(t[0]&&t[1]&&t[0]!==t[1]&&!t[2],"two cubes of different kinds get their own colours; a lone person stays plain");
+});
+
+test("stacking: a smaller object on a larger one's spot rests on its top; moved off, it is back on the ground",async()=>{
+ const {supportOf,stackLift,tidyProps}=await import("../lib/staging");
+ const desk={kind:"object" as const,label:"میز",x:0.5,z:0,y:0},phone={kind:"object" as const,label:"گوشی",x:0.55,z:0.02,y:0};
+ assert.equal(supportOf(phone,[desk,phone]),desk);
+ assert.equal(stackLift(phone,[desk,phone]),0.75);
+ assert.equal(supportOf(desk,[desk,phone]),undefined,"the desk stays on the ground");
+ assert.equal(stackLift({...phone,x:1.5},[desk,{...phone,x:1.5}]),0);
+ // Sharing a spot on purpose is not crowding: the planner's stack is kept.
+ const tidy=tidyProps([{...man,x:-0.5},desk,phone])!;
+ assert.deepEqual(tidy.slice(1).map(p=>[p.x,p.z]),[[0.5,0],[0.55,0.02]]);
+});
+
+test("a cube is drawn as a box: up to three faces, the top seen from above",()=>{
+ const desk={kind:"object" as const,label:"میز",x:0.5,z:0,y:0};
+ for(const [a,top] of [["eye_level",true],["birds_eye",true],["worms_eye",false]] as const){
+  const s={...base,cameraAngle:a,props:[man,desk]},v=cssView(s,undefined,"16:9",800,450),sp=propSprites(v,s.props!,s).find(x=>x.i===1)!;
+  assert.ok(sp.faces&&sp.faces.length>=1&&sp.faces.length<=3,a);
+  assert.equal(sp.faces!.some(f=>f.key==="top"),top,a+": top face");
+ }
+});
+
+test("the background's distance: Whoush's estimate, words in the brief, or the place's usual distance",async()=>{
+ const {backdropM,applyStagingCues}=await import("../lib/staging");
+ assert.equal(backdropM({...base,environment:"room"}),5);
+ assert.equal(backdropM({...base,environment:"room",environmentDistance:1.5}),1.5);
+ assert.ok(backdropM(applyStagingCues({...base,environment:"studio"},"پرتره جلوی دیوار"))<=2);
+ assert.ok(backdropM(applyStagingCues(base,"کوه ها در دوردست"))>200*3);
+ // A far background blurs more through a wide-open lens.
+ const v=(d:number)=>cssView({...base,shotSize:"medium",lensMm:85,apertureF:1.8,autopilot:false,environmentDistance:d},undefined,"16:9",800,450);
+ assert.ok(blurPx(v(500),v(500).cam.focusDistance+500)>blurPx(v(2),v(2).cam.focusDistance+2));
+});

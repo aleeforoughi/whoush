@@ -70,7 +70,7 @@ export function describeStagingFa(s:Staging):string{
 /** The arranged scene in English, appended to the provider-facing media prompt. */
 export function describeStagingEn(s:Staging):string{
  const lights=s.lights.map(l=>l.role+" light: "+l.quality+" "+l.source.replace("_"," ")+" from "+DIR_EN[l.direction]+(l.angle!==undefined?" ("+Math.round(l.angle)+"° in top view)":"")+", "+LIGHT_HEIGHT_EN[l.height]+", "+l.colorTemperatureK+"K"+(l.intensity!==undefined?", "+Math.round(l.intensity*100)+"% strength":"")+(l.colorHex?" "+l.colorHex+" gel":""));
- return "Staging: "+ANGLE_EN[s.cameraAngle]+" camera"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+"° from eye level)":"")+(orbitEn(s.cameraAzimuth??0)?", "+orbitEn(s.cameraAzimuth??0):"")+(s.cameraRoll?", Dutch angle tilted "+Math.abs(Math.round(s.cameraRoll))+"° "+(s.cameraRoll>0?"clockwise":"counter-clockwise"):"")+(s.shotStyle==="ots"?", over-the-shoulder shot":s.shotStyle==="pov"?", point-of-view shot through the subject's eyes":"")+(s.environment&&s.environment!=="landscape"?", in "+ENVIRONMENT_EN[s.environment]:"")+focusEn(s)+(s.focusDetail?", framed on the main subject's "+(s.focusDetail==="feet"?"feet and shoes":s.focusDetail):"")+", "+SHOT_EN[s.shotSize]+(s.shotScale!==undefined?" ("+zoomFactor(s)+"x of a full shot)":"")+", "+placementEn(s.framing)+"; "+lights.join("; ")+"."+(s.props?.length?" "+describeLayoutEn(s.props):"");
+ return "Staging: "+ANGLE_EN[s.cameraAngle]+" camera"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+"° from eye level)":"")+(orbitEn(s.cameraAzimuth??0)?", "+orbitEn(s.cameraAzimuth??0):"")+(s.cameraRoll?", Dutch angle tilted "+Math.abs(Math.round(s.cameraRoll))+"° "+(s.cameraRoll>0?"clockwise":"counter-clockwise"):"")+(s.shotStyle==="ots"?", over-the-shoulder shot":s.shotStyle==="pov"?", point-of-view shot through the subject's eyes":"")+(s.environment&&s.environment!=="landscape"?", in "+ENVIRONMENT_EN[s.environment]:"")+(s.environmentDistance!==undefined?", the background about "+Math.round(s.environmentDistance)+" m behind the subject":"")+focusEn(s)+(s.focusDetail?", framed on the main subject's "+(s.focusDetail==="feet"?"feet and shoes":s.focusDetail):"")+", "+SHOT_EN[s.shotSize]+(s.shotScale!==undefined?" ("+zoomFactor(s)+"x of a full shot)":"")+", "+placementEn(s.framing)+"; "+lights.join("; ")+"."+(s.props?.length?" "+describeLayoutEn(s.props):"");
 }
 /** The subject a brief is about, from its words: a person, an animal, a vehicle, a product or object, or an environment when there is no single main subject. */
 export function detectSubject(normalizedText:string,hasCharacter=false):NonNullable<Staging["subject"]>{
@@ -123,13 +123,12 @@ export function stepDirection(d:StagingLight["direction"],step:1|-1):StagingLigh
  return snapDirection(LIGHT_ANGLE[d]+step*45);
 }
 /** The asset pack (public/visuals): which image shows each subject and light source. */
-export const SUBJECT_ASSETS:Record<NonNullable<Staging["subject"]>,{side:string;front:string;top:string}>={
+/** The pack's images for the subjects with their own figures (the characters, and an environment-only scene); anything else is a vector cube. */
+export const SUBJECT_ASSETS:Partial<Record<NonNullable<Staging["subject"]>,{side:string;front:string;top:string}>>={
  person:{side:"person-side",front:"person-front",top:"person-top"},
- object:{side:"object-side",front:"object-side",top:"object-top"},
  animal:{side:"animal-side",front:"animal-side",top:"animal-top"},
- vehicle:{side:"vehicle-side",front:"vehicle-side",top:"vehicle-top"},
  environment:{side:"env-mountains",front:"env-mountains",top:"env-top"}
-};
+}
 export const LIGHT_ASSETS:Record<StagingLight["source"],string>={sun:"light-sun",sky:"light-sky",window:"light-window",softbox:"light-softbox",led_panel:"light-led-panel",practical:"light-practical",neon:"light-neon",fire:"light-fire",moon:"light-moon",flash:"light-flash"};
 /** Gel colours offered for a light (none means its colour temperature). */
 export const GEL_COLORS=["#ff5a5f","#ff9f1c","#ffd23f","#3ddc97","#4f8cff","#b07cff"] as const;
@@ -163,6 +162,7 @@ export function describeStagingChangesFa(before:Staging,after:Staging,aspectBefo
   if(a&&!b){out.push("حذف: "+a.label);continue;}
   if(propPlaceFa(a)!==propPlaceFa(b))out.push(b.label+": "+arrow(propPlaceFa(a),propPlaceFa(b)));
  }
+ if(Math.round(backdropM(before))!==Math.round(backdropM(after)))out.push("فاصلهٔ پس‌زمینه: "+arrow(fa2(Math.round(backdropM(before)))+" متر",fa2(Math.round(backdropM(after)))+" متر"));
  if(aspectAfter&&aspectBefore!==aspectAfter)out.push("نسبت تصویر: "+arrow(aspectBefore??"—",aspectAfter));
  const n=Math.max(before.lights.length,after.lights.length);
  for(let i=0;i<n;i++){
@@ -190,7 +190,8 @@ export const TEMPERATURE_GRADIENT="linear-gradient(to right,"+[1500,2700,4000,56
 export type SceneProp=NonNullable<Staging["props"]>[number];
 export const PROP_KIND_FA:Record<SceneProp["kind"],string>={person:"آدم",object:"شیء",animal:"حیوان",vehicle:"وسیله نقلیه",tree:"درخت",building:"ساختمان"};
 /** Which asset shows a prop from the side (camera view, front) and from above. */
-export const PROP_ASSETS:Record<SceneProp["kind"],{front:string;top:string}>={person:{front:"human-front",top:"human-top"},object:{front:"object-side",top:"object-top"},animal:{front:"animal-side",top:"animal-top"},vehicle:{front:"vehicle-side",top:"vehicle-top"},tree:{front:"env-tree",top:"tree-top"},building:{front:"env-building",top:"building-top"}};
+/** The characters' images from the side and from above (anything else is a vector cube: lib/sprites.ts, cubeDims). */
+export const PROP_ASSETS:Partial<Record<SceneProp["kind"],{front:string;top:string}>>={person:{front:"human-front",top:"human-top"},animal:{front:"animal-side",top:"animal-top"}};
 /** Real-world-ish heights (a person is 1), so props keep plausible proportions in the camera view. */
 export const PROP_HEIGHT:Record<SceneProp["kind"],number>={person:1,object:0.35,animal:0.45,vehicle:0.8,tree:2.2,building:3.2};
 /** Words that name a prop, with its Persian label: the first match of each group becomes a prop (in the order the groups are listed). */
@@ -226,11 +227,11 @@ const depthEn=(p:SceneProp)=>isCut(p,"bottom")?"very close, cut by the bottom of
 export const propPlaceFa=(p:SceneProp)=>sideFa(p)+"، "+depthFa(p)+(p.y>0.15?"، بالاتر از زمین":"")+(p.facing!==undefined?"، "+facingFa(p.facing):"");
 /** The scene layout in Persian («چیدمان: زن (اصلی) وسط، جلو؛ ماشین سمت راست، عقب»), empty without props. */
 export function describeLayoutFa(props?:readonly SceneProp[]):string{
- return props?.length?"چیدمان: "+props.map(p=>p.label+(p.refs?.length?" (مثل "+p.refs.map(displayTag).join("، ")+")":"")+(p.main?" (اصلی)":"")+" "+propPlaceFa(p)).join("؛ "):"";
+ return props?.length?"چیدمان: "+props.map(p=>p.label+(supportOf(p,props)?" (روی "+supportOf(p,props)!.label+")":"")+(p.refs?.length?" (مثل "+p.refs.map(displayTag).join("، ")+")":"")+(p.main?" (اصلی)":"")+" "+propPlaceFa(p)).join("؛ "):"";
 }
 /** The scene layout in English for the provider prompt, without the Persian labels (kinds only). */
 export function describeLayoutEn(props?:readonly SceneProp[]):string{
- return props?.length?"Layout: "+props.map(p=>p.kind+(p.refs?.length?" (looks like the attached "+(p.refs.length>1?"references":"reference")+")":"")+(p.main?" (main subject)":"")+" "+sideEn(p)+" "+depthEn(p)+(p.y>0.15?", raised":"")+(p.facing!==undefined?", "+facingEn(p.facing):"")).join("; ")+".":"";
+ return props?.length?"Layout: "+props.map(p=>p.kind+(isCube(p)&&p.size?" (about "+[p.size.w,p.size.h,p.size.d].map(v=>Math.round(v*100)).join(" x ")+" cm)":"")+(supportOf(p,props)?" resting on top of the larger object":"")+(p.refs?.length?" (looks like the attached "+(p.refs.length>1?"references":"reference")+")":"")+(p.main?" (main subject)":"")+" "+sideEn(p)+" "+depthEn(p)+(p.y>0.15?", raised":"")+(p.facing!==undefined?", "+facingEn(p.facing):"")).join("; ")+".":"";
 }
 /**
  * Tidies a planner's props (never the user's own arrangement): props crowded onto one spot get the default layout (main subject centre front, the others
@@ -239,7 +240,8 @@ export function describeLayoutEn(props?:readonly SceneProp[]):string{
 export function tidyProps(props?:readonly SceneProp[]):SceneProp[]|undefined{
  if(!props?.length)return props?[...props]:undefined;
  const sorted=[...props].sort((a,b)=>Number(Boolean(b.main))-Number(Boolean(a.main)));
- const crowded=sorted.some((a,i)=>sorted.some((b,j)=>j>i&&Math.hypot(a.x-b.x,a.z-b.z)<0.25));
+ // One object resting on another (a phone on a desk) shares its spot on purpose: that is not crowding.
+ const crowded=sorted.some((a,i)=>sorted.some((b,j)=>j>i&&Math.hypot(a.x-b.x,a.z-b.z)<0.25&&supportOf(a,sorted)!==b&&supportOf(b,sorted)!==a));
  const lifted=sorted.length>1&&sorted.every(p=>p.y>0.15);
  return sorted.map((p,i)=>({...p,...(crowded?{x:SLOTS[i][0],z:SLOTS[i][1]}:{}),...(lifted?{y:0}:{})}));
 }
@@ -279,19 +281,90 @@ export function genderOf(p:Pick<SceneProp,"kind"|"label">):"female"|"male"|undef
  const words=p.label.toLowerCase().split(/[\s\u200c\-_،,]+/);
  return words.some(w=>FEMALE.includes(w))?"female":words.some(w=>MALE.includes(w))?"male":undefined;
 }
+// ---- cubes: everything but the characters (people and the pets) is drawn as a cube at its real size: objects, vehicles, buildings, trees, other animals ----
+const norm=(label:string)=>" "+label.toLowerCase().replace(/[\u200c\-_،,]+/g," ")+" ";
+/** The pets with their own figures in the pack: a cat, a dog, a horse (from the prop's label; any other animal is a cube). */
+const PETS:[ "cat"|"dog"|"horse",string[]][]=[["cat",["گربه","پیشی","cat","kitten","kitty"]],["dog",["سگ","توله","dog","puppy"]],["horse",["اسب","کره اسب","horse","pony"]]];
+export function petOf(p:Pick<SceneProp,"kind"|"label">):"cat"|"dog"|"horse"|undefined{
+ if(p.kind!=="animal")return undefined;const t=norm(p.label);
+ return PETS.find(([,ws])=>ws.some(w=>t.includes(" "+w+" ")))?.[0];
+}
+/** Drawn as a cube at its real size: any object, vehicle, building or tree, and an animal that is not one of the pets. */
+export const isCube=(p:Pick<SceneProp,"kind"|"label">)=>p.kind!=="person"&&!petOf(p);
+/**
+ * Everyday things' real sizes in metres (width, height, depth: front to back), for a cube Whoush did not size itself (a plan without `size`, or the rule
+ * planner). The first entry whose word is in the label wins; nothing matches: the kind's usual size.
+ */
+const OBJECT_SIZES:[string[],{w:number;h:number;d:number}][]=[
+ [["بطری","شیشه","نوشابه","bottle"],{w:0.08,h:0.28,d:0.08}],[["عطر","ادکلن","perfume","cologne"],{w:0.07,h:0.12,d:0.04}],
+ [["فنجان","cup"],{w:0.09,h:0.09,d:0.09}],[["لیوان","ماگ","mug","glass"],{w:0.09,h:0.11,d:0.09}],[["کفش","کتونی","shoe","shoes","sneaker","sneakers"],{w:0.11,h:0.12,d:0.3}],
+ [["ساعت","watch"],{w:0.045,h:0.045,d:0.012}],[["گوشی","موبایل","phone","smartphone"],{w:0.075,h:0.155,d:0.008}],[["کیف","bag","handbag"],{w:0.35,h:0.3,d:0.15}],
+ [["کوله","backpack"],{w:0.3,h:0.45,d:0.18}],[["چمدان","suitcase"],{w:0.45,h:0.68,d:0.27}],[["کتاب","book"],{w:0.15,h:0.23,d:0.03}],
+ [["لپ تاپ","لپتاپ","laptop"],{w:0.33,h:0.22,d:0.24}],[["میز","table","desk"],{w:1.2,h:0.75,d:0.7}],[["صندلی","chair"],{w:0.45,h:0.9,d:0.5}],
+ [["مبل","کاناپه","sofa","couch"],{w:2,h:0.85,d:0.9}],[["گلدان","vase"],{w:0.15,h:0.3,d:0.15}],[["کلاه","hat","cap"],{w:0.3,h:0.15,d:0.3}],
+ [["توپ","ball"],{w:0.22,h:0.22,d:0.22}],[["گیتار","guitar"],{w:0.38,h:1,d:0.1}],[["جعبه","box","package"],{w:0.3,h:0.3,d:0.3}],
+ [["عینک","glasses","sunglasses"],{w:0.14,h:0.05,d:0.15}],[["کیک","cake"],{w:0.22,h:0.12,d:0.22}],[["محصول","product"],{w:0.2,h:0.25,d:0.2}],
+ // Vehicles (their length runs front to back) and buildings.
+ [["موتور","motorcycle","motorbike"],{w:0.8,h:1.1,d:2.1}],[["دوچرخه","bike","bicycle"],{w:0.6,h:1,d:1.7}],[["اتوبوس","bus"],{w:2.5,h:3.2,d:12}],
+ [["کامیون","truck"],{w:2.5,h:3.5,d:8}],[["ماشین","خودرو","car"],{w:1.8,h:1.5,d:4.3}],
+ [["برج","tower","skyscraper"],{w:20,h:60,d:20}],[["کافه","cafe","café","shop","مغازه"],{w:8,h:4,d:10}],[["خونه","خانه","house"],{w:10,h:7,d:10}],
+ [["نخل","palm"],{w:4,h:9,d:4}],[["بوته","bush","shrub"],{w:1.5,h:1.2,d:1.5}],[["درخت","tree","trees","جنگل","forest"],{w:3,h:6,d:3}],
+ // Animals without their own figure (their length runs front to back).
+ [["پرنده","گنجشک","کبوتر","bird","pigeon","sparrow"],{w:0.12,h:0.2,d:0.3}],[["خرگوش","rabbit","bunny"],{w:0.2,h:0.25,d:0.4}],
+ [["گوسفند","بره","sheep","lamb"],{w:0.5,h:0.9,d:1.2}],[["بز","goat"],{w:0.45,h:0.9,d:1.1}],[["گاو","cow"],{w:0.8,h:1.5,d:2.4}],
+ [["آهو","گوزن","deer"],{w:0.4,h:1.3,d:1.5}],[["شتر","camel"],{w:0.8,h:2.2,d:2.8}],[["شیر","lion"],{w:0.7,h:1.2,d:2.2}],[["ماهی","fish"],{w:0.06,h:0.15,d:0.4}]
+];
+const KIND_SIZE:Partial<Record<SceneProp["kind"],{w:number;h:number;d:number}>>={object:{w:0.3,h:0.3,d:0.3},vehicle:{w:1.8,h:1.5,d:4.3},building:{w:10,h:14,d:10},tree:{w:3,h:6,d:3},animal:{w:0.4,h:0.5,d:0.8}};
+/** A cube's real size in metres: Whoush's own estimate, else the everyday size of what its label names, else its kind's usual size (a 30 cm box). */
+export function cubeDims(p:Pick<SceneProp,"kind"|"label">&{size?:SceneProp["size"]}):{w:number;h:number;d:number}{
+ if(p.size)return p.size;
+ const t=norm(p.label);
+ return OBJECT_SIZES.find(([ws])=>ws.some(w=>t.includes(" "+w+" ")))?.[1]??KIND_SIZE[p.kind]??KIND_SIZE.object!;
+}
+/** Metres per stage unit sideways (the stage's ±1 is a 6 m wide set); depth is METERS_PER_Z. */
+export const STAGE_X_M=3;
+/** An object's footprint on the ground, metres across (x) and deep (z), turned with it. */
+const footprint=(p:SceneProp)=>{const d=cubeDims(p),turned=Math.abs(Math.sin((p.facing??0)*Math.PI/180))>0.7;return turned?{x:d.d,z:d.w}:{x:d.w,z:d.d};};
+/**
+ * The object another one rests on: a larger object whose top covers its spot (a phone on a desk, a cup on a table). Objects only; the one with the
+ * highest top wins, so a cup on a book on a desk rests on the book.
+ */
+export function supportOf(p:SceneProp,props:readonly SceneProp[]):SceneProp|undefined{
+ if(p.kind!=="object")return undefined;
+ const a=footprint(p),under=props.filter(q=>q!==p&&q.kind==="object"&&(()=>{const b=footprint(q);
+  return b.x*b.z>a.x*a.z&&Math.abs((p.x-q.x)*STAGE_X_M)<=b.x/2&&Math.abs((p.z-q.z)*METERS_PER_Z)<=b.z/2;})());
+ return under.sort((q,r)=>topOf(r,props)-topOf(q,props))[0];
+}
+/** How high something stands because it rests on other objects, metres (0 on the ground). */
+export function stackLift(p:SceneProp,props:readonly SceneProp[],depth=0):number{
+ const q=depth<4?supportOf(p,props):undefined;
+ return q?stackLift(q,props,depth+1)+cubeDims(q).h:0;
+}
+const topOf=(q:SceneProp,props:readonly SceneProp[])=>stackLift(q,props,3)+cubeDims(q).h;
 /** A prop's top-view image: a woman has her own. */
-export const topAssetOf=(p:Pick<SceneProp,"kind"|"label">)=>genderOf(p)==="female"&&VISUALS["woman-top"]?"woman-top":PROP_ASSETS[p.kind].top;
+export function topAssetOf(p:Pick<SceneProp,"kind"|"label">&{size?:SceneProp["size"]}):string{
+ if(p.kind==="person")return genderOf(p)==="female"&&VISUALS["woman-top"]?"woman-top":"human-top";
+ const pet=petOf(p);
+ if(pet==="cat")return "animal-top";
+ const id=pet?pet+"-top-front":"cube-top-front";
+ return VISUALS[id]?id:pet?pet+"-front":"cube-front";
+}
 /**
  * Soft tints for props of the same kind (four people, two cars): each one its own colour so they read apart; a prop alone of its kind stays plain.
  * No two tinted props share a colour.
  */
 export const PROP_TINTS=["#f2b866","#6fcfb8","#f29bb8","#a99bf0","#93cc6e","#f09a6b"] as const;
 export function propTints(props:readonly SceneProp[]):(string|undefined)[]{
- const count=new Map<string,number>();for(const p of props)count.set(p.kind,(count.get(p.kind)??0)+1);
+ // Cubes (objects, vehicles, buildings) all look alike: several of them are told apart by colour, whatever they stand for.
+ const kindOf=(p:SceneProp)=>isCube(p)?"cube":p.kind;
+ const count=new Map<string,number>();for(const p of props)count.set(kindOf(p),(count.get(kindOf(p))??0)+1);
  let n=0;
- return props.map(p=>(count.get(p.kind)??0)>1?PROP_TINTS[n++%PROP_TINTS.length]:undefined);
+ return props.map(p=>(count.get(kindOf(p))??0)>1?PROP_TINTS[n++%PROP_TINTS.length]:undefined);
 }
-export function propWidth(kind:SceneProp["kind"],h:number):number{const a=VISUALS[PROP_ASSETS[kind].front];return a?h*a.width/a.height:h;}
+export function propWidth(p:Pick<SceneProp,"kind"|"label">&{size?:SceneProp["size"]},h:number):number{
+ if(isCube(p)){const d=cubeDims(p);return h*d.w/d.h;}
+ const id=PROP_ASSETS[p.kind]?.front,a=id?VISUALS[id]:undefined;return a?h*a.width/a.height:h;
+}
 /**
  * The frame's camera: the scene is laid out once in fixed world positions (as a full shot frames it) and the shot size is a pure zoom `k` of that world
  * around `F`, the main subject's focus in the anchor scene (Whoush's original layout, so moving any prop never moves the zoom), plus the crop pan.
@@ -305,7 +378,10 @@ export const FOCUS_DETAIL_FA:Record<NonNullable<Staging["focusDetail"]>,string>=
 export const SENSOR_H_MM=24,PERSON_M=1.7,METERS_PER_Z=4,REF_FOCAL=35;
 /** How far behind the main subject each kind of place's background stands, in metres: a room's back wall is close, mountains are far. */
 const ENVIRONMENT_DISTANCE_M:Record<NonNullable<Staging["environment"]>,number>={landscape:200,room:5,studio:3,street:30,forest:22,beach:300,desert:250};
-export const backdropM=(s:Staging)=>ENVIRONMENT_DISTANCE_M[s.environment??"landscape"];
+/** How far behind the main subject the background stands, metres: Whoush's estimate from the brief, else the place's usual distance. */
+export const backdropM=(s:Staging)=>s.environmentDistance??ENVIRONMENT_DISTANCE_M[s.environment??"landscape"];
+/** The background's distance range on the canvas, metres (a wall right behind the subject to mountains on the horizon). */
+export const BACKDROP_RANGE=[1,3000] as const;
 export const ENVIRONMENT_FA:Record<NonNullable<Staging["environment"]>,string>={landscape:"فضای باز",room:"داخل اتاق",studio:"استودیو",street:"خیابان و شهر",forest:"جنگل و پارک",beach:"ساحل",desert:"بیابان"};
 const ENVIRONMENT_EN:Record<NonNullable<Staging["environment"]>,string>={landscape:"an open landscape",room:"an interior room",studio:"a photo studio with a seamless backdrop",street:"a city street",forest:"a forest or park",beach:"a beach by the sea",desert:"a desert"};
 const clampN=(v:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,v));
@@ -366,7 +442,7 @@ const focusFa=(s:Staging)=>{const t=focusTarget(s);return t?"، فوکوس رو�
 export function focusDepth(s:Staging,anchor:Staging|undefined,W:number,H:number):number|"backdrop"|undefined{
  if(!s.focusPoint)return undefined;
  const cam=frameCamera(s,anchor,W,H),[fx,fy]=cam.F;
- const hit=(s.props??[]).filter(p=>{const v=propInView(p,W,H,cam.unitH),lf=lensSizeFactor(s,p.z),h=v.h*lf,w=propWidth(p.kind,h),top=v.groundY-(v.groundY-v.y)*lf-h;
+ const hit=(s.props??[]).filter(p=>{const v=propInView(p,W,H,cam.unitH),lf=lensSizeFactor(s,p.z),h=v.h*lf,w=propWidth(p,h),top=v.groundY-(v.groundY-v.y)*lf-h;
   return fx>=v.x-w/2&&fx<=v.x+w/2&&fy>=top&&fy<=v.groundY;}).sort((a,b)=>a.z-b.z)[0];
  if(hit)return hit.z;
  if(fy<=H*0.5)return "backdrop";
@@ -436,7 +512,7 @@ const OUT_X=0.4,OUT_Z=0.6;
  * so it can stand partly out of frame on any side; never further than the stage ranges.
  */
 export function propReach(p:SceneProp,s:Staging,anchor:Staging|undefined,aspect:string):{xMin:number;xMax:number;zMin:number;zMax:number}{
- const {W,H}=frameSize(aspect),cam=frameCamera(s,anchor,W,H),v=propInView(p,W,H,cam.unitH),w=propWidth(p.kind,v.h);
+ const {W,H}=frameSize(aspect),cam=frameCamera(s,anchor,W,H),v=propInView(p,W,H,cam.unitH),w=propWidth(p,v.h);
  const horizon=H*0.5,near=H*0.96,t=(p.z+1)/2,spread=W*0.42*(1-t*0.4);
  const gx=(vx:number)=>(vx-W/2)/spread;
  const tB=(near-(cam.visible.bottom+v.h*OUT_Z))/(near-horizon);
@@ -448,7 +524,7 @@ export function propReach(p:SceneProp,s:Staging,anchor:Staging|undefined,aspect:
  * crops everything at ground level anyway, and the shot size already says so.
  */
 export function propCuts(p:SceneProp,s:Staging,anchor:Staging|undefined,aspect:string):NonNullable<SceneProp["cut"]>{
- const {W,H}=frameSize(aspect),cam=frameCamera(s,anchor,W,H),v=propInView(p,W,H,cam.unitH),w=propWidth(p.kind,v.h);
+ const {W,H}=frameSize(aspect),cam=frameCamera(s,anchor,W,H),v=propInView(p,W,H,cam.unitH),w=propWidth(p,v.h);
  const [x0]=cam.toScreen(v.x-w/2,0),[x1]=cam.toScreen(v.x+w/2,0),[,gy]=cam.toScreen(0,v.groundY);
  const out:NonNullable<SceneProp["cut"]>=[];
  if(x0<0)out.push("left");if(x1>W)out.push("right");if(!p.main&&p.z<-1&&gy>H+1)out.push("bottom");
@@ -670,7 +746,7 @@ export function sectionsFromWords(normalizedText:string):CanvasSection[]{
 /** The parts of «بوم» that differ between two scenes (a revision's plan against the generation it revises). */
 export function stagingSections(a:Staging,b:Staging):CanvasSection[]{
  const keys:Record<Exclude<CanvasSection,"light">,(keyof Staging)[]>={
-  frame:["framing","focusPoint","focusDetail","props"],angle:["cameraAngle","cameraElevation","cameraAzimuth","cameraRoll","shotStyle"],
+  frame:["framing","focusPoint","focusDetail","props","environmentDistance"],angle:["cameraAngle","cameraElevation","cameraAzimuth","cameraRoll","shotStyle"],
   distance:["shotSize","shotScale"],lens:["lensMm","apertureF","autopilot"]};
  const pick=(s:Staging,k:(keyof Staging)[])=>JSON.stringify(k.map(x=>s[x]??null));
  return CANVAS_SECTIONS.filter(sec=>sec==="light"?JSON.stringify(a.lights)!==JSON.stringify(b.lights):pick(a,keys[sec])!==pick(b,keys[sec]));
@@ -736,6 +812,10 @@ export function applyStagingCues(s:Staging,normalizedText:string):Staging{
  const env=ENVIRONMENT_CUES.find(([,ws])=>ws.some(has))?.[0];
  if(env&&!rest.environment)rest.environment=env;
  // The part of the subject the brief is about (the dominant detail): the frame and the lens centre on it.
+ // How far the background is, from the brief's words: right behind the subject, or far away (unless the planner already estimated it).
+ const near=["against the wall","in front of a wall","right behind","close behind","جلوی دیوار","کنار دیوار","چسبیده به دیوار","به دیوار تکیه","پشت سرش دیوار"].some(has);
+ const far=["far away","in the distance","on the horizon","distant mountains","دوردست","در دوردست","خیلی دور","در افق","کوه های دور","کوههای دور"].some(has);
+ if(rest.environmentDistance===undefined&&(near||far)){const d=ENVIRONMENT_DISTANCE_M[rest.environment??"landscape"];rest.environmentDistance=near?Math.min(2,d):Math.min(BACKDROP_RANGE[1],d*4);}
  const detail=DETAIL_CUES.find(([,ws])=>ws.some(has))?.[0];
  if(detail)rest.focusDetail=detail;
  if(facing!==undefined&&mi>=0)rest.props=s.props!.map((p,i)=>i===mi?{...p,facing}:p);

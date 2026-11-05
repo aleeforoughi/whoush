@@ -6,12 +6,14 @@ import {Box,ChevronDown,ChevronLeft,ChevronRight,ChevronUp,Lock,LockOpen,Maximiz
 import {Button,Dialog,DialogBody,DialogContent,DialogHeader,DialogPortal,DialogTitle,Icon} from "@aleeforoughi/feather-react";
 import {FOCUS_DETAILS,LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
- SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,rollOf,lensSizeFactor,backdropFactor,wallDepth,blurAt,horizonShift,focusDepth,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,VERTICAL_STOPS,verticalIndex,snapVertical,SIDE_STEP,snapSide,sideStopFa,type SceneProp} from "@/lib/staging";
+ SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,rollOf,lensSizeFactor,backdropFactor,wallDepth,blurAt,horizonShift,focusDepth,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,VERTICAL_STOPS,verticalIndex,snapVertical,SIDE_STEP,snapSide,sideStopFa,isCube,cubeDims,backdropM,BACKDROP_RANGE,type SceneProp} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 import {fa} from "@/lib/format";
 import type {FrameRect} from "./scene-3d";
 import FrameCSS from "./frame-css";
 import {spriteFor} from "@/lib/sprites";
+import {SCENE_COLORS} from "@/lib/scene3d";
+import {shade} from "@/lib/frame-css";
 
 /** The frame in real 3D (three.js), loaded only in the browser and only when «بوم» is open; the 2D drawing stays as the collapsed snapshot and the fallback. */
 const Scene3D=dynamic(()=>import("./scene-3d"),{ssr:false,loading:()=>null});
@@ -188,6 +190,11 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
       onChange={x=>{const y=draft.framing?.y??0;set({framing:x===0&&y===0?undefined:{x,y}});}}/>
      <SliderRow label="جابه‌جایی کادر، عمودی" ends={["بالا","پایین"]} valueText={pct(draft.framing?.y??0)} min={-1} max={1} step={0.01} value={draft.framing?.y??0}
       onChange={y=>{const x=draft.framing?.x??0;set({framing:x===0&&y===0?undefined:{x,y}});}}/>
+     {/* How far the background stands behind the subject (Whoush sets it from the brief): near, it stays sharp and small; far, it blurs and the lens
+         magnifies it. A log scale from a wall right behind to mountains on the horizon. */}
+     <SliderRow label="فاصلهٔ پس‌زمینه" ends={["نزدیک","دور"]} valueText={fa(Math.round(backdropM(draft)))+" متر"+(draft.environmentDistance===undefined?" · خودکار":"")}
+      min={0} max={1} step={0.001} value={Math.log(backdropM(draft)/BACKDROP_RANGE[0])/Math.log(BACKDROP_RANGE[1]/BACKDROP_RANGE[0])}
+      onChange={v=>set({environmentDistance:Math.round(BACKDROP_RANGE[0]*Math.pow(BACKDROP_RANGE[1]/BACKDROP_RANGE[0],v)*10)/10})}/>
      <p className="text-center type-caption text-fg-secondary">{props.length?"روی یه پراپ بزن تا تنظیماتش بیاد و بکشیش (بالا عقب، پایین جلو، حتی تا بیرون کادر)؛ ":""}پس‌زمینه رو بکشی، کادر جابه‌جا می‌شه.</p>
     </>}
    </Viewport>
@@ -327,13 +334,30 @@ function Asset({id,x,y,h,mirror,sx=1,rotate=0,opacity=1,tint}:{id:string;x:numbe
  * side on, narrower as it turns toward or away from the camera; mirrored when it faces frame left. Trees, buildings and objects look the same all round.
  */
 /** A sprite's width on screen at height h. */
-const spriteW=(sp:{id:string;sx:number},h:number)=>{const v=VISUALS[sp.id];return v?h*sp.sx*v.width/v.height:h;};
+const spriteW=(sp:Fig,h:number)=>{if(sp.box)return h*sp.box.w/sp.box.h;const v=VISUALS[sp.id];return v?h*sp.sx*v.width/v.height:h;};
 /** The eye-level image for a prop, by which way it faces (lib/sprites.ts): the 2D drawings (the collapsed frame, the camera's side view). */
-function sprite(p:SceneProp):{id:string;mirror:boolean;sx:number}{const sp=spriteFor(p,"eye",facingOf(p));return {id:sp.id,mirror:sp.mirror,sx:1};}
+type Fig={id:string;mirror:boolean;sx:number;/** A cube (anything but a character): its real size, drawn as a vector box. */box?:{w:number;h:number;d:number}};
+function sprite(p:SceneProp):Fig{if(isCube(p))return {id:"",mirror:false,sx:1,box:cubeDims(p)};const sp=spriteFor(p,"eye",facingOf(p));return {id:sp.id,mirror:sp.mirror,sx:1};}
+/** A prop in a side or camera view: its figure from the pack, or a cube drawn as a box of its size (front face, a little of its top and side). */
+function PropFig({sp,x,y,h,tint}:{sp:Fig;x:number;y:number;h:number;tint?:string}){
+ if(!sp.box)return <Asset id={sp.id} x={x} y={y} h={h} mirror={sp.mirror} sx={sp.sx} tint={tint}/>;
+ const W=h*sp.box.w/sp.box.h,dd=Math.min(h*0.4,W*0.4,h*sp.box.d/sp.box.h*0.35),l=x-W/2,r=x+W/2,t=y-h,up=dd*0.6;
+ return <g filter={tint?"url(#"+tint+")":undefined}>
+  <path d={"M"+l+" "+t+"L"+(l+dd)+" "+(t-up)+"L"+(r+dd)+" "+(t-up)+"L"+r+" "+t+"Z"} fill={shade(SCENE_COLORS.clay,1)}/>
+  <path d={"M"+r+" "+t+"L"+(r+dd)+" "+(t-up)+"L"+(r+dd)+" "+(y-up)+"L"+r+" "+y+"Z"} fill={shade(SCENE_COLORS.clay,0.72)}/>
+  <rect x={l} y={t} width={W} height={h} fill={shade(SCENE_COLORS.clay,0.88)}/>
+ </g>;
+}
+/** A prop from above (the camera's orbit, the lighting): its pack image, or a cube's footprint (width × depth) turned with it. */
+function PropTop({p,x,y,h,rotate=0,tint}:{p:SceneProp;x:number;y:number;h:number;rotate?:number;tint?:string}){
+ if(!isCube(p))return <Asset id={topAssetOf(p)} x={x} y={y} h={h} rotate={rotate} tint={tint}/>;
+ const d=cubeDims(p),k=h/Math.max(d.w,d.d),cy=y-h/2;
+ return <rect x={x-d.w*k/2} y={cy-d.d*k/2} width={d.w*k} height={d.d*k} rx={Math.min(d.w,d.d)*k*0.12} fill={shade(SCENE_COLORS.clay,1)} stroke={SCENE_COLORS.edge}
+  transform={"rotate("+rotate+" "+x+" "+cy+")"} filter={tint?"url(#"+tint+")":undefined}/>;
+}
 
 /** The main prop (or the first), whose side view the camera view shows; an environment-only scene shows the landscape. */
 const mainProp=(s:Staging)=>(s.props??[]).find(p=>p.main)??(s.props??[])[0];
-const SIDE:Record<SceneProp["kind"],string>={person:"person-side",object:"object-side",animal:"animal-side",vehicle:"vehicle-side",tree:"env-tree",building:"env-building"};
 
 /**
  * The camera's distance, its own tile: the dominant subject on the left and the camera on a track to its right, its lens on the line to the subject's
@@ -358,7 +382,7 @@ function DistanceView({staging,anchor,aspect,editable,onDistance}:{staging:Stagi
   {/* The track: from nearest to farthest, with a tick at each end. */}
   <line x1={NEAR} x2={FAR} y1={focusY} y2={focusY} stroke="currentColor" strokeOpacity=".35" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
   {[NEAR,FAR].map(x=><line key={x} x1={x} x2={x} y1={focusY-5} y2={focusY+5} stroke="currentColor" strokeOpacity=".35" strokeWidth={1} vectorEffect="non-scaling-stroke"/>)}
-  {kind&&sp?<Asset id={sp.id} x={X0} y={ground} h={size} mirror={sp.mirror} sx={sp.sx} tint={mTint?tint+"-m":undefined}/>:<Asset id="env-mountains" x={X0} y={ground} h={56}/>}
+  {kind&&sp?<PropFig sp={sp} x={X0} y={ground} h={size} tint={mTint?tint+"-m":undefined}/>:<Asset id="env-mountains" x={X0} y={ground} h={56}/>}
   <line x1={camX} y1={focusY} x2={X0} y2={focusY} className="stroke-primary" strokeWidth={1.2} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
   <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="فاصلهٔ دوربین" aria-valuetext={SHOT_SIZE_FA[staging.shotSize]+"، زوم "+zoomFactor(staging)+"×"}
    aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(dist*100)} onKeyDown={editable?key:undefined}
@@ -421,7 +445,7 @@ function CameraView({staging,anchor,aspect,editable,onCamera,onStart}:{staging:S
   <circle cx={pivot[0]} cy={pivot[1]} r={R} fill="none" stroke="currentColor" strokeOpacity=".4" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
   <line x1={-VW} x2={VW*2} y1={ground} y2={ground} stroke="currentColor" strokeOpacity=".3" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
   {mTint&&<Tint id={tint+"-m"} color={mTint}/>}
-  {kind&&sp?<Asset id={sp.id} x={focus[0]} y={ground} h={size} mirror={sp.mirror} sx={sp.sx} tint={mTint?tint+"-m":undefined}/>:<><Asset id="env-mountains" x={focus[0]} y={ground} h={52}/><Asset id="env-tree" x={focus[0]+44} y={ground} h={30}/></>}
+  {kind&&sp?<PropFig sp={sp} x={focus[0]} y={ground} h={size} tint={mTint?tint+"-m":undefined}/>:<Asset id="env-mountains" x={focus[0]} y={ground} h={52}/>}
   <circle cx={target[0]} cy={target[1]} r={2.2} className="fill-primary"/>
   <line x1={cx} y1={cy} x2={target[0]} y2={target[1]} className="stroke-primary" strokeWidth={1.2} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
   <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="ارتفاع و فاصلهٔ دوربین (۳۶۰ درجه)" aria-valuetext={CAMERA_ANGLE_FA[staging.cameraAngle]+"، "+Math.round(elev)+" درجه، "+orbitFa(staging.cameraAzimuth??0)+"، زوم "+zoomFactor(staging)+"×"}
@@ -464,7 +488,7 @@ function OrbitView({staging,anchor,aspect,editable,onOrbit,onStart}:{staging:Sta
   {/* Whoush's original camera position, for reference */}
   <circle cx={C[0]} cy={C[1]+R} r={2} fill="currentColor" fillOpacity=".35"/>
   {/* Only the target (the main subject): the camera views are about the camera around it, not the rest of the scene. */}
-  {m&&(()=>{const t=propTints(props)[props.indexOf(m)];return <>{t&&<Tint id={tint+"-m"} color={t}/>}<Asset id={topAssetOf(m)} x={S[0]} y={S[1]+14} h={28} rotate={-(facingOf(m)+az)} tint={t?tint+"-m":undefined}/></>;})()}
+  {m&&(()=>{const t=propTints(props)[props.indexOf(m)];return <>{t&&<Tint id={tint+"-m"} color={t}/>}<PropTop p={m} x={S[0]} y={S[1]+14} h={28} rotate={-(facingOf(m)+az)} tint={t?tint+"-m":undefined}/></>;})()}
   {!props.length&&<Asset id="env-top" x={C[0]} y={C[1]+22} h={44}/>}
   {/* The main subject's facing, the same as in the frame and the side view: an arrow from it the way it faces. */}
   {m&&(()=>{const fw=(facingOf(m)+az)*Math.PI/180,[x,y]=S,d:[number,number]=[Math.sin(fw),Math.cos(fw)],r0=17,r1=31,tip:[number,number]=[x+d[0]*r1,y+d[1]*r1];
@@ -521,8 +545,9 @@ function Tint({id,color}:{id:string;color:string}){
 function Backdrop({env,W,H,horizon,bf,slide,wallY,gradient}:{env:NonNullable<Staging["environment"]>;W:number;H:number;horizon:number;bf:number;slide:number;wallY:number;gradient:string}){
  const line=(y:number,o=".3")=><line x1={-W*4} x2={W*5} y1={y} y2={y} stroke="currentColor" strokeOpacity={o} strokeWidth={1} vectorEffect="non-scaling-stroke"/>;
  // A row of one pack asset along the horizon, varied in size and mirrored every other time, sliding with the camera's orbit.
- const row=(id:string,h:number,step:number,count=9)=>Array.from({length:count*2+1},(_,k)=>k-count).map(n=>{const vary=0.78+0.44*(((n*37)%7+7)%7)/6;
-  return <Asset key={n} id={id} x={W*0.5+slide+n*step*bf} y={horizon+1} h={h*bf*vary} mirror={n%2!==0} opacity={0.7}/>;});
+ // A row of boxes along the horizon (buildings, trees: everything but the characters is a cube), varied in size, sliding with the camera's orbit.
+ const boxes=(h:number,step:number,ratio:number,count=9)=>Array.from({length:count*2+1},(_,k)=>k-count).map(n=>{const vary=0.78+0.44*(((n*37)%7+7)%7)/6,bh=h*bf*vary;
+  return <g key={n} opacity={0.7}><PropFig sp={{id:"",mirror:false,sx:1,box:{w:ratio,h:1,d:ratio}}} x={W*0.5+slide+n*step*bf} y={horizon+1} h={bh}/></g>;});
  if(env==="room"){
   const top=-H*3,floor=wallY;
   return <>
@@ -543,8 +568,8 @@ function Backdrop({env,W,H,horizon,bf,slide,wallY,gradient}:{env:NonNullable<Sta
   <rect x={-W*4} y={wallY-H*0.12} width={W*9} height={H*4} fill={gradient}/>
  </>;
  const ground=<rect x={-W*4} y={horizon} width={W*9} height={H*4} fill={gradient}/>;
- if(env==="street")return <>{ground}{line(horizon,".2")}{row("env-building",H*0.42,W*0.2)}</>;
- if(env==="forest")return <>{ground}{line(horizon,".2")}{row("env-tree",H*0.34,W*0.14,12)}</>;
+ if(env==="street")return <>{ground}{line(horizon,".2")}{boxes(H*0.42,W*0.2,0.7)}</>;
+ if(env==="forest")return <>{ground}{line(horizon,".2")}{boxes(H*0.34,W*0.14,0.5,12)}</>;
  if(env==="beach")return <>
   {ground}
   {/* The sea: a flat band from the horizon down to the shore. */}
@@ -715,7 +740,7 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
       {(()=>{const sp=sprite(p),bs=blurStd(p.z),id=clip+"-p"+i;
        return <g filter={bs>0?"url(#"+id+"-b)":undefined}>
         {bs>0&&<defs><filter id={id+"-b"} x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation={bs}/></filter></defs>}
-        <Asset id={sp.id} x={a.x} y={a.y} h={a.h} mirror={sp.mirror} sx={sp.sx} tint={tints[i]?clip+"-t"+i:undefined}/>
+        <PropFig sp={sp} x={a.x} y={a.y} h={a.h} tint={tints[i]?clip+"-t"+i:undefined}/>
        </g>;})()}
       {on&&<rect x={a.x-w/2-1} y={a.y-a.h-1} width={w+2} height={a.h+2} rx={2} fill="none" className="stroke-primary" strokeWidth={1} vectorEffect="non-scaling-stroke" strokeDasharray="3 2"/>}
      </g>;})}
@@ -927,7 +952,7 @@ function LightView({staging,editable,selected,onSelect,onLight}:{staging:Staging
    </g>;
   })}
   {target&&targetTint&&<Tint id={uid+"-m"} color={targetTint}/>}
-  {target?<Asset tint={targetTint?uid+"-m":undefined} id={topAssetOf(target)} x={C[0]} y={C[1]+20} h={target.kind==="building"?44:target.kind==="vehicle"?48:40}/>:<Asset id="env-top" x={C[0]} y={C[1]+26} h={52}/>}
+  {target?<PropTop tint={targetTint?uid+"-m":undefined} p={target} x={C[0]} y={C[1]+20} h={target.kind==="building"?44:target.kind==="vehicle"?48:40}/>:<Asset id="env-top" x={C[0]} y={C[1]+26} h={52}/>}
   <Asset id="camera-top" x={C[0]} y={VH-4} h={28}/>
  </svg>;
 }
@@ -957,7 +982,7 @@ function PropInspector({prop:p,tag,reach:r,onChange}:{prop:SceneProp;tag:string;
  /** How far it may go at this zoom and crop (lib/staging.ts, propReach): the same as dragging it, partly out of the frame on either side. */reach:{xMin:number;xMax:number;zMin:number;zMax:number};
  onChange:(x:Partial<SceneProp>)=>void}){
  return <div className="flex flex-col gap-3">
-  <div className="flex flex-wrap items-center gap-2"><SourceIcon id={PROP_ASSETS[p.kind].front}/><bdi className="type-label text-primary">{tag}</bdi><span className="type-caption text-fg-secondary">{propPlaceFa(p)}</span>
+  <div className="flex flex-wrap items-center gap-2">{PROP_ASSETS[p.kind]&&!isCube(p)?<SourceIcon id={sprite(p).id}/>:<Icon icon={Box} size={16} aria-hidden="true" className="size-5 text-fg-secondary"/>}<bdi className="type-label text-primary">{tag}</bdi><span className="type-caption text-fg-secondary">{propPlaceFa(p)}</span>
 </div>
   <SliderRow label="جای افقی (تا بیرون از کادر)" ends={["چپ","راست"]} valueText={pct(p.x)} min={Math.min(r.xMin,p.x)} max={Math.max(r.xMax,p.x)} step={0.01} value={p.x} onChange={x=>onChange({x})}/>
   <SliderRow label="عمق (تا بریده از پایین)" ends={["جلو","عقب"]} valueText={pct(p.z)} min={Math.min(r.zMin,p.z)} max={r.zMax} step={0.01} value={p.z} onChange={z=>onChange({z})}/>

@@ -6,20 +6,15 @@
  * is kept as the camera sees it (an orbit has already turned the props), so the camera always stands in front, on +z, raised by its height angle.
  */
 import type {Staging} from "./creative-plan";
-import {DETAIL_HEIGHT,METERS_PER_Z,SENSOR_H_MM,backdropM,centerOnSubject,elevationOf,facingOf,focusDepth,frameSize,genderOf,physicalCamera,rollOf,scaleOf,type SceneProp} from "./staging";
+import {sizeOf} from "./sprites";
+import {DETAIL_HEIGHT,METERS_PER_Z,SENSOR_H_MM,backdropM,centerOnSubject,elevationOf,facingOf,focusDepth,frameSize,genderOf,cubeDims,physicalCamera,stackLift,STAGE_X_M,rollOf,scaleOf,type SceneProp} from "./staging";
 
 /** Metres per stage unit sideways (the stage's ±1 is a 6 m wide set). */
-export const X_M=3;
+export const X_M=STAGE_X_M;
 /** Real sizes, in metres: height, and for the long things their length. */
-export function propSize(p:Pick<SceneProp,"kind"|"label">):{h:number;len:number}{
- switch(p.kind){
-  case "person":return {h:genderOf(p)==="female"?1.65:1.75,len:0.4};
-  case "vehicle":return {h:1.5,len:4};
-  case "animal":return {h:0.45,len:0.5};
-  case "object":return {h:0.35,len:0.12};
-  case "tree":return {h:6,len:3};
-  case "building":return {h:14,len:10};
- }
+export function propSize(p:Pick<SceneProp,"kind"|"label">&{size?:SceneProp["size"]}):{h:number;len:number}{
+ // People and the pets by their figures; everything else (a cube in the 2D frame) by its own size: Whoush's estimate or the everyday size of what it is.
+ const s=sizeOf(p);return {h:s.h,len:p.kind==="person"?0.4:s.len};
 }
 const mainOf=(s:Staging)=>(s.props??[]).find(p=>p.main)??(s.props??[])[0];
 /**
@@ -28,9 +23,10 @@ const mainOf=(s:Staging)=>(s.props??[]).find(p=>p.main)??(s.props??[])[0];
  */
 export function worldOrigin(s:Staging,anchor?:Staging):{x:number;z:number}{const m=mainOf(anchor??s);return {x:m?.x??0,z:m?.z??0};}
 /** A prop's place in the world (its ground point; `y` is its lift) and its turn about y (facing 0 looks at the camera; positive turns its front to frame right). */
-export function propWorld(p:SceneProp,s:Staging,anchor?:Staging):{pos:[number,number,number];rotY:number}{
+export function propWorld(p:SceneProp,s:Staging,anchor?:Staging,/** The props as they are now (a prop being dragged), for what rests on what. */props:readonly SceneProp[]=s.props??[]):{pos:[number,number,number];rotY:number}{
  const o=worldOrigin(s,anchor);
- return {pos:[(p.x-o.x)*X_M,p.y*1.2,-(p.z-o.z)*METERS_PER_Z],rotY:facingOf(p)*Math.PI/180};
+ // Lifted by its own lift, plus whatever it rests on (a phone on a desk stands on the desk's top).
+ return {pos:[(p.x-o.x)*X_M,p.y*1.2+stackLift(p,props),-(p.z-o.z)*METERS_PER_Z],rotY:facingOf(p)*Math.PI/180};
 }
 /** A world point on the ground back to the stage (the inverse of propWorld's place). */
 export function stageFromWorld(wx:number,wz:number,s:Staging,anchor?:Staging):{x:number;z:number}{const o=worldOrigin(s,anchor);return {x:o.x+wx/X_M,z:o.z-wz/METERS_PER_Z};}
@@ -84,7 +80,7 @@ export function wideFrameRect(cam:Pick<Camera3D,"shift">,frameAspect:number,vw:n
  return {w:fw/vw,h:fh/vh,x:0.5+cam.shift[0]*fw/vw,y:0.5+cam.shift[1]*fh/vh};
 }
 /** The clay look of the asset pack, for the 3D figures, and the dark set they stand in (colours live here: TSX holds no hex values). */
-export const SCENE_COLORS={clay:"#d9dadd",hair:"#8a8d93",dark:"#2b2d31",glass:"#3c4048",tail:"#c4453f",ground:"#17181b",sky:"#0b0b0c",wall:"#25272b",window:"#6d7480",sea:"#2a3340",horizon:"#202227",foliage:"#9fa3a8",bark:"#7c7f84",selected:"#1d4ed8",black:"#000000",grid:"rgba(255,255,255,0.13)"} as const;
+export const SCENE_COLORS={clay:"#d9dadd",hair:"#8a8d93",dark:"#2b2d31",glass:"#3c4048",tail:"#c4453f",ground:"#17181b",sky:"#0b0b0c",wall:"#25272b",window:"#6d7480",sea:"#2a3340",horizon:"#202227",foliage:"#9fa3a8",bark:"#7c7f84",selected:"#1d4ed8",black:"#000000",grid:"rgba(255,255,255,0.13)",edge:"rgba(0,0,0,0.12)"} as const;
 /**
  * The frame's centre point from a point on the subject (the inverse of centerOnSubject): `lateral` stage units sideways, `height` as a share of its height.
  * Used when the user drags the centre point in the 3D view.

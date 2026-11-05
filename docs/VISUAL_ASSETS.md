@@ -18,17 +18,28 @@
 - Using an image model for internal UI illustration is separate from customer media generation, which stays on Higgsfield only (CLAUDE.md).
 
 ## The angle matrix (Plan A)
-- **Every family as a matrix:** five heights (top, high, eye level, low, bottom, the camera's stops in `VERTICAL_STOPS`) times five sides (front, 3/4, side, rear 3/4, back; the other side is the mirror). Eye level is the original pack. The other heights are `<family>-<height>-<side>` (`human-high-3q`), or `<family>-<height>-round` for things that look the same from every side (bottle, tree, building).
-- **Generated** by `scripts/generate-visual-assets.ts` from the same side's eye-level image (plus the style anchor), so design, facing and style match the pack. A generated image faces the way its eye-level reference does unless `NATIVE` in `lib/sprites.ts` says otherwise; check new ones by eye.
-- **Done:** the man (all except `human-top-side`, which came out frontal and was dropped, and `human-bottom-side`, which the image model refused), and the woman's top front and back.
-- **Still to generate:** the rest of the woman, the car, the cat and the round things. The OpenAI account ran out of credits; re-run the generator for the missing ids once it is topped up.
-- **Missing images** fall back to the same side at the next height toward eye level (`spriteFor`), so the frame always shows something sensible.
+- **Characters only:** the man, the woman and the pets (cat, dog, horse) have images.
+  - Each is a matrix of five heights (top, high, eye level, low, bottom, the camera's stops in `VERTICAL_STOPS`) times five sides (front, 3/4, side, rear 3/4, back). The other side is the mirror.
+  - Eye level is the original pack (the cat is the `animal-*` family). The other heights are `<family>-<height>-<side>` (`human-high-3q`).
+- **Everything else is a cube:** objects, vehicles, buildings, trees and any other animal.
+  - It's drawn as vector geometry, not an image: a real box of the thing's size, width × height × depth in metres.
+  - In the frame it's CSS planes (`boxFaces` in `lib/frame-css.ts`) with clay shading; in the small diagrams it's an SVG box or footprint.
+  - **Size:** the planner gives the size (`size` on the prop). Otherwise it comes from the everyday size of what the label names (`cubeDims` in `lib/staging.ts`: a desk 1.2 × 0.75 × 0.7, a phone, a car, a tower...), else a 30 cm box.
+  - **Stacking:** a smaller object on a larger one's spot rests on its top (a phone on a desk). Moved off, it's back on the ground.
+  - **Colours:** several cubes each get their own tint.
+- **Generated** by `scripts/generate-visual-assets.ts` from the same side's eye-level image (plus the style anchor), so design, facing and style match the pack. The dog and the horse start from the cat's style.
+  - A generated image faces the way its eye-level reference does unless `NATIVE` in `lib/sprites.ts` says otherwise; check new ones by eye.
+  - **Done:** the man's full matrix, and most of the woman's.
+  - **Still to generate (OpenAI credits ran out):** the rest of the woman, the cat's heights, and all of the dog and horse.
+  - **Missing images** fall back to the same side at the next height toward eye level (`spriteFor`).
+- **Removed:** the bottle, car, building and tree images (they're cubes now).
 
 ## The frame renderer
 - **CSS 3D (Plan A, default):** `components/frame-css.tsx` with `lib/frame-css.ts`. It uses one pinhole camera, the same one the prompt uses (`camera3D`).
   - The CSS perspective distance is the focal length in pixels, so a wide lens close up stretches depth and a long lens flattens it.
   - The ground grid and the room and studio walls are drawn in perspective.
-  - Each prop is its pack image for the height stop and side the camera sees it from, measured where the camera aims. It's sized to its real height and blurred by its distance from the focus (thin-lens circle of confusion).
+  - Each character is its pack image for the height stop and side the camera sees it from, measured where the camera aims. Everything else is a box of its real size. Both are blurred by their distance from the focus (thin-lens circle of confusion).
+  - **The place:** open places show a wide mountain range edge to edge along the horizon, with its base on it; the mountains show the lens and the aperture best. The background's distance is Whoush's estimate from the brief (`environmentDistance`), else cues in its words (against a wall, in the distance), else the place's usual distance. The «فاصلهٔ پس‌زمینه» slider adjusts it.
 - **WebGL (Plan B, parked):** the three.js models are kept in `components/scene-3d.tsx` and on the `archive/plan-b-3d` branch. Switch with `FRAME_RENDERER` in `components/staging-editor.tsx`.
 - **Angle controls:** the height and orbit sliders, the camera drags and each prop's turn snap to the stops. The joystick in the frame's bottom-left steps them: up and down change the height, left and right orbit 45°. Its centre shows the angle and resets to eye level, from the front.
 
