@@ -388,11 +388,11 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   commit({x:snapAxis(fr.x+d[0]),y:snapAxis(fr.y+d[1])});
  };
  const third=(on:boolean,neg:boolean,i:number)=>on&&(i===1)===neg;
- // The selection's tag (Figma-like, on the top-left of the selected prop's box, or inside the frame's top-left for «#کادر») with its lock, as HTML over the drawing.
+ // The selection's tag (on the top-right of the selected prop's box, or inside the frame's top-right for «#کادر»; right-aligned, as Persian reads) with its lock, as HTML over the drawing.
  const maxW=Math.round(320*(W+4)/(H+4));
  const tag=!editable?undefined:sel!=null&&base[sel]?(()=>{const p=base[sel],a=at(p),wf=spriteW(sprite(p),a.h);
-  const [lx,ty]=cam.toScreen(a.x-wf/2-1,a.y-a.h-1);return {x:Math.max(1,Math.min(W-52,lx)),y:Math.max(0,Math.min(H-2,ty)),above:ty>12,text:propTags(base,true)[sel]};})()
-  :{x:3,y:3,above:false,text:"#کادر"};
+  const [rx,ty]=cam.toScreen(a.x+wf/2+1,a.y-a.h-1);return {x:Math.max(52,Math.min(W-1,rx)),y:Math.max(0,Math.min(H-2,ty)),above:ty>12,text:propTags(base,true)[sel]};})()
+  :{x:W-3,y:3,above:false,text:"#کادر"};
  const svgEl=<svg ref={svg} viewBox={"-2 -2 "+(W+4)+" "+(H+4)} {...(editable&&onZoom?pinch:{})} className="mx-auto block w-full touch-none select-none text-fg-primary" style={{aspectRatio:String((W+4)/(H+4)),maxWidth:Math.round(320*(W+4)/(H+4))+"px"}} aria-hidden={!editable}
   onPointerMove={e=>{
    const u=unit();
@@ -447,7 +447,7 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   {svgEl}
   {/* Tag text, then (on its right) the lock in a small button: outline when unlocked, filled blue with a white lock when locked. */}
   <div dir="rtl" className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
-   style={{left:((tag.x+2)/(W+4)*100)+"%",top:((tag.y+2)/(H+4)*100)+"%"}}>
+   style={{right:((W+2-tag.x)/(W+4)*100)+"%",top:((tag.y+2)/(H+4)*100)+"%"}}>
    {onLock&&<button type="button" aria-pressed={locked} aria-label={(locked?"باز کردن قفل انتخاب ":"قفل کردن انتخاب ")+tag.text} onClick={()=>onLock(!locked)}
     className={"pointer-events-auto flex size-5 items-center justify-center rounded-[4px] border border-primary motion-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring "+(locked?"bg-primary text-primary-foreground":"bg-transparent text-primary")}>
     <Icon icon={locked?Lock:LockOpen} size={16} aria-hidden="true" className={"size-3! "+(locked?"[&_rect]:fill-current":"")}/></button>}
