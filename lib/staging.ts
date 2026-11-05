@@ -65,12 +65,12 @@ export function placementEn(f?:{x:number;y:number}):string{
 /** The arranged scene in Persian, for the plan's hard constraints (what the user set in the diagrams). */
 export function describeStagingFa(s:Staging):string{
  const lights=s.lights.map(l=>LIGHT_ROLE_FA[l.role]+": "+LIGHT_SOURCE_FA[l.source]+"، "+LIGHT_QUALITY_FA[l.quality]+"، "+LIGHT_DIRECTION_FA[l.direction]+"، ارتفاع "+LIGHT_HEIGHT_FA[l.height]+"، "+l.colorTemperatureK+" کلوین"+(l.colorHex?"، رنگ "+l.colorHex:""));
- return "صحنهٔ تنظیم‌شده: زاویهٔ دوربین «"+CAMERA_ANGLE_FA[s.cameraAngle]+"»"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+" درجه)":"")+(Math.abs(s.cameraAzimuth??0)>=1?"، دوربین "+orbitFa(s.cameraAzimuth!):"")+"، کادر «"+SHOT_SIZE_FA[s.shotSize]+"»"+(s.shotScale!==undefined?" (زوم "+zoomFactor(s)+"×)":"")+(s.subject?"، سوژه: "+SUBJECT_FA[s.subject]:"")+"، جای سوژه: "+placementFa(s.framing)+(s.props?.length?"؛ "+describeLayoutFa(s.props):"")+"؛ "+lights.join("؛ ");
+ return "صحنهٔ تنظیم‌شده: زاویهٔ دوربین «"+CAMERA_ANGLE_FA[s.cameraAngle]+"»"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+" درجه)":"")+(Math.abs(s.cameraAzimuth??0)>=1?"، دوربین "+orbitFa(s.cameraAzimuth!):"")+(s.focusDetail?"، تمرکز روی "+FOCUS_DETAIL_FA[s.focusDetail]:"")+"، کادر «"+SHOT_SIZE_FA[s.shotSize]+"»"+(s.shotScale!==undefined?" (زوم "+zoomFactor(s)+"×)":"")+(s.subject?"، سوژه: "+SUBJECT_FA[s.subject]:"")+"، جای سوژه: "+placementFa(s.framing)+(s.props?.length?"؛ "+describeLayoutFa(s.props):"")+"؛ "+lights.join("؛ ");
 }
 /** The arranged scene in English, appended to the provider-facing media prompt. */
 export function describeStagingEn(s:Staging):string{
  const lights=s.lights.map(l=>l.role+" light: "+l.quality+" "+l.source.replace("_"," ")+" from "+DIR_EN[l.direction]+(l.angle!==undefined?" ("+Math.round(l.angle)+"° in top view)":"")+", "+LIGHT_HEIGHT_EN[l.height]+", "+l.colorTemperatureK+"K"+(l.colorHex?" "+l.colorHex+" gel":""));
- return "Staging: "+ANGLE_EN[s.cameraAngle]+" camera"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+"° from eye level)":"")+(orbitEn(s.cameraAzimuth??0)?", "+orbitEn(s.cameraAzimuth??0):"")+", "+SHOT_EN[s.shotSize]+(s.shotScale!==undefined?" ("+zoomFactor(s)+"x of a full shot)":"")+", "+placementEn(s.framing)+"; "+lights.join("; ")+"."+(s.props?.length?" "+describeLayoutEn(s.props):"");
+ return "Staging: "+ANGLE_EN[s.cameraAngle]+" camera"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+"° from eye level)":"")+(orbitEn(s.cameraAzimuth??0)?", "+orbitEn(s.cameraAzimuth??0):"")+(s.focusDetail?", framed on the main subject's "+(s.focusDetail==="feet"?"feet and shoes":s.focusDetail):"")+", "+SHOT_EN[s.shotSize]+(s.shotScale!==undefined?" ("+zoomFactor(s)+"x of a full shot)":"")+", "+placementEn(s.framing)+"; "+lights.join("; ")+"."+(s.props?.length?" "+describeLayoutEn(s.props):"");
 }
 /** The subject a brief is about, from its words: a person, an animal, a vehicle, a product or object, or an environment when there is no single main subject. */
 export function detectSubject(normalizedText:string,hasCharacter=false):NonNullable<Staging["subject"]>{
@@ -127,6 +127,8 @@ export function describeStagingChangesFa(before:Staging,after:Staging,aspectBefo
  if(before.cameraAngle!==after.cameraAngle||Math.abs(eb-ea)>=2)out.push("زاویهٔ دوربین: "+arrow(CAMERA_ANGLE_FA[before.cameraAngle]+" ("+Math.round(eb)+"°)",CAMERA_ANGLE_FA[after.cameraAngle]+" ("+Math.round(ea)+"°)"));
  if(before.shotSize!==after.shotSize||Math.abs(Math.log(scaleOf(before)/scaleOf(after)))>0.03)out.push("کادر: "+arrow(SHOT_SIZE_FA[before.shotSize]+" (زوم "+zoomFactor(before)+"×)",SHOT_SIZE_FA[after.shotSize]+" (زوم "+zoomFactor(after)+"×)"));
  if(Math.abs(wrap180((after.cameraAzimuth??0)-(before.cameraAzimuth??0)))>=2)out.push("چرخش دوربین: "+arrow(orbitFa(before.cameraAzimuth??0),orbitFa(after.cameraAzimuth??0)));
+ const dom=(s:Staging)=>{const m=(s.props??[]).find(p=>p.main);return m?(s.focusDetail&&m.kind==="person"?FOCUS_DETAIL_FA[s.focusDetail]+"ِ ":"")+m.label:"";};
+ if(dom(before)!==dom(after))out.push("سوژهٔ اصلی: "+arrow(dom(before)||"—",dom(after)||"—"));
  if(placementFa(before.framing)!==placementFa(after.framing))out.push("جای سوژه: "+arrow(placementFa(before.framing),placementFa(after.framing)));
  // Props: matched by position in the list (the editor never reorders them); moved, added and removed ones are named.
  const pb=before.props??[],pa=after.props??[];
@@ -250,11 +252,15 @@ export function propWidth(kind:SceneProp["kind"],h:number):number{const a=VISUAL
  * The frame is centred on that subject by default: `F` sits on the frame's vertical centre line, and, as the shot tightens, on its horizontal one too
  * (a full or wider shot keeps the ground where it is). screen = pan + C + k·(world − F). `visible` is the world rectangle on screen.
  */
+/** Where each detail sits on a standing person, as a share of their height from the ground. */
+const DETAIL_HEIGHT:Record<NonNullable<Staging["focusDetail"]>,number>={face:0.88,eyes:0.9,jewelry:0.78,hands:0.45,feet:0.05};
+export const FOCUS_DETAIL_FA:Record<NonNullable<Staging["focusDetail"]>,string>={face:"صورت",eyes:"چشم‌ها",hands:"دست‌ها",feet:"پاها و کفش",jewelry:"جواهر و اکسسوری"};
 export function frameCamera(s:Staging,anchor:Staging|undefined,W:number,H:number){
  const WORLD=SHOT_BODY_FRACTION.full,unitH=H*0.92/WORLD,k=WORLD/Math.max(scaleOf(s),0.05),fr=s.framing??{x:0,y:0};
  const ap=(anchor??s).props??[],am=ap.find(p=>p.main)??ap[0];
  let F:[number,number]=[W/2,H*0.5];
- if(am){const v=propInView(am,W,H,unitH);F=[v.x,v.y-v.h*(am.kind==="person"?0.88:0.5)];}
+ // The zoom centres on the part the shot is about: the head of a person by default, or the detail the brief names (hands, feet, jewelry...).
+ if(am){const v=propInView(am,W,H,unitH);F=[v.x,v.y-v.h*(am.kind==="person"?DETAIL_HEIGHT[s.focusDetail??"face"]:0.5)];}
  const pan:[number,number]=[fr.x*W/2,fr.y*H/2],C:[number,number]=[W/2,F[1]+(H/2-F[1])*Math.max(0,Math.min(1,(k-1)/k))];
  const toWorld=(sx:number,sy:number):[number,number]=>[F[0]+(sx-pan[0]-C[0])/k,F[1]+(sy-pan[1]-C[1])/k];
  const [l,t]=toWorld(0,0),[r,b]=toWorld(W,H);
@@ -381,6 +387,56 @@ export function orbitEn(az:number):string{
  return Math.abs(a)>=170?"camera orbited behind the main subject ("+a+"°)":"camera orbited "+Math.abs(a)+"° around the main subject to the viewer's "+(a>0?"right":"left");
 }
 
+// ---- the lens for the scene: Whoush picks the focal length and aperture that serve what the scene shows ----
+export type LensChoice={focalLengthMm:number;aperture:string;iso:number;macro:boolean;deep:boolean;
+ /** Why, in Persian, for the plan («پرتره نزدیک: لنز ۸۵ میلی‌متری با دیافراگم f/1.8 برای پس‌زمینهٔ محو») */fa:string;
+ /** The provider-facing direction */en:string};
+/**
+ * The lens a professional would choose for this scene, from what it shows: how tight the shot is (the zoom), what the subject is, how many subjects must
+ * stay sharp and how far apart they stand, and how steep the camera is.
+ * - Landscapes and wide shots: a wide lens (16 to 28mm) stopped down (f/8) so everything is sharp.
+ * - A very tight shot of an object or animal: a 100mm macro at f/5.6 (macro depth of field is paper thin; stopping down keeps the detail).
+ * - Portraits: 85mm wide open (f/1.8 to f/2) for a soft background; a product close-up: 100mm at f/4.
+ * - A full or medium shot: 35 to 50mm; another subject that must stay sharp at a different depth stops it down (f/5.6).
+ * - A steep worm's-eye or bird's-eye camera: a wider lens for the dramatic perspective.
+ */
+export function lensFor(s:Staging):LensChoice{
+ const sc=scaleOf(s),subject=s.subject??"person",props=s.props??[],main=props.find(p=>p.main)??props[0];
+ const kind=main?.kind??(subject==="environment"?undefined:subject);
+ const others=props.filter(p=>p!==main&&(p.kind==="person"||p.kind==="animal"||p.kind==="vehicle"||p.kind==="object"));
+ const depthSpread=others.length&&main?Math.max(...others.map(p=>Math.abs(p.z-main.z))):0;
+ const elev=elevationOf(s);
+ let f:number,ap:number,macro=false,why:string;
+ const detail=kind==="person"?s.focusDetail:undefined;
+ if(detail&&detail!=="face"&&sc<=0.3){
+  // A detail of a person, close: eyes and jewelry are macro work (100mm, stopped down a little); hands and shoes a 100mm with a soft background.
+  f=100;macro=detail==="eyes"||detail==="jewelry";ap=macro?4:2.8;why="نمای جزئیات "+FOCUS_DETAIL_FA[detail];
+ }
+ else if(subject==="environment"||sc>=2.4){f=sc>=5?16:24;ap=8;why="نمای باز";}
+ else if(sc<=0.12&&kind&&kind!=="person"){f=100;ap=5.6;macro=true;why="ماکرو";}
+ else if(sc<=0.25){if(kind==="person"){f=85;ap=1.8;why="پرترهٔ نزدیک";}else{f=100;ap=4;why="نمای نزدیک";}}
+ else if(sc<=0.4){f=85;ap=kind==="person"?2:2.8;why="نمای سر و شانه";}
+ else if(sc<=0.6){f=50;ap=2.8;why="نمای متوسط";}
+ else if(sc<=1.2){f=35;ap=4;why="نمای تمام‌قد";}
+ else{f=28;ap=5.6;why="نمای نیمه‌باز";}
+ // Another subject that must also be sharp, at another depth: stop down.
+ const together=others.length>0&&depthSpread>0.4&&!macro&&ap<5.6;
+ if(together)ap=5.6;
+ // A steep camera: a wider lens for the perspective (not for a macro).
+ const steep=!macro&&(elev<=-30||elev>=60);
+ if(steep)f=Math.min(f,elev<=-30?24:28);
+ // Low light (fire, candles, a lamp, the moon, or very warm light only): open up a stop and raise the ISO instead of losing the shot to noise or blur.
+ const lowLight=s.lights.length>0&&s.lights.every(l=>l.source==="fire"||l.source==="practical"||l.source==="moon"||l.colorTemperatureK<=2400);
+ if(lowLight&&!macro)ap=Math.max(1.4,ap>=8?4:ap>=5.6?2.8:ap>=4?2:ap);
+ const iso=lowLight?1600:sc>=2.4?100:200;
+ const deep=ap>=5.6;
+ const apText="f/"+(ap<4||!Number.isInteger(ap)?ap.toFixed(1):String(ap));
+ const n=(x:number)=>String(x).replace(/\d/g,d=>"۰۱۲۳۴۵۶۷۸۹"[Number(d)]);
+ const fa=why+": لنز "+(macro?"ماکرو ":"")+n(f)+" میلی‌متری با دیافراگم "+apText+(deep?(together?" تا همهٔ سوژه‌ها واضح بمانند":" تا همه‌چیز واضح بماند"):" برای پس‌زمینهٔ محو (بوکه)")+(steep?"؛ زاویهٔ تند دوربین، لنز بازتر":"")+(lowLight?"؛ نور کم، دیافراگم بازتر و ISO "+n(iso):"")+(detail?"؛ فوکوس روی "+FOCUS_DETAIL_FA[detail]:"");
+ const en="Lens: "+f+"mm"+(macro?" macro":"")+" at "+apText+(deep?", deep focus"+(together?" keeping every subject sharp":""):", shallow depth of field with soft bokeh")+(steep?", wide for the steep perspective":"")+(lowLight?", low light: ISO "+iso:"")+(detail?", focus on the subject's "+(detail==="feet"?"feet and shoes":detail)+"":"")+".";
+ return {focalLengthMm:f,aperture:apText,iso,macro,deep,fa,en};
+}
+
 // ---- continuous adjustment (smooth controls; the named values are the nearest description) ----
 const SHOT_ORDER=Object.entries(SHOT_BODY_FRACTION) as [Staging["shotSize"],number][];
 /** The shot size whose body share is nearest (on a log scale) to a continuous zoom. */
@@ -404,6 +460,13 @@ const CUES={
  shot:[["extreme_close_up",["extreme close up","extreme closeup","macro","ماکرو","خیلی نزدیک"]],["close_up",["close up","closeup","close-up","کلوزآپ","کلوز آپ","نمای نزدیک"]],["medium_close_up",["medium close up","head and shoulders","سر و شانه"]],["medium",["medium shot","waist up","نمای متوسط","تا کمر"]],["medium_full",["knees up","تا زانو"]],["full",["full body","full length","full shot","تمام قد","تمام‌قد","کل بدن"]],["extreme_wide",["extreme wide","خیلی باز"]],["wide",["wide shot","wide angle","نمای باز","نمای عریض"]]] as [Staging["shotSize"],string[]][],
  side:[[-1/3,["on the left","left side","سمت چپ","طرف چپ"]],[1/3,["on the right","right side","سمت راست","طرف راست"]],[0,["centered","in the center","in the middle","وسط کادر","وسط قاب"]]] as [number,string[]][]
 };
+const DETAIL_CUES:[NonNullable<Staging["focusDetail"]>,string[]][]=[
+ ["eyes",["eyes","close up of the eye","چشم","چشم‌ها","چشمها","چشماش"]],
+ ["jewelry",["ring","necklace","earring","earrings","bracelet","jewelry","انگشتر","گردنبند","گوشواره","دستبند","جواهر"]],
+ ["feet",["shoes","shoe","sneakers","boots","feet","کفش","کفشش","کفش‌ها","کتونی","چکمه","پاهاش"]],
+ ["hands",["hands","دست","دست‌ها","دستاش","دستهاش"]],
+ ["face",["face","portrait","صورت","چهره","صورتش","پرتره"]]
+];
 const LIGHT_CUES:{words:string[];apply:(key:StagingLight)=>StagingLight}[]=[
  {words:["backlit","backlight","rim lit","ضدنور","نور از پشت"],apply:l=>({...l,direction:"back",angle:undefined})},
  {words:["side light","side lit","نور کناری","نور از کنار"],apply:l=>({...l,direction:"left",angle:undefined})},
@@ -427,6 +490,9 @@ export function applyStagingCues(s:Staging,normalizedText:string):Staging{
  // Which way the main subject faces: «از پشت» / "from behind" shows its back, «نیم‌رخ» / "profile" its side (a light «از پشت» is a light cue, not this).
  const back=["from behind","back view","rear view","از پشت سر","نمای پشت"].some(has)||(has("از پشت")&&!t.includes(" نور از پشت")),profile=["profile","side view","نیم رخ","نیمرخ","نیم‌رخ","از بغل"].some(has);
  const facing=back?180:profile?90:undefined,mi=(s.props??[]).findIndex(p=>p.main);
+ // The part of the subject the brief is about (the dominant detail): the frame and the lens centre on it.
+ const detail=DETAIL_CUES.find(([,ws])=>ws.some(has))?.[0];
+ if(detail)rest.focusDetail=detail;
  if(facing!==undefined&&mi>=0)rest.props=s.props!.map((p,i)=>i===mi?{...p,facing}:p);
  return {...rest,...(angle?{cameraAngle:angle,cameraElevation:undefined}:{}),...(shot?{shotSize:shot,shotScale:undefined}:{}),
   // The frame is centred by default: only the user's own words (or the canvas) move the subject off centre.

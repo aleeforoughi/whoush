@@ -240,3 +240,24 @@ test("a brief with a typed mapping reaches the planner as an ordinary mention an
  assert.deepEqual(plan.staging?.props?.find(x=>x.kind==="person")?.refs,["image1"]);
  assert.match(plan.intentSummaryFa,/#زن \(#تصویر-۱\)/,"the planner read the mapping as an ordinary mention");
 });
+
+test("Whoush picks the lens for the scene around its dominant subject: distance, detail, angle, other subjects and light",async()=>{
+ const {lensFor,applyStagingCues,frameCamera,frameSize,propInView}=await import("../lib/staging");
+ const woman={kind:"person" as const,label:"زن",x:0,z:-0.25,y:0,main:true};
+ const s:Staging={...base,props:[woman]};
+ const at=(p:Partial<Staging>)=>lensFor({...s,...p});
+ assert.deepEqual([at({shotSize:"close_up",shotScale:undefined}).focalLengthMm,at({shotSize:"close_up",shotScale:undefined}).aperture],[85,"f/1.8"],"a close portrait: 85mm wide open for bokeh");
+ assert.equal(at({shotSize:"wide"}).aperture,"f/8");assert.ok(at({shotSize:"wide"}).focalLengthMm<=24,"a wide shot: a wide lens, everything sharp");
+ assert.equal(at({shotSize:"full",cameraElevation:-45}).focalLengthMm,24,"a steep worm's-eye camera: wider");
+ const shoes=applyStagingCues({...s,shotSize:"close_up"},normalizePersian("کلوزآپ از کفش‌های زن روی آسفالت خیس"));
+ assert.equal(shoes.focusDetail,"feet");
+ const l=lensFor(shoes);assert.equal(l.focalLengthMm,100);assert.match(l.fa,/پاها و کفش/);assert.match(l.en,/feet and shoes/);
+ const {W,H}=frameSize("16:9"),c=frameCamera(shoes,shoes,W,H),v=propInView(woman,W,H,c.unitH);
+ assert.ok(Math.abs(c.F[1]-(v.y-v.h*0.05))<0.01,"the zoom centres on the feet, not the head");
+ assert.equal(lensFor({...applyStagingCues({...s,shotSize:"extreme_close_up"},normalizePersian("ماکرو از چشم های زن"))}).macro,true,"eyes up close: macro");
+ assert.equal(applyStagingCues(s,normalizePersian("an eye level shot of a woman")).focusDetail,undefined,"eye level is a camera height, not the eyes");
+ const two=lensFor({...s,shotSize:"close_up",props:[woman,{kind:"vehicle",label:"ماشین",x:0.5,z:0.6,y:0}]});
+ assert.equal(two.aperture,"f/5.6","another subject at another depth must stay sharp: stop down");
+ const fire=lensFor({...s,shotSize:"full",lights:[{...base.lights[0],source:"fire",colorTemperatureK:1900}]});
+ assert.equal(fire.iso,1600);assert.equal(fire.aperture,"f/2.0","low light: open up and raise the ISO");
+});

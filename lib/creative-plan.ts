@@ -103,6 +103,7 @@ export const LIGHT_ROLES=["key","fill","rim","background","practical"] as const;
 export const LIGHT_DIRECTIONS=["front","front_left","left","back_left","back","back_right","right","front_right","top"] as const;
 export const LIGHT_SOURCES=["sun","sky","window","softbox","led_panel","practical","neon","fire","moon","flash"] as const;
 export const LIGHT_HEIGHTS=["floor","low","eye","high","ceiling"] as const;
+export const FOCUS_DETAILS=["face","eyes","hands","feet","jewelry"] as const;
 const LightSchema=z.object({role:z.enum(LIGHT_ROLES),direction:z.enum(LIGHT_DIRECTIONS),
  /** The exact position around the subject in top-view degrees (0 right of frame, 90 toward the camera), set by dragging; `direction` is its nearest name. */
  angle:z.number().min(0).max(360).optional(),
@@ -132,6 +133,8 @@ export const StagingSchema=z.object({subject:z.enum(SUBJECTS).optional(),cameraA
  cameraElevation:z.number().min(-60).max(85).optional(),
  /** How far the camera has orbited around the main subject from Whoush's view, in degrees: positive to the subject's left (the viewer's right), ±180 behind it. */
  cameraAzimuth:z.number().min(-180).max(180).optional(),
+ /** The part of the main subject the shot is about, from the brief (face, eyes, hands, feet and shoes, jewelry): the zoom centres on it and the lens serves it. */
+ focusDetail:z.enum(FOCUS_DETAILS).optional(),
  shotSize:z.enum(SHOT_SIZES),
  /** The exact zoom as the share of a standing person the frame shows (0.05 to 5), set with the zoom bar; `shotSize` is its nearest name. */
  shotScale:z.number().min(0.05).max(5).optional(),

@@ -128,7 +128,8 @@ test("image plans carry a camera with integer iso/focal length; video plans carr
  const img=await run("a portrait photo of an old man");
  assert.ok(img.plan.camera&&Number.isInteger(img.plan.camera.iso)&&Number.isInteger(img.plan.camera.focalLengthMm));
  assert.equal(img.plan.camera.focalLengthMm,85);assert.equal(img.plan.camera.aperture,"f/2.0");assert.equal(img.plan.camera.shutter,"1/200s");assert.equal(img.plan.camera.iso,200);assert.equal(img.plan.camera.whiteBalanceK,5600);
- const scene=await run("a photo of a mountain lake");assert.equal(scene.plan.camera?.focalLengthMm,35);assert.equal(scene.plan.camera?.aperture,"f/5.6");
+ // The lens is Whoush's pick for the scene (lib/staging.ts, lensFor): a landscape gets a wide lens stopped down.
+ const scene=await run("a photo of a mountain lake");assert.equal(scene.plan.camera?.focalLengthMm,24);assert.equal(scene.plan.camera?.aperture,"f/8");
  const vid=await run("a video of a river");
  assert.equal(vid.plan.mediaKind,"video");assert.equal(vid.plan.shot?.targetFps,24);assert.equal(vid.plan.shot?.shutterAngle,180);assert.equal(vid.plan.shot?.durationSeconds,5);
  assert.ok(vid.plan.continuity.antiTeleport.length>0&&vid.plan.continuity.locks.length>0);

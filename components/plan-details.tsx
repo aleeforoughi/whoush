@@ -1,5 +1,5 @@
 "use client";
-import type {ReactNode} from "react";
+import {useState,type ReactNode} from "react";
 import {Aperture,Camera,CircleHelp,Clapperboard,Film,Focus,Frame,Gauge,Lightbulb,ListChecks,Move,Paperclip,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Thermometer,Timer,type LucideIcon} from "lucide-react";
 import {Accordion,AccordionContent,AccordionItem,AccordionTrigger,Badge,Icon} from "@aleeforoughi/feather-react";
 import {StagingEditor} from "@/components/staging-editor";
@@ -8,6 +8,7 @@ import {STYLE_LABEL_FA,type PublicCreativePlan} from "@/lib/creative-plan";
 import {CHARACTER_VIEWS} from "@/lib/characters";
 import {displayTag} from "@/lib/attachments";
 import {fa} from "@/lib/format";
+import {lensFor} from "@/lib/staging";
 
 const latin=(v:string|number)=><bdi dir="ltr">{v}</bdi>;
 const text=(v:string)=><span dir="auto">{v}</span>;
@@ -67,7 +68,12 @@ function Line({icon,label,children}:{icon:LucideIcon;label:string;children:React
  */
 export function PlanStory({plan,onStagingChange}:{plan:PublicCreativePlan;
  /** When set (the live generation), «بوم» is adjustable and every change flows to the generation card. */onStagingChange?:(s:Staging,aspect:string,changed:boolean)=>void}){
- const {camera,shot,identityLock,speech,references,staging}=plan;
+ const {shot,identityLock,speech,references,staging}=plan;
+ // When the user arranges «بوم», Whoush re-picks the lens for that scene (the same choice the build uses): shown here live.
+ const [arranged,setArranged]=useState<Staging|null>(null);
+ const lens=arranged?lensFor(arranged):undefined;
+ const camera=plan.camera&&lens?{...plan.camera,focalLengthMm:lens.focalLengthMm,aperture:lens.aperture,iso:lens.iso,focus:lens.fa}:plan.camera;
+ const onArrange=onStagingChange?(s:Staging,aspect:string,changed:boolean)=>{setArranged(changed?s:null);onStagingChange(s,aspect,changed);}:undefined;
  const more=plan.softPreferences.length+plan.continuity.locks.length+plan.continuity.antiTeleport.length+plan.qaChecklist.length>0||identityLock||speech;
  return <div className="flex flex-col gap-5">
   <Section icon={Sparkles} title="هدف">
@@ -82,6 +88,7 @@ export function PlanStory({plan,onStagingChange}:{plan:PublicCreativePlan;
     <bdi className="type-label">{displayTag(r.tag)}</bdi><span className="text-fg-secondary">{r.labelFa}{r.roleSource==="inferred"&&" (انتخاب هووش)"}</span></li>)}</ul>
   </Section>}
   {camera&&<Section icon={Camera} title="دوربین">
+   {lens&&<p className="type-caption text-primary">هووش لنز رو برای صحنه‌ای که چیدی دوباره انتخاب کرد.</p>}
    <ul className="flex flex-wrap gap-2">
     <Spec icon={Ruler} label="لنز">{fa(camera.focalLengthMm)} میلی‌متر</Spec>
     <Spec icon={Aperture} label="دیافراگم">{latin(camera.aperture)}</Spec>
@@ -106,7 +113,7 @@ export function PlanStory({plan,onStagingChange}:{plan:PublicCreativePlan;
    <ul className="flex flex-col gap-1.5">
     <Line icon={Frame} label="اندازه نما">{text(shot.shotSize)}</Line>
     <Line icon={Move} label="حرکت دوربین">{text(shot.cameraMovement)}</Line>
-    <Line icon={Ruler} label="لنز">{text(shot.lens)}</Line>
+    <Line icon={Ruler} label="لنز">{lens?latin(lens.focalLengthMm+"mm "+lens.aperture):text(shot.lens)}</Line>
    </ul>
   </Section>}
   {plan.hardConstraints.length>0&&<Section icon={ShieldCheck} title="قیدهای قطعی">
@@ -132,7 +139,7 @@ export function PlanStory({plan,onStagingChange}:{plan:PublicCreativePlan;
    </AccordionItem>
   </Accordion>}
   {/* «بوم» closes the plan, right above the generation card (and before any question), so the scene sits next to what builds it. */}
-  {staging&&<StagingEditor staging={staging} aspectRatio={camera?.aspectRatio} onChange={onStagingChange}/>}
+  {staging&&<StagingEditor staging={staging} aspectRatio={plan.camera?.aspectRatio} mediaKind={plan.mediaKind} onChange={onArrange}/>}
  </div>;
 }
 

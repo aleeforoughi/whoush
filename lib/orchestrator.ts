@@ -9,7 +9,7 @@ import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./
 import {displayTag,inferAttachmentRoles,isGenerationTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
 import {providerForModelId} from "./llm-routing";
 import {replyScriptFor} from "./finglish";
-import {applyStagingCues,applyTypedMappings,describeStagingEn,describeStagingFa,detectProps,detectSubject,expandMappings,mapReferences,tidyProps,typedMappings} from "./staging";
+import {applyStagingCues,applyTypedMappings,lensFor,describeStagingEn,describeStagingFa,detectProps,detectSubject,expandMappings,mapReferences,tidyProps,typedMappings} from "./staging";
 import {findGif,type ChatGif} from "./giphy";
 import {detectMediaKind,suggestModel} from "./router";
 import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
@@ -273,7 +273,8 @@ export const getPrivateMediaPrompt=(turnId:string):string|undefined=>store().get
  */
 export function deriveTurnWithStaging(turnId:string,staging:Staging,aspect?:string):string|undefined{
  const base=store().get(turnId);if(base===undefined)return undefined;
- const extra=" User-adjusted scene (overrides any earlier camera, framing or lighting direction): "+describeStagingEn(staging)+(aspect?" Aspect ratio "+aspect+".":"");
+ // The lens follows the adjusted scene (Whoush's choice for what it now shows), so the camera direction never contradicts it.
+ const extra=" User-adjusted scene (overrides any earlier camera, framing or lighting direction): "+describeStagingEn(staging)+" "+lensFor(staging).en+(aspect?" Aspect ratio "+aspect+".":"");
  const id=randomUUID();keepPrompt(id,(base.slice(0,Math.max(0,3000-extra.length))+extra).slice(0,3000));
  return id;
 }
@@ -429,7 +430,11 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // the provider prompt as the deciding direction, so the output follows what the canvas shows.
  if(plan.staging&&!parsed.stagingOverride){
   plan.staging=applyStagingCues({...plan.staging,props:mapReferences(applyTypedMappings(tidyProps(plan.staging.props),typed),refs)},normalizePersian(parsed.text));
-  const en=" Scene (must match): "+describeStagingEn(plan.staging);
+  // Whoush picks the lens for the scene it built (the same rule as for an arranged one), so the plan, the canvas and the build agree.
+  const lens=lensFor(plan.staging);
+  if(plan.camera)plan.camera={...plan.camera,focalLengthMm:lens.focalLengthMm,aperture:lens.aperture,iso:lens.iso,focus:lens.fa};
+  if(plan.shot)plan.shot={...plan.shot,lens:lens.focalLengthMm+"mm "+lens.aperture};
+  const en=" Scene (must match): "+describeStagingEn(plan.staging)+" "+lens.en;
   plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
  }
  if(parsed.aspectOverride&&plan.camera&&plan.camera.aspectRatio!==parsed.aspectOverride){
@@ -437,8 +442,11 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   const en=" Aspect ratio "+parsed.aspectOverride+".";plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
  }
  if(parsed.stagingOverride){
-  const o=parsed.stagingOverride,fa=describeStagingFa(o),en=" "+describeStagingEn(o);
+  const o=parsed.stagingOverride,lens=lensFor(o),fa=describeStagingFa(o),en=" "+describeStagingEn(o)+" "+lens.en;
   plan.staging=o;
+  // Whoush re-picks the lens for the scene the user arranged: focal length and aperture (bokeh or deep focus, macro when it is that close).
+  if(plan.camera)plan.camera={...plan.camera,focalLengthMm:lens.focalLengthMm,aperture:lens.aperture,iso:lens.iso,focus:lens.fa};
+  if(plan.shot)plan.shot={...plan.shot,lens:lens.focalLengthMm+"mm "+lens.aperture};
   if(!plan.hardConstraints.includes(fa))plan.hardConstraints=[...plan.hardConstraints,fa];
   plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
  }
