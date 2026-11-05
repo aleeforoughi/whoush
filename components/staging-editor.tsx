@@ -68,9 +68,8 @@ const sameJSON=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
  */
 /** The three views' captions (title pill and value), shared by the open canvas and the collapsed snapshots so both always say the same thing. */
 function viewCaptions(s:Staging,aspect:string){
- const n=(s.props??[]).length;
  return {
-  frame:{title:"کادر و چیدمان",value:SHOT_SIZE_FA[s.shotSize]+" · "+faText(aspect)+(n?" · "+fa(n)+" پراپ":"")},
+  frame:{title:"کادر و چیدمان",value:SHOT_SIZE_FA[s.shotSize]+" · "+faText(aspect)},
   camera:{title:"دوربین",value:CAMERA_ANGLE_FA[s.cameraAngle]+" · "+fa(Math.round(elevationOf(s)))+"°"+(Math.abs(s.cameraAzimuth??0)>=1?" · "+orbitFa(s.cameraAzimuth!):"")+" · زوم "+fa(zoomFactor(s))+"×"},
   light:{title:"نورپردازی",value:s.lights.length===1?"یک منبع نور":fa(s.lights.length)+" منبع نور"}
  };
