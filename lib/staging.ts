@@ -181,7 +181,7 @@ export function describeStagingChangesFa(before:Staging,after:Staging,aspectBefo
   if(Math.abs(intensityOf(a)-intensityOf(b))>=0.03)d.push("شدت "+arrow(intensityFa(intensityOf(a)),intensityFa(intensityOf(b))));
   if(a.quality!==b.quality)d.push(arrow(LIGHT_QUALITY_FA[a.quality],LIGHT_QUALITY_FA[b.quality]));
   if(a.colorTemperatureK!==b.colorTemperatureK)d.push(arrow(String(a.colorTemperatureK),String(b.colorTemperatureK))+" کلوین");
-  if((a.colorHex??"")!==(b.colorHex??""))d.push("ژل "+arrow(a.colorHex??"بدون ژل",b.colorHex??"بدون ژل"));
+  if((a.colorHex??"")!==(b.colorHex??""))d.push("رنگ نور "+arrow(a.colorHex??"بدون رنگ",b.colorHex??"بدون رنگ"));
   if(d.length)out.push(LIGHT_ROLE_FA[b.role]+": "+d.join("، "));
  }
  return out.map(faText);

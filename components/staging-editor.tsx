@@ -1182,9 +1182,9 @@ function LightInspector({light:l,tag,canRemove,onChange,onRemove,onAdd}:{light:S
    <input type="range" dir="ltr" min={1500} max={12000} step={100} value={l.colorTemperatureK} onChange={e=>onChange({colorTemperatureK:Number(e.target.value),colorHex:undefined})}
     className="h-3 w-full cursor-pointer appearance-none rounded-control" style={{background:TEMPERATURE_GRADIENT}}/>
   </label>
-  <div className="flex flex-wrap items-center gap-1" role="radiogroup" aria-label="رنگ ژل">
-   <Chip role="radio" on={!l.colorHex} onClick={()=>onChange({colorHex:undefined})}>بدون ژل</Chip>
-   {GEL_COLORS.map(c=><button key={c} type="button" role="radio" aria-checked={l.colorHex===c} aria-label={"ژل "+c} onClick={()=>onChange({colorHex:c})}
+  <div className="flex flex-wrap items-center gap-1" role="radiogroup" aria-label="رنگ نور">
+   <Chip role="radio" on={!l.colorHex} onClick={()=>onChange({colorHex:undefined})}>بدون رنگ</Chip>
+   {GEL_COLORS.map(c=><button key={c} type="button" role="radio" aria-checked={l.colorHex===c} aria-label={"رنگ "+c} onClick={()=>onChange({colorHex:c})}
     className={"size-7 rounded-control border-2 "+(l.colorHex===c?"border-fg-primary":"border-transparent")} style={{background:c}}/>)}
   </div>
   {LIGHTS_EDITABLE&&<div className="flex flex-wrap gap-2">
