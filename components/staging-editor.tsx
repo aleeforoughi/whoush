@@ -21,6 +21,15 @@ import {fa} from "@/lib/format";
  * With `onChange`, every adjustment flows to the generation card below, which builds exactly this scene; without it, read-only. The viewports are always dark, like a 3D app.
  */
 type Sel={type:"prop"|"light";i:number};
+/** The three views' captions (title pill and value), shared by the open canvas and the collapsed snapshots so both always say the same thing. */
+function viewCaptions(s:Staging,aspect:string){
+ const n=(s.props??[]).length;
+ return {
+  frame:{title:"کادر و چیدمان",value:SHOT_SIZE_FA[s.shotSize]+" · "+aspect+(n?" · "+fa(n)+" وسیله":"")},
+  camera:{title:"زاویهٔ دوربین",value:CAMERA_ANGLE_FA[s.cameraAngle]+" · "+fa(Math.round(elevationOf(s)))+"°"},
+  light:{title:"نورپردازی",value:s.lights.length===1?"یک منبع نور":fa(s.lights.length)+" منبع نور"}
+ };
+}
 /** A plan without props (older plans) gets one: its subject, centre front. A planner's crowded layout is tidied for display (lib/staging.ts, tidyProps). */
 function withProps(s:Staging):Staging{
  const subject=s.subject??"person";
@@ -49,7 +58,8 @@ export function StagingEditor({staging,aspectRatio,onChange}:{staging:Staging;as
  // Collapsed by default: «بوم» is advanced settings. The card shows the scene in one line; opening it shows the canvas and its controls.
  const [open,setOpen]=useState(false),bodyId=useId();
  // Collapsed: three live snapshots of the scene as it is now (frame, camera, lighting), read-only; opening it shows the canvas and its controls.
- const snap="dark flex h-24 min-w-0 flex-col items-center justify-center gap-1 overflow-hidden rounded-control bg-background p-1.5 text-fg-primary [&_svg]:h-full! [&_svg]:max-h-full! [&_svg]:w-auto! [&_svg]:max-w-full! [&_svg]:pointer-events-none";
+ const cap=viewCaptions(draft,aspect);
+
  return <div role="group" aria-label="بوم" className="@container flex min-w-0 flex-col gap-3">
   <button type="button" aria-expanded={open} aria-controls={bodyId} onClick={()=>setOpen(o=>!o)}
    aria-label={"بوم، تنظیمات پیشرفته: "+CAMERA_ANGLE_FA[draft.cameraAngle]+"، "+SHOT_SIZE_FA[draft.shotSize]+"، "+(draft.lights.length===1?"یک نور":fa(draft.lights.length)+" نور")+(changed?"، تغییر کرده":"")}
@@ -60,15 +70,15 @@ export function StagingEditor({staging,aspectRatio,onChange}:{staging:Staging;as
     {changed&&<span className="rounded-control bg-surface-selected px-2 py-0.5 type-caption text-fg-primary">تغییر کرده</span>}
     <Icon icon={ChevronDown} size={16} aria-hidden="true" className={"ms-auto size-4 shrink-0 text-fg-secondary transition-transform motion-reduce:transition-none "+(open?"rotate-180":"")}/>
    </span>
-   {!open&&<span aria-hidden="true" className="grid grid-cols-3 gap-1.5">
-    <span className={snap}><FrameView staging={draft} aspect={aspect}/></span>
-    <span className={snap}><CameraView staging={draft} editable={false} onElevation={()=>{}}/></span>
-    <span className={snap}><LightView staging={draft} editable={false} selected={-1} onSelect={()=>{}} onLight={()=>{}}/></span>
+   {!open&&<span className="grid grid-cols-1 gap-2">
+    <Snap c={cap.frame}><FrameView staging={draft} aspect={aspect}/></Snap>
+    <Snap c={cap.camera}><CameraView staging={draft} editable={false} onElevation={()=>{}}/></Snap>
+    <Snap c={cap.light}><LightView staging={draft} editable={false} selected={-1} onSelect={()=>{}} onLight={()=>{}}/></Snap>
    </span>}
   </button>
   <div id={bodyId} hidden={!open} className="flex min-w-0 flex-col gap-3">
   <div className="flex min-w-0 flex-col gap-3">
-   <div><Viewport title="کادر و چیدمان" value={SHOT_SIZE_FA[draft.shotSize]+" · "+aspect+(props.length?" · "+fa(props.length)+" وسیله":"")}>
+   <div><Viewport {...cap.frame}>
     <FrameView staging={draft} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={sel} onSelect={setSel} onProp={(i,x,z)=>setProp(i,{x,z})}/>
     {editable&&<>
      <input type="range" min={0} max={1} step={0.001} value={1-sliderFromScale(scaleOf(draft))} onChange={e=>{const sc=scaleFromSlider(1-Number(e.target.value));set({shotScale:sc,shotSize:nearestShot(sc)});}}
@@ -85,14 +95,14 @@ export function StagingEditor({staging,aspectRatio,onChange}:{staging:Staging;as
     {sel.type==="prop"&&props[sel.i]&&<PropInspector prop={props[sel.i]} onChange={p=>setProp(sel.i,p)}/>}
    </div>}
    </div>
-   <div><Viewport title="زاویهٔ دوربین" value={CAMERA_ANGLE_FA[draft.cameraAngle]+" · "+fa(Math.round(elevationOf(draft)))+"°"}>
+   <div><Viewport {...cap.camera}>
     <CameraView staging={draft} editable={editable} onElevation={e=>set({cameraElevation:e,cameraAngle:draft.cameraAngle==="dutch"?"dutch":snapElevation(e)})}/>
     {editable&&<SliderRow label="ارتفاع دوربین" valueText={CAMERA_ANGLE_FA[draft.cameraAngle]+" · "+fa(Math.round(elevationOf(draft)))+"°"} min={-60} max={85} step={1} value={elevationOf(draft)}
      onChange={e=>set({cameraElevation:e,cameraAngle:draft.cameraAngle==="dutch"?"dutch":snapElevation(e)})}/>}
     {editable&&<div className="flex justify-center"><Chip on={draft.cameraAngle==="dutch"} onClick={()=>set({cameraAngle:draft.cameraAngle==="dutch"?snapElevation(elevationOf(draft)):"dutch"})}>زاویهٔ کج</Chip></div>}
    </Viewport></div>
    <div>
-    <Viewport title="نورپردازی (از بالا)" value={draft.lights.length===1?"یک منبع نور":fa(draft.lights.length)+" منبع نور"}>
+    <Viewport {...cap.light}>
      <LightView staging={draft} editable={editable} selected={sel.type==="light"?sel.i:-1} onSelect={i=>setSel({type:"light",i})} onLight={(i,deg)=>setLight(i,{angle:deg,direction:snapDirection(deg)})}/>
     </Viewport>
     {editable&&draft.lights[sel.type==="light"?sel.i:0]&&<div className="mt-2"><LightInspector light={draft.lights[sel.type==="light"?sel.i:0]} canRemove={draft.lights.length>1}
@@ -110,6 +120,19 @@ export function StagingEditor({staging,aspectRatio,onChange}:{staging:Staging;as
  </div>;
 }
 
+/**
+ * One collapsed snapshot, as a row of the vertical list: the same view drawing (same component, same scene) in the same dark tile as the open canvas, with the
+ * same caption (title pill and value) beside it.
+ */
+function Snap({c,children}:{c:{title:string;value:string};children:ReactNode}){
+ return <span className="flex min-w-0 items-center gap-3">
+  <span className="dark flex h-24 w-40 shrink-0 items-center justify-center overflow-hidden rounded-card bg-background p-1.5 text-fg-primary [&_svg]:h-full! [&_svg]:max-h-full! [&_svg]:w-auto! [&_svg]:max-w-full! [&_svg]:pointer-events-none">{children}</span>
+  <span className="flex min-w-0 flex-col items-start gap-1">
+   <span className="rounded-control bg-surface-hover px-2 py-0.5 type-caption text-fg-secondary">{c.title}</span>
+   <span className="type-label text-fg-primary">{c.value}</span>
+  </span>
+ </span>;
+}
 /** A dark viewport tile with a caption pill and the value, as in the design reference. */
 function Viewport({title,value,children}:{title:string;value:string;children:ReactNode}){
  return <figure className="dark flex min-w-0 flex-col gap-2 overflow-hidden rounded-card bg-background p-3 text-fg-primary">
@@ -149,10 +172,10 @@ function CameraView({staging,editable,onElevation}:{staging:Staging;editable:boo
  const key=(e:KeyboardEvent)=>{const step=e.key==="ArrowUp"||e.key==="ArrowRight"?5:e.key==="ArrowDown"||e.key==="ArrowLeft"?-5:0;if(!step)return;e.preventDefault();onElevation(Math.max(-60,Math.min(85,Math.round(elev+step))));};
  return <svg ref={svg} viewBox={"0 0 "+VW+" "+VH} className="mx-auto block aspect-[22/19] w-full max-w-sm touch-none select-none text-fg-primary" aria-hidden={!editable}
   onPointerMove={e=>{if(drag!==null){const v=elevAt(e);if(Number.isFinite(v))setDrag(v);}}} onPointerUp={()=>{if(drag!==null){if(Number.isFinite(drag))onElevation(Math.round(drag));setDrag(null);}}} onPointerCancel={()=>setDrag(null)}>
-  <path d={"M"+polar(focus[0],focus[1],R,-85).join(" ")+" A"+R+" "+R+" 0 0 1 "+polar(focus[0],focus[1],R,60).join(" ")} fill="none" stroke="currentColor" strokeOpacity=".4" strokeWidth={0.5} strokeDasharray="2.5 3.5"/>
-  <rect x={6} y={ground} width={VW-12} height={0.5} fill="currentColor" fillOpacity=".3"/>
+  <path d={"M"+polar(focus[0],focus[1],R,-85).join(" ")+" A"+R+" "+R+" 0 0 1 "+polar(focus[0],focus[1],R,60).join(" ")} fill="none" stroke="currentColor" strokeOpacity=".4" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
+  <line x1={6} x2={VW-6} y1={ground} y2={ground} stroke="currentColor" strokeOpacity=".3" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
   {kind?<Asset id={SIDE[kind]} x={focus[0]} y={ground} h={size}/>:<><Asset id="env-mountains" x={focus[0]} y={ground} h={52}/><Asset id="env-tree" x={focus[0]+44} y={ground} h={30}/></>}
-  <line x1={cx} y1={cy} x2={focus[0]} y2={focus[1]} className="stroke-primary" strokeWidth={0.7} strokeDasharray="3 2.5"/>
+  <line x1={cx} y1={cy} x2={focus[0]} y2={focus[1]} className="stroke-primary" strokeWidth={1.2} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
   <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="زاویهٔ دوربین" aria-valuetext={CAMERA_ANGLE_FA[staging.cameraAngle]+"، "+Math.round(elev)+" درجه"}
    aria-valuemin={-60} aria-valuemax={85} aria-valuenow={Math.round(elev)}
    onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);setDrag(elevAt(e));}:undefined}
@@ -220,7 +243,7 @@ function FrameView({staging,aspect,editable,onFraming,sel,onSelect,onProp}:{stag
     onPointerDown={e=>{capture(svg.current,e.pointerId);setDrag({px:e.clientX,py:e.clientY,x:fr.x,y:fr.y,cur:fr});}}/>}
    <g transform={world} className="pointer-events-none">
     <rect x={-W*4} y={horizon} width={W*9} height={H*4} fill={"url(#"+clip+"g)"}/>
-    <rect x={-W*4} y={horizon} width={W*9} height={0.4} fill="currentColor" fillOpacity=".3" vectorEffect="non-scaling-stroke"/>
+    <line x1={-W*4} x2={W*5} y1={horizon} y2={horizon} stroke="currentColor" strokeOpacity=".3" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
     {/* The environment is the fixed backdrop behind every prop, in the same world: it zooms with the scene and never moves on its own. */}
     <Asset id="env-mountains" x={W*0.5} y={horizon+1} h={H*0.32} opacity={0.7}/>
    </g>
@@ -237,12 +260,12 @@ function FrameView({staging,aspect,editable,onFraming,sel,onSelect,onProp}:{stag
       {on&&<rect x={a.x-w/2-1} y={a.y-a.h-1} width={w+2} height={a.h+2} rx={2} fill="none" className="stroke-primary" strokeWidth={1} vectorEffect="non-scaling-stroke" strokeDasharray="3 2"/>}
      </g>;})}
    </g>
-   {[1,2].map(i=><g key={i} strokeDasharray="2 2.5" strokeWidth={0.4} className="pointer-events-none">
-    <line x1={W*i/3} x2={W*i/3} y1={0} y2={H} className={third(onX,fr.x<0,i)?"stroke-primary":""} stroke={third(onX,fr.x<0,i)?undefined:"currentColor"} strokeOpacity={third(onX,fr.x<0,i)?1:.3}/>
-    <line x1={0} x2={W} y1={H*i/3} y2={H*i/3} className={third(onY,fr.y<0,i)?"stroke-primary":""} stroke={third(onY,fr.y<0,i)?undefined:"currentColor"} strokeOpacity={third(onY,fr.y<0,i)?1:.3}/>
+   {[1,2].map(i=><g key={i} strokeDasharray="3 3" strokeWidth={1} className="pointer-events-none">
+    <line vectorEffect="non-scaling-stroke" x1={W*i/3} x2={W*i/3} y1={0} y2={H} className={third(onX,fr.x<0,i)?"stroke-primary":""} stroke={third(onX,fr.x<0,i)?undefined:"currentColor"} strokeOpacity={third(onX,fr.x<0,i)?1:.3}/>
+    <line vectorEffect="non-scaling-stroke" x1={0} x2={W} y1={H*i/3} y2={H*i/3} className={third(onY,fr.y<0,i)?"stroke-primary":""} stroke={third(onY,fr.y<0,i)?undefined:"currentColor"} strokeOpacity={third(onY,fr.y<0,i)?1:.3}/>
    </g>)}
   </g>
-  <rect width={W} height={H} rx={6} fill="none" stroke="currentColor" strokeOpacity=".7" strokeWidth={0.6} className="pointer-events-none"/>
+  <rect width={W} height={H} rx={6} fill="none" stroke="currentColor" strokeOpacity=".75" strokeWidth={1.2} vectorEffect="non-scaling-stroke" className="pointer-events-none"/>
  </svg>;
 }
 
@@ -258,8 +281,8 @@ function LightView({staging,editable,selected,onSelect,onLight}:{staging:Staging
  return <svg ref={svg} viewBox={"0 0 "+VW+" "+VH} className="mx-auto block aspect-[240/230] w-full max-w-sm touch-none select-none text-fg-primary"
   onPointerMove={e=>{if(drag){const [x,y]=pt(e),deg=Math.atan2(y-C[1],x-C[0])*180/Math.PI;if(Number.isFinite(deg))setDrag({...drag,deg});}}}
   onPointerUp={()=>{if(drag){if(Number.isFinite(drag.deg))onLight(drag.i,Math.round(((drag.deg%360)+360)%360));setDrag(null);}}} onPointerCancel={()=>setDrag(null)}>
-  <circle cx={C[0]} cy={C[1]} r={R} fill="none" stroke="currentColor" strokeOpacity=".3" strokeWidth={0.6} strokeDasharray="1.5 3.5"/>
-  <line x1={C[0]} y1={C[1]+24} x2={C[0]} y2={VH-34} stroke="currentColor" strokeOpacity=".3" strokeWidth={0.6} strokeDasharray="2 3.5"/>
+  <circle cx={C[0]} cy={C[1]} r={R} fill="none" stroke="currentColor" strokeOpacity=".35" strokeWidth={1} strokeDasharray="2 4" vectorEffect="non-scaling-stroke"/>
+  <line x1={C[0]} y1={C[1]+24} x2={C[0]} y2={VH-34} stroke="currentColor" strokeOpacity=".35" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
   {staging.lights.map((l,i)=>{
    const isDrag=drag?.i===i,top=l.direction==="top";
    const [x,y]=isDrag?polar(C[0],C[1],R,drag!.deg):top?[C[0]+(i%2?20:-20),C[1]-32]:polar(C[0],C[1],R,lightAngleOf(l)??LIGHT_ANGLE.front);
