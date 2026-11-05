@@ -225,7 +225,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     {/* The frame's zoom, always right under it: whatever is selected (a character can fill a close-up, with nothing else to tap). */}
     {editable&&<>
      {/* The frame's ratio first, then its zoom. */}
-     <div className="flex flex-wrap justify-start gap-1">{["16:9","3:2","4:5","1:1","9:16"].map(r=><Chip key={r} on={aspect===r} onClick={()=>setAspect(r)}><bdi>{faText(r)}</bdi></Chip>)}</div>
+     <div className="flex flex-wrap justify-start gap-1">{["16:9","4:3","1:1","3:4","9:16"].map(r=><Chip key={r} on={aspect===r} onClick={()=>setAspect(r)}><bdi>{faText(r)}</bdi></Chip>)}</div>
      <input type="range" dir="ltr" min={0} max={1} step={0.001} value={1-distanceOf(draft)} onChange={e=>setDistance(1-Number(e.target.value))}
       aria-label="زوم (اندازهٔ نما، همون فاصلهٔ دوربین)" aria-valuetext={SHOT_SIZE_FA[draft.shotSize]+"، زوم "+fa(zoomFactor(draft))+"×"} className="h-5 w-full cursor-pointer accent-primary pointer-coarse:h-6"/>
      <span dir="ltr" className="-mt-3 flex justify-between type-caption text-fg-secondary" aria-hidden="true"><span>باز</span><span>نزدیک</span></span>
