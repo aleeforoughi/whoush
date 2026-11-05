@@ -2,8 +2,8 @@
 import {useId,useRef,useState,type KeyboardEvent,type PointerEvent,type ReactNode} from "react";
 import {Plus,RotateCcw,Trash2,Wand2} from "lucide-react";
 import {Button,Icon} from "@aleeforoughi/feather-react";
-import {LIGHT_ROLES,LIGHT_SOURCES,MAX_PROPS,PROP_KINDS,SHOT_SIZES,SUBJECTS,type Staging,type StagingLight} from "@/lib/creative-plan";
-import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,PROP_KIND_FA,
+import {LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
+import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
  SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 import {fa} from "@/lib/format";
@@ -11,12 +11,13 @@ import {fa} from "@/lib/format";
 /**
  * «بوم» (Canvas): the plan's scene as a small, adjustable lo-fi 3D viewport ("a little Blender") built from the pre-rendered asset pack (public/visuals, docs/VISUAL_ASSETS.md):
  * nothing is generated here. Three views share one draft staging:
- * - camera (side view): drag the camera along its arc around the main subject; it snaps to five angles; the dutch tilt is a toggle;
- * - frame (the camera's view): the props laid out in depth (further back is higher and smaller) in front of the fixed environment backdrop; the shot size
+ * - camera (side view): drag the camera smoothly along its arc around the main subject (any elevation); the dutch tilt is a toggle;
+ * - frame (the camera's view): the props Whoush found in the conversation, laid out in depth (further back is higher and smaller) in front of the fixed environment backdrop; the shot size
  *   (slider) and aspect ratio (chips) crop it; dragging inside the frame slides the crop and snaps to thirds;
  * - scene (top view): drag props on the ground (left and right, front and back) and lights around the scene (eight directions); select one to adjust it
  *   (a prop's height above the ground, removing it; a light's role, source, softness, height, colour temperature and gel); add props and lights.
- * The environment is the backdrop and never moves; props do. Everything works with touch, mouse and keyboard. All content stays inside each viewport.
+ * What is in the scene (subject, props, environment) comes from the conversation: Whoush builds it; here the user only arranges it. The environment is the
+ * backdrop and never moves; props do. Everything works with touch, mouse and keyboard. All content stays inside each viewport.
  * With `onApply`, a changed scene is sent back to Whoush as a revision of the generation; without it, read-only. The viewports are always dark, like a 3D app.
  */
 type Sel={type:"prop"|"light";i:number};
@@ -38,16 +39,11 @@ export function StagingEditor({staging,aspectRatio,onApply,disabled}:{staging:St
  const setLight=(i:number,p:Partial<StagingLight>)=>setDraft(d=>({...d,lights:d.lights.map((l,j)=>j===i?{...l,...p}:l)}));
  const props=draft.props??[];
  const setProp=(i:number,p:Partial<SceneProp>)=>setDraft(d=>({...d,props:(d.props??[]).map((x,j)=>j===i?{...x,...p}:x)}));
- const addProp=(kind:SceneProp["kind"])=>{const n=props.length;setDraft(d=>({...d,props:[...(d.props??[]),{kind,label:PROP_KIND_FA[kind],x:n%2?-0.45:0.45,z:0.3,y:0,...(n===0?{main:true}:{})}]}));setSel({type:"prop",i:n});};
- const subject=draft.subject??"person";
  return <div role="group" aria-label="بوم" className="@container flex min-w-0 flex-col gap-3">
   <div role="tablist" aria-label="نماهای صحنه" className="grid grid-cols-3 gap-1 rounded-control bg-surface-subtle p-1 @2xl:hidden">
    {([["frame","کادر"],["camera","دوربین"],["light","نور"]] as const).map(([k,label])=><button key={k} type="button" role="tab" aria-selected={view===k} onClick={()=>setView(k)}
     className={"h-9 rounded-control type-label motion-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring "+(view===k?"bg-background text-fg-primary shadow-1":"text-fg-secondary")}>{label}</button>)}
   </div>
-  {editable&&<div role="radiogroup" aria-label="سوژهٔ اصلی صحنه" className="flex flex-wrap gap-1">
-   {SUBJECTS.map(s=><Chip key={s} on={subject===s} onClick={()=>set({subject:s})} role="radio">{SUBJECT_FA[s]}</Chip>)}
-  </div>}
   <div className="grid min-w-0 grid-cols-1 gap-2 @2xl:grid-cols-2">
    <div className={shown("frame")+" @2xl:col-span-2"}><Viewport title="کادر و چیدمان" value={SHOT_SIZE_FA[draft.shotSize]+" · "+aspect+(props.length?" · "+fa(props.length)+" وسیله":"")}>
     <FrameView staging={draft} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={sel} onSelect={setSel} onProp={(i,x,z)=>setProp(i,{x,z})}/>
@@ -59,10 +55,7 @@ export function StagingEditor({staging,aspectRatio,onApply,disabled}:{staging:St
     </>}
    </Viewport>
    {editable&&<div className="mt-2 flex flex-col gap-2">
-    {sel.type==="prop"&&props[sel.i]&&<PropInspector prop={props[sel.i]} onChange={p=>setProp(sel.i,p)} onRemove={()=>{setDraft(d=>({...d,props:(d.props??[]).filter((_,j)=>j!==sel.i)}));setSel({type:"prop",i:0});}}/>}
-    {props.length<MAX_PROPS&&<div className="flex flex-wrap items-center gap-1"><span className="type-caption text-fg-secondary">افزودن:</span>
-     {PROP_KINDS.map(k=><button key={k} type="button" onClick={()=>addProp(k)} className="flex h-8 items-center gap-1 rounded-control border border-line-secondary px-2 type-caption text-fg-secondary motion-hover hover:bg-surface-hover">
-      <SourceIcon id={PROP_ASSETS[k].front}/>{PROP_KIND_FA[k]}</button>)}</div>}
+    {sel.type==="prop"&&props[sel.i]&&<PropInspector prop={props[sel.i]} onChange={p=>setProp(sel.i,p)}/>}
    </div>}
    </div>
    <div className={shown("camera")}><Viewport title="زاویهٔ دوربین" value={CAMERA_ANGLE_FA[draft.cameraAngle]+" · "+fa(Math.round(elevationOf(draft)))+"°"}>
@@ -266,16 +259,14 @@ function LightView({staging,editable,selected,onSelect,onLight}:{staging:Staging
  </svg>;
 }
 
-/** The selected prop: its name and place, its height above the ground (up and down), and removing it. */
-function PropInspector({prop:p,onChange,onRemove}:{prop:SceneProp;onChange:(x:Partial<SceneProp>)=>void;onRemove:()=>void}){
+/** The selected prop: its name and place, and its lift above the ground (up and down). What is in the scene comes from the conversation, not from here. */
+function PropInspector({prop:p,onChange}:{prop:SceneProp;onChange:(x:Partial<SceneProp>)=>void}){
  return <div className="flex flex-col gap-3 rounded-card border border-line-secondary bg-surface-subtle p-3">
   <div className="flex flex-wrap items-center gap-2"><SourceIcon id={PROP_ASSETS[p.kind].front}/><span className="type-label text-fg-primary">{p.label}</span><span className="type-caption text-fg-secondary">{propPlaceFa(p)}</span></div>
   <label className="flex flex-col gap-1 type-caption text-fg-secondary">
    <span>ارتفاع از زمین (بالا و پایین)</span>
-   <input type="range" min={0} max={1} step={0.05} value={p.y} onChange={e=>onChange({y:Number(e.target.value)})} aria-valuetext={p.y>0.15?"بالاتر از زمین":"روی زمین"} className="h-8 w-full cursor-pointer accent-primary"/>
+   <input type="range" min={0} max={1} step={0.01} value={p.y} onChange={e=>onChange({y:Number(e.target.value)})} aria-valuetext={p.y>0.15?"بالاتر از زمین":"روی زمین"} className="h-8 w-full cursor-pointer accent-primary"/>
   </label>
-  <p className="type-caption text-fg-secondary">برای جابه‌جایی چپ و راست یا جلو و عقب، روی نمای بالا بکشش (یا با کلیدهای جهت).</p>
-  <div><Button type="button" variant="ghost" size="sm" onClick={onRemove}><Icon icon={Trash2} aria-hidden="true"/>حذف از صحنه</Button></div>
  </div>;
 }
 

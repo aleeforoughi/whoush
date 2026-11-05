@@ -17,7 +17,7 @@
 - **Smooth controls:** every adjustment is continuous: camera elevation in degrees, zoom on a smooth log scale, any light angle, free crop and prop positions. The named values («زاویهٔ بالا», «نمای متوسط», «جلو، چپ») are the nearest description; the exact values (`cameraElevation`, `shotScale`, light `angle`) are applied and described to Whoush and the provider.
 - **Zoom:** a uniform scale of one fixed world around the main subject's focus, so props and the environment keep their relative positions at every zoom.
 - **Views:**
-  - **کادر و چیدمان (framing and layout):** the camera's view in simple perspective. Drag a prop sideways for left/right, up for further back, down for nearer; drag the background to slide the crop (snaps to thirds). A prop's lift above the ground, removal and new props are in the inspector below.
+  - **کادر و چیدمان (framing and layout):** the camera's view in simple perspective. Drag a prop sideways for left/right, up for further back, down for nearer; drag the background to slide the crop (snaps to thirds). A prop's lift above the ground is in the inspector below. What is in the scene (subject, props, environment) is decided by Whoush from the conversation: the canvas has no add, remove or subject controls; ask in the chat to change what is in the scene.
   - **دوربین (camera):** the main subject from the side; drag the camera along its arc (five angles, dutch toggle).
   - **نور (lighting):** only the lights and the target from above; drag lights around (eight directions); the inspector sets role, source, softness, height, kelvin and gel.
 - **Shared scene:** all views share one draft, so moving a prop updates every view at once. The environment is the fixed backdrop.
