@@ -11,20 +11,21 @@ const AUTO_ROLE="auto";
 export const CARD_AUTO_ROLE_FA="خودکار";
 /**
  * The shared card geometry, so an empty upload card and the file card that replaces it are the same size: 12rem wide, a 16:9 media area on top (the upload button
- * with the category when empty, the thumbnail when filled), a 1.75rem tag row and a 44px role row (role icon at the start, role name, a small delete button at the end).
+ * with the category when empty, the thumbnail when filled), a 1.75rem tag row and a 2.25rem role row (the height of a compact `sm` menu: role icon at the start, role name, a small delete button at the end; the icon and the delete
+ * button's X both sit 4px in from the media edge). Menus in a card are the compact `sm` size; their touch targets stay 44px (`hit-area`).
  * In the composer row every card stretches to the tallest one, so a lip-sync card with its extra menus still lines up.
  */
 export const CARD_FRAME="relative flex w-48 shrink-0 flex-col gap-2 rounded-control border p-2";
 export const CARD_MEDIA="relative flex aspect-video w-full shrink-0 items-center justify-center overflow-hidden rounded-control";
 export const CARD_META="flex h-7 items-center gap-2 ps-1";
-export const CARD_FOOT="flex h-control w-full items-center gap-2 ps-1";
+export const CARD_FOOT="flex h-9 w-full items-center gap-2 ps-1";
 /** Category icons for the media area of documents and audio. */
 const KIND_ICONS:Record<AttachmentKind,LucideIcon>={image:ImageIcon,video:Video,audio:AudioLines,pdf:FileText,json:FileJson,md:FileText};
 
-/** The small delete button at the end of the role row: 28px to the eye, a 44px touch target (`hit-area`). */
+/** The small delete button at the end of the role row: 28px to the eye, a 44px touch target (`hit-area`); pulled 2px outwards so its X lines up 4px in, like the role icon. */
 export function CardRemove({label,onClick}:{label:string;onClick:()=>void}){
  return <button type="button" onClick={onClick} aria-label={label}
-  className="hit-area flex size-7 shrink-0 items-center justify-center rounded-control text-fg-secondary motion-hover hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+  className="hit-area -me-0.5 flex size-7 shrink-0 items-center justify-center rounded-control text-fg-secondary motion-hover hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
   <Icon icon={X} size={16} aria-hidden="true"/>
  </button>;
 }
@@ -69,7 +70,7 @@ export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention}:{i
   {media&&a.role&&<CardRoleRow icon={roleIconKey(a.kind,a.role)} label={roleLabelFa(a.role,a.kind)} remove={remove}/>}
   {media&&!a.role&&<span className={CARD_FOOT}>
    <Select value={AUTO_ROLE} onValueChange={v=>onChange({role:v===AUTO_ROLE?null:v as AttachmentRole})} items={roles}>
-    <SelectTrigger aria-label={"نقش "+displayTag(a.tag)} className="min-w-0 flex-1"><SelectValue/></SelectTrigger>
+    <SelectTrigger size="sm" aria-label={"نقش "+displayTag(a.tag)} className="min-w-0 flex-1"><SelectValue/></SelectTrigger>
     <SelectContent>{roles.map(r=><SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}</SelectContent>
    </Select>
    <CardRemove {...remove}/>
@@ -77,11 +78,11 @@ export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention}:{i
   {!media&&<CardRoleRow icon="document" label={a.name} remove={remove}/>}
   {lip&&<>
    <Select value={lip.language} onValueChange={v=>set({language:v as AttachmentSpeech["language"]})} items={LANGUAGES}>
-    <SelectTrigger aria-label="زبان گفتار" className="w-full"><span className="text-fg-secondary">زبان</span><SelectValue/></SelectTrigger>
+    <SelectTrigger size="sm" aria-label="زبان گفتار" className="w-full"><span className="text-fg-secondary">زبان</span><SelectValue/></SelectTrigger>
     <SelectContent>{LANGUAGES.map(l=><SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>)}</SelectContent>
    </Select>
    <Select value={lip.accent} onValueChange={v=>set({accent:v as AttachmentSpeech["accent"]})} items={ACCENTS}>
-    <SelectTrigger aria-label="لهجه" className="w-full"><span className="text-fg-secondary">لهجه</span><SelectValue/></SelectTrigger>
+    <SelectTrigger size="sm" aria-label="لهجه" className="w-full"><span className="text-fg-secondary">لهجه</span><SelectValue/></SelectTrigger>
     <SelectContent>{ACCENTS.map(l=><SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>)}</SelectContent>
    </Select>
   </>}

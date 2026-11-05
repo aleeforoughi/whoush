@@ -30,9 +30,9 @@ export function UploadSlotCard({slot,disabled,onUpload,onDropFiles,onRemove}:{sl
   onDrop={drop}>
   <Button type="button" variant="secondary" data-slot-id={slot.id} onClick={onUpload} disabled={disabled} aria-label={slotLabelFa(slot)} aria-describedby={"slot-hint-"+slot.id}
    className={CARD_MEDIA+" h-auto flex-col gap-1 border-line-primary p-0"}>
-   {/* the category icon sits in the top start corner (top right in RTL) */}
-   <Icon icon={CATEGORY_ICONS[slotCategory(slot)]} size={16} aria-hidden="true" className="absolute start-2 top-2"/>
-   <Icon icon={UploadIcon} size={24} aria-hidden="true"/>
+   {/* the category icon sits in the top start corner (top right in RTL); explicit size-* classes, since the button otherwise sizes every icon to the slot size */}
+   <Icon icon={CATEGORY_ICONS[slotCategory(slot)]} size={16} aria-hidden="true" className="absolute start-2 top-2 size-4"/>
+   <Icon icon={UploadIcon} size={24} aria-hidden="true" className="size-6"/>
    <span className="type-caption" aria-hidden="true">{SLOT_CATEGORY_FA[slotCategory(slot)]}</span>
   </Button>
   <span id={"slot-hint-"+slot.id} className="sr-only">{SLOT_DROP_FA}</span>

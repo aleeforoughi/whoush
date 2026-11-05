@@ -33,9 +33,9 @@ export function InsertMenu({disabled,onPick}:{disabled?:boolean;onPick:(item:Ins
   <PopoverTrigger render={<Button type="button" variant="ghost" size="icon" aria-label="افزودن پیوست یا مرجع" aria-haspopup="dialog" disabled={disabled}/>}>
    <Icon icon={Plus} aria-hidden="true"/>
   </PopoverTrigger>
-  <PopoverContent side="top" align="start" sideOffset={8} initialFocus={input} finalFocus={!picked} aria-label="افزودن پیوست یا مرجع" className="flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-0 overflow-hidden p-0">
+  <PopoverContent side="top" align="start" sideOffset={8} initialFocus={input} finalFocus={!picked} aria-label="افزودن پیوست یا مرجع" className="flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-0 overflow-hidden p-0!">
    <div className="relative border-b border-line-tertiary p-2">
-    <Icon icon={Search} size={16} aria-hidden="true" className="pointer-events-none absolute start-5 top-1/2 -translate-y-1/2 text-fg-secondary"/>
+    <Icon icon={Search} aria-hidden="true" className="pointer-events-none absolute start-4 top-1/2 -translate-y-1/2 text-fg-secondary"/>
     <Input ref={input} type="search" value={query} onChange={e=>{setQuery(e.target.value);setActive(0);}} onKeyDown={onKey} placeholder={SEARCH_PLACEHOLDER_FA}
      role="combobox" aria-label="جستجوی گزینه‌ها" aria-expanded="true" aria-controls={listId} aria-autocomplete="list" aria-activedescendant={flat.length?optionId(current):undefined}
      autoComplete="off" spellCheck={false} className="ps-9"/>
