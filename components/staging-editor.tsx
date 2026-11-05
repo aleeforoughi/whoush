@@ -208,7 +208,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
   </button>
   <div id={bodyId} hidden={!open&&!focused} className="flex min-w-0 flex-col gap-3">
   {/* The sections (frame, camera, lighting), each set apart by a divider and room above and below it. */}
-  <div className="flex min-w-0 flex-col divide-y divide-line-secondary [&>*]:py-5 [&>*:first-child]:pt-1 [&>*:last-child]:pb-1">
+  <div className="flex min-w-0 flex-col divide-y divide-line-secondary/40 [&>*]:py-5 [&>*:first-child]:pt-1 [&>*:last-child]:pb-1">
    {show("frame")&&frameShown&&<div ref={el=>{frameArea.current=el;setFrameEl(el);}}><Viewport {...cap.frame}>
     <FrameView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={i=>{setPropSel(i);setCenterSel(false);}} centerSel={centerSel} onSelectCenter={()=>{setCenterSel(true);setPropSel(null);}} onProp={(i,x,z)=>setProp(i,{x,z})} onZoom={setDistance} locked={locked} onLock={setLocked} onBack={()=>{setPropSel(null);setCenterSel(false);setLocked(false);}}
      onFocus={f=>{if(f)set(f);else resetFocus();}} onAngle={c=>{if(c.elevation!==undefined)setElevation(c.elevation);if(c.azimuth!==undefined)orbitTo(c.azimuth);}} three={(FRAME_RENDERER==="css"||webgl)&&onScreen&&(open||focused)&&!fullscreen} onFullscreen={FRAME_FULLSCREEN?()=>{setCenterSel(false);setFullscreen(true);}:undefined}/>
@@ -308,7 +308,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
   </div>
   </div>
   {!editable&&<ul className="flex flex-col gap-1">{draft.lights.map((l,i)=><LightRow key={i} l={l}/>)}</ul>}
-  {editable&&changed&&<div className="flex flex-wrap items-center gap-2 border-t border-line-secondary pt-3">
+  {editable&&changed&&<div className="flex flex-wrap items-center gap-2 border-t border-line-secondary/40 pt-3">
    <Button type="button" variant="ghost" size="sm" onClick={()=>{setDraft(initial);setAspect(aspectRatio??"16:9");setPropSel(null);setLightSel(0);setLocked(false);setFocusProps(initial.props);}}><Icon icon={RotateCcw} aria-hidden="true"/>برگرد به پیشنهاد هووش</Button>
    <p className="type-caption text-fg-secondary">با «بساز» همین صحنه ساخته می‌شه.</p>
   </div>}
@@ -694,7 +694,7 @@ function Toggle({label,on,onChange}:{label:string;on:boolean;onChange:(on:boolea
  </button>;
 }
 /** A thin divider between the parts of a section (the camera's angle, distance and lens), with room around it. */
-function SectionRule(){return <hr aria-hidden="true" className="my-1 border-0 border-t border-line-secondary"/>;}
+function SectionRule(){return <hr aria-hidden="true" className="my-1 border-0 border-t border-line-secondary/40"/>;}
 /** One labelled view tile (the camera's side and top views): bordered, the label above the drawing. */
 function Tile({label,children}:{label:string;children:ReactNode}){
  return <div className="flex min-w-0 flex-col gap-1 rounded-card border border-line-secondary p-2">
