@@ -4,7 +4,7 @@ import {Box,ChevronDown,Lock,LockOpen,Plus,RotateCcw,Trash2,X} from "lucide-reac
 import {Button,Icon} from "@aleeforoughi/feather-react";
 import {FOCUS_DETAILS,LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
- SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
+ SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 import {fa} from "@/lib/format";
 
@@ -143,12 +143,35 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
     {editable&&<SliderRow label="ارتفاع دوربین" ends={["پایین","بالا"]} valueText={CAMERA_ANGLE_FA[draft.cameraAngle]+" · "+fa(Math.round(elevationOf(draft)))+"°"} min={-60} max={85} step={1} value={elevationOf(draft)}
      onChange={setElevation}/>}
     {editable&&<SliderRow label="چرخش دور سوژه (۳۶۰°)" ends={["چپ","راست"]} valueText={orbitFa(draft.cameraAzimuth??0)} min={-180} max={180} step={1} value={draft.cameraAzimuth??0} onChange={orbitTo}/>}
-    {editable&&<div className="flex justify-center"><Chip on={draft.cameraAngle==="dutch"} onClick={()=>set({cameraAngle:draft.cameraAngle==="dutch"?snapElevation(elevationOf(draft)):"dutch"})}>زاویهٔ کج</Chip></div>}
+    {/* The Dutch (canted) angle as a smooth tilt, and the two shot types that change how the camera relates to the subject. */}
+    {editable&&<SliderRow label="زاویهٔ کج (داچ)" ends={["به چپ","به راست"]} valueText={rollOf(draft)?fa(Math.abs(Math.round(rollOf(draft))))+"° "+(rollOf(draft)>0?"به راست":"به چپ"):"صاف"}
+     min={-30} max={30} step={1} value={rollOf(draft)} onChange={v=>setDraft(d=>{const {cameraRoll:_r,...rest}=d;void _r;
+      return v===0?{...rest,cameraAngle:d.cameraAngle==="dutch"?snapElevation(elevationOf(d)):d.cameraAngle}:{...rest,cameraRoll:v,cameraAngle:"dutch"};})}/>}
+    {editable&&<div className="flex flex-wrap justify-center gap-1" role="radiogroup" aria-label="نوع نما">
+     {([[undefined,"معمولی"],["ots","روی شانه (OTS)"],["pov","دید سوژه (POV)"]] as const).map(([v,l])=><Chip key={l} role="radio" on={draft.shotStyle===v}
+      onClick={()=>setDraft(d=>{const {shotStyle:_s,...rest}=d;void _s;return v?{...rest,shotStyle:v}:rest;})}>{l}</Chip>)}</div>}
     {/* The camera's distance on its own tile, after the angles: drag the camera nearer or farther (the frame's zoom follows), or use the slider. */}
     <Tile label="فاصله دوربین">
      <DistanceView staging={draft} editable={editable} onDistance={setDistance}/>
     </Tile>
     {editable&&<SliderRow label="فاصلهٔ دوربین (همون زوم کادر)" ends={["نزدیک","دور"]} valueText={SHOT_SIZE_FA[draft.shotSize]+" · زوم "+fa(zoomFactor(draft))+"×"} min={0} max={1} step={0.001} value={distanceOf(draft)} onChange={setDistance}/>}
+    {/* Lens and aperture: Whoush's pick for the scene (lib/staging.ts, lensFor) until the user moves a slider; bokeh is the aperture opened wide. */}
+    {editable&&(()=>{const l=lensFor(draft),auto=(on:boolean)=>on?" · خودکار":"";
+     return <>
+      <SliderRow label="لنز (فاصلهٔ کانونی)" ends={["واید","تله"]} valueText={fa(l.focalLengthMm)+" میلی‌متر"+auto(l.auto.lens)} min={0} max={1} step={0.001} value={lensSlider(l.focalLengthMm)}
+       onChange={v=>set({lensMm:lensFromSlider(v)})}/>
+      <SliderRow label="دیافراگم" ends={["باز، محو","بسته، واضح"]} valueText={l.aperture+auto(l.auto.aperture)} min={0} max={1} step={0.001} value={apertureSlider(l.apertureF)}
+       onChange={v=>set({apertureF:apertureFromSlider(v)})}/>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+       {/* A plain toggle: «بوکه» and its switch (on: the aperture opens wide for a soft background; off: stopped down, everything sharp). */}
+       <button type="button" role="switch" aria-checked={!l.deep} aria-label="بوکه" onClick={()=>set({apertureF:l.deep?1.8:8})}
+        className="flex min-h-9 items-center gap-2 rounded-control px-1 type-label text-fg-primary outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+        <span>بوکه</span>
+        <span dir="ltr" className={"relative inline-block h-5 w-9 shrink-0 rounded-full transition-colors motion-reduce:transition-none "+(!l.deep?"bg-primary":"bg-surface-hover")}><span className={"absolute top-0.5 size-4 rounded-full transition-[inset-inline-start] motion-reduce:transition-none "+(!l.deep?"start-4.5 bg-primary-foreground":"start-0.5 bg-fg-secondary")}/></span>
+       </button>
+       {(!l.auto.lens||!l.auto.aperture)&&<Button type="button" variant="ghost" size="sm" onClick={()=>setDraft(d=>{const {lensMm:_l,apertureF:_a,...rest}=d;void _l;void _a;return rest;})}>انتخاب خودکار هووش</Button>}
+      </div>
+     </>;})()}
    </Viewport></div>
    <div>
     <Viewport {...cap.light}>
@@ -272,8 +295,8 @@ function DistanceView({staging,editable,onDistance}:{staging:Staging;editable:bo
  const m=mainProp(staging),kind=m?.kind,size=kind?Math.min(116,PROP_HEIGHT[kind]*116):70;
  const focusY=kind?ground-size*(kind==="person"?0.88:0.5):ground-30;
  const dist=distanceOf(staging),camX=NEAR+(FAR-NEAR)*dist;
- // The subject faces the camera's side the way it really faces the camera (as in the vertical angle tile with the camera on the right).
- const fr=m?facingOf(m)*Math.PI/180:0,sp=m?sprite({...m,facing:Math.atan2(Math.cos(fr),-Math.sin(fr))*180/Math.PI}):undefined,mTint=m?propTints(staging.props??[])[(staging.props??[]).indexOf(m)]:undefined;
+ // The subject as the camera sees it, the same image as the frame and the vertical angle tile.
+ const sp=m?sprite(m):undefined,mTint=m?propTints(staging.props??[])[(staging.props??[]).indexOf(m)]:undefined;
  const toDist=(e:PointerEvent)=>{const r=svg.current!.getBoundingClientRect();const x=(e.clientX-r.left)*VW/r.width-grab.current;return Math.max(0,Math.min(1,(x-NEAR)/(FAR-NEAR)));};
  const key=(e:KeyboardEvent)=>{const d={ArrowRight:0.05,ArrowUp:0.05,ArrowLeft:-0.05,ArrowDown:-0.05}[e.key as "ArrowUp"];if(!d)return;e.preventDefault();onDistance(Math.max(0,Math.min(1,dist+d)));};
  return <svg ref={svg} viewBox={"0 0 "+VW+" "+VH} className="mx-auto block w-full touch-pan-y select-none text-fg-primary" style={{aspectRatio:VW+"/"+VH}} aria-hidden={!editable}
@@ -308,21 +331,18 @@ function CameraView({staging,editable,onCamera}:{staging:Staging;editable:boolea
  const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false),tint=useId();
  // Which side of the subject the camera is drawn on (1: right). It changes when a drag carries the camera over the top, so nothing jumps.
  const [dragSide,setSide]=useState<1|-1>(1);
- // The camera is drawn on the same side of the subject as in the top view (its left or right there); straight in front of or behind the subject (where
- // the top view cannot say), on the side the last drag left it.
- const sAz=Math.sin((staging.cameraAzimuth??0)*Math.PI/180),side:1|-1=Math.abs(sAz)>0.05?(sAz>0?1:-1):dragSide;
- // How the subject faces in this diagram (sprite angle: 90 faces right, 0 faces the viewer, 180 its back), from its facing to the camera: its front toward
- // the camera's side, away from it, or toward or away from the diagram's viewer when the camera sees it side on, exactly as the top view shows it.
- const gOf=(f:number)=>{const r=f*Math.PI/180;return Math.atan2(side*Math.cos(r),-side*Math.sin(r))*180/Math.PI;};
+ // The camera stays on its side of this diagram (the right, unless a drag carried it over the top): orbiting never makes it jump; the subject turns instead.
+ const side:1|-1=dragSide;
  const VW=220,VH=210,focus:[number,number]=[110,104];
  const m=mainProp(staging),kind=m?.kind;
  const size=kind?Math.min(92,PROP_HEIGHT[kind]*92):58,ground=Math.min(VH-8,focus[1]+(kind==="person"?size*0.9:size*0.55));
  // Angle only: the camera stays at one distance here (the distance has its own tile).
  const elev=elevationOf(staging),R=56;
  const phi=side===1?elev:180-elev,[cx,cy]=polar(focus[0],focus[1],R,-phi);
- const aim=Math.atan2(focus[1]-cy,focus[0]-cx)*180/Math.PI,roll=staging.cameraAngle==="dutch"?14:0,camLeft=cx<focus[0];
+ const aim=Math.atan2(focus[1]-cy,focus[0]-cx)*180/Math.PI,roll=rollOf(staging),camLeft=cx<focus[0];
  // The subject as this diagram's viewer sees it: facing the camera's side when it faces the camera (sprite: 90 faces right, 0 faces the viewer).
- const sp=m?sprite({...m,facing:wrap180(gOf(facingOf(m)))}):undefined;
+ // The subject as the camera sees it (front, three-quarter, profile, rear three-quarter or back), the same image as the frame: orbiting behind it shows its back.
+ const sp=m?sprite(m):undefined;
  const mTint=m?propTints(staging.props??[])[(staging.props??[]).indexOf(m)]:undefined;
  const at=(e:PointerEvent)=>{const r=svg.current!.getBoundingClientRect();const x=(e.clientX-r.left)*VW/r.width-focus[0],y=(e.clientY-r.top)*VH/r.height-focus[1];
   const psi=Math.atan2(-y,x)*180/Math.PI,s2:1|-1=x>=0?1:-1;
@@ -340,12 +360,6 @@ function CameraView({staging,editable,onCamera}:{staging:Staging;editable:boolea
   <line x1={6} x2={VW-6} y1={ground} y2={ground} stroke="currentColor" strokeOpacity=".3" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
   {mTint&&<Tint id={tint+"-m"} color={mTint}/>}
   {kind&&sp?<Asset id={sp.id} x={focus[0]} y={ground} h={size} mirror={sp.mirror} sx={sp.sx} tint={mTint?tint+"-m":undefined}/>:<><Asset id="env-mountains" x={focus[0]} y={ground} h={52}/><Asset id="env-tree" x={focus[0]+44} y={ground} h={30}/></>}
-  {/* Which way the subject faces, as an arrow at chest height (the same facing as the top view's arrow): toward the camera, away from it, or toward the
-      viewer (a dot) when the camera sees it side on. The faceless figure alone does not say it clearly. */}
-  {kind&&m&&(()=>{const g=gOf(facingOf(m)),dx=Math.sin(g*Math.PI/180),y=ground-size*(kind==="person"?0.62:0.5),x0=focus[0]+dx*size*0.14,x1=focus[0]+dx*size*0.42;
-   return <g className="pointer-events-none" aria-hidden="true">{Math.abs(dx)<0.35?<circle cx={focus[0]} cy={y} r={2.6} className="fill-primary"/>
-    :<><line x1={x0} y1={y} x2={x1} y2={y} className="stroke-primary" strokeWidth={1.4} vectorEffect="non-scaling-stroke"/>
-     <path d={"M"+(x1+Math.sign(dx)*3)+" "+y+" L"+(x1-Math.sign(dx)*3)+" "+(y-3.5)+" L"+(x1-Math.sign(dx)*3)+" "+(y+3.5)+"Z"} className="fill-primary"/></>}</g>;})()}
   <line x1={cx} y1={cy} x2={focus[0]} y2={focus[1]} className="stroke-primary" strokeWidth={1.2} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
   <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="ارتفاع و فاصلهٔ دوربین (۳۶۰ درجه)" aria-valuetext={CAMERA_ANGLE_FA[staging.cameraAngle]+"، "+Math.round(elev)+" درجه، "+orbitFa(staging.cameraAzimuth??0)+"، زوم "+zoomFactor(staging)+"×"}
    aria-valuemin={-60} aria-valuemax={85} aria-valuenow={Math.round(elev)}
@@ -637,6 +651,14 @@ function LightView({staging,editable,selected,onSelect,onLight}:{staging:Staging
  </svg>;
 }
 
+/** The camera's roll (Dutch angle) in degrees: set, or the planner's «dutch» at 14°. */
+const rollOf=(s:Staging)=>s.cameraRoll??(s.cameraAngle==="dutch"?14:0);
+/** Lens and aperture sliders run on log scales (a lens from 12 to 200mm, f/1.4 to f/16), smooth, the way photographers feel the steps. */
+const LENS_RANGE=[12,200] as const,F_RANGE=[1.4,16] as const;
+const lensSlider=(mm:number)=>Math.max(0,Math.min(1,Math.log(mm/LENS_RANGE[0])/Math.log(LENS_RANGE[1]/LENS_RANGE[0])));
+const lensFromSlider=(v:number)=>Math.round(LENS_RANGE[0]*Math.pow(LENS_RANGE[1]/LENS_RANGE[0],v));
+const apertureSlider=(f:number)=>Math.max(0,Math.min(1,Math.log(f/F_RANGE[0])/Math.log(F_RANGE[1]/F_RANGE[0])));
+const apertureFromSlider=(v:number)=>Math.round(F_RANGE[0]*Math.pow(F_RANGE[1]/F_RANGE[0],v)*10)/10;
 /** One labelled smooth slider (the second way to adjust, synced with the canvas). The value text is spoken and shown; the bar has a 32px tall touch area. */
 function SliderRow({label,valueText,min,max,step,value,onChange,disabled,ends}:{label:string;valueText:string;min:number;max:number;step:number;value:number;onChange:(v:number)=>void;disabled?:boolean;
  /** What the left and right ends mean («چپ», «راست»), shown under the bar. */ends?:[string,string]}){

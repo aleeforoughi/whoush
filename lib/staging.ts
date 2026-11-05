@@ -65,12 +65,12 @@ export function placementEn(f?:{x:number;y:number}):string{
 /** The arranged scene in Persian, for the plan's hard constraints (what the user set in the diagrams). */
 export function describeStagingFa(s:Staging):string{
  const lights=s.lights.map(l=>LIGHT_ROLE_FA[l.role]+": "+LIGHT_SOURCE_FA[l.source]+"، "+LIGHT_QUALITY_FA[l.quality]+"، "+LIGHT_DIRECTION_FA[l.direction]+"، ارتفاع "+LIGHT_HEIGHT_FA[l.height]+"، "+l.colorTemperatureK+" کلوین"+(l.intensity!==undefined?"، شدت "+intensityFa(l.intensity):"")+(l.colorHex?"، رنگ "+l.colorHex:""));
- return "صحنهٔ تنظیم‌شده: زاویهٔ دوربین «"+CAMERA_ANGLE_FA[s.cameraAngle]+"»"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+" درجه)":"")+(Math.abs(s.cameraAzimuth??0)>=1?"، دوربین "+orbitFa(s.cameraAzimuth!):"")+(s.focusDetail?"، تمرکز روی "+FOCUS_DETAIL_FA[s.focusDetail]:"")+"، کادر «"+SHOT_SIZE_FA[s.shotSize]+"»"+(s.shotScale!==undefined?" (زوم "+zoomFactor(s)+"×)":"")+(s.subject?"، سوژه: "+SUBJECT_FA[s.subject]:"")+"، جای سوژه: "+placementFa(s.framing)+(s.props?.length?"؛ "+describeLayoutFa(s.props):"")+"؛ "+lights.join("؛ ");
+ return "صحنهٔ تنظیم‌شده: زاویهٔ دوربین «"+CAMERA_ANGLE_FA[s.cameraAngle]+"»"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+" درجه)":"")+(Math.abs(s.cameraAzimuth??0)>=1?"، دوربین "+orbitFa(s.cameraAzimuth!):"")+(s.cameraRoll?"، زاویهٔ کج (داچ) "+Math.abs(Math.round(s.cameraRoll))+" درجه":"")+(s.shotStyle==="ots"?"، نمای روی شانه":s.shotStyle==="pov"?"، نمای دید سوژه":"")+(s.focusDetail?"، تمرکز روی "+FOCUS_DETAIL_FA[s.focusDetail]:"")+"، کادر «"+SHOT_SIZE_FA[s.shotSize]+"»"+(s.shotScale!==undefined?" (زوم "+zoomFactor(s)+"×)":"")+(s.subject?"، سوژه: "+SUBJECT_FA[s.subject]:"")+"، جای سوژه: "+placementFa(s.framing)+(s.props?.length?"؛ "+describeLayoutFa(s.props):"")+"؛ "+lights.join("؛ ");
 }
 /** The arranged scene in English, appended to the provider-facing media prompt. */
 export function describeStagingEn(s:Staging):string{
  const lights=s.lights.map(l=>l.role+" light: "+l.quality+" "+l.source.replace("_"," ")+" from "+DIR_EN[l.direction]+(l.angle!==undefined?" ("+Math.round(l.angle)+"° in top view)":"")+", "+LIGHT_HEIGHT_EN[l.height]+", "+l.colorTemperatureK+"K"+(l.intensity!==undefined?", "+Math.round(l.intensity*100)+"% strength":"")+(l.colorHex?" "+l.colorHex+" gel":""));
- return "Staging: "+ANGLE_EN[s.cameraAngle]+" camera"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+"° from eye level)":"")+(orbitEn(s.cameraAzimuth??0)?", "+orbitEn(s.cameraAzimuth??0):"")+(s.focusDetail?", framed on the main subject's "+(s.focusDetail==="feet"?"feet and shoes":s.focusDetail):"")+", "+SHOT_EN[s.shotSize]+(s.shotScale!==undefined?" ("+zoomFactor(s)+"x of a full shot)":"")+", "+placementEn(s.framing)+"; "+lights.join("; ")+"."+(s.props?.length?" "+describeLayoutEn(s.props):"");
+ return "Staging: "+ANGLE_EN[s.cameraAngle]+" camera"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+"° from eye level)":"")+(orbitEn(s.cameraAzimuth??0)?", "+orbitEn(s.cameraAzimuth??0):"")+(s.cameraRoll?", Dutch angle tilted "+Math.abs(Math.round(s.cameraRoll))+"° "+(s.cameraRoll>0?"clockwise":"counter-clockwise"):"")+(s.shotStyle==="ots"?", over-the-shoulder shot":s.shotStyle==="pov"?", point-of-view shot through the subject's eyes":"")+(s.focusDetail?", framed on the main subject's "+(s.focusDetail==="feet"?"feet and shoes":s.focusDetail):"")+", "+SHOT_EN[s.shotSize]+(s.shotScale!==undefined?" ("+zoomFactor(s)+"x of a full shot)":"")+", "+placementEn(s.framing)+"; "+lights.join("; ")+"."+(s.props?.length?" "+describeLayoutEn(s.props):"");
 }
 /** The subject a brief is about, from its words: a person, an animal, a vehicle, a product or object, or an environment when there is no single main subject. */
 export function detectSubject(normalizedText:string,hasCharacter=false):NonNullable<Staging["subject"]>{
@@ -127,6 +127,13 @@ export function describeStagingChangesFa(before:Staging,after:Staging,aspectBefo
  if(before.cameraAngle!==after.cameraAngle||Math.abs(eb-ea)>=2)out.push("زاویهٔ دوربین: "+arrow(CAMERA_ANGLE_FA[before.cameraAngle]+" ("+Math.round(eb)+"°)",CAMERA_ANGLE_FA[after.cameraAngle]+" ("+Math.round(ea)+"°)"));
  if(before.shotSize!==after.shotSize||Math.abs(Math.log(scaleOf(before)/scaleOf(after)))>0.03)out.push("کادر: "+arrow(SHOT_SIZE_FA[before.shotSize]+" (زوم "+zoomFactor(before)+"×)",SHOT_SIZE_FA[after.shotSize]+" (زوم "+zoomFactor(after)+"×)"));
  if(Math.abs(wrap180((after.cameraAzimuth??0)-(before.cameraAzimuth??0)))>=2)out.push("چرخش دوربین: "+arrow(orbitFa(before.cameraAzimuth??0),orbitFa(after.cameraAzimuth??0)));
+ if(Math.round(before.cameraRoll??0)!==Math.round(after.cameraRoll??0))out.push("زاویهٔ کج (داچ): "+arrow(Math.round(before.cameraRoll??0)+"°",Math.round(after.cameraRoll??0)+"°"));
+ const style=(s:Staging)=>s.shotStyle==="ots"?"روی شانه":s.shotStyle==="pov"?"دید سوژه":"معمولی";
+ if(style(before)!==style(after))out.push("نوع نما: "+arrow(style(before),style(after)));
+ // The lens and aperture only when the user set them (Whoush's own pick follows the other changes by itself).
+ const lb=lensFor(before),la=lensFor(after);
+ if(before.lensMm!==after.lensMm&&lb.focalLengthMm!==la.focalLengthMm)out.push("لنز: "+arrow(lb.focalLengthMm+"mm",la.focalLengthMm+"mm"));
+ if(before.apertureF!==after.apertureF&&lb.aperture!==la.aperture)out.push("دیافراگم: "+arrow(lb.aperture,la.aperture)+(la.deep?"":" (بوکه)"));
  const dom=(s:Staging)=>{const m=(s.props??[]).find(p=>p.main);return m?(s.focusDetail&&m.kind==="person"?FOCUS_DETAIL_FA[s.focusDetail]+"ِ ":"")+m.label:"";};
  if(dom(before)!==dom(after))out.push("سوژهٔ اصلی: "+arrow(dom(before)||"—",dom(after)||"—"));
  if(placementFa(before.framing)!==placementFa(after.framing))out.push("جای سوژه: "+arrow(placementFa(before.framing),placementFa(after.framing)));
@@ -425,7 +432,7 @@ export function orbitEn(az:number):string{
 }
 
 // ---- the lens for the scene: Whoush picks the focal length and aperture that serve what the scene shows ----
-export type LensChoice={focalLengthMm:number;aperture:string;iso:number;macro:boolean;deep:boolean;
+export type LensChoice={focalLengthMm:number;aperture:string;apertureF:number;iso:number;macro:boolean;deep:boolean;auto:{lens:boolean;aperture:boolean};
  /** Why, in Persian, for the plan («پرتره نزدیک: لنز ۸۵ میلی‌متری با دیافراگم f/1.8 برای پس‌زمینهٔ محو») */fa:string;
  /** The provider-facing direction */en:string};
 /**
@@ -465,13 +472,18 @@ export function lensFor(s:Staging):LensChoice{
  // Low light (fire, candles, a lamp, the moon, or very warm light only): open up a stop and raise the ISO instead of losing the shot to noise or blur.
  const lowLight=s.lights.length>0&&s.lights.every(l=>l.source==="fire"||l.source==="practical"||l.source==="moon"||l.colorTemperatureK<=2400);
  if(lowLight&&!macro)ap=Math.max(1.4,ap>=8?4:ap>=5.6?2.8:ap>=4?2:ap);
+ // The user's own lens and aperture win over Whoush's pick.
+ const userLens=s.lensMm!==undefined,userAp=s.apertureF!==undefined;
+ if(userLens){f=Math.round(s.lensMm!);macro=false;}
+ if(userAp)ap=Math.round(s.apertureF!*10)/10;
+ if(userLens||userAp)why="تنظیم تو";
  const iso=lowLight?1600:sc>=2.4?100:200;
  const deep=ap>=5.6;
  const apText="f/"+(ap<4||!Number.isInteger(ap)?ap.toFixed(1):String(ap));
  const n=(x:number)=>String(x).replace(/\d/g,d=>"۰۱۲۳۴۵۶۷۸۹"[Number(d)]);
  const fa=why+": لنز "+(macro?"ماکرو ":"")+n(f)+" میلی‌متری با دیافراگم "+apText+(deep?(together?" تا همهٔ سوژه‌ها واضح بمانند":" تا همه‌چیز واضح بماند"):" برای پس‌زمینهٔ محو (بوکه)")+(steep?"؛ زاویهٔ تند دوربین، لنز بازتر":"")+(lowLight?"؛ نور کم، دیافراگم بازتر و ISO "+n(iso):"")+(detail?"؛ فوکوس روی "+FOCUS_DETAIL_FA[detail]:"");
  const en="Lens: "+f+"mm"+(macro?" macro":"")+" at "+apText+(deep?", deep focus"+(together?" keeping every subject sharp":""):", shallow depth of field with soft bokeh")+(steep?", wide for the steep perspective":"")+(lowLight?", low light: ISO "+iso:"")+(detail?", focus on the subject's "+(detail==="feet"?"feet and shoes":detail)+"":"")+".";
- return {focalLengthMm:f,aperture:apText,iso,macro,deep,fa,en};
+ return {focalLengthMm:f,aperture:apText,apertureF:ap,iso,macro,deep,fa,en,auto:{lens:!userLens,aperture:!userAp}};
 }
 
 // ---- continuous adjustment (smooth controls; the named values are the nearest description) ----

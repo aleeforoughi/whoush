@@ -134,6 +134,10 @@ export const StagingSchema=z.object({subject:z.enum(SUBJECTS).optional(),cameraA
  cameraElevation:z.number().min(-60).max(85).optional(),
  /** How far the camera has orbited around the main subject from Whoush's view, in degrees: positive to the subject's left (the viewer's right), ±180 behind it. */
  cameraAzimuth:z.number().min(-180).max(180).optional(),
+ /** A Dutch (canted) angle: the camera rolled this many degrees (positive clockwise); unset or 0: level. */cameraRoll:z.number().min(-45).max(45).optional(),
+ /** A shot type: over the shoulder of another person, or the subject's own point of view. */shotStyle:z.enum(["ots","pov"]).optional(),
+ /** The user's own lens and aperture (unset: Whoush picks them for the scene, lib/staging.ts lensFor). */
+ lensMm:z.number().min(8).max(600).optional(),apertureF:z.number().min(0.95).max(22).optional(),
  /** The part of the main subject the shot is about, from the brief (face, eyes, hands, feet and shoes, jewelry): the zoom centres on it and the lens serves it. */
  focusDetail:z.enum(FOCUS_DETAILS).optional(),
  shotSize:z.enum(SHOT_SIZES),

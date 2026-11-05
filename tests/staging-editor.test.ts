@@ -299,3 +299,18 @@ test("the frame's centre point: on the dominant subject's face by default; movin
  const up=moveFocusPoint(s,s,W,H,W*0.5,H*0.2),s3={...s,...up},[ux,uy]=frameCamera({...s3,shotScale:2},s,W,H).toScreen(frameCamera(s3,s,W,H).F[0],frameCamera(s3,s,W,H).F[1]);
  assert.ok(Math.abs(ux-W*0.5)<0.01&&Math.abs(uy-H*0.2)<0.01,"also high in the frame, at any zoom");
 });
+
+test("Dutch angle, shot types, and the user's own lens and aperture (bokeh) reach Whoush and the provider; unset, Whoush picks",async()=>{
+ const {lensFor,describeStagingEn,describeStagingFa,describeStagingChangesFa}=await import("../lib/staging");
+ const s:Staging={...base,shotSize:"close_up",props:[{kind:"person",label:"زن",x:0,z:-0.25,y:0,main:true}]};
+ const auto=lensFor(s);assert.deepEqual(auto.auto,{lens:true,aperture:true});
+ const mine=lensFor({...s,lensMm:35,apertureF:11});
+ assert.deepEqual([mine.focalLengthMm,mine.aperture,mine.deep,mine.auto.lens],[35,"f/11",true,false]);assert.match(mine.en,/Lens: 35mm at f\/11, deep focus/);
+ const bokeh=lensFor({...s,apertureF:1.8});assert.equal(bokeh.deep,false);assert.match(bokeh.en,/bokeh/);
+ const tilted:Staging={...s,cameraRoll:-20,cameraAngle:"dutch",shotStyle:"ots"};
+ assert.match(describeStagingEn(tilted),/Dutch angle tilted 20° counter-clockwise, over-the-shoulder shot/);
+ assert.match(describeStagingFa(tilted),/زاویهٔ کج \(داچ\) 20 درجه، نمای روی شانه/);
+ const lines=describeStagingChangesFa(s,{...tilted,lensMm:35});
+ assert.ok(lines.some(l=>l.startsWith("زاویهٔ کج"))&&lines.some(l=>l.startsWith("نوع نما"))&&lines.some(l=>l.startsWith("لنز")));
+ assert.ok(CreativeTurnInputSchema.shape.stagingOverride.safeParse({...tilted,lensMm:35,apertureF:1.8}).success);
+});
