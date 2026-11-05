@@ -35,7 +35,7 @@
 - **Removed:** the bottle, car, building and tree images (they're cubes now).
 
 ## Beta: characters only
-«بوم»'s frame draws only the characters: people and the pets with their own images (cat, dog, horse). Other props (objects, vehicles, buildings, trees, other animals) stay in the scene, the plan and the provider prompt, but the frame doesn't draw them and the focus can't be placed on them (`isCharacter`). A scene with props but no character shows no frame, only the camera and the lighting (`showsFrame`). A scene with only a place keeps its frame.
+«بوم»'s frame draws only the characters: people and the pets with their own images (cat, dog, horse). Other props (objects, vehicles, buildings, trees, other animals) stay in the scene, the plan and the provider prompt, but the frame doesn't draw them and the focus can't be placed on them (`isCharacter`). A scene without a character (only a place, or only other props) shows no frame, only the camera and the lighting (`showsFrame`).
 
 ## The frame renderer
 - **CSS 3D (Plan A, default):** `components/frame-css.tsx` with `lib/frame-css.ts`. It uses one pinhole camera, the same one the prompt uses (`camera3D`).

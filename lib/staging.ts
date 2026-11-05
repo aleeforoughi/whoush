@@ -292,11 +292,11 @@ export function petOf(p:Pick<SceneProp,"kind"|"label">):"cat"|"dog"|"horse"|unde
 }
 /**
  * The characters: people and the pets with their own figures. In the beta, «بوم»'s frame draws only these (the other props stay in the scene and in the
- * prompt); a scene with props but no character shows no frame, only the camera and the lighting.
+ * prompt); a scene without a character (a place alone, or only other props) shows no frame, only the camera and the lighting.
  */
 export const isCharacter=(p:Pick<SceneProp,"kind"|"label">)=>p.kind==="person"||Boolean(petOf(p));
-/** Whether the frame is shown: a scene with only a place, or with at least one character. */
-export const showsFrame=(props:readonly SceneProp[]|undefined)=>!props?.length||props.some(isCharacter);
+/** Whether the frame is shown (beta): only when the scene has at least one character; a place alone, or props without a character, show no frame. */
+export const showsFrame=(props:readonly SceneProp[]|undefined)=>Boolean(props?.some(isCharacter));
 /** Drawn as a cube at its real size: any object, vehicle, building or tree, and an animal that is not one of the pets. */
 export const isCube=(p:Pick<SceneProp,"kind"|"label">)=>p.kind!=="person"&&!petOf(p);
 /**

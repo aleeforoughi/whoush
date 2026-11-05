@@ -267,7 +267,7 @@ test("beta: the frame draws only characters (people and the pets); props but no 
  assert.ok(!isCharacter(k("animal","پرنده"))&&!isCharacter(k("object","میز"))&&!isCharacter(k("vehicle","ماشین")));
  assert.equal(showsFrame([k("object","میز"),k("vehicle","ماشین")]),false,"props but no character: camera and lighting only");
  assert.equal(showsFrame([k("object","میز"),k("person","مرد")]),true);
- assert.equal(showsFrame([]),true,"a place alone still shows");
+ assert.equal(showsFrame([]),false,"a place alone: camera and lighting only");
  // A box is not something the focus can land on while it is hidden.
  const desk={kind:"object" as const,label:"میز",x:0,z:-0.25,y:0,main:true},s:Staging={...base,shotSize:"medium",props:[desk]};
  assert.notEqual(pickPivot(s,s,"16:9",0.5,0.6).on,0);
