@@ -5,10 +5,10 @@ import {INSERT_MENU,menuRoles} from "../lib/insert-menu";
 
 test("INSERT_MENU: groups and items in the curated order, with «پرکاربردترین» first",()=>{
  assert.deepEqual(INSERT_MENU.map(g=>g.labelFa),["پرکاربردترین","تصویر","ویدیو","صدا","فایل"]);
- assert.deepEqual(INSERT_MENU[0].items.map(i=>[i.titleFa,i.action.type]),[["آپلود با نقش خودکار","auto"],["کاراکتر","role"],["فریم اول","role"],["ادیت عکس","role"],["لباس و کفش","role"],["الگوی گفتار","role"]]);
+ assert.deepEqual(INSERT_MENU[0].items.map(i=>[i.titleFa,i.action.type]),[["آپلود با نقش خودکار","auto"],["عکس رفرنس","role"],["کاراکتر","role"],["فریم","role"],["پوشاک","role"],["الگوی گفتار","role"]]);
  const titles=(id:string)=>INSERT_MENU.find(g=>g.id===id)!.items.map(i=>i.titleFa);
- assert.deepEqual(titles("image"),["کاراکتر","کاراکترهای من","فریم اول","فریم آخر","محیط","اشیا","لباس و کفش","پیرایش","آرایش","لوگو و گرافیک","ادیت عکس"]);
- assert.deepEqual(titles("video"),["الگوی حرکت","ادیت ویدیو","امتداد ویدیو"]);
+ assert.deepEqual(titles("image"),["عکس رفرنس","کاراکتر","کاراکترهای من","پیرایش","پوشاک","محیط","اشیا","گرافیک","فریم"],"owner list of 2026-11-05, «کاراکترهای من» right after کاراکتر");
+ assert.deepEqual(titles("video"),["فیلم رفرنس","الگوی حرکت"]);
  assert.deepEqual(titles("audio"),["الگوی گفتار","موزیک"]);
  assert.deepEqual(titles("file"),["فایل"]);assert.equal(INSERT_MENU[4].items[0].hintFa,"PDF، JSON یا Markdown برای زمینه");assert.equal(FILE_MENU_FA.labelFa,"فایل");
 });
@@ -27,7 +27,8 @@ test("INSERT_MENU: every entry has a Persian title, a one-line hint, an icon and
  for(const i of items){assert.match(i.titleFa,/[؀-ۿ]/);assert.ok(i.hintFa.length>0&&!i.hintFa.includes("\n"),i.id);assert.ok(i.icon,i.id);assert.ok(["auto","role","file","characters"].includes(i.action.type));}
  assert.equal(items.filter(i=>i.action.type==="characters").length,1);
  assert.equal(items.find(i=>i.id==="image:hairstyle")!.hintFa,"مدل مو و فرم ریش");
- assert.equal(items.find(i=>i.id==="video:continue")!.hintFa,"از آخر همین ویدیو امتداد پیدا می‌کنه");
+ assert.equal(items.find(i=>i.id==="image:frame")!.hintFa,"فریم اول یا آخر ویدیو؛ از متنت مشخص می‌شه");
+ for(const gone of ["image:start_frame","image:end_frame","image:makeup","image:edit_reference","video:edit_reference","video:continue"])assert.ok(!items.some(i=>i.id===gone),gone+" left the menu");
 });
 test("INSERT_MENU: «پرکاربردترین» shortcuts repeat entries of the kind groups with the same action",()=>{
  const g=INSERT_MENU[0];assert.equal(g.featured,true);
@@ -39,4 +40,27 @@ test("INSERT_MENU: style is no longer a menu group (it is the «سبک» setting
  assert.ok(!INSERT_MENU.some(g=>(g.id as string)==="style"));
  assert.ok(INSERT_MENU.flatMap(g=>g.items).every(i=>["auto","role","file","characters"].includes(i.action.type)));
  assert.equal(menuRoles().length,INSERT_MENU.filter(x=>!x.featured).flatMap(x=>x.items).filter(i=>i.action.type==="role").length,"popular shortcuts are not counted twice");
+});
+test("visible menu: «پرکاربردترین» is hidden for now; the automatic upload stays alone at the top; the kind groups follow",async()=>{
+ const {SHOW_POPULAR,visibleInsertMenu}=await import("../lib/insert-menu");
+ assert.equal(SHOW_POPULAR,false);
+ const v=visibleInsertMenu();
+ assert.deepEqual(v.map(s=>s.labelFa),[undefined,"تصویر","ویدیو","صدا","فایل"]);
+ assert.deepEqual(v[0].items.map(i=>i.action.type),["auto"]);
+ assert.ok(!JSON.stringify(v).includes("پرکاربردترین")&&!v.flatMap(s=>s.items).some(i=>i.id.startsWith("popular:")));
+ assert.equal(visibleInsertMenu(true)[0].labelFa,"پرکاربردترین","the switch brings it back");
+});
+test("menu search: folds Persian letter variants and ZWNJ, matches title, hint or group label, every word must match",async()=>{
+ const {filterInsertMenu,foldSearch,visibleInsertMenu}=await import("../lib/insert-menu");
+ const v=visibleInsertMenu(),ids=(q:string)=>filterInsertMenu(v,q).flatMap(s=>s.items.map(i=>i.id));
+ assert.deepEqual(ids(""),v.flatMap(s=>s.items.map(i=>i.id)),"empty query: everything");
+ assert.deepEqual(ids("کاراکتر"),["image:character","characters"]);
+ assert.deepEqual(ids("ويدئو"),["image:frame","video:reference","video:motion_reference"],"Arabic ي and ئ fold; the video group label matches, and «فریم» through its hint");
+ assert.deepEqual(ids("کفش"),["image:outfit"],"the hint matches");assert.deepEqual(ids("رفرنس"),["image:reference","video:reference"]);
+ assert.deepEqual(ids("عکس‌رفرنس"),["image:reference"],"ZWNJ and spaces ignored");
+ assert.deepEqual(ids("ریش"),["image:hairstyle"],"the hint matches");
+ assert.deepEqual(ids("PDF"),["file"]);
+ assert.deepEqual(ids("تصویر فریم"),["image:frame"],"every word must match");
+ assert.deepEqual(ids("zzz"),[]);assert.equal(filterInsertMenu(v,"zzz").length,0,"empty sections are dropped");
+ assert.equal(foldSearch("  ويديو‌ها ۱٢ "),"ویدیوها 12");
 });

@@ -2,7 +2,7 @@
 import {faPlain} from "./format";
 import {normalizePersian} from "./safety";
 export type AttachmentKind="image"|"video"|"audio"|"pdf"|"json"|"md";
-export type AttachmentRole="character"|"start_frame"|"end_frame"|"environment"|"object"|"outfit"|"hairstyle"|"makeup"|"graphic"|"edit_reference"|"motion_reference"|"continue"|"lip_sync"|"music"|"voice_clone"|"general";
+export type AttachmentRole="reference"|"frame"|"character"|"start_frame"|"end_frame"|"environment"|"object"|"outfit"|"hairstyle"|"makeup"|"graphic"|"edit_reference"|"motion_reference"|"continue"|"lip_sync"|"music"|"voice_clone"|"general";
 export type AttachmentSpeech={hasSpeech:boolean;language:"fa"|"other"|"unknown";accent:"tehrani"|"original"|"unspecified"};
 const MB=1024*1024;
 export const ATTACHMENT_KINDS={
@@ -26,24 +26,24 @@ type RoleDef={id:AttachmentRole;labelFa:string;hintFa:string;en:string};
  * The roles the UI offers per media kind, in menu order (most used first): English ids on the wire, Persian labels and one-line hints in the UI. Files (pdf, json, md) have no role.
  * Choosing a role is OPTIONAL: without one, Whoush infers it from the brief (`inferAttachmentRoles`). `en` is the provider-facing phrase used when a mention is rewritten for the media prompt.
  * `general` is an internal inferred role only. `voice_clone` is NOT offered anywhere in the UI; the server still accepts it (with consent) only to refuse it, see `WIRE_ONLY_ROLES`.
+ * Owner list of 2026-11-05. Two roles are categories that Whoush narrows from the brief (`resolveChosenRole`), so the planner always sees a concrete role:
+ * `reference` (عکس رفرنس / فیلم رفرنس) becomes the edit source when the brief asks to change it (a video: to continue it), otherwise a general reference;
+ * `frame` (فریم) becomes the start or the end frame (the brief decides; two frames without a hint are first and last).
  */
 export const ATTACHMENT_ROLES={
  image:[
+  {id:"reference",labelFa:"عکس رفرنس",hintFa:"ظاهر، سبک یا محتوا؛ هووش از متنت می‌فهمه",en:"image reference"},
   {id:"character",labelFa:"کاراکتر",hintFa:"چهره و هویت ثابت می‌مونه",en:"character"},
-  {id:"start_frame",labelFa:"فریم اول",hintFa:"همین عکس متحرک می‌شه",en:"start frame"},
-  {id:"end_frame",labelFa:"فریم آخر",hintFa:"ویدیو به همین عکس ختم می‌شه",en:"end frame"},
+  {id:"hairstyle",labelFa:"پیرایش",hintFa:"مدل مو و فرم ریش",en:"hairstyle and beard reference"},
+  {id:"outfit",labelFa:"پوشاک",hintFa:"لباس، کفش و استایل پوشش روی سوژه",en:"outfit reference"},
   {id:"environment",labelFa:"محیط",hintFa:"فضا، پس‌زمینه و نور",en:"environment"},
   {id:"object",labelFa:"اشیا",hintFa:"شیء، محصول یا اکسسوری دقیق می‌مونه",en:"object"},
-  {id:"outfit",labelFa:"لباس و کفش",hintFa:"لباس، کفش و استایل پوشش روی سوژه",en:"outfit reference"},
-  {id:"hairstyle",labelFa:"پیرایش",hintFa:"مدل مو و فرم ریش",en:"hairstyle and beard reference"},
-  {id:"makeup",labelFa:"آرایش",hintFa:"آرایش صورت با همین رنگ‌ها",en:"makeup reference"},
-  {id:"graphic",labelFa:"لوگو و گرافیک",hintFa:"لوگو، متن یا طرح بدون تغییر",en:"graphic"},
-  {id:"edit_reference",labelFa:"ادیت عکس",hintFa:"فقط همون بخشی که می‌گی عوض می‌شه",en:"edit reference"}
+  {id:"graphic",labelFa:"گرافیک",hintFa:"لوگو، متن یا طرح بدون تغییر",en:"graphic"},
+  {id:"frame",labelFa:"فریم",hintFa:"فریم اول یا آخر ویدیو؛ از متنت مشخص می‌شه",en:"video frame"}
  ],
  video:[
-  {id:"motion_reference",labelFa:"الگوی حرکت",hintFa:"حرکت و ریتم این ویدیو با ظاهر جدید",en:"motion reference"},
-  {id:"edit_reference",labelFa:"ادیت ویدیو",hintFa:"همین ویدیو با تغییری که می‌خوای",en:"edit reference"},
-  {id:"continue",labelFa:"امتداد ویدیو",hintFa:"از آخر همین ویدیو امتداد پیدا می‌کنه",en:"video to continue"}
+  {id:"reference",labelFa:"فیلم رفرنس",hintFa:"ادیت، امتداد یا حال‌وهوای همین ویدیو؛ از متنت مشخص می‌شه",en:"video reference"},
+  {id:"motion_reference",labelFa:"الگوی حرکت",hintFa:"حرکت و ریتم این ویدیو با ظاهر جدید",en:"motion reference"}
  ],
  audio:[
   {id:"lip_sync",labelFa:"الگوی گفتار",hintFa:"لب‌ها با این صدا هم‌زمان می‌شن",en:"lip sync"},
@@ -54,10 +54,26 @@ export const ATTACHMENT_ROLES={
 export const FILE_MENU_FA={labelFa:"فایل",hintFa:"PDF، JSON یا Markdown برای زمینه"} as const;
 /** Roles the wire accepts but the UI never offers. `voice_clone` needs `consent: true` and always ends in an `unsupported` result (`voice_clone_unsupported`). */
 const WIRE_ONLY_ROLES={audio:[{id:"voice_clone",labelFa:"کلون صدا",hintFa:"",en:"voice reference"}]} as const satisfies Partial<Record<"image"|"video"|"audio",readonly RoleDef[]>>;
-export const ATTACHMENT_ROLE_IDS=["character","start_frame","end_frame","environment","object","outfit","hairstyle","makeup","graphic","edit_reference","motion_reference","continue","lip_sync","music","voice_clone"] as const satisfies readonly AttachmentRole[];
+/**
+ * Concrete roles that are no longer in the menu but stay valid: Whoush resolves and infers them, the planner and skills use them, older projects and API clients
+ * may still send them, and sent messages keep showing their labels.
+ */
+const RESOLVED_ROLES={
+ image:[
+  {id:"start_frame",labelFa:"فریم اول",hintFa:"همین عکس متحرک می‌شه",en:"start frame"},
+  {id:"end_frame",labelFa:"فریم آخر",hintFa:"ویدیو به همین عکس ختم می‌شه",en:"end frame"},
+  {id:"edit_reference",labelFa:"ادیت عکس",hintFa:"فقط همون بخشی که می‌گی عوض می‌شه",en:"edit reference"},
+  {id:"makeup",labelFa:"آرایش",hintFa:"آرایش صورت با همین رنگ‌ها",en:"makeup reference"}
+ ],
+ video:[
+  {id:"edit_reference",labelFa:"ادیت ویدیو",hintFa:"همین ویدیو با تغییری که می‌خوای",en:"edit reference"},
+  {id:"continue",labelFa:"امتداد ویدیو",hintFa:"از آخر همین ویدیو امتداد پیدا می‌کنه",en:"video to continue"}
+ ]
+} as const satisfies Partial<Record<"image"|"video"|"audio",readonly RoleDef[]>>;
+export const ATTACHMENT_ROLE_IDS=["reference","frame","character","start_frame","end_frame","environment","object","outfit","hairstyle","makeup","graphic","edit_reference","motion_reference","continue","lip_sync","music","voice_clone"] as const satisfies readonly AttachmentRole[];
 /** The roles a kind may carry and the UI offers (never `general`, never `voice_clone`); empty for files. */
 export const rolesFor=(kind:AttachmentKind):readonly RoleDef[]=>isMediaKind(kind)?ATTACHMENT_ROLES[kind as "image"|"video"|"audio"]:[];
-const wireRolesFor=(kind:AttachmentKind):readonly RoleDef[]=>kind==="audio"?[...ATTACHMENT_ROLES.audio,...WIRE_ONLY_ROLES.audio]:rolesFor(kind);
+const wireRolesFor=(kind:AttachmentKind):readonly RoleDef[]=>kind==="audio"?[...ATTACHMENT_ROLES.audio,...WIRE_ONLY_ROLES.audio]:kind==="image"||kind==="video"?[...rolesFor(kind),...RESOLVED_ROLES[kind]]:[];
 export const GENERAL_ROLE_LABEL_FA="مرجع کلی";
 /** The Persian label of a role. `edit_reference` reads «ادیت عکس» or «ادیت ویدیو» by kind; without a kind the image label is used. */
 export function roleLabelFa(role:AttachmentRole,kind?:AttachmentKind):string{
@@ -76,22 +92,50 @@ export const tagPrefix=(kind:AttachmentKind):TagPrefix=>kind==="image"||kind==="
 export type TagCounters=Record<TagPrefix,number>;
 export const newTagCounters=():TagCounters=>({image:0,video:0,audio:0,file:0});
 /**
- * Pure allocator for the next tag of a kind. Counters only ever count up, so a removed attachment's number is never reused;
+ * Legacy counter-based allocator (counts up, never reuses); the studio now uses `lowestFreeTag`, and the counters are kept only in the saved project format;
  * "new chat" starts from `newTagCounters()`. Undefined when the conversation has used all 99 numbers of that prefix.
  */
 export function allocateTag(counters:TagCounters,kind:AttachmentKind):{tag:string;counters:TagCounters}|undefined{
  const prefix=tagPrefix(kind),n=counters[prefix]+1;
  return n>99?undefined:{tag:prefix+n,counters:{...counters,[prefix]:n}};
 }
+/**
+ * The tag a new file gets: the LOWEST free number of its kind's prefix, given every tag in use in the conversation (sent messages, files in the composer and
+ * numbers reserved by empty upload cards). So removing `#تصویر-۲` from the composer and adding another photo gives `#تصویر-۲` again, while a number used in a
+ * sent message is never handed to another file. Undefined when all 99 numbers of that prefix are in use.
+ */
+export function lowestFreeTag(used:Iterable<string>,kind:AttachmentKind):string|undefined{
+ const p=tagPrefix(kind),taken=new Set(used);
+ for(let n=1;n<=99;n++)if(!taken.has(p+n))return p+n;
+ return undefined;
+}
+/** Keeps the saved counters (project format) at least at the highest number in use; allocation itself uses `lowestFreeTag`. */
+export function bumpTagCounters(c:TagCounters,tag:string):TagCounters{
+ const m=/^(image|video|audio|file)(\d+)$/.exec(tag);if(!m)return c;
+ const k=m[1] as TagPrefix;return {...c,[k]:Math.max(c[k],Number(m[2]))};
+}
 /** The Persian word shown in a tag: `image1` is `#تصویر-۱`. The internal/wire tag stays English. */
 export const TAG_WORD_FA={image:"تصویر",video:"ویدیو",audio:"صدا",file:"فایل"} as const satisfies Record<TagPrefix,string>;
+// ---- generation tags: every generation plan of a chat gets `generation1`, `generation2`, ... shown as #تولید-۱; they name generations of that chat only ----
+/** A mention names a file (`image1`, ...) or a generation of this chat (`generation1`). */
+export type MentionPrefix=TagPrefix|"generation";
+export const GENERATION_TAG_PATTERN=/^generation[1-9]\d?$/;
+export const GENERATION_WORD_FA="تولید";
+export const isGenerationTag=(tag:string)=>GENERATION_TAG_PATTERN.test(tag);
+/** The next generation tag of a chat: the lowest number not in use (generations are never removed, so in practice one more than the last). Undefined after 99. */
+export function nextGenerationTag(used:Iterable<string>):string|undefined{
+ const taken=new Set(used);
+ for(let n=1;n<=99;n++)if(!taken.has("generation"+n))return "generation"+n;
+ return undefined;
+}
+const WORD_FA:Record<MentionPrefix,string>={...TAG_WORD_FA,generation:GENERATION_WORD_FA};
 /** Every spelling accepted in a mention, as normalized by `normalizeMention`: Persian words (ویدئو too) and the legacy English prefixes. */
-const MENTION_WORDS:Record<string,TagPrefix>={"تصویر":"image","ویدیو":"video","ویدئو":"video","صدا":"audio","فایل":"file",image:"image",video:"video",audio:"audio",file:"file"};
+const MENTION_WORDS:Record<string,MentionPrefix>={"تصویر":"image","ویدیو":"video","ویدئو":"video","صدا":"audio","فایل":"file","تولید":"generation",image:"image",video:"video",audio:"audio",file:"file",generation:"generation"};
 const faNumber=(n:number|string)=>String(n).replace(/\d/g,d=>String.fromCharCode(0x06f0+Number(d)));
 /** The user-facing form of an internal tag: the Persian word, an ASCII hyphen and Persian digits. `image1` is `#تصویر-۱`, `file12` is `#فایل-۱۲`. */
 export function displayTag(tag:string):string{
- const m=/^(image|video|audio|file)(\d+)$/.exec(tag);
- return m?"#"+TAG_WORD_FA[m[1] as TagPrefix]+"-"+faNumber(m[2]):"#"+tag;
+ const m=/^(image|video|audio|file|generation)(\d+)$/.exec(tag);
+ return m?"#"+WORD_FA[m[1] as MentionPrefix]+"-"+faNumber(m[2]):"#"+tag;
 }
 /** Case and script tolerant form of a typed token: Arabic ي/ى become ی, ك becomes ک, Arabic-Indic and Persian digits become ASCII, the dashes U+2010, U+2011, U+2013 and U+2212 become `-`, ZWNJ and tatweel vanish. */
 const normalizeMention=(s:string)=>s.replace(/[\u200c\u0640]/g,"").replace(/[\u064a\u0649]/g,"\u06cc").replace(/\u0643/g,"\u06a9").replace(/[\u2010\u2011\u2013\u2212]/g,"-")
@@ -138,12 +182,16 @@ export function describeTagEn(a:{tag:string;kind:AttachmentKind;role?:Attachment
  if(a.kind==="audio")return "["+(en??"reference")+" audio "+n+"]";
  return "[attached document "+n+"]";
 }
-/** Replaces every mention, in any accepted spelling, with its English description; a tag with no attachment becomes `[missing attachment]`. */
-export function rewriteMentions(text:string,byTag:ReadonlyMap<string,{tag:string;kind:AttachmentKind;role?:AttachmentRole}>):string{
+/**
+ * Replaces every mention, in any accepted spelling, with its English description; a tag with no attachment becomes `[missing attachment]`. A generation of this chat
+ * (`#تولید-۱`) becomes `[earlier generation 1]`, or `[missing generation]` when it is not among `generations`.
+ */
+export function rewriteMentions(text:string,byTag:ReadonlyMap<string,{tag:string;kind:AttachmentKind;role?:AttachmentRole}>,generations:ReadonlySet<string>=new Set()):string{
  let out="",at=0;
  for(const m of scanMentions(text)){
   const a=byTag.get(m.tag);
-  out+=text.slice(at,m.index)+(a?describeTagEn(a):"[missing attachment]");at=m.index+m.raw.length;
+  const en=isGenerationTag(m.tag)?(generations.has(m.tag)?"[earlier generation "+tagNumber(m.tag)+"]":"[missing generation]"):a?describeTagEn(a):"[missing attachment]";
+  out+=text.slice(at,m.index)+en;at=m.index+m.raw.length;
  }
  return out+text.slice(at);
 }
@@ -157,9 +205,9 @@ export function insertMention(text:string,start:number,end:number,tag:string):{t
 function isTagQuery(q:string):boolean{
  return Object.keys(MENTION_WORDS).some(w=>w.startsWith(q)||(q.startsWith(w)&&/^-?\d{0,2}$/.test(q.slice(w.length))));
 }
-/** Whether an attachment's tag matches a normalized picker query (Persian or English word, either digit set, hyphen or not): `image1` matches `تص`, `im`, `تصویر-`, `تصویر۱` and `image1`, not `صدا`. */
+/** Whether an attachment's (or a generation's) tag matches a normalized picker query (Persian or English word, either digit set, hyphen or not): `image1` matches `تص`, `im`, `تصویر-`, `تصویر۱` and `image1`, not `صدا`. */
 export function tagMatchesQuery(tag:string,query:string):boolean{
- const q=normalizeMention(query),m=/^(image|video|audio|file)(\d+)$/.exec(tag);
+ const q=normalizeMention(query),m=/^(image|video|audio|file|generation)(\d+)$/.exec(tag);
  if(!m)return false;
  return Object.entries(MENTION_WORDS).some(([w,p])=>p===m[1]&&((w+m[2]).startsWith(q)||(w+"-"+m[2]).startsWith(q)));
 }
@@ -184,7 +232,7 @@ const wordsRe=(l:readonly string[])=>new RegExp("(?<![\\p{L}\\p{N}])(?:"+l.map(w
 const INFER_RULES={
  image:[
   ["edit_reference",wordsRe(["ویرایش","ادیت","حذف کن","پاک کن","جایگزین","عوض کن","تغییر بده","رتوش","edit","remove","replace","retouch"])],
-  ["end_frame",wordsRe(["فریم آخر","آخر ویدیو","تهش","پایان ویدیو","ختم بشه به","برسه","برسد","تمام بشه","end frame","last frame","ending"])],
+  ["end_frame",wordsRe(["فریم آخر","آخر ویدیو","تهش","پایان ویدیو","ختم بشه به","ختم بشه","ختم شود","ختم شه","تموم بشه","برسه","برسد","تمام بشه","end frame","last frame","ending"])],
   ["start_frame",wordsRe(["شروع کن","شروع کن از","شروع از","شروع بشه","start from","starts from","متحرکش کن","زنده‌اش کن","جون بده","انیمیت","متحرک کن","تبدیل به ویدیو","animate","bring to life","make it move"])],
   ["outfit",wordsRe(["لباس","مانتو","کت","شلوار","پیراهن","دامن","کفش","پوشش","ست لباس","استایل لباس","outfit","dress","clothes","wardrobe"])],
   ["hairstyle",wordsRe(["مدل مو","مو","رنگ مو","کوتاهی مو","ریش","سبیل","فرم ریش","پیرایش","اصلاح","hairstyle","haircut","hair","beard","moustache","grooming"])],
@@ -230,13 +278,45 @@ function mentionContext(text:string,tag:string):string|undefined{
  */
 export function inferAttachmentRoles(text:string,attachments:readonly {tag:string;kind:AttachmentKind;role?:AttachmentRole}[]):InferredRole[]{
  const whole=normalizePersian(withoutMentions(text));
+ const wordsFor=(tag:string)=>{const ctx=mentionContext(text,tag);return {words:ctx===undefined?whole:normalizePersian(ctx),mentioned:ctx!==undefined};};
+ const frames=attachments.filter(a=>a.kind==="image"&&a.role==="frame");
+ const framed=resolveFrames(frames.map(f=>({tag:f.tag,...wordsFor(f.tag)})),frames.length);
  return attachments.flatMap((a):InferredRole[]=>{
   if(!isMediaKind(a.kind))return [];
+  if(a.role==="frame"&&a.kind==="image")return [{tag:a.tag,role:framed.get(a.tag)??"start_frame",roleSource:"user"}];
+  if(a.role==="reference")return [{tag:a.tag,role:resolveReference(a.kind,wordsFor(a.tag).words),roleSource:"user"}];
   if(a.role)return [{tag:a.tag,role:a.role,roleSource:"user"}];
-  const ctx=mentionContext(text,a.tag),words=ctx===undefined?whole:normalizePersian(ctx);
+  const {words}=wordsFor(a.tag);
   const hit=INFER_RULES[a.kind as "image"|"video"|"audio"].find(([,re])=>re.test(words));
   return [{tag:a.tag,role:hit?hit[0]:"general",roleSource:"inferred"}];
  });
+}
+const ruleFor=(kind:"image"|"video",role:AttachmentRole)=>INFER_RULES[kind].find(([r])=>r===role)![1];
+/** «عکس رفرنس» / «فیلم رفرنس»: the edit source when the brief asks to change it, a video to continue when it asks to extend it, otherwise a general reference. */
+function resolveReference(kind:AttachmentKind,words:string):AttachmentRole{
+ if(kind!=="image"&&kind!=="video")return "general";
+ if(ruleFor(kind,"edit_reference").test(words))return "edit_reference";
+ if(kind==="video"&&ruleFor("video","continue").test(words))return "continue";
+ return "general";
+}
+/**
+ * «فریم»: the end frame when the words around its mention say so (فریم آخر، ختم بشه به…), the start frame when they say so; with several frames and no hint,
+ * the first is the start frame and the next the end frame. A single unmentioned frame reads the whole brief; otherwise it is the start frame.
+ */
+function resolveFrames(frames:readonly {tag:string;words:string;mentioned:boolean}[],count:number):Map<string,AttachmentRole>{
+ const out=new Map<string,AttachmentRole>(),open:string[]=[];
+ for(const f of frames){
+  const hinted=f.mentioned||count===1;
+  if(hinted&&ruleFor("image","end_frame").test(f.words))out.set(f.tag,"end_frame");
+  else if(hinted&&ruleFor("image","start_frame").test(f.words))out.set(f.tag,"start_frame");
+  else open.push(f.tag);
+ }
+ const taken=new Set(out.values());
+ for(const tag of open){
+  const role:AttachmentRole=!taken.has("start_frame")?"start_frame":!taken.has("end_frame")?"end_frame":"start_frame";
+  out.set(tag,role);taken.add(role);
+ }
+ return out;
 }
 const EXT_MIMES:Record<string,readonly string[]>={
  jpg:["image/jpeg"],jpeg:["image/jpeg"],png:["image/png"],webp:["image/webp"],

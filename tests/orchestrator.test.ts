@@ -74,11 +74,13 @@ function assertNoLeak(json:string,label:string){
 }
 test("public orchestrator result and route response leak no private identifiers",async()=>{
  for(const [text,extra] of PROMPTS){
-  const r=planOf(await orchestrateCreativeTurn({text,...extra}));
+  const r=await orchestrateCreativeTurn({text,...extra});assert.notEqual(r.status,"restricted",text);
   assertNoLeak(JSON.stringify(r),text);
   const res=await POST(new Request("http://x/api/agent",{method:"POST",body:JSON.stringify({text,...extra})}));
   assert.equal(res.status,r.status==="planned"?200:422,text);assert.equal(res.headers.get("cache-control"),"no-store");
   const body=await res.json();assertNoLeak(JSON.stringify(body),"route "+text);
+  // A turn that needs one critical answer carries only the question: no plan, model or price.
+  if(r.status==="needs_input"){assert.equal(body.error,"needs_input");assert.ok(body.question&&body.turnId);assert.equal("plan" in body,false);continue;}
   assert.equal("mediaPrompt" in body.plan,false);assert.ok(body.turnId&&body.plan&&(r.status==="unsupported"?body.error==="no_compatible_model":body.selectedModelId));
  }
 });
@@ -150,13 +152,14 @@ test("stylized work drops hyper_realism; photoreal portrait activates it with re
  assert.equal(ph.plan.realism.mode,"photoreal");assert.ok(last().activeSkillIds.includes("hyper_realism"));
  assert.ok(/pores/i.test(getPrivateMediaPrompt(ph.turnId)!));
 });
-test("character reference locks exactly the provided angles and flags missing required views",async()=>{
+test("character reference locks exactly the provided angles and notes missing required views without asking",async()=>{
  const r=await run("portrait of my character in a library",{characterRef:{id:"char-abcdef12",name:"سارا",angles:["front","profile_left"],version:3}});
  assert.deepEqual(r.plan.identityLock?.providedAngles,["front","profile_left"]);assert.equal(r.plan.identityLock?.characterId,"char-abcdef12");
  assert.ok(last().activeSkillIds.includes("character_creation")&&last().activeSkillIds.includes("anti_drift"));
- assert.ok(r.plan.clarifyingQuestionFa);assert.ok(!JSON.stringify(r.plan.identityLock).includes("three_quarter_left"));
+ assert.equal(r.plan.clarifyingQuestionFa,undefined,"missing angles are Whoush's call, never a question");assert.ok(r.plan.softPreferences.some(x=>x.includes("زاویه‌های")&&x.includes("فقط از زاویه‌های موجود")));
+ assert.ok(!JSON.stringify(r.plan.identityLock).includes("three_quarter_left"));
  const full=await run("portrait of my character",{characterRef:{id:"char-abcdef12",name:"سارا",angles:["front","three_quarter_left","profile_left","full_body"],version:1}});
- assert.equal(full.plan.clarifyingQuestionFa,undefined);
+ assert.equal(full.plan.clarifyingQuestionFa,undefined);assert.ok(!full.plan.softPreferences.some(x=>x.includes("فقط از زاویه‌های موجود")));
  assert.equal((await run("portrait of a woman")).plan.identityLock,undefined);
 });
 test("political prompt is restricted and the planner is never called",async()=>{
@@ -480,27 +483,28 @@ const FA_MISSING_3="پیوست #تصویر-۳ در این گفت‌وگو پید
 const unsupported=(r:OrchestratorResult)=>{assert.equal(r.status,"unsupported",JSON.stringify(r));return r as Extract<OrchestratorResult,{status:"unsupported"}>;};
 const seenBy=async(text:string,attachments:unknown[])=>{const {planner,seen}=spyPlanner();const r=await orchestrateCreativeTurn({text,attachments},{planner});return {r,req:seen[0]};};
 
-test("mentions: a tag with no attachment gets a Persian clarifying question and is never a block",async()=>{
- const r=planned(await orchestrateCreativeTurn({text:"put @image3 on the left of the lake",attachments:[att("md")]}));
- assert.equal(r.plan.clarifyingQuestionFa,FA_MISSING_3);assert.ok(r.proposal.fixedNeurons>0);
- assert.equal(planned(await orchestrateCreativeTurn({text:"put @Image3 on the left"})).plan.clarifyingQuestionFa,FA_MISSING_3,"case-insensitive, and it works with no attachments at all");
- const two=planned(await orchestrateCreativeTurn({text:"@video1 then @audio2 then @image3 again @image3"})).plan.clarifyingQuestionFa!;
+const asks=(r:OrchestratorResult)=>{assert.equal(r.status,"needs_input",JSON.stringify(r));return (r as Extract<OrchestratorResult,{status:"needs_input"}>).question;};
+test("mentions: a tag with no file in the chat is a critical question: no plan card or price until the user answers",async()=>{
+ const r=await orchestrateCreativeTurn({text:"put @image3 on the left of the lake",attachments:[att("md")]});
+ assert.equal(asks(r),FA_MISSING_3);assert.equal("proposal" in r,false);assert.equal("plan" in r,false);
+ assert.equal(asks(await orchestrateCreativeTurn({text:"put @Image3 on the left"})),FA_MISSING_3,"case-insensitive, and it works with no attachments at all");
+ const two=asks(await orchestrateCreativeTurn({text:"@video1 then @audio2 then @image3 again @image3"}));
  assert.ok(two.includes("#ویدیو-۱")&&two.includes("#صدا-۲")&&two.includes("#تصویر-۳")&&two.includes("پیدا نشدند"));assert.equal(two.split("#تصویر-۳").length,2,"each missing tag is named once");
  for(const fine of ["use @file1 as notes","write to me@image3.com","the @image100 tag is not a tag"])assert.equal(planned(await orchestrateCreativeTurn({text:fine,attachments:[att("md")]})).plan.clarifyingQuestionFa,undefined,fine);
- // an existing question (missing character angles) is kept after the new one
+ // missing character angles never add a question of their own
  const ref={id:"char-abcdef12",name:"سارا",angles:["front"],version:1};
- const both=planOf(await orchestrateCreativeTurn({text:"a woman in a garden with @image9",characterRef:ref})).plan.clarifyingQuestionFa!;
- assert.ok(both.startsWith("پیوست #تصویر-۹")&&both.includes("زاویه‌های"));
+ assert.ok(asks(await orchestrateCreativeTurn({text:"a woman in a garden with @image9",characterRef:ref})).startsWith("پیوست #تصویر-۹"));
  const res=await POST(new Request("http://x/api/agent",{method:"POST",body:JSON.stringify({text:"@image3 please"})}));
- assert.equal(res.status,200);assert.equal((await res.json()).plan.clarifyingQuestionFa,FA_MISSING_3);
+ assert.equal(res.status,422);const body=await res.json();assert.equal(body.error,"needs_input");assert.equal(body.question,FA_MISSING_3);
 });
 test("mentions: the provider-facing prompt describes attachments in English, the public Persian text keeps the @tag",async()=>{
  const {r,req}=await seenBy("keep the notes in @file1 and ignore @Image7, with @file1 once more",[att("md"),att("pdf")]);
- const p=planned(r);
- const prompt=getPrivateMediaPrompt(p.turnId)!;
+ assert.ok(asks(r).includes("#تصویر-۷"),"the missing @Image7 is asked about before anything is offered");
+ const dp=deterministicPlanner(req).plan,prompt=dp.mediaPrompt;
  assert.ok(prompt.includes("[attached document 1]")&&prompt.includes("[missing attachment]"),prompt);assert.ok(!/@file1|@image7/i.test(prompt),prompt);
- assert.ok(p.plan.intentSummaryFa.includes("@file1")&&p.plan.intentSummaryFa.includes("@Image7"),"the public summary keeps what the user wrote");
- assert.ok(!JSON.stringify(p.plan).includes("[attached document"));
+ assert.ok(dp.intentSummaryFa.includes("@file1")&&dp.intentSummaryFa.includes("@Image7"),"the public summary keeps what the user wrote");
+ const ok=planned((await seenBy("keep the notes in @file1, with @file1 once more",[att("md"),att("pdf")])).r);
+ assert.ok(getPrivateMediaPrompt(ok.turnId)!.includes("[attached document 1]"));assert.ok(!JSON.stringify(ok.plan).includes("[attached document"));
  // the planner sees tags and roles (no ids, hashes or names); the deterministic planner rewrites the same way
  assert.deepEqual(req.attachments,[{tag:"file1",kind:"md",textExcerpt:"# notes"},{tag:"file3",kind:"pdf"}]);
  const media=await seenBy("draw @image1 in the style of @video1",[att("image",{role:"object"}),att("video",{role:"motion_reference"})]);
@@ -520,22 +524,26 @@ test("mentions: the provider-facing prompt describes attachments in English, the
 });
 
 test("Persian mentions: a missing file asks about #تصویر-۳, and Persian digits, Arabic letters and @/# all name the same tag",async()=>{
- const ask=async(text:string,attachments?:unknown[])=>planned(await orchestrateCreativeTurn({text,...(attachments?{attachments}:{})})).plan.clarifyingQuestionFa;
+ // A missing tag stops the turn with its question; a fine text is planned with no question.
+ const ask=async(text:string,attachments?:unknown[])=>{const r=await orchestrateCreativeTurn({text,...(attachments?{attachments}:{})});return r.status==="needs_input"?r.question:planned(r).plan.clarifyingQuestionFa;};
  assert.equal(await ask("عکس #تصویر-۳ را سمت چپ دریاچه بگذار",[att("md")]),FA_MISSING_3);
  for(const text of ["put #تصوير٣ on the left","put @تصویر3 on the left","put #image3 on the left","put @Image3 on the left"])assert.equal(await ask(text),FA_MISSING_3,text);
  const two=(await ask("#ویدیو-۱ بعد #صدا-۲ بعد #تصویر-۳ دوباره #تصویر-۳"))!;
  assert.ok(two.includes("#ویدیو-۱")&&two.includes("#صدا-۲")&&two.includes("#تصویر-۳")&&two.includes("پیدا نشدند")&&!two.includes("@"));assert.equal(two.split("#تصویر-۳").length,2);
  for(const fine of ["use #فایل-۱ as notes","شب #نوروز در شیراز","write to me@image3.com","the #تصویر-۱۰۰ tag is not a tag","#تصویر۰"])assert.equal(await ask(fine,[att("md")]),undefined,fine);
  const res=await POST(new Request("http://x/api/agent",{method:"POST",body:JSON.stringify({text:"#تصویر-۳ را بگذار"})}));
- assert.equal(res.status,200);assert.equal((await res.json()).plan.clarifyingQuestionFa,FA_MISSING_3);
+ assert.equal(res.status,422);assert.equal((await res.json()).question,FA_MISSING_3);
 });
 test("Persian mentions: rewritten in the private media prompt, kept in the public text, nothing leaks",async()=>{
  const text="یادداشت‌های #فایل-۱ را بخوان و #تصوير٧ را نادیده بگیر؛ دوباره #فایل1";
  const {r,req}=await seenBy(text,[att("md"),att("pdf")]);
- const p=planned(r),prompt=getPrivateMediaPrompt(p.turnId)!;
+ assert.ok(r.status==="needs_input"&&r.question.includes("#تصویر-۷"),"the missing #تصویر-۷ is asked about first");
+ const dp=deterministicPlanner(req).plan,prompt=dp.mediaPrompt;
  assert.ok(prompt.startsWith("یادداشت‌های [attached document 1] را بخوان و [missing attachment] را نادیده بگیر؛ دوباره [attached document 1]"),prompt);
  assert.ok(!prompt.includes("#فایل")&&!prompt.includes("#تصو")&&!prompt.includes("فایل1"),"no tag in any accepted spelling survives in the provider-facing prompt");
- assert.ok(p.plan.intentSummaryFa.includes("#فایل-۱")&&p.plan.intentSummaryFa.includes("#فایل1"),"the public summary keeps what the user wrote");
+ assert.ok(dp.intentSummaryFa.includes("#فایل-۱")&&dp.intentSummaryFa.includes("#فایل1"),"the public summary keeps what the user wrote");
+ const p=planned((await seenBy("یادداشت‌های #فایل-۱ را بخوان؛ دوباره #فایل1",[att("md"),att("pdf")])).r);
+ assert.ok(getPrivateMediaPrompt(p.turnId)!.startsWith("یادداشت‌های [attached document 1] را بخوان؛ دوباره [attached document 1]"));
  assert.ok(!JSON.stringify(p.plan).includes("[attached document"));
  assertNoLeak(JSON.stringify(r),"persian mention");
  assert.deepEqual(req.attachments,[{tag:"file1",kind:"md",textExcerpt:"# notes"},{tag:"file3",kind:"pdf"}]);
@@ -657,7 +665,9 @@ test("roles: media may have no role at the route, but old, internal and mismatch
  const post=(a:unknown)=>POST(new Request("http://x/api/agent",{method:"POST",body:JSON.stringify({text:LAKE,attachments:[a]})}));
  for(const kind of ["image","video","audio"])assert.notEqual((await post(att(kind,{role:undefined}))).status,400,kind+" without a role is valid");
  for(const [kind,role] of [["image","general"],["video","general"],["audio","general"]])assert.equal((await post(att(kind,{role}))).status,400,"general is internal: "+kind);
- for(const role of ["reference","context"])assert.equal((await post(att("image",{role}))).status,400,role);
+ for(const role of ["context","other"])assert.equal((await post(att("image",{role}))).status,400,role);
+ for(const [kind,role] of [["image","reference"],["video","reference"],["image","frame"],["image","start_frame"],["video","continue"]])assert.notEqual((await post(att(kind,{role}))).status,400,kind+":"+role+" is valid");
+ assert.equal((await post(att("video",{role:"frame"}))).status,400,"frame is an image role");
  assert.equal((await post(att("md",{role:"object"}))).status,400,"files have no role");
  assert.equal((await post(att("md",{tag:"image1"}))).status,400,"tag prefix must match the kind");
  assert.equal((await post({...att("image"),tag:"image0"})).status,400);assert.equal((await post({...att("image"),tag:"image100"})).status,400);
@@ -802,7 +812,7 @@ test("curated roles: continue makes a video that continues from the last frame",
 });
 test("curated roles: outfit, hairstyle and makeup add their constraints, count as reference images and get no model suggestion",async()=>{
  const want:Array<[string,string,string,string[]]>=[
-  ["outfit","لباس و کفش","لباس و کفش #تصویر-۱ (طرح، رنگ، جنس و برش) روی سوژه اعمال می‌شود؛ چهره و بدن مدلِ عکس مرجع کپی نمی‌شود",["پوشش مطابق سیاست محتوای هووش، پوشیده و غیرتحریک‌آمیز"]],
+  ["outfit","پوشاک","پوشاک #تصویر-۱ (طرح، رنگ، جنس و برش) روی سوژه اعمال می‌شود؛ چهره و بدن مدلِ عکس مرجع کپی نمی‌شود",["پوشش مطابق سیاست محتوای هووش، پوشیده و غیرتحریک‌آمیز"]],
   ["hairstyle","پیرایش","مدل مو و فرم ریش و سبیل #تصویر-۱ (در صورت وجود) اعمال می‌شود؛ چهره، رنگ پوست و هویت سوژه تغییر نمی‌کند",[]],
   ["makeup","آرایش","آرایش #تصویر-۱ (رنگ‌ها و شدت) اعمال می‌شود؛ بافت طبیعی پوست حفظ می‌شود و پوست پلاستیکی یا صاف‌شده نمی‌شود",[]]
  ];
@@ -888,4 +898,11 @@ test("style: a character reference in a stylized look keeps its identity recogni
  const dropper:PrivatePlanner=r=>{const p=deterministicPlanner(r).plan;return {plan:{...p,hardConstraints:p.hardConstraints.filter(h=>h!==IDENT),realism:{...p.realism,directives:["x"]}}};};
  const fixed=planOf(await orchestrateCreativeTurn({text:"a girl in a garden",characterRef:ref,style:"cartoon"},{planner:dropper}));
  assert.ok(fixed.plan.hardConstraints.includes(IDENT));assert.ok(last().corrections?.includes("style_directives"));
+});
+test("owner role list: a chosen reference or frame reaches the planner as a concrete role",async()=>{
+ const edit=await orchestrateCreativeTurn({text:"پس‌زمینه #تصویر-۱ رو عوض کن",attachments:[att("image",{role:"reference"})]});
+ assert.ok(skillsOf().includes("photo_editor"),"a reference the brief asks to change makes the turn an edit");void edit;
+ const frame=await orchestrateCreativeTurn({text:"یک ویدیو آرام از #تصویر-۱",attachments:[att("image",{role:"frame"})]});
+ const p=(frame as {plan?:{mediaKind:string;references:{labelFa:string}[]}}).plan!;
+ assert.equal(p.mediaKind,"video","a frame makes the output a video");assert.equal(p.references[0].labelFa,"فریم اول");
 });

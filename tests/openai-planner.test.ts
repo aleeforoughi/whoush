@@ -13,7 +13,8 @@ afterEach(()=>{for(const k of KEYS){if(saved[k]===undefined)delete process.env[k
 const noNet=globalThis.fetch;
 const reqFor=(text:string):PlannerRequest=>{const input=CreativeTurnInputSchema.parse({text});const prep=preparePrivateCreativeRequest({prompt:text,kind:"image"});return {...prep,privateRoute:null,kind:"image",input};};
 /** Plan to its OpenAI wire shape: absent optionals become explicit nulls. */
-const toWire=(p:CreativePlan)=>{const w:Record<string,unknown>={...p};for(const k of ["camera","shot","identityLock","speech","clarifyingQuestionFa"])w[k]??=null;return w;};
+const toWire=(p:CreativePlan)=>{const w:Record<string,unknown>={...p};for(const k of ["camera","shot","staging","identityLock","speech","clarifyingQuestionFa"])w[k]??=null;
+ if(p.staging)w.staging={...p.staging,lights:p.staging.lights.map(l=>({...l,colorHex:l.colorHex??null}))};return w;};
 const responseBody=(output:unknown[],over:Record<string,unknown>={})=>({id:"resp_test",object:"response",created_at:0,status:"completed",model:"gpt-test",output,incomplete_details:null,error:null,usage:{input_tokens:11,output_tokens:22,total_tokens:33,input_tokens_details:{cached_tokens:0},output_tokens_details:{reasoning_tokens:0}},...over});
 const textOut=(text:string)=>[{type:"message",id:"msg_1",role:"assistant",status:"completed",content:[{type:"output_text",text,annotations:[]}]}];
 const stub=(status:number,body:unknown,seen?:{init?:RequestInit;url?:string})=>{

@@ -114,7 +114,7 @@ test("schema rejects names, misplaced fields, bad ids/hashes/mimes, oversize and
   ["zero bytes",[wire({bytes:0})]],["fractional bytes",[wire({bytes:1.5})]],["mime of another kind",[wire({mime:"video/mp4"})]],["long mime",[wire({mime:"image/"+"x".repeat(100)})]],
   ["image over cap",[wire({bytes:20*1024*1024+1})]],["json over cap",[doc({kind:"json",mime:"application/json",bytes:1024*1024+1,textExcerpt:"{}"})]],
   ["total over 200 MB",Array.from({length:3},(_,i)=>clip({tag:"video"+(i+1),width:undefined,height:undefined,bytes:100*1024*1024}))],
-  ["unknown role",[wire({role:"other"})]],["old role reference",[wire({role:"reference"})]],["old role context",[wire({role:"context"})]],
+  ["unknown role",[wire({role:"other"})]],["old role context",[wire({role:"context"})]],
   ["extra key",[wire({url:"blob:x"})]],["width too large",[wire({width:20001})]],["duration too long",[clip({width:undefined,height:undefined,durationSeconds:3601})]]
  ];
  for(const [label,list] of bad)assert.equal(parse(list).success,false,label);
@@ -149,7 +149,7 @@ test("roles: media may have none, a role must fit its kind, files have none, voi
  assert.equal(parse([sound({speech:{hasSpeech:true,language:"unknown",accent:"unspecified"}})]).success,true);
  assert.equal(roleLabelFa("character"),"کاراکتر");assert.equal(roleLabelFa("edit_reference"),"ادیت عکس");assert.equal(roleLabelFa("edit_reference","video"),"ادیت ویدیو");assert.equal(roleLabelFa("lip_sync"),"الگوی گفتار");assert.equal(roleLabelFa("music"),"موزیک");assert.equal(roleLabelFa("environment"),"محیط");assert.equal(roleLabelFa("object"),"اشیا");assert.equal(roleLabelFa("motion_reference"),"الگوی حرکت");assert.equal(roleLabelFa("voice_clone"),"کلون صدا");
  assert.equal(roleLabelFa("general"),"مرجع کلی");assert.ok(!ATTACHMENT_ROLE_IDS.includes("general" as never)&&!rolesFor("image").some(r=>r.id==="general")&&!rolesFor("audio").some(r=>r.id==="voice_clone"),"general is never offered or accepted");
- assert.deepEqual(rolesFor("pdf"),[]);assert.deepEqual(rolesFor("image").map(r=>r.id),["character","start_frame","end_frame","environment","object","outfit","hairstyle","makeup","graphic","edit_reference"]);assert.deepEqual(rolesFor("video").map(r=>r.id),["motion_reference","edit_reference","continue"]);assert.deepEqual(rolesFor("audio").map(r=>r.id),["lip_sync","music"]);assert.ok(!ATTACHMENT_ROLE_IDS.includes("style" as never));
+ assert.deepEqual(rolesFor("pdf"),[]);assert.deepEqual(rolesFor("image").map(r=>r.id),["reference","character","hairstyle","outfit","environment","object","graphic","frame"]);assert.deepEqual(rolesFor("video").map(r=>r.id),["reference","motion_reference"]);assert.deepEqual(rolesFor("audio").map(r=>r.id),["lip_sync","music"]);assert.ok(!ATTACHMENT_ROLE_IDS.includes("style" as never));
 });
 
 test("the tag allocator counts up per prefix, never reuses a removed number, and resets with a new chat",()=>{
@@ -350,7 +350,41 @@ test("accept lists follow the kind, and the role labels are the curated Persian 
  assert.ok(acceptFor("audio").includes(".mp3")&&acceptFor("audio").includes("audio/mpeg")&&!acceptFor("audio").includes(".mp4,"));
  assert.equal(acceptFor("file"),".pdf,.json,.md,.markdown,application/pdf,application/json,text/markdown,text/x-markdown,text/plain");
  const labels=(k:"image"|"video"|"audio")=>rolesFor(k).map(r=>r.labelFa);
- assert.deepEqual(labels("image"),["کاراکتر","فریم اول","فریم آخر","محیط","اشیا","لباس و کفش","پیرایش","آرایش","لوگو و گرافیک","ادیت عکس"]);
- assert.deepEqual(labels("video"),["الگوی حرکت","ادیت ویدیو","امتداد ویدیو"]);assert.deepEqual(labels("audio"),["الگوی گفتار","موزیک"]);
+ assert.deepEqual(labels("image"),["عکس رفرنس","کاراکتر","پیرایش","پوشاک","محیط","اشیا","گرافیک","فریم"]);
+ assert.deepEqual(labels("video"),["فیلم رفرنس","الگوی حرکت"]);
+ // roles that left the menu keep their labels for sent messages and older projects
+ assert.deepEqual(["start_frame","end_frame","makeup"].map(r=>roleLabelFa(r as never,"image")),["فریم اول","فریم آخر","آرایش"]);assert.equal(roleLabelFa("continue","video"),"امتداد ویدیو");assert.deepEqual(labels("audio"),["الگوی گفتار","موزیک"]);
  assert.equal(rolesFor("image").find(r=>r.id==="hairstyle")!.hintFa,"مدل مو و فرم ریش");
+});
+
+test("lowestFreeTag: the lowest number not in use, so a number freed by a removal comes back; sent tags stay taken",async()=>{
+ const {lowestFreeTag,bumpTagCounters}=await import("../lib/attachments");
+ assert.equal(lowestFreeTag([],"image"),"image1");
+ assert.equal(lowestFreeTag(["image1","image2"],"image"),"image3");
+ assert.equal(lowestFreeTag(["image1"],"image"),"image2","photo-2 removed: the next photo is photo-2 again");
+ assert.equal(lowestFreeTag(["image2","image3"],"image"),"image1");
+ assert.equal(lowestFreeTag(["file1","image1"],"md"),"file2","documents share the file prefix");
+ assert.equal(lowestFreeTag(Array.from({length:99},(_,i)=>"video"+(i+1)),"video"),undefined);
+ assert.deepEqual(bumpTagCounters({image:1,video:0,audio:0,file:0},"image4"),{image:4,video:0,audio:0,file:0});
+ assert.deepEqual(bumpTagCounters({image:5,video:0,audio:0,file:0},"image2"),{image:5,video:0,audio:0,file:0},"never lowered");
+});
+test("«عکس رفرنس» / «فیلم رفرنس» resolve from the brief: edit source, video to continue, or a general reference",async()=>{
+ const {inferAttachmentRoles}=await import("../lib/attachments");
+ const role=(text:string,kind:"image"|"video",tag=kind+"1")=>inferAttachmentRoles(text,[{tag,kind,role:"reference"}])[0];
+ assert.deepEqual(role("پس‌زمینه #تصویر-۱ رو عوض کن","image"),{tag:"image1",role:"edit_reference",roleSource:"user"});
+ assert.equal(role("یک پرتره با حال‌وهوای #تصویر-۱","image").role,"general");
+ assert.equal(role("آسمان #ویدیو-۱ را ادیت کن","video").role,"edit_reference");
+ assert.equal(role("#ویدیو-۱ رو امتداد بده","video").role,"continue");
+ assert.equal(role("یک ویدیو با ریتم #ویدیو-۱","video").role,"general");
+});
+test("«فریم» resolves to the start or end frame from the brief; two frames with no hint are first and last",async()=>{
+ const {inferAttachmentRoles}=await import("../lib/attachments");
+ const frames=(text:string,n:number)=>inferAttachmentRoles(text,Array.from({length:n},(_,i)=>({tag:"image"+(i+1),kind:"image" as const,role:"frame" as const}))).map(r=>r.role);
+ assert.deepEqual(frames("یک ویدیو بساز",1),["start_frame"],"default: start frame");
+ assert.deepEqual(frames("ویدیو به #تصویر-۱ ختم بشه",1),["end_frame"]);
+ assert.deepEqual(frames("فریم آخر ویدیو این باشه",1),["end_frame"],"a single unmentioned frame reads the whole brief");
+ assert.deepEqual(frames("از #تصویر-۱ شروع کن و به #تصویر-۲ برسه",2),["start_frame","end_frame"]);
+ assert.deepEqual(frames("#تصویر-۱ فریم آخر است، #تصویر-۲ هم باشد",2),["end_frame","start_frame"],"the other frame takes the free slot");
+ assert.deepEqual(frames("یک ویدیو بساز",2),["start_frame","end_frame"],"no hint: first and last");
+ assert.ok(inferAttachmentRoles("x",[{tag:"image1",kind:"image",role:"frame"}]).every(r=>r.roleSource==="user"));
 });

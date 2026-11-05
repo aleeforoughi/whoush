@@ -1,0 +1,41 @@
+/**
+ * Estimated generation progress for the preview. The provider reports states (queued, running, completed), not progress, so the percentage is an ESTIMATE from the
+ * time spent in the current state against a typical duration: it eases towards 95% and reaches 100% only when the provider reports completion. Never a claim of success.
+ */
+export const DONE_STATES=["completed","completed_demo"] as const;
+export const STOPPED_STATES=["failed","canceled","released"] as const;
+/** Typical generation time by kind, in milliseconds (used only to pace the estimate). */
+export const TYPICAL_MS={image:25_000,video:120_000} as const;
+const QUEUE_CAP=12,RUN_CAP=95;
+
+/** The estimated percentage (0 to 100, whole number) or null when the job stopped (failed, canceled, released) and has no progress to show. */
+export function estimateProgress(state:string,msInState:number,kind:"image"|"video"="image"):number|null{
+ if((DONE_STATES as readonly string[]).includes(state))return 100;
+ if((STOPPED_STATES as readonly string[]).includes(state))return null;
+ const t=Math.max(0,msInState);
+ if(state==="running")return Math.min(RUN_CAP,Math.round(QUEUE_CAP+(RUN_CAP-QUEUE_CAP)*(1-Math.exp(-1.6*t/TYPICAL_MS[kind]))));
+ return Math.min(QUEUE_CAP,Math.round(QUEUE_CAP*(1-Math.exp(-t/4000))));
+}
+/** Whether the job is still in progress (queued or running): the preview shows the bar and the animated gradient only then. */
+export const isActiveJob=(state:string)=>!(DONE_STATES as readonly string[]).includes(state)&&!(STOPPED_STATES as readonly string[]).includes(state);
+/** The live status line from real facts only: the state, the kind and the model when known. */
+export function jobStatusFa(state:string,kind:"image"|"video"="image",model?:string):string{
+ const what=kind==="video"?"ویدیو":"تصویر",withModel=model?" با "+model:"";
+ if(state==="quoted"||state==="approved")return "تأیید و آماده‌سازی ساخت"+withModel+"…";
+ if(state==="reserved")return "رزرو نورون و آماده‌سازی"+withModel+"…";
+ if(state==="queued"||state==="submitted")return "در صف سرویس ساخت"+withModel+"…";
+ if(state==="running")return "در حال ساخت "+what+withModel+"…";
+ if((DONE_STATES as readonly string[]).includes(state))return "ساخت "+what+" تمام شد";
+ if(state==="failed")return "ساخت "+what+" ناموفق بود";
+ if(state==="canceled")return "ساخت "+what+" لغو شد";
+ if(state==="released")return "رزرو نورون آزاد شد";
+ return "در حال آماده‌سازی…";
+}
+/**
+ * Whether an output URL may be shown: only a Whoush-owned one (a same-origin path). Provider URLs are never fetched or shown until outputs are mirrored to owned
+ * storage (docs/LAUNCH_GATES.md, gate 8); until then the preview keeps its placeholder.
+ */
+export function isOwnedOutputUrl(url:string,origin?:string):boolean{
+ if(url.startsWith("/")&&!url.startsWith("//"))return true;
+ try{return origin!==undefined&&new URL(url).origin===origin;}catch{return false;}
+}

@@ -2,11 +2,11 @@ import "server-only";
 import {createHash,randomUUID} from "node:crypto";
 import {buildProposal,NoCompatibleModelError} from "./agent";
 import {CHARACTER_VIEWS,REQUIRED_CHARACTER_VIEWS} from "./characters";
-import {CreativePlanSchema,CreativeTurnInputSchema,STYLE_VISUAL,toPublicPlan,type GenerationStyle,type PublicReference,PlannerInvalidOutputError,PlannerRefusedError,PlannerUnavailableError,type CreativePlan,type PlannerRequest,type PlannerResult,type PrivatePlanner,type PublicCreativePlan} from "./creative-plan";
+import {CreativePlanSchema,CreativeTurnInputSchema,STYLE_VISUAL,toPublicPlan,type GenerationStyle,type PublicReference,type Staging,PlannerInvalidOutputError,PlannerRefusedError,PlannerUnavailableError,type CreativePlan,type PlannerRequest,type PlannerResult,type PrivatePlanner,type PublicCreativePlan} from "./creative-plan";
 import {llmGate,preparePrivateCreativeRequest} from "./llm";
 import {acquireProviderSlot,countAstraCall,defaultRouterState,estimateTurnCostUsd,loadRoutingConfig,markProviderCooldown,planRoute,profileTask,type RoutingAudit,type RoutingAttempt,type RoutingConfig,type RouterState} from "./llm-routing";
 import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./private-audit";
-import {displayTag,inferAttachmentRoles,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
+import {displayTag,inferAttachmentRoles,isGenerationTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
 import {providerForModelId} from "./llm-routing";
 import {detectMediaKind,suggestModel} from "./router";
 import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
@@ -18,12 +18,16 @@ export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;no
 export type OrchestratorResult=
  |{status:"planned";turnId:string;proposal:GenerationProposal;plan:PublicCreativePlan}
  |{status:"unsupported";turnId:string;plan:PublicCreativePlan;message:string;suggestedModel?:SuggestedModel}
- |{status:"restricted";decision:"block"|"review";category:SafetyCategory;message:string};
+ |{status:"restricted";decision:"block"|"review";category:SafetyCategory;message:string}
+ /** Whoush needs one critical answer before it can offer a generation: no plan card, no price, only the question. */
+ |{status:"needs_input";turnId:string;message:string;question:string};
+const FA_NEEDS_INPUT="برای ساختنش یک چیز مهم را باید بدانم.";
 const FA_REFUSED="این درخواست در حال حاضر قابل پردازش نیست. لطفاً آن را با توضیح غیرحساس‌تر دوباره بنویس.";
 const FA_NO_REFS="برنامه تولید با کاراکتر انتخاب‌شده آماده است، اما هنوز هیچ مدل تأییدشده‌ای عکس مرجع کاراکتر را نمی‌پذیرد؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 const FA_TEXT_BLOCKED="یکی از فایل‌های متنیِ پیوست‌شده مسدود شد. ";
 const FA_MEDIA_REVIEW="برنامه آماده است، اما بررسی ایمنی فایل‌های تصویری، ویدیویی و صوتی هنوز فعال نیست؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 const FA_VOICE_CLONE="کلون صدا در هووش پشتیبانی نمی‌شود؛ هووش فقط تصویر و ویدیو می‌سازد و تولید یا شبیه‌سازی صدا ممکن نیست.";
+const faMissingGenerations=(tags:readonly string[])=>tags.map(displayTag).join("، ")+(tags.length===1?" در این گفت‌وگو پیدا نشد؛ تگ را اصلاح کن یا از «اصلاح» روی کارت همان تولید استفاده کن.":" در این گفت‌وگو پیدا نشدند؛ تگ‌ها را اصلاح کن یا از «اصلاح» روی کارت همان تولید استفاده کن.");
 const faMissing=(tags:readonly string[])=>tags.length===1?"پیوست "+displayTag(tags[0])+" در این گفت‌وگو پیدا نشد؛ آن را دوباره اضافه کن یا تگ را اصلاح کن.":"پیوست‌های "+tags.map(displayTag).join("، ")+" در این گفت‌وگو پیدا نشدند؛ آن‌ها را دوباره اضافه کن یا تگ‌ها را اصلاح کن.";
 const faSuggestion=(m:SuggestedModel)=>" مدل مناسب این کار: "+m.name+"؛ پس از تأیید فعال می‌شود.";
 const FA_PDF_NOTE="محتوای فایل PDF هنوز خوانده نمی‌شود و در برنامه اثری ندارد";
@@ -47,7 +51,8 @@ const MOVES:ReadonlyArray<readonly [RegExp,Pair]>=[
 const DOLLY=P("slow dolly-in at walking pace","دالی‌این آرام با سرعت قدم زدن");
 const viewTitles=(ids:readonly string[])=>ids.map(id=>CHARACTER_VIEWS.find(v=>v.id===id)?.title??id).join("، ");
 const missingViews=(angles:readonly string[])=>REQUIRED_CHARACTER_VIEWS.filter(v=>!angles.includes(v));
-const missingQuestion=(angles:readonly string[])=>{const m=missingViews(angles);return m.length?"زاویه‌های «"+viewTitles(m)+"» هنوز اضافه نشده‌اند و ساخته نمی‌شوند؛ ادامه بدهیم یا اول آن‌ها را اضافه می‌کنی؟":undefined;};
+/** Missing character angles are Whoush's call, not a question: it continues with the provided angles and says so in the plan. */
+const missingAnglesNote=(angles:readonly string[])=>{const m=missingViews(angles);return m.length?"زاویه‌های «"+viewTitles(m)+"» هنوز اضافه نشده‌اند؛ هووش فقط از زاویه‌های موجود استفاده می‌کند و آن‌ها را از خودش نمی‌سازد":undefined;};
 const fas=(l:readonly Pair[])=>l.map(x=>x.fa);
 const ens=(l:readonly Pair[])=>l.map(x=>x.en);
 // ---- the style chosen in the + menu ----
@@ -72,10 +77,13 @@ const tagMap=(l:readonly Ref[]=[])=>new Map(l.map(a=>[a.tag,a]));
 function roleRule(kind:AttachmentKind,role:AttachmentRole,tag:string):{hard?:Pair;soft?:Pair;lock?:Pair}{
  const at="@"+tag,fa=displayTag(tag);
  switch(role){
+  // `reference` and `frame` are resolved from the brief in inferAttachmentRoles before planning; these fallbacks only guard a caller that skips that step.
+  case "reference":return roleRule(kind,"general",tag);
+  case "frame":return roleRule(kind,"start_frame",tag);
   case "character":return {hard:P(at+": preserve facial identity, hair, skin tone and body proportions exactly as in the reference",fa+": هویت چهره، مو، رنگ پوست و تناسب بدن مطابق مرجع حفظ شود")};
   case "start_frame":return {hard:P(at+": this image is the first frame of the video; its composition, subject and lighting are the starting point",fa+" فریم اول ویدیوست؛ ترکیب‌بندی، سوژه و نور همین عکس نقطهٔ شروع است")};
   case "end_frame":return {hard:P(at+": this image is the last frame of the video; the video ends on its composition, subject and lighting",fa+" فریم آخر ویدیوست؛ ویدیو با همین ترکیب‌بندی، سوژه و نور تمام می‌شود")};
-  case "outfit":return {hard:P(at+": apply this outfit (design, color, fabric and cut) to the subject; do not copy the face or body of the model in the outfit photo","لباس و کفش "+fa+" (طرح، رنگ، جنس و برش) روی سوژه اعمال می‌شود؛ چهره و بدن مدلِ عکس مرجع کپی نمی‌شود"),
+  case "outfit":return {hard:P(at+": apply this outfit (design, color, fabric and cut) to the subject; do not copy the face or body of the model in the outfit photo","پوشاک "+fa+" (طرح، رنگ، جنس و برش) روی سوژه اعمال می‌شود؛ چهره و بدن مدلِ عکس مرجع کپی نمی‌شود"),
    soft:P("Clothing stays modest and non-provocative, in line with the content policy","پوشش مطابق سیاست محتوای هووش، پوشیده و غیرتحریک‌آمیز")};
   case "hairstyle":return {hard:P(at+": apply the hairstyle and, where present, the beard and moustache shape; the subject's face, skin tone and identity do not change","مدل مو و فرم ریش و سبیل "+fa+" (در صورت وجود) اعمال می‌شود؛ چهره، رنگ پوست و هویت سوژه تغییر نمی‌کند")};
   case "makeup":return {hard:P(at+": apply this makeup (colors and intensity); keep natural skin texture, never plastic or over-smoothed skin","آرایش "+fa+" (رنگ‌ها و شدت) اعمال می‌شود؛ بافت طبیعی پوست حفظ می‌شود و پوست پلاستیکی یا صاف‌شده نمی‌شود")};
@@ -118,6 +126,17 @@ export function deterministicPlanner(req:PlannerRequest):{plan:CreativePlan}{
  const camera=portrait
   ?{look:d.look.fa,focalLengthMm:85,aperture:night?"f/1.8":"f/2.0",shutter:night?"1/125s":"1/200s",iso:night?1600:200,whiteBalanceK:night?3800:5600,framing:d.framing.fa,lighting:d.lighting.fa,focus:d.focus.fa,aspectRatio:vertical?"9:16":"4:5"}
   :{look:d.look.fa,focalLengthMm:35,aperture:night?"f/2.8":"f/5.6",shutter:night?"1/60s":"1/250s",iso:night?1600:100,whiteBalanceK:night?4000:5600,framing:d.framing.fa,lighting:d.lighting.fa,focus:d.focus.fa,aspectRatio:vertical?"9:16":"3:2"};
+ // Diagram staging, consistent with the camera and shot text above: a soft key at 45 degrees with fill and rim for people, directional daylight (or practicals and moon at night) for scenes.
+ const warm=night?3200:camera.whiteBalanceK;
+ const staging:Staging=portrait
+  ?{cameraAngle:"eye_level",shotSize:"medium_close_up",lights:[
+    {role:"key",direction:"front_left",height:"high",quality:"soft",source:night?"practical":"softbox",colorTemperatureK:warm},
+    {role:"fill",direction:"front_right",height:"eye",quality:"soft",source:night?"practical":"softbox",colorTemperatureK:warm},
+    {role:"rim",direction:"back_right",height:"high",quality:"hard",source:night?"neon":"led_panel",colorTemperatureK:night?6500:5600,...(night?{colorHex:"#4f8cff"}:{})}]}
+  :{cameraAngle:"eye_level",shotSize:"wide",lights:night
+    ?[{role:"key",direction:"front_left",height:"eye",quality:"soft",source:"practical",colorTemperatureK:3200},{role:"fill",direction:"back",height:"high",quality:"soft",source:"moon",colorTemperatureK:7500}]
+    :[{role:"key",direction:"back_left",height:"high",quality:"hard",source:"sun",colorTemperatureK:5600},{role:"fill",direction:"top",height:"high",quality:"soft",source:"sky",colorTemperatureK:7000}]};
+ const gens=req.generations??[],revision=gens[0];
  const mv=MOVES.find(([re])=>re.test(p))?.[1]??DOLLY;
  const size=portrait?P("medium close-up","نمای نزدیک متوسط"):P("wide establishing shot","نمای باز معرفی صحنه");
  const notes=[P("First, middle and last frames share identity, wardrobe, lighting direction and palette","فریم اول، میانی و آخر هویت، لباس، جهت نور و پالت رنگی یکسان دارند"),P("Natural motion blur from the 180 degree shutter; no FPS drift","محوشدگی حرکتی طبیعی از شاتر ۱۸۰ درجه؛ بدون نوسان فریم‌ریت")];
@@ -125,6 +144,7 @@ export function deterministicPlanner(req:PlannerRequest):{plan:CreativePlan}{
  const lips=ids.includes("persian_lip_sync_phonetics"),speech=input.audio?.hasSpeech===true;
  const rd=roleDirectives(req.attachments),byTag=tagMap(req.attachments),sd=styleDirectives(input.style,hasCharacterRef(req));
  const hardP:Pair[]=[P("Follow the brief exactly; do not add unrequested subjects, text or logos","دقیقاً مطابق توضیح تو؛ سوژه، متن یا لوگوی اضافه‌ای وارد نمی‌شود"),
+  ...gens.map(g=>P("Revise "+"[earlier generation "+g.tag.replace(/\D/g,"")+"]"+": apply only the requested changes and keep its subject, composition, camera, lighting and style otherwise","در "+displayTag(g.tag)+" فقط تغییرهای خواسته‌شده اعمال می‌شود؛ سوژه، ترکیب‌بندی، دوربین، نور و سبک آن بقیه‌اش همان می‌ماند")),
   ...(input.task==="edit"?[P("Preserve all unedited source regions: identity, framing, lighting, color and pixels","همهٔ بخش‌های ویرایش‌نشدهٔ تصویر مبدأ حفظ می‌شود: هویت، کادر، نور، رنگ و پیکسل‌ها")]:[]),
   ...(kind==="video"?[P("Keep people and objects continuous; no teleporting, sudden appearance or unintended cuts","افراد و اشیا پیوسته می‌مانند؛ بدون جابه‌جایی ناگهانی، ظاهر یا ناپدید شدن ناگهانی و برش ناخواسته")]:[]),
   ...(ref?[P("Use only the provided reference angles; never invent missing views","فقط از زاویه‌های مرجع ارائه‌شده استفاده می‌شود؛ نمای ناموجود ساخته نمی‌شود")]:[]),
@@ -135,27 +155,28 @@ export function deterministicPlanner(req:PlannerRequest):{plan:CreativePlan}{
  const directives=fas(directivesP);
  const hard=fas(hardP);
  const docs=(req.attachments??[]).filter(a=>a.textExcerpt).length,pdfs=(req.attachments??[]).filter(a=>a.kind==="pdf").length;
- const soft=[...fas(sd.soft),kind==="image"?"نسبت تصویر "+faDigits(camera.aspectRatio):"کادر مناسب پلتفرم با جذابیت واضح در ثانیهٔ اول",...fas(rd.soft),...(night?["حال‌وهوای کم‌نور با منابع نور واقعی صحنه"]:[]),
+ const anglesNote=ref?missingAnglesNote(ref.angles):undefined;
+ const soft=[...(anglesNote?[anglesNote]:[]),...fas(sd.soft),kind==="image"?"نسبت تصویر "+faDigits(camera.aspectRatio):"کادر مناسب پلتفرم با جذابیت واضح در ثانیهٔ اول",...fas(rd.soft),...(night?["حال‌وهوای کم‌نور با منابع نور واقعی صحنه"]:[]),
   ...(docs?[faDigits(String(docs))+" سند متنی به‌عنوان زمینه همراه درخواست ثبت شد؛ برنامهٔ آزمایشی هنوز محتوای آن‌ها را اعمال نمی‌کند"]:[]),...(pdfs?[FA_PDF_NOTE]:[])];
  const direction=kind==="image"?[camera.focalLengthMm+"mm",camera.aperture,camera.shutter,"ISO "+camera.iso,camera.whiteBalanceK+"K",d.framing.en,d.lighting.en]:[size.en,mv.en,shot.targetFps+"fps",shot.shutterAngle+" degree shutter",shot.durationSeconds+"s"];
  // The user's text gets whatever budget the direction, hard constraints and role lines leave, so the constraints at the end are never cut off.
  const rest="\nDirection: "+direction.join(", ")+". "+ens(directivesP).join(". ")+". "+ens(hardP).join(". ")+(rd.locks.length||rd.soft.length||sd.soft.length?". "+ens([...rd.locks,...rd.soft,...sd.soft]).join(". "):"");
- const restEn=rewriteMentions(rest,byTag),prompt=(rewriteMentions(text,byTag).slice(0,Math.max(200,3000-restEn.length))+restEn).slice(0,3000);
+ const genTags=new Set(gens.map(g=>g.tag));
+ const restEn=rewriteMentions(rest,byTag,genTags),prompt=(rewriteMentions(text,byTag,genTags).slice(0,Math.max(200,3000-restEn.length))+restEn).slice(0,3000);
  const plan:CreativePlan={
-  intentSummaryFa:(kind==="image"?"ساخت تصویر: ":"ساخت ویدیو: ")+text.replace(/\s+/g," ").slice(0,160)+(text.length>160?"…":""),
+  intentSummaryFa:(revision?"تغییر "+displayTag(revision.tag)+": ":kind==="image"?"ساخت تصویر: ":"ساخت ویدیو: ")+text.replace(/\s+/g," ").slice(0,160)+(text.length>160?"…":""),
   mediaKind:kind,
   mediaPrompt:prompt,
   hardConstraints:hard,
   softPreferences:soft,
   negative:["extra fingers","distorted anatomy","garbled or misspelled text","watermark",...(photoreal?["waxy or plastic skin","over-smoothing","gratuitous grain, glow or filters"]:[])],
-  camera:kind==="image"?camera:undefined,shot:kind==="video"?shot:undefined,
+  camera:kind==="image"?camera:undefined,shot:kind==="video"?shot:undefined,staging,
   identityLock:ref?{characterId:ref.id,version:ref.version,providedAngles:[...ref.angles],lockedAttributes:["هندسهٔ چهره","مدل مو و خط رویش مو","رنگ و بافت پوست","تناسب بدن","سن ظاهری","لباس، مگر تغییرش خواسته شود"],allowedChanges:["ژست و حالت چهره","محیط و نور طبق درخواست","زاویهٔ دوربین"]}:undefined,
   continuity:{locks:["هویت، لباس، مدل مو، وسایل و پالت رنگی در همهٔ فریم‌ها و بازبینی‌ها یکسان می‌ماند","جهت نور و ساعت روز ثابت است، مگر اینکه توضیح تو آن را تغییر بدهد","هر چیزی که درخواست تغییرش نشده، دست‌نخورده می‌ماند",...fas(rd.locks)],
    antiTeleport:kind==="video"?["هر فرد و شیء پایدار می‌ماند: بدون ظاهر یا ناپدید شدن ناگهانی","تماس دست با اشیا و مسیر حرکت‌ها از نظر فیزیکی قابل‌باور می‌ماند","میان فریم‌های پیاپی پرش ناگهانی در موقعیت وجود ندارد"]:[]},
   realism:{mode:photoreal?"photoreal":"stylized",directives},
   speech:kind==="video"?{lipSync:lips?{status:speech?"planned_from_audio":"needs_audio",notes:speech?["زمان‌بندی دهان از روی صدای ارائه‌شده استخراج می‌شود، نه از زمان‌بندی حدسیِ متن","صدا، کلمات و لهجهٔ فایل اصلی بدون تغییر می‌ماند",...(ids.includes("tehrani_accent")?["لهجهٔ تهرانی فقط هدف خلاقانه برای دیالوگ تازه‌نوشته‌شده است؛ صدای ارائه‌شده هرگز تغییر نمی‌کند"]:[])]:["برای هم‌زمان‌سازی لب، فایل صوتی گفتار را ارائه کن؛ زمان‌بندی هرگز فقط از روی متن حدس زده نمی‌شود"]}:{status:"not_requested",notes:[]},accent:ids.includes("tehrani_accent")?"tehrani":input.audio?.accent==="original"?"original":"unspecified"}:undefined,
-  qaChecklist:["سوژه، تعداد و ترکیب‌بندی با توضیح تو می‌خواند","آناتومی، دست‌ها و هندسه قابل‌باورند","متن فارسی یا انگلیسی داخل تصویر درست نوشته شده و حروف فارسی به‌هم‌پیوسته‌اند",kind==="video"?"فریم اول، میانی و آخر هویت و نور را حفظ می‌کنند؛ شیئی ناگهان جابه‌جا نمی‌شود؛ مدت و فریم‌ریت با برنامه می‌خواند":"نور، نوردهی و پرسپکتیو یکدست است",...(photoreal?["پوست و مواد طبیعی دیده می‌شوند، نه مومی یا بیش‌ازحد فیلترشده"]:[])],
-  clarifyingQuestionFa:ref?missingQuestion(ref.angles):undefined
+  qaChecklist:["سوژه، تعداد و ترکیب‌بندی با توضیح تو می‌خواند","آناتومی، دست‌ها و هندسه قابل‌باورند","متن فارسی یا انگلیسی داخل تصویر درست نوشته شده و حروف فارسی به‌هم‌پیوسته‌اند",kind==="video"?"فریم اول، میانی و آخر هویت و نور را حفظ می‌کنند؛ شیئی ناگهان جابه‌جا نمی‌شود؛ مدت و فریم‌ریت با برنامه می‌خواند":"نور، نوردهی و پرسپکتیو یکدست است",...(photoreal?["پوست و مواد طبیعی دیده می‌شوند، نه مومی یا بیش‌ازحد فیلترشده"]:[])]
  };
  return {plan};
 }
@@ -165,6 +186,8 @@ function enforce(raw:CreativePlan,req:PlannerRequest):{plan:CreativePlan;correct
  const note=(n:string,cond:boolean)=>{if(cond)c.push(n);return cond;};
  if(note("media_kind",p.mediaKind!==kind))p.mediaKind=kind;
  if(kind==="image"){if(note("shot_dropped",Boolean(p.shot)))delete p.shot;if(note("camera_filled",!p.camera))p.camera=det.camera;}
+ // Diagram data only: filled from the deterministic plan when missing, without counting as a correction (it must never trigger escalation).
+ if(!p.staging)p.staging=det.staging;
  else if(note("shot_filled",!p.shot))p.shot=det.shot;
  if(note("continuity_filled",!p.continuity.locks.length||(kind==="video"&&!p.continuity.antiTeleport.length)))p.continuity={locks:p.continuity.locks.length?p.continuity.locks:det.continuity.locks,antiTeleport:kind==="video"&&!p.continuity.antiTeleport.length?det.continuity.antiTeleport:p.continuity.antiTeleport};
  if(!ref){if(note("identity_dropped",Boolean(p.identityLock)))delete p.identityLock;}
@@ -172,7 +195,9 @@ function enforce(raw:CreativePlan,req:PlannerRequest):{plan:CreativePlan;correct
   const il=p.identityLock??det.identityLock!;
   note("identity_overwritten",!p.identityLock||il.characterId!==ref.id||il.version!==ref.version||il.providedAngles.join()!==ref.angles.join());
   p.identityLock={...il,characterId:ref.id,version:ref.version,providedAngles:[...ref.angles],lockedAttributes:il.lockedAttributes.length?il.lockedAttributes:det.identityLock!.lockedAttributes};
-  if(!p.clarifyingQuestionFa)p.clarifyingQuestionFa=missingQuestion(ref.angles);
+  // Missing angles are a note in the plan, never a question (Whoush continues with what it has); added silently, not counted as a correction.
+  const anglesNote=missingAnglesNote(ref.angles);
+  if(anglesNote&&!p.softPreferences.includes(anglesNote))p.softPreferences=[anglesNote,...p.softPreferences];
  }
  const photoreal=ids.includes("hyper_realism");
  if(note("realism_mode",p.realism.mode!==(photoreal?"photoreal":"stylized")||!p.realism.directives.length))p.realism=det.realism;
@@ -254,17 +279,24 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   const r=evaluateTextSafety(f.textExcerpt);
   if(r.decision!=="allow")return {status:"restricted",decision:r.decision,category:r.category,message:FA_TEXT_BLOCKED+r.message};
  }
+ // Summaries of earlier generations come from the browser: user data like excerpts, with the same preflight.
+ const generations=parsed.generations??[];
+ for(const g of generations){
+  const r=evaluateTextSafety(g.summaryFa);
+  if(r.decision!=="allow")return {status:"restricted",decision:r.decision,category:r.category,message:FA_TEXT_BLOCKED+r.message};
+ }
  // Planners see attachments only through `req.attachments` (kinds and excerpts as data); the audio flags are merged into `input.audio`.
  // An edit_reference (image or video) makes the turn an edit, which brings photo_editor or video_editor.
  const task=parsed.task!=="character"&&files.some(f=>f.role==="edit_reference")?"edit":parsed.task;
- const input={...parsed,task,visualStyle:parsed.style?STYLE_VISUAL[parsed.style]:parsed.visualStyle,audio:deriveAudio({...parsed,attachments:files}),attachments:undefined};
+ const input={...parsed,task,visualStyle:parsed.style?STYLE_VISUAL[parsed.style]:parsed.visualStyle,audio:deriveAudio({...parsed,attachments:files}),attachments:undefined,generations:undefined};
  // A video attachment (every media attachment carries a role), a lip_sync audio or a start_frame or end_frame image makes the output a video even when the text sounds like
  // an image request. Such a turn always has media, so it stops at the media-review check below and never reaches `buildProposal`, which re-detects from the text.
- const kind=files.some(f=>f.kind==="video"||(f.kind==="audio"&&f.role==="lip_sync")||(f.kind==="image"&&(f.role==="start_frame"||f.role==="end_frame")))?"video":detectMediaKind(input.text),a=input.audio,ref=input.characterRef;
+ const kind=files.some(f=>f.kind==="video"||(f.kind==="audio"&&f.role==="lip_sync")||(f.kind==="image"&&(f.role==="start_frame"||f.role==="end_frame")))?"video":generations.length&&detectMediaKind(input.text)!=="video"?generations[0].mediaKind:detectMediaKind(input.text),a=input.audio,ref=input.characterRef;
  const refs:PublicReference[]=files.flatMap(f=>isMediaKind(f.kind)&&f.role?[{tag:f.tag,kind:f.kind,role:f.role,roleSource:f.roleSource??"user",labelFa:roleLabelFa(f.role,f.kind)}]:[]);
- const have=new Set(files.map(f=>f.tag)),missing=parseMentions(input.text).filter(t=>!have.has(t)),byTag=tagMap(files);
+ const have=new Set([...files.map(f=>f.tag),...generations.map(g=>g.tag)]),mentionedMissing=parseMentions(input.text).filter(t=>!have.has(t)),byTag=tagMap(files),genTags=new Set(generations.map(g=>g.tag));
+ const missing=mentionedMissing.filter(t=>!isGenerationTag(t)),missingGenerations=mentionedMissing.filter(isGenerationTag);
  const prep=preparePrivateCreativeRequest({prompt:input.text,kind,task:input.task,attachmentRoles:files.flatMap(f=>f.role?[f.role]:[]),hasReferences:Boolean(ref||a?.hasAudioReference||files.length),hasAudioReference:a?(a.hasAudioReference||a.hasSpeech):undefined,hasSpeechAudio:a?.hasSpeech,speechLanguage:a?.language,accent:a?.accent,characterRef:ref,visualStyle:input.visualStyle});
- const req:PlannerRequest={...prep,privateRoute:prep.privateRoute&&{provider:prep.privateRoute.provider,modelId:prep.privateRoute.modelId},kind,input,...(files.length?{attachments:files.map(f=>({tag:f.tag,kind:f.kind,...(f.role?{role:f.role,roleSource:f.roleSource??"user"}:{}),...(f.textExcerpt?{textExcerpt:f.textExcerpt}:{})}))}:{})};
+ const req:PlannerRequest={...prep,privateRoute:prep.privateRoute&&{provider:prep.privateRoute.provider,modelId:prep.privateRoute.modelId},kind,input,...(files.length?{attachments:files.map(f=>({tag:f.tag,kind:f.kind,...(f.role?{role:f.role,roleSource:f.roleSource??"user"}:{}),...(f.textExcerpt?{textExcerpt:f.textExcerpt}:{})}))}:{}),...(generations.length?{generations:generations.map(g=>({...g}))}:{})};
  const turnId=randomUUID();
  const rec=(x:Partial<PrivateAuditRecord>)=>audit.record({turnId,at:now().toISOString(),skillRegistryVersion:SKILL_REGISTRY_VERSION,activeSkillIds:[...prep.activeSkillIds],reasoningTier:prep.privateReasoningTier,route:req.privateRoute,planner:"deterministic",...(input.style?{style:input.style}:{}),promptSha256:createHash("sha256").update(input.text).digest("hex"),...(routing?{routing}:{}),...(files.length?{attachments:files.map(f=>({tag:f.tag,...(f.role?{role:f.role,roleSource:f.roleSource??"user"}:{}),kind:f.kind,bytes:f.bytes,sha256:f.sha256}))}:{}),...x});
  let label:PrivateAuditRecord["planner"]=deps.planner&&deps.planner!==deterministicPlanner?"live":"deterministic",fallbackReason:string|undefined;
@@ -299,7 +331,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
    // Task-based routing: profile the task, take the band's ladder (minus unavailable rungs), try rungs in order within the attempt budget.
    // A refusal is a safety signal: it ends the turn as restricted and never moves to another model, unless the owner lists `refused` in `escalateOn`.
    const cfg=deps.routing??loadRoutingConfig(),state=deps.routerState??defaultRouterState(),prof=profileTask(input,kind,prep.activeSkillIds,req.attachments);
-   const chars=req.systemInstructions.length+req.userText.length+(req.attachments??[]).reduce((n,x)=>n+(x.textExcerpt?.length??0),0);
+   const chars=req.systemInstructions.length+req.userText.length+(req.attachments??[]).reduce((n,x)=>n+(x.textExcerpt?.length??0),0)+(req.generations??[]).reduce((n,g)=>n+g.summaryFa.length,0);
    const route=planRoute(prof,{cfg,now:now(),state,inputChars:chars});
    routing={...prof,band:route.band,ladder:route.ladder,skipped:route.skipped,attempts:[],chosenModelId:null};
    if(!route.ladder.length)fallbackReason=route.skipped.some(x=>x.why==="cooldown")?"provider cooldown":route.skipped.some(x=>x.why==="no_key")?"api key not configured":"no route available";
@@ -341,12 +373,23 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  if(!fin.e)throw new Error("deterministic planner produced an invalid plan");
  const {plan,corrections}=fin.e;
  // Provider-facing text names attachments by description; the public Persian text keeps what the user typed. A missing tag is a question, never a block.
- plan.mediaPrompt=rewriteMentions(plan.mediaPrompt,byTag).slice(0,3000);
- if(missing.length)plan.clarifyingQuestionFa=[faMissing(missing),plan.clarifyingQuestionFa].filter(Boolean).join(" ").slice(0,400);
+ plan.mediaPrompt=rewriteMentions(plan.mediaPrompt,byTag,genTags).slice(0,3000);
  // plan inspection: LLM output never bypasses the safety layer
  for(const t of [plan.mediaPrompt,...plan.hardConstraints]){
   const r=evaluatePlanTextSafety(t); // planner text: negated generic categories ("no political banners") are compliance, not violations
   if(r.decision!=="allow"){rec({planner:label,fallbackReason:"plan_restricted",corrections,usage:result?.usage});return {status:"restricted",decision:r.decision,category:r.category,message:r.message};}
+ }
+ // One critical question stops the turn before any model or price is offered: a mentioned file or generation that is not in the chat, or the planner's own question.
+ // A message that answers an earlier question is never asked again: Whoush decides, and a reference that is still missing is left out with a note in the plan.
+ const missingNote=[missing.length?faMissing(missing):"",missingGenerations.length?faMissingGenerations(missingGenerations):""].filter(Boolean);
+ const question=input.answersQuestion?"":[...missingNote,plan.clarifyingQuestionFa??""].filter(Boolean).join(" ").slice(0,400);
+ if(input.answersQuestion&&(missing.length||missingGenerations.length))plan.softPreferences=[[...missing,...missingGenerations].map(displayTag).join("، ")+" در این گفت‌وگو نیست؛ هووش بدون آن می‌سازد",...plan.softPreferences];
+ delete plan.clarifyingQuestionFa;
+ if(question){
+  const r=evaluatePlanTextSafety(question);
+  if(r.decision!=="allow"){rec({planner:label,fallbackReason:"plan_restricted",corrections,usage:result?.usage});return {status:"restricted",decision:r.decision,category:r.category,message:r.message};}
+  rec({planner:label,fallbackReason:"needs_input",corrections:corrections.length?corrections:undefined,usage:label==="live"?result?.usage:undefined});
+  return {status:"needs_input",turnId,message:FA_NEEDS_INPUT,question};
  }
  // Hard capability requirements: a character reference needs reference-image input, lip sync needs a lip-sync model.
  const requirements=mediaRequirements({characterRef:ref,attachments:files},kind==="video"&&prep.activeSkillIds.includes("persian_lip_sync_phonetics"));

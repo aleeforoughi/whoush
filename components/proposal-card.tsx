@@ -1,103 +1,86 @@
 "use client";
-import {Check,CircleHelp} from "lucide-react";
-import {Alert,AlertDescription,AlertTitle,Badge,Button,Card,CardAction,CardContent,CardDescription,CardFooter,CardHeader,CardTitle,Field,FieldContent,FieldDescription,FieldLabel,FieldLegend,FieldSet,FieldTitle,Icon,RadioGroup,RadioGroupItem,Separator} from "@aleeforoughi/feather-react";
-import {PlanDetails,SuggestedModelNote} from "@/components/plan-details";
+import {CircleOff,Clapperboard,Image as ImageIcon,Sparkles} from "lucide-react";
+import {Badge,Button,Card,Icon,Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from "@aleeforoughi/feather-react";
+import {SuggestedModelNote} from "@/components/plan-details";
+import {TagBadge} from "@/components/attachment-chip";
 import type {AgentProposal,NoModelResult} from "@/lib/studio-types";
 import {PAST_PROPOSAL_FA,type ProposalSnapshot} from "@/lib/projects";
 import {fa} from "@/lib/format";
 
+export const GENERATE_FA="بساز",CHANGE_FA="اصلاح",DEMO_NOTE_FA="نسخهٔ نمایشی: نه پولی کسر می‌شود و نه رسانهٔ واقعی ساخته می‌شود.";
+const RECOMMENDED_FA="پیشنهاد هووش",ALTERNATE_FA="جایگزین";
 /** Latin model names keep their own direction inside Persian text. */
 const ModelName=({name}:{name:string})=><bdi dir="ltr">{name}</bdi>;
 
-export function ProposalCard({proposal,selected,onSelect,busy,onApprove}:{proposal:AgentProposal;selected:string;onSelect:(id:string)=>void;busy:boolean;onApprove:()=>void}){
+/** The card's top row: the kind's icon, «تصویر» or «ویدیو», the generation's tag (a button that puts it in the prompt) and the demo badge. */
+function Head({kind,tag,onMention}:{kind:"image"|"video";tag?:string;onMention?:()=>void}){
+ return <div className="flex items-center gap-2">
+  <span className="flex size-9 shrink-0 items-center justify-center rounded-control bg-surface-hover text-fg-secondary"><Icon icon={kind==="video"?Clapperboard:ImageIcon} size={20} aria-hidden="true"/></span>
+  <span className="type-label text-fg-primary">{kind==="video"?"ساخت ویدیو":"ساخت تصویر"}</span>
+  {tag&&<TagBadge tag={tag} onMention={onMention}/>}
+  <Badge variant="outline" className="ms-auto">نسخه نمایشی</Badge>
+ </div>;
+}
+/** «اصلاح» (text only): puts this generation as a card in the chat input, so the next message asks for changes to it. */
+const ChangeButton=({onChange,disabled}:{onChange:()=>void;disabled?:boolean})=>
+ <Button type="button" variant="outline" onClick={onChange} disabled={disabled}>{CHANGE_FA}</Button>;
+
+/**
+ * The live generation card: short and actionable, the plan itself is in the conversation above it. The kind, the tag (#تولید-۱), the model (recommendation first,
+ * alternates marked «جایگزین», each with its fixed Neurons), then [بساز · ۱۰ نورون] and [اصلاح].
+ */
+export function ProposalCard({proposal,tag,selected,onSelect,busy,onApprove,onChange,onMention}:{proposal:AgentProposal;tag?:string;selected:string;onSelect:(id:string)=>void;busy:boolean;onApprove:()=>void;onChange:()=>void;onMention?:()=>void}){
  const chosen=proposal.suggestions.find(s=>s.modelId===selected);
  const price=chosen?.neurons??proposal.fixedNeurons;
  const ordered=[...proposal.suggestions].sort((a,b)=>Number(b.modelId===proposal.recommendedModelId)-Number(a.modelId===proposal.recommendedModelId));
- const question=proposal.plan.clarifyingQuestionFa;
- return <Card data-testid="proposal">
-  <CardHeader>
-   <CardTitle>برنامه تولید {proposal.operation==="generate_video"?"ویدیو":"تصویر"}</CardTitle>
-   <CardDescription>{proposal.plan.intentSummaryFa}</CardDescription>
-   <CardAction><Badge variant="outline">نسخه نمایشی</Badge></CardAction>
-  </CardHeader>
-  <CardContent className="flex flex-col gap-6">
-   {question&&<Alert role="status">
-    <Icon icon={CircleHelp} aria-hidden="true"/>
-    <AlertTitle>یک سؤال برای دقیق‌تر شدن</AlertTitle>
-    <AlertDescription>{question}</AlertDescription>
-   </Alert>}
-   <FieldSet>
-    <FieldLegend variant="label">مدل تولید</FieldLegend>
-    <RadioGroup value={selected} onValueChange={v=>onSelect(String(v))} aria-label="مدل تولید">
-     {ordered.map(s=>{
-      const recommended=s.modelId===proposal.recommendedModelId;
-      const id="model-"+s.modelId;
-      return <FieldLabel key={s.modelId} htmlFor={id}>
-       <Field orientation="horizontal">
-        <RadioGroupItem id={id} value={s.modelId}/>
-        <FieldContent>
-         <FieldTitle className="flex-wrap"><ModelName name={s.name}/>{recommended?<Badge>پیشنهاد هووش</Badge>:<Badge variant="outline">جایگزین</Badge>}</FieldTitle>
-         <FieldDescription>{s.reason}</FieldDescription>
-        </FieldContent>
-        <span className="type-label text-fg-primary whitespace-nowrap">{fa(s.neurons)} نورون</span>
-       </Field>
-      </FieldLabel>;
-     })}
-    </RadioGroup>
-   </FieldSet>
-   <div className="flex flex-col gap-1">
-    <div className="flex items-baseline justify-between gap-4">
-     <span className="type-label text-fg-secondary">هزینه ثابت تولید</span>
-     <strong className="type-title text-fg-primary">{fa(price)} نورون</strong>
-    </div>
-    <p className="type-caption text-fg-secondary">قیمت عدد صحیح و ثابت است و پیش از تأیید تغییر نمی‌کند.</p>
-   </div>
-   <Separator/>
-   <PlanDetails plan={proposal.plan}/>
-  </CardContent>
-  <CardFooter className="flex-col items-stretch">
-   <Button disabled={busy||!proposal.turnId} onClick={onApprove}><Icon icon={Check} aria-hidden="true"/>تأیید آزمایشی</Button>
-   <p className="type-caption text-fg-secondary">در این پیش‌نمایش نه پولی دریافت می‌شود و نه رسانهٔ واقعی تولید می‌شود.</p>
-  </CardFooter>
+ const items=ordered.map(s=>({value:s.modelId,label:s.name}));
+ return <Card size="sm" data-testid="proposal" data-generation={tag} className="gap-3 p-3">
+  <Head kind={proposal.operation==="generate_video"?"video":"image"} tag={tag} onMention={onMention}/>
+  {ordered.length>1
+   ?<Select value={selected} onValueChange={v=>onSelect(String(v))} items={items}>
+    <SelectTrigger size="sm" aria-label="مدل تولید" className="w-full"><span className="text-fg-secondary">مدل</span><SelectValue/></SelectTrigger>
+    <SelectContent>{ordered.map(s=><SelectItem key={s.modelId} value={s.modelId}>
+     <span className="flex min-w-0 flex-col">
+      <span className="flex items-center gap-2"><ModelName name={s.name}/><span className="type-caption text-fg-secondary">{s.modelId===proposal.recommendedModelId?RECOMMENDED_FA:ALTERNATE_FA} · {fa(s.neurons)} نورون</span></span>
+      {s.reason&&<span className="type-caption text-fg-secondary">{s.reason}</span>}
+     </span>
+    </SelectItem>)}</SelectContent>
+   </Select>
+   :chosen&&<p className="flex items-center gap-2 type-body-sm text-fg-secondary">مدل: <span className="text-fg-primary"><ModelName name={chosen.name}/></span><Badge variant="secondary">{RECOMMENDED_FA}</Badge></p>}
+  <div className="flex flex-wrap gap-2">
+   <Button type="button" onClick={onApprove} disabled={busy||!proposal.turnId} className="min-w-0 flex-1 justify-between">
+    <span className="flex items-center gap-2"><Icon icon={Sparkles} aria-hidden="true"/>{GENERATE_FA}</span>
+    <span className="type-label">{fa(price)} نورون</span>
+   </Button>
+   <ChangeButton onChange={onChange}/>
+  </div>
+  <p className="type-caption text-fg-secondary">{DEMO_NOTE_FA}</p>
  </Card>;
 }
 
-/** 422 no_compatible_model: the plan is shown for transparency, with no price and nothing to approve. */
+/** A generation from earlier in the conversation: its quote has expired (or the page reloaded), so only «اصلاح» remains; the plan is in the conversation. */
+export function PastProposalCard({snapshot,onChange,onMention,disabled}:{snapshot:ProposalSnapshot;onChange:()=>void;onMention?:()=>void;disabled?:boolean}){
+ return <Card size="sm" data-testid="past-proposal" data-generation={snapshot.tag} className="gap-3 p-3">
+  <Head kind={snapshot.operation==="generate_video"?"video":"image"} tag={snapshot.tag} onMention={onMention}/>
+  <p className="flex flex-wrap items-center justify-between gap-2 type-body-sm text-fg-secondary">
+   <span>مدل: <span className="text-fg-primary"><ModelName name={snapshot.modelName}/></span></span>
+   <span className="type-label text-fg-primary">{fa(snapshot.neurons)} نورون</span>
+  </p>
+  <div className="flex flex-wrap items-center gap-2">
+   <ChangeButton onChange={onChange} disabled={disabled}/>
+   <p role="note" className="min-w-0 flex-1 type-caption text-fg-secondary">{PAST_PROPOSAL_FA}</p>
+  </div>
+ </Card>;
+}
+
+/** 422 no_compatible_model: no price and nothing to generate; the model that fits but is not active yet, if any. The plan is in the conversation. */
 export function NoModelCard({result}:{result:NoModelResult}){
- if(!result.plan)return null;
- return <Card>
-  <CardHeader>
-   <CardTitle>برنامه بدون مدل سازگار</CardTitle>
-   <CardDescription>{result.plan.intentSummaryFa}</CardDescription>
-  </CardHeader>
-  <CardContent className="flex flex-col gap-4">
-   {result.plan.clarifyingQuestionFa&&<Alert role="status">
-    <Icon icon={CircleHelp} aria-hidden="true"/>
-    <AlertTitle>یک سؤال برای ادامه</AlertTitle>
-    <AlertDescription>{result.plan.clarifyingQuestionFa}</AlertDescription>
-   </Alert>}
-   {result.plan.suggestedModel&&<SuggestedModelNote model={result.plan.suggestedModel}/>}
-   <p className="type-body-sm text-fg-secondary">تا پیدا شدن مدل سازگار، قیمتی نمایش داده نمی‌شود و چیزی برای تأیید وجود ندارد.</p>
-   <PlanDetails plan={result.plan} defaultOpen/>
-  </CardContent>
- </Card>;
-}
-
-/** A proposal from earlier in the conversation, read-only: its quote has expired (or the page was reloaded), so there is nothing to approve. */
-export function PastProposalCard({snapshot}:{snapshot:ProposalSnapshot}){
- return <Card data-testid="past-proposal">
-  <CardHeader>
-   <CardTitle>برنامه تولید {snapshot.operation==="generate_video"?"ویدیو":"تصویر"}</CardTitle>
-   <CardDescription>{snapshot.intentSummaryFa}</CardDescription>
-   <CardAction><Badge variant="outline">نسخه نمایشی</Badge></CardAction>
-  </CardHeader>
-  <CardContent className="flex flex-col gap-4">
-   <div className="flex items-baseline justify-between gap-4">
-    <span className="type-body-sm text-fg-secondary">مدل پیشنهادی: <ModelName name={snapshot.modelName}/></span>
-    <strong className="type-label text-fg-primary whitespace-nowrap">{fa(snapshot.neurons)} نورون</strong>
-   </div>
-   <p role="note" className="type-caption text-fg-secondary">{PAST_PROPOSAL_FA}</p>
-   <PlanDetails plan={snapshot.plan}/>
-  </CardContent>
+ return <Card size="sm" className="gap-3 p-3">
+  <div className="flex items-center gap-2">
+   <span className="flex size-9 shrink-0 items-center justify-center rounded-control bg-surface-hover text-fg-secondary"><Icon icon={CircleOff} size={20} aria-hidden="true"/></span>
+   <span className="type-label text-fg-primary">مدل سازگاری پیدا نشد</span>
+  </div>
+  {result.plan?.suggestedModel&&<SuggestedModelNote model={result.plan.suggestedModel}/>}
+  <p className="type-caption text-fg-secondary">تا پیدا شدن مدل سازگار، قیمتی نمایش داده نمی‌شود و چیزی برای ساخت وجود ندارد.</p>
  </Card>;
 }
