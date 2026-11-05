@@ -133,6 +133,8 @@ test("mock provider never yields media or charges; terminal state is completed_d
  for(let i=0;i<5;i++){const j=(await pollJob(job.id,"owner-a",deps))!;states.push(j.state);assert.deepEqual(j.outputs,[]);assert.equal(j.chargedNeurons,0);}
  assert.deepEqual(states,["submitted","running","completed_demo","completed_demo","completed_demo"]);
  const pub=toPublicJob((await pollJob(job.id,"owner-a",deps))!);
+ // Provenance: the job keeps the hash of the exact prompt it sent, privately; the public job never shows it.
+ assert.match(job.promptSha256??"",/^[0-9a-f]{64}$/);assert.ok(!JSON.stringify(pub).includes(job.promptSha256!)&&!("promptSha256" in pub));
  assert.deepEqual(pub.outputs,[]);assert.equal(pub.chargedNeurons,0);assert.equal(pub.qa.status,"not_applicable");assert.match(pub.messageFa,/هیچ رسانه واقعی/);
  assert.equal(deps.ledger.get(job.id)?.state,"released");
  const mock=new MockMediaProvider(),{providerRequestId}=await mock.submit();

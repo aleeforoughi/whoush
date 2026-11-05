@@ -1,5 +1,5 @@
 import "server-only";
-import {randomUUID} from "node:crypto";
+import {createHash,randomUUID} from "node:crypto";
 import {findMediaModel,type MediaConfiguration} from "./catalog";
 import {ReservationLedger} from "./ledger";
 import {NotCancelableError,providerForMode,type MediaProvider,type ProviderOutput,type ProviderStatus} from "./media-provider";
@@ -16,7 +16,8 @@ export const JOB_TRANSITIONS:Readonly<Record<JobState,readonly JobState[]>>={
 };
 export const isTerminal=(s:JobState)=>JOB_TRANSITIONS[s].length===0;
 export type Job={id:string;ownerId:string;idempotencyKey:string;quoteId:string;turnId:string;modelId:string;mode:GenerationMode;configuration:MediaConfiguration;characterRef?:CharacterRefDigest;
- neurons:number;chargedNeurons:number;state:JobState;providerRequestId?:string;outputs:ProviderOutput[];qa:OutputQA;createdAt:string;updatedAt:string};
+ neurons:number;chargedNeurons:number;state:JobState;providerRequestId?:string;
+ /** Private provenance: the SHA-256 of the exact prompt sent, so a result can be traced to it without keeping the prompt on the job. Never public. */promptSha256?:string;outputs:ProviderOutput[];qa:OutputQA;createdAt:string;updatedAt:string};
 export interface JobStore{get(id:string):Job|undefined;byIdempotency(ownerId:string,key:string):Job|undefined;byQuote(quoteId:string):Job|undefined;insert(j:Job):void;save(j:Job):void}
 export class InMemoryJobStore implements JobStore{
  private readonly jobs=new Map<string,Job>();
@@ -59,7 +60,7 @@ export async function executeApprovedQuote(i:{token:string;approved:boolean;idem
  // dev_live (owner-only local testing) accepts the lexical pre-submission check and never charges Neurons; see devLiveTest in lib/policy.ts.
  const prompt=getPrivateMediaPrompt(q.turnId);if(prompt===undefined)throw new QuoteError("unknown_turn");
  const t=now.toISOString();
- const job:Job={id:randomUUID(),ownerId:i.ownerId,idempotencyKey:i.idempotencyKey,quoteId:q.quoteId,turnId:q.turnId,modelId:q.modelId,mode:q.mode,configuration:q.configuration,characterRef:q.characterRef,neurons:q.neurons,chargedNeurons:0,state:"quoted",outputs:[],qa:{status:"not_applicable",checks:[]},createdAt:t,updatedAt:t};
+ const job:Job={id:randomUUID(),ownerId:i.ownerId,idempotencyKey:i.idempotencyKey,quoteId:q.quoteId,turnId:q.turnId,modelId:q.modelId,mode:q.mode,configuration:q.configuration,characterRef:q.characterRef,promptSha256:createHash("sha256").update(prompt).digest("hex"),neurons:q.neurons,chargedNeurons:0,state:"quoted",outputs:[],qa:{status:"not_applicable",checks:[]},createdAt:t,updatedAt:t};
  // Everything up to the provider call is synchronous, so a concurrent replay always finds this job.
  store.insert(job);transition(job,"approved",now);
  try{ledger.reserve(job.id,job.ownerId,job.neurons);}catch{transition(job,"released",now);store.save(job);throw new JobError("insufficient_balance");}

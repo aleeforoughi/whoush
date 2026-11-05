@@ -68,7 +68,6 @@ export function lightToneFa(l:StagingLight):string{
 export const SUBJECT_FA:Record<NonNullable<Staging["subject"]>,string>={person:"آدم",object:"شیء",animal:"حیوان",vehicle:"وسیله نقلیه",environment:"فقط محیط"};
 const ANGLE_EN:Record<Staging["cameraAngle"],string>={birds_eye:"bird's-eye (top-down)",high:"high angle",eye_level:"eye level",low:"low angle",worms_eye:"worm's-eye (from the ground)",dutch:"eye level with a dutch tilt"};
 const SHOT_EN:Record<Staging["shotSize"],string>={extreme_close_up:"extreme close-up",close_up:"close-up",medium_close_up:"medium close-up",medium:"medium shot",medium_full:"medium full shot",full:"full shot",wide:"wide shot",extreme_wide:"extreme wide shot"};
-const DIR_EN:Record<StagingLight["direction"],string>={front:"front",front_left:"front-left",left:"left",back_left:"back-left",back:"behind",back_right:"back-right",right:"right",front_right:"front-right",top:"overhead"};
 /** Where the subject sits in the frame, in words: «وسط قاب», «سمت چپ قاب، یک‌سوم پایین». Within ±0.12 of an axis counts as centred on it. */
 export function placementFa(f?:{x:number;y:number}):string{
  if(!f)return "وسط قاب";
@@ -86,9 +85,9 @@ export function describeStagingFa(s:Staging):string{
  return faText("صحنهٔ تنظیم‌شده: زاویهٔ دوربین «"+CAMERA_ANGLE_FA[s.cameraAngle]+"»"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+" درجه)":"")+(Math.abs(s.cameraAzimuth??0)>=1?"، دوربین "+orbitFa(s.cameraAzimuth!):"")+(Math.abs(s.cameraLift??0)>=0.05?"، دوربین "+fa2(Math.round(Math.abs(s.cameraLift!)*100))+" سانتی‌متر "+(s.cameraLift!>0?"بالاتر":"پایین‌تر"):"")+(s.cameraRoll?"، زاویهٔ کج (داچ) "+Math.abs(Math.round(s.cameraRoll))+" درجه":"")+(s.shotStyle==="ots"?"، نمای روی شانه":s.shotStyle==="pov"?"، نمای دید سوژه":"")+focusFa(s)+(s.focusDetail?"، تمرکز روی "+FOCUS_DETAIL_FA[s.focusDetail]:"")+"، کادر «"+SHOT_SIZE_FA[s.shotSize]+"»"+(s.shotScale!==undefined?" (زوم "+zoomFactor(s)+"×)":"")+(s.subject?"، سوژه: "+SUBJECT_FA[s.subject]:"")+"، جای سوژه: "+placementFa(s.framing)+(s.props?.length?"؛ "+describeLayoutFa(s.props):"")+"؛ "+lights.join("؛ "));
 }
 /** The arranged scene in English, appended to the provider-facing media prompt. */
-export function describeStagingEn(s:Staging):string{
- const lights=s.lights.map(l=>l.role+" light: "+l.quality+" "+l.source.replace("_"," ")+" from "+DIR_EN[l.direction]+(l.angle!==undefined?" ("+Math.round(l.angle)+"° in top view)":"")+", "+LIGHT_HEIGHT_EN[l.height]+", "+l.colorTemperatureK+"K"+(l.intensity!==undefined?", "+Math.round(l.intensity*100)+"% strength":"")+(l.colorHex?", "+tintEn(tintOf(l))+" "+l.colorHex+" colour gel":""));
- return "Staging: "+ANGLE_EN[s.cameraAngle]+" camera"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+"° from eye level)":"")+(orbitEn(s.cameraAzimuth??0)?", "+orbitEn(s.cameraAzimuth??0):"")+(Math.abs(s.cameraLift??0)>=0.05?", camera "+(s.cameraLift!>0?"raised ":"lowered ")+Math.round(Math.abs(s.cameraLift!)*100)+" cm with its aim (same angle)":"")+(s.cameraRoll?", Dutch angle tilted "+Math.abs(Math.round(s.cameraRoll))+"° "+(s.cameraRoll>0?"clockwise":"counter-clockwise"):"")+(s.shotStyle==="ots"?", over-the-shoulder shot":s.shotStyle==="pov"?", point-of-view shot through the subject's eyes":"")+(s.environment&&s.environment!=="landscape"?", in "+ENVIRONMENT_EN[s.environment]:"")+(s.environmentDistance!==undefined?", the background about "+Math.round(s.environmentDistance)+" m behind the subject":"")+focusEn(s)+(s.focusDetail?", framed on the main subject's "+(s.focusDetail==="feet"?"feet and shoes":s.focusDetail):"")+", "+SHOT_EN[s.shotSize]+(s.shotScale!==undefined?" ("+zoomFactor(s)+"x of a full shot)":"")+", "+placementEn(s.framing)+"; "+lights.join("; ")+"."+(s.props?.length?" "+describeLayoutEn(s.props):"");
+export function describeStagingEn(s:Staging,opts:{lights?:boolean}={}):string{
+ const lights=s.lights.map(l=>l.role+" light: "+l.quality+" "+l.source.replace("_"," ")+" "+lightSideEn(l)+(l.angle!==undefined?" ("+lightOffsetEn(l.angle)+")":"")+", "+LIGHT_HEIGHT_EN[l.height]+", "+l.colorTemperatureK+"K"+(l.intensity!==undefined?", "+Math.round(l.intensity*100)+"% strength":"")+(l.colorHex?", "+tintEn(tintOf(l))+" "+l.colorHex+" colour gel":""));
+ return "Staging: "+ANGLE_EN[s.cameraAngle]+" camera"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+"° from eye level)":"")+(orbitEn(s.cameraAzimuth??0)?", "+orbitEn(s.cameraAzimuth??0):"")+(Math.abs(s.cameraLift??0)>=0.05?", camera "+(s.cameraLift!>0?"raised ":"lowered ")+Math.round(Math.abs(s.cameraLift!)*100)+" cm with its aim (same angle)":"")+(s.cameraRoll?", Dutch angle tilted "+Math.abs(Math.round(s.cameraRoll))+"° "+(s.cameraRoll>0?"clockwise":"counter-clockwise"):"")+(s.shotStyle==="ots"?", over-the-shoulder shot":s.shotStyle==="pov"?", point-of-view shot through the subject's eyes":"")+(s.environment&&s.environment!=="landscape"?", in "+ENVIRONMENT_EN[s.environment]:"")+(s.environmentDistance!==undefined?", the background about "+Math.round(s.environmentDistance)+" m behind the subject":"")+focusEn(s)+(s.focusDetail?", framed on the main subject's "+(s.focusDetail==="feet"?"feet and shoes":s.focusDetail):"")+", "+SHOT_EN[s.shotSize]+(s.shotScale!==undefined?" ("+zoomFactor(s)+"x of a full shot)":"")+", "+placementEn(s.framing)+(opts.lights===false||!lights.length?"":"; "+lights.join("; "))+"."+(s.props?.length?" "+describeLayoutEn(s.props):"");
 }
 /** The subject a brief is about, from its words: a person, an animal, a vehicle, a product or object, or an environment when there is no single main subject. */
 export function detectSubject(normalizedText:string,hasCharacter=false):NonNullable<Staging["subject"]>{
@@ -879,22 +878,61 @@ function colorNameEn(hex:string):string{
  const h=((mx===r?((g-b)/d)%6:mx===g?(b-r)/d+2:(r-g)/d+4)*60+360)%360;
  return h<15||h>=340?"red":h<40?"orange":h<70?"yellow":h<170?"green":h<200?"cyan":h<255?"blue":h<290?"violet":"magenta";
 }
-/** How the subject is turned to the camera, in plain words (the orbit read as what the photo shows). */
-function viewEn(az:number):string{const a=Math.abs(wrap180(az));return a<22.5?"the subject faces the camera":a<67.5?"three-quarter view of the subject":a<=112.5?"side profile view of the subject":a<=157.5?"three-quarter back view of the subject":"the subject seen from behind";}
+/** Whether the main subject is a person (the canvas's main prop, or its subject). */
+function personSubject(s:Staging):boolean{const props=s.props??[],main=props.find(p=>p.main)??props[0];return (main?.kind??s.subject??"person")==="person";}
+/** How the subject is turned to the camera, in plain words (the orbit read as what the photo shows). A person seen from behind is described by what shows. */
+function viewEn(az:number,person=false):string{
+ const a=Math.abs(wrap180(az));
+ if(person&&a>157.5)return "the subject seen from behind: the back of the head and the upper back";
+ if(person&&a>112.5)return "three-quarter back view: the back of the subject's head and upper back, with only a small part of one cheek visible";
+ return a<22.5?"the subject faces the camera":a<67.5?"three-quarter view of the subject":a<=112.5?"side profile view of the subject":a<=157.5?"three-quarter back view of the subject":"the subject seen from behind";
+}
 /** Each shot size by what the frame shows (the image model follows that better than the shot's name). */
 const FRAMING_EN:Record<Staging["shotSize"],string>={extreme_close_up:"Extreme close-up: only the face's detail (the eyes or the mouth) fills the frame",
  close_up:"Tight close-up: the face fills most of the frame, cropped at the shoulders",medium_close_up:"Medium close-up: head and chest, cropped mid-chest",
  medium:"Medium shot: from the waist up",medium_full:"Medium full shot: from the knees up",full:"Full-length shot: the whole body from head to feet in frame",
  wide:"Wide shot: the whole subject small in its surroundings",extreme_wide:"Extreme wide shot: a tiny subject in a vast place"};
+/** The close shots of a person seen from behind: a back view has no face or chest to frame. */
+const FRAMING_BACK_EN:Partial<Record<Staging["shotSize"],string>>={extreme_close_up:"Extreme close-up: a detail of the back of the head fills the frame",
+ close_up:"Tight close-up: the head fills most of the frame, cropped at the shoulders",medium_close_up:"Medium close-up: the head and upper back, cropped mid-back"};
 /** The angle as plain photographic words, from the exact elevation. */
 function angleEn(s:Staging):string{const e=elevationOf(s);return e<=-40?"worm's-eye view from the ground looking steeply up":e<=-10?"low-angle shot looking up at the subject":e<10?"eye-level shot":e<60?"high-angle shot looking down at the subject":"overhead bird's-eye view looking straight down";}
+const COUNT_EN=["no","one","two","three","four","five","six"];
+/** How many people the picture shows, when it shows people (a known failure is a second, invented person). None for an over-the-shoulder shot. */
+function peopleCountEn(s:Staging):string|undefined{
+ if(s.shotStyle==="ots")return undefined;
+ const props=s.props??[],n=props.length?props.filter(p=>p.kind==="person").length:personSubject(s)?1:0;
+ return n?"Exactly "+(COUNT_EN[n]??String(n))+(n===1?" person":" people")+" in the picture":undefined;
+}
 /**
- * The user's own arrangement as a short, plain directive that opens the image prompt, so the model reads the camera, the framing and any coloured light
- * before the rest (appended after a long description, it was outweighed by it and ignored). The full scene still follows at the end.
+ * Where a light sits as the camera sees it, in frame terms. The canvas keeps lights relative to the camera (orbiting the camera turns them with it):
+ * 0° is frame right, 90° the camera's side, 180° frame left, 270° behind the subject.
+ */
+export function lightSideEn(l:StagingLight):string{
+ const g=lightAngleOf(l);if(g===undefined)return "from directly overhead";
+ const r=g*Math.PI/180,x=Math.cos(r),z=Math.sin(r),side=x>0.38?"frame right":x<-0.38?"frame left":"",depth=z>0.38?"front":z<-0.38?"back":"";
+ if(!side)return depth==="front"?"from the camera's side, straight onto the subject":"from directly behind the subject";
+ return "from "+side+(depth==="front"?", in front of the subject":depth==="back"?", behind the subject":", level with the subject");
+}
+/** An exact light angle as how far it sits around the subject from the camera, and toward which side of the frame. */
+function lightOffsetEn(angle:number):string{const off=wrap180(angle-90),a=Math.round(Math.abs(off));return a===0?"straight from the camera":a+"° around from the camera, toward "+(off>0?"frame left":"frame right");}
+const LIGHT_HEIGHT_PLAIN:Record<StagingLight["height"],string>={floor:"from floor level",low:"from below face height",eye:"at face height",high:"from above face height",ceiling:"from the ceiling"};
+const toneEn=(k:number)=>k<4500?"warm":k<=6000?"neutral":"cool";
+/** One light in plain words: what it is, its colour, where it comes from in the frame and how high. */
+export function lightEn(l:StagingLight):string{
+ const kind=l.colorHex?tintEn(tintOf(l))+" "+colorNameEn(l.colorHex)+" coloured light ("+l.colorHex+")"
+  :"a "+l.quality+" "+l.source.replace("_"," ")+(/light|flash/.test(l.source)?"":" light")+", "+toneEn(l.colorTemperatureK)+" ("+l.colorTemperatureK+"K)";
+ return l.role[0].toUpperCase()+l.role.slice(1)+" light: "+kind+", "+lightSideEn(l)+", "+LIGHT_HEIGHT_PLAIN[l.height]+(l.intensity!==undefined?", at "+Math.round(l.intensity*100)+"% strength":"")+".";
+}
+/**
+ * The user's own arrangement as a short, plain directive that opens the image prompt: the camera, the framing, how many people, and every light with its
+ * side of the frame (appended after a long description, they were outweighed by it and ignored). The rest of the scene follows at the end.
  */
 export function sceneLeadEn(s:Staging):string{
- const parts=[angleEn(s)+".",viewEn(s.cameraAzimuth??0)+".",FRAMING_EN[s.shotSize]+"."];
+ const person=personSubject(s),az=s.cameraAzimuth??0,back=person&&Math.abs(wrap180(az))>112.5;
+ const parts=[angleEn(s)+".",viewEn(az,person)+".",((back&&FRAMING_BACK_EN[s.shotSize])||FRAMING_EN[s.shotSize])+"."];
  if(rollOf(s))parts.push("Dutch angle, the frame tilted "+Math.abs(Math.round(rollOf(s)))+"°.");
- for(const l of s.lights)if(l.colorHex)parts.push(l.role[0].toUpperCase()+l.role.slice(1)+" light: "+tintEn(tintOf(l))+" "+colorNameEn(l.colorHex)+" coloured light ("+l.colorHex+") from the "+DIR_EN[l.direction]+".");
+ const count=peopleCountEn(s);if(count)parts.push(count+".");
+ for(const l of s.lights)parts.push(lightEn(l));
  return "Camera and light, exactly as arranged: "+parts.map(x=>x[0].toUpperCase()+x.slice(1)).join(" ");
 }

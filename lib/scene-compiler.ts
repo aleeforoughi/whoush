@@ -70,7 +70,8 @@ export function compileImagePrompt(i:{content:string;staging:Staging;aspect:stri
  // Nothing left means the planner wrote only direction: keep its text rather than send a prompt with no subject.
  const content=stripped||i.content.trim();
  const lead=sceneLeadEn(i.staging)+" ";
- const tail=" Scene (must match): "+describeStagingEn(i.staging)+describeFocus(i.staging,undefined,i.aspect).en+" "+lensFor(i.staging).en+" Aspect ratio "+i.aspect+".";
+ // The lights are stated once, in the lead; the scene at the end carries the rest (placement, layout, focus, lens).
+ const tail=" Scene (must match): "+describeStagingEn(i.staging,{lights:false})+describeFocus(i.staging,undefined,i.aspect).en+" "+lensFor(i.staging).en+" Aspect ratio "+i.aspect+".";
  const room=Math.max(0,MAX_MEDIA_PROMPT-lead.length-tail.length);
  return {prompt:(lead+content.slice(0,room)+tail).slice(0,MAX_MEDIA_PROMPT),content:i.content,compilerVersion:SCENE_COMPILER_VERSION};
 }

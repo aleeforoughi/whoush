@@ -28,3 +28,10 @@ test("scene compiler: a long content is cut so the scene at the end always fits 
  const c=compileImagePrompt({content:"a quiet lake at dawn. ".repeat(300),staging:scene,aspect:"16:9"});
  assert.ok(c.prompt.length<=3000);assert.match(c.prompt,/Aspect ratio 16:9\.$/);
 });
+test("scene compiler: each light is stated once, at the start, with its side of the frame; the scene at the end carries no second copy",()=>{
+ const blue={role:"key" as const,direction:"right" as const,height:"eye" as const,quality:"soft" as const,source:"softbox" as const,colorTemperatureK:5600,colorHex:"#2979ff",tint:0.9};
+ const c=compileImagePrompt({content:"A man at a café table.",staging:{...scene,lights:[blue]},aspect:"3:4"}).prompt;
+ assert.match(c,/Key light: a deep, strongly saturated blue coloured light \(#2979ff\), from frame right, level with the subject, at face height\./);
+ assert.equal(c.match(/key light/gi)?.length,1,c);
+ assert.match(c,/Exactly one person in the picture\./);
+});

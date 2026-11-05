@@ -163,12 +163,16 @@ The old scene therefore contradicted the new one.
 - Rule sentences (keep, preserve, never, only, do not) are never cut.
 - Video prompts are unchanged.
 
-**Not yet done in the compiler:**
-- light sides derived from the camera transform
-- an explicit subject count
-- back-view wording
-- offscreen props
-- prompt hashes in the job record
+### Status: second slice (2026-11-05)
+
+- **Frame sides for lights:** every light is stated once, in the lead, by its side of the frame ("from frame right, level with the subject, at face height"). The canvas already keeps lights relative to the camera (0° frame right, 90° the camera's side, 180° frame left, 270° behind), and orbiting the camera turns them with it. The scene at the end no longer repeats the lights.
+- **People count:** "Exactly one person in the picture" (or the number of people on the canvas), except in an over-the-shoulder shot.
+- **Back views:** a person seen from behind is described by what shows ("the back of the head and upper back"), and the close framings say "upper back", never "chest".
+- **Prompt hash:** each job stores the SHA-256 of the exact prompt it sent, privately; the public job never shows it.
+
+**Still not done:** leaving out props that fall outside the crop. It needs a per-prop visibility test against the frame, which belongs with the occlusion preflight (P1).
+
+**Ordering note:** the lights sit in the lead, before the content, not after it as section 7 orders them. In the 2026-11-05 tests, light stated at the start was followed and light buried after a long description was not.
 
 ## 8. Routing, budget and failures
 
@@ -301,7 +305,7 @@ Approve release thresholds before reading the results.
 | Pri | Deliverable | Where in this repo | Acceptance |
 |---|---|---|---|
 | P0 | **Compiler, first slice** | `lib/scene-compiler.ts`, `lib/orchestrator.ts` | **Done 2026-11-05:** one scene per prompt; the planner's camera and light removed; a canvas change replaces the scene |
-| P0 | Compiler, second slice | `lib/scene-compiler.ts`, `lib/staging.ts` | Light sides from the camera transform; subject count; back-view wording; offscreen props omitted; prompt hash on the job |
+| P0 | Compiler, second slice | `lib/scene-compiler.ts`, `lib/staging.ts`, `lib/jobs.ts` | **Done 2026-11-05:** frame sides for lights; people count; back-view wording; prompt hash on the job. Offscreen props moved to P1 (needs the visibility test) |
 | P0 | Provenance and capability states | `lib/catalog.ts`, `lib/jobs.ts`, `lib/media-provider.ts` | Requested and reported model id, compiler version, prompt hash and seed recorded; four capability states; a mismatched id is flagged |
 | P0 | Operation and edit policy | `lib/creative-plan.ts` (`Staging`), quote route | `create`, `camera_edit` and `relight_edit` with locks; disallowed edits fail before submission |
 | P0 | `submission_unknown` | `lib/jobs.ts` | A timeout during submission never auto-submits another paid job |

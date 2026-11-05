@@ -40,7 +40,7 @@ test("what the user changed is written out for the chat and for Whoush",()=>{
  assert.ok(lines[3].startsWith("نور اصلی: جهت جلو، چپ ← از چپ")&&lines[3].includes("۵۶۰۰ ← ۳۲۰۰ کلوین"),lines[3]);
  assert.ok(lines[4].startsWith("نور پشت: نقش نور پرکننده ← نور پشت"),lines[4]);
  assert.deepEqual(describeStagingChangesFa(base,base),[]);
- assert.match(describeStagingEn(edited),/^Staging: low angle camera, full shot, centred in frame; key light: hard softbox from left/);
+ assert.match(describeStagingEn(edited),/^Staging: low angle camera, full shot, centred in frame; key light: hard softbox from frame left, level with the subject/);
  assert.ok(describeStagingFa(edited).includes("زاویهٔ پایین"));
 });
 const planned=(r:OrchestratorResult)=>{assert.equal(r.status,"planned",JSON.stringify(r));return r as Extract<OrchestratorResult,{status:"planned"}>;};
@@ -115,7 +115,7 @@ test("smooth adjustments: exact camera elevation, zoom and light angle; the name
  assert.ok(lines[0]===faText("زاویهٔ دوربین: هم‌سطح چشم (0°) ← زاویهٔ بالا (22°)"),lines[0]);assert.ok(lines[1].startsWith(faText("کادر: نزدیک متوسط (زوم 3.4×) ← نزدیک متوسط (زوم "+zoomFactor(smooth)+"×)")),lines[1]);
  assert.ok(lines.some(l=>l.includes("(۱۵۰°)")),JSON.stringify(lines));
  assert.deepEqual(describeStagingChangesFa(smooth,{...smooth,cameraElevation:23}),[],"under two degrees is not a change");
- assert.ok(describeStagingEn(smooth).includes("(22° from eye level)")&&describeStagingEn(smooth).includes("(150° in top view)"));
+ assert.ok(describeStagingEn(smooth).includes("(22° from eye level)")&&describeStagingEn(smooth).includes("(60° around from the camera, toward frame left)"));
 });
 
 test("the user's own words win: angle, shot size, side and lighting cues override the planner's staging, and the scene always reaches the provider",async()=>{
@@ -449,5 +449,14 @@ test("the arranged scene opens the image prompt in plain words: angle, view, fra
  const l={role:"key" as const,direction:"front_left" as const,height:"high" as const,quality:"soft" as const,source:"softbox" as const,colorTemperatureK:5600,colorHex:"#ff1744",tint:0.9};
  const lead=sceneLeadEn({...base,cameraAngle:"low",cameraElevation:-25,cameraAzimuth:90,shotSize:"close_up",lights:[l]});
  assert.match(lead,/^Camera and light, exactly as arranged: Low-angle shot looking up at the subject\. Side profile view of the subject\. Tight close-up: the face fills most of the frame/);
- assert.match(lead,/Key light: a deep, strongly saturated red coloured light \(#ff1744\) from the front-left\./);
+ assert.match(lead,/Key light: a deep, strongly saturated red coloured light \(#ff1744\), from frame left, in front of the subject, from above face height\./);
+ assert.match(lead,/Exactly one person in the picture\./);
+ // Every light is stated, with its side of the frame; the canvas keeps lights relative to the camera, so frame right stays frame right after an orbit.
+ const fill={role:"fill" as const,direction:"right" as const,height:"eye" as const,quality:"soft" as const,source:"window" as const,colorTemperatureK:3200};
+ assert.match(sceneLeadEn({...base,lights:[fill]}),/Fill light: a soft window light, warm \(3200K\), from frame right, level with the subject, at face height\./);
+ assert.match(sceneLeadEn({...base,lights:[{...fill,direction:"back"}]}),/from directly behind the subject/);
+ // A person seen from behind: what shows is the back of the head and upper back, never a chest.
+ const back=sceneLeadEn({...base,cameraAzimuth:135,shotSize:"medium_close_up",lights:[]});
+ assert.match(back,/Three-quarter back view: the back of the subject's head and upper back, with only a small part of one cheek visible\. Medium close-up: the head and upper back, cropped mid-back\./);
+ assert.ok(!/chest/.test(back),back);
 });
