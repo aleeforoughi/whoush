@@ -112,11 +112,11 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
    <div><Viewport {...cap.camera}>
     {/* The two camera views side by side, each its own tile: from the side (height and distance) and from above (the orbit), synced through one scene. */}
     <div className="grid grid-cols-2 gap-2">
-     <Tile label="نمای کنار · ارتفاع">
+     <Tile label="زاویه دوربین / عمودی">
       <CameraView staging={draft} editable={editable} onCamera={c=>setDraft(d=>{const n=c.flip?orbitCamera(d,180):d,sc=scaleFromSlider(c.distance);
        return {...n,cameraElevation:c.elevation,cameraAngle:n.cameraAngle==="dutch"?"dutch":snapElevation(c.elevation),shotScale:sc,shotSize:nearestShot(sc)};})}/>
      </Tile>
-     <Tile label="نمای بالا · چرخش ۳۶۰°">
+     <Tile label="زاویه دوربین / افقی">
       <OrbitView staging={draft} editable={editable} onOrbit={c=>{orbitTo(c.azimuth);setDistance(c.distance);}}/>
      </Tile>
     </div>
