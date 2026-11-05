@@ -80,6 +80,8 @@ export function Studio(){
  const [local,setLocal]=useState<{mode:AgentPreference;style:GenerationStyle|null}|null>(null);
  const mode=local?.mode??globalMode,style=local?local.style:globalStyle;
  const [selected,setSelected]=useState("");
+ // The aspect ratio picked on the generation card (null: Whoush's, from the brief or «بوم»).
+ const [aspectChoice,setAspectChoice]=useState<string|null>(null);
  const [busy,setBusy]=useState(false);
  const [preview,setPreview]=useState(idlePreview);
  const [job,setJob]=useState<JobView|null>(null);
@@ -370,7 +372,7 @@ export function Studio(){
  /** Puts the tag (`#تصویر-۱`) into the prompt as a badge at the caret (at the end when the prompt is not focused), with focus in the prompt after it. */
  function mentionTag(tag:string){promptRef.current?.insertTag(tag);}
  /**
-  * «اصلاح» on a generation card: only puts its tag (#تولید-۱) into the prompt as a dismissable badge, where the user writes the changes. The mention is what
+  * A generation card's tag (#تولید-۱): puts it into the prompt as a dismissable badge, where the user writes the changes. The mention is what
   * sends the generation to the planner (at most MAX_GENERATION_REFS per message).
   */
  function changeGeneration(tag:string){
@@ -519,7 +521,7 @@ export function Studio(){
    const picked=data.suggestions.find(s=>s.modelId===data.recommendedModelId)??data.suggestions[0];
    const tag=nextGenerationTag(generationTagsIn(messages));
    const reply=agentItem({role:"agent",text:data.message,kind:"proposal",snapshot:{...(tag?{tag}:{}),operation:data.operation,modelName:picked?.name??"",neurons:picked?.neurons??data.fixedNeurons,intentSummaryFa:data.plan.intentSummaryFa,plan:data.plan}});
-   setProposal(data);setLiveId(reply.id);setSelected(data.selectedModelId);setPreview("در انتظار تأیید تولید");setJob(null);
+   setProposal(data);setLiveId(reply.id);setSelected(data.selectedModelId);setAspectChoice(null);setPreview("در انتظار تأیید تولید");setJob(null);
    // Like a friend: the reply, then (sometimes) a GIF as its own message.
    setMessages(m=>[...m,reply,...(data.gif?[agentItem({role:"agent",text:"",kind:"gif",snapshot:data.gif})]:[])]);whoushReacts(data.reaction);
    adoptProject(firstText,characterId);
@@ -535,7 +537,7 @@ export function Studio(){
    // The canvas is the source of truth: an arranged scene goes with the quote (the server applies it to this turn's private plan), and the frame's aspect
    // ratio goes as the model's real aspect-ratio setting, so the output frame matches the canvas exactly where the model supports it.
    const live=messages.find(m=>m.id===liveId),edit=sceneEdit&&sceneEdit.id===liveId?sceneEdit:null;
-   const planAspect=live?.kind==="proposal"?live.snapshot.plan.camera?.aspectRatio:undefined,aspect=edit?.aspect??planAspect;
+   const planAspect=live?.kind==="proposal"?live.snapshot.plan.camera?.aspectRatio:undefined,aspect=aspectChoice??edit?.aspect??planAspect;
    const quoteBody={modelId:selected,turnId,...(edit?{stagingOverride:edit.staging,...(edit.aspect!==planAspect?{aspectOverride:edit.aspect}:{})}:{})};
    let q=await post("/api/generation/quote",{...quoteBody,...(aspect?{configuration:{aspectRatio:aspect}}:{})});
    if(q.status===422&&aspect)q=await post("/api/generation/quote",quoteBody); // a model without that aspect ratio (invalid_configuration): the prompt still carries it
@@ -674,9 +676,10 @@ export function Studio(){
           else setPastEdits(p=>{const n={...p};if(changed)n[m.id]={staging:s,aspect};else delete n[m.id];return n;});
          }:undefined}/>}
         {m.kind==="proposal"&&(proposal&&m.id===liveId
-         ?<ProposalCard proposal={proposal} tag={m.snapshot.tag} adjusted={sceneEdit?.id===m.id} selected={selected} onSelect={setSelected} busy={busy} onApprove={()=>void approve()} onChange={()=>m.snapshot.tag&&changeGeneration(m.snapshot.tag)} onMention={m.snapshot.tag?()=>mentionTag(m.snapshot.tag!):undefined}/>
+         ?<ProposalCard proposal={proposal} tag={m.snapshot.tag} adjusted={sceneEdit?.id===m.id} selected={selected} onSelect={setSelected}
+          aspect={aspectChoice??(sceneEdit?.id===m.id?sceneEdit.aspect:undefined)??m.snapshot.plan.camera?.aspectRatio} onAspect={setAspectChoice} busy={busy} onApprove={()=>void approve()} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>
          :<PastProposalCard snapshot={m.snapshot} adjusted={Boolean(pastEdits[m.id])} busy={busy||reading||loadingProject}
-          onBuildScene={pastEdits[m.id]&&m.snapshot.tag&&m.snapshot.plan.staging?()=>buildScene(m.id,m.snapshot.tag!,m.snapshot.plan.staging!,m.snapshot.plan.camera?.aspectRatio):undefined} onChange={()=>m.snapshot.tag&&changeGeneration(m.snapshot.tag)} onMention={m.snapshot.tag?()=>mentionTag(m.snapshot.tag!):undefined} disabled={!m.snapshot.tag}/>)}
+          onBuildScene={pastEdits[m.id]&&m.snapshot.tag&&m.snapshot.plan.staging?()=>buildScene(m.id,m.snapshot.tag!,m.snapshot.plan.staging!,m.snapshot.plan.camera?.aspectRatio):undefined} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>)}
         {m.kind==="no_model"&&<NoModelCard result={m.snapshot}/>}
         {/* The question is always the last item of the agent's message; it waits for an answer until something is sent after it. */}
         {m.kind==="question"&&<AgentQuestion question={m.snapshot.question} waiting={i===messages.length-1&&!busy} onAnswer={()=>promptRef.current?.focus()}/>}
