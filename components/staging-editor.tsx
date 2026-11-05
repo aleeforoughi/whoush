@@ -2,7 +2,7 @@
 import {useEffect,useId,useRef,useState,useSyncExternalStore,type KeyboardEvent,type PointerEvent,type ReactNode} from "react";
 import dynamic from "next/dynamic";
 import {Dialog as DialogPrimitive} from "@base-ui/react/dialog";
-import {Box,Camera,ChevronDown,ChevronLeft,ChevronRight,ChevronUp,Lock,LockOpen,Maximize2,Plus,RotateCcw,Trash2,Undo2,X,Lightbulb,type LucideIcon} from "lucide-react";
+import {Box,Camera,ChevronDown,ChevronLeft,ChevronRight,ChevronUp,Lock,LockOpen,Maximize2,Plus,RotateCcw,Trash2,Undo2,X,Lightbulb,Frame,type LucideIcon} from "lucide-react";
 import {Button,Dialog,DialogBody,DialogContent,DialogHeader,DialogPortal,DialogTitle,Icon} from "@aleeforoughi/feather-react";
 import {FOCUS_DETAILS,LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
@@ -204,12 +204,12 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
       {FRAME_RENDERER==="css"&&snapOnScreen?<FrameScene staging={draft} anchor={anchor} aspect={aspect}/>:null}
      </span>
      <span className="flex flex-col gap-2 @lg:gap-3 @lg:pt-1">
-      <SnapCaption c={cap.frame}/>{showCam&&<SnapCaption c={cap.camera}/>}{show("light")&&<SnapCaption c={cap.light}/>}
+      <SnapCaption c={cap.frame} icon={Frame}/>{showCam&&<SnapCaption c={cap.camera} icon={Camera}/>}{show("light")&&<SnapCaption c={cap.light} icon={Lightbulb}/>}
      </span>
     </span>;})()
    :<span className="flex flex-wrap gap-3">
-     {(show("angle")||show("distance")||show("lens"))&&<SnapTile c={cap.camera}><CameraView staging={draft} anchor={anchor} aspect={aspect} editable={false} onCamera={()=>{}}/></SnapTile>}
-     {show("light")&&<SnapTile c={cap.light}><LightView staging={draft} editable={false} selected={-1} onSelect={()=>{}} onLight={()=>{}}/></SnapTile>}
+     {(show("angle")||show("distance")||show("lens"))&&<SnapTile c={cap.camera} icon={Camera}><CameraView staging={draft} anchor={anchor} aspect={aspect} editable={false} onCamera={()=>{}}/></SnapTile>}
+     {show("light")&&<SnapTile c={cap.light} icon={Lightbulb}><LightView staging={draft} editable={false} selected={-1} onSelect={()=>{}} onLight={()=>{}}/></SnapTile>}
     </span>)}
   </button>
   <div id={bodyId} hidden={!open&&!focused} className="flex min-w-0 flex-col gap-3">
@@ -355,17 +355,17 @@ function Dominant({tags,props,main,detail,mediaKind,confirmed,editable,onConfirm
  * same caption (title pill and value) beside it.
  */
 /** A snapshot's details: its title in a small pill, then its value. */
-function SnapCaption({c}:{c:{title:string;value:string}}){
+function SnapCaption({c,icon}:{c:{title:string;value:string};/** Its icon, in the pill before the title. */icon?:LucideIcon}){
  return <span className="flex min-w-0 flex-col items-start gap-1 px-0.5">
-  <span className="rounded-control bg-surface-hover px-2 py-0.5 type-caption text-fg-secondary">{c.title}</span>
+  <span className="flex items-center gap-1 rounded-control bg-surface-hover px-2 py-0.5 type-caption text-fg-secondary">{icon&&<Icon icon={icon} size={16} aria-hidden="true" className="size-3.5! shrink-0"/>}{c.title}</span>
   <span className="type-label text-fg-primary">{c.value}</span>
  </span>;
 }
 /** A smaller snapshot tile (the camera, the lighting): its drawing in a dark tile with the frame's rounded border, its details under it. */
-function SnapTile({c,children}:{c:{title:string;value:string};children:ReactNode}){
+function SnapTile({c,icon,children}:{c:{title:string;value:string};icon?:LucideIcon;children:ReactNode}){
  return <span className="flex w-36 min-w-0 flex-col gap-1.5 @lg:w-44">
   <span className="dark flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-card border border-line-secondary bg-background p-2 text-fg-primary [&_svg]:h-full! [&_svg]:max-h-full! [&_svg]:w-auto! [&_svg]:max-w-full! [&_svg]:pointer-events-none">{children}</span>
-  <SnapCaption c={c}/>
+  <SnapCaption c={c} icon={icon}/>
  </span>;
 }
 function Snap({c,children}:{c:{title:string;value:string};children:ReactNode}){
