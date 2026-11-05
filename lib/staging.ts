@@ -284,6 +284,62 @@ export function propWidth(kind:SceneProp["kind"],h:number):number{const a=VISUAL
 /** Where each detail sits on a standing person, as a share of their height from the ground. */
 const DETAIL_HEIGHT:Record<NonNullable<Staging["focusDetail"]>,number>={face:0.88,eyes:0.9,jewelry:0.78,hands:0.45,feet:0.05};
 export const FOCUS_DETAIL_FA:Record<NonNullable<Staging["focusDetail"]>,string>={face:"صورت",eyes:"چشم‌ها",hands:"دست‌ها",feet:"پاها و کفش",jewelry:"جواهر و اکسسوری"};
+// ---- the frame as a lo-fi previz of the output: one physical camera (full-frame sensor, the lens and aperture Whoush or the user chose) ----
+const SENSOR_H_MM=24,PERSON_M=1.7,METERS_PER_Z=4,BACKDROP_M=200,REF_FOCAL=35;
+const clampN=(v:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,v));
+/**
+ * The camera as a real one: focal length f and aperture N (lensFor), and its distance d to the centre point, solved from the shot size so a medium shot stays
+ * a medium shot at any lens (a longer lens moves the camera back): d = shot share × 1.7 m × f / 24. Props stand METERS_PER_Z per stage unit behind or in
+ * front of the main subject. The same numbers reach the provider prompt (lensFor), so the frame and the prompt agree.
+ */
+export function physicalCamera(s:Staging){
+ const l=lensFor(s),props=s.props??[],m=props.find(p=>p.main)??props[0];
+ return {f:l.focalLengthMm,N:l.apertureF,d:Math.max(0.12,scaleOf(s)*PERSON_M*l.focalLengthMm/SENSOR_H_MM),zMain:m?.z??0};
+}
+/** A prop's distance from the camera, in metres. */
+const distanceTo=(c:{d:number;zMain:number},z:number)=>Math.max(0.15,c.d+(z-c.zMain)*METERS_PER_Z);
+/**
+ * Lens perspective: how much bigger or smaller a prop at depth z looks than in the plain drawing (calibrated at 35 mm). A long lens compresses depth: the
+ * background looms and near things shrink; a wide lens stretches it: near things loom and the background falls away. The main subject never changes.
+ */
+export function lensSizeFactor(s:Staging,z:number):number{
+ const c=physicalCamera(s),dz=(z-c.zMain)*METERS_PER_Z,dRef=c.d*REF_FOCAL/c.f;
+ const rel=c.d/Math.max(0.15,c.d+dz),relRef=dRef/Math.max(0.15,dRef+dz);
+ return clampN(rel/relRef,0.35,3);
+}
+/** The far backdrop's size against the plain drawing: a long lens magnifies it (less of the environment fits), a wide lens shows more of it, smaller. */
+export const backdropFactor=(s:Staging)=>clampN(physicalCamera(s).f/REF_FOCAL,0.55,2.6);
+/**
+ * Depth-of-field blur at depth z (or the far backdrop), as a share of the frame's height: the thin-lens circle of confusion, f²/(N(d−f)) · |x−d|/x on a
+ * 24 mm sensor. The centre point's depth is sharp; f/1.8 at 85 mm melts the background, f/8 at 24 mm keeps everything sharp, a macro distance blurs all but a sliver.
+ */
+export function blurAt(s:Staging,z:number|"backdrop"):number{
+ const c=physicalCamera(s),f=c.f,dmm=c.d*1000,x=(z==="backdrop"?c.d+BACKDROP_M:distanceTo(c,z))*1000;
+ const coc=(f*f)/(c.N*Math.max(1,dmm-f))*Math.abs(x-dmm)/x;
+ return clampN(coc/SENSOR_H_MM,0,0.08);
+}
+/**
+ * Where the horizon goes as the camera tilts up or down to keep the subject framed (as a share of the frame's height; negative is up): looking down from
+ * above lifts it, looking up from below drops it; a longer lens moves it further.
+ */
+export function horizonShift(s:Staging):number{
+ const e=elevationOf(s)*Math.PI/180,f=physicalCamera(s).f;
+ return clampN(-Math.tan(e)*(f/(SENSOR_H_MM/2))*0.5,-1.4,1.4);
+}
+/**
+ * The light on the scene as the camera sees it, for shading the props: the key light's side (−1 left, 1 right), how much it comes from the camera's side
+ * (1) or from behind (−1), its colour, strength and hardness, and the overall exposure (0 dark to 1 bright).
+ */
+export function lightLook(s:Staging){
+ const key=s.lights.find(l=>l.role==="key")??s.lights[0];
+ const a=key?lightAngleOf(key):undefined,top=key?.direction==="top";
+ const side=a===undefined||top?0:Math.cos(a*Math.PI/180),front=a===undefined?0.3:top?0.2:Math.sin(a*Math.PI/180);
+ const total=s.lights.reduce((n,l)=>n+intensityOf(l),0);
+ const lowLight=s.lights.length>0&&s.lights.every(l=>l.source==="fire"||l.source==="practical"||l.source==="moon"||l.colorTemperatureK<=2400);
+ return {side,front,color:key?lightHex(key):"#ffffff",strength:key?intensityOf(key):0.7,hard:key?.quality==="hard",
+  rim:s.lights.some(l=>l.role==="rim"||(l.angle!==undefined&&Math.sin(l.angle*Math.PI/180)<-0.5)),exposure:clampN(total/1.6-(lowLight?0.25:0),0.2,1)};
+}
+
 /**
  * Moves the frame's centre point to the world point now under screen point (sx, sy) without moving the picture: the crop pan absorbs the change, so the
  * dot follows the finger and only later zooms pivot around it. Returns the new centre point and crop (clamped to the crop's range).
@@ -292,7 +348,7 @@ export function moveFocusPoint(s:Staging,anchor:Staging|undefined,W:number,H:num
  const cam=frameCamera(s,anchor,W,H),[fx,fy]=cam.toWorld(sx,sy);
  const fp={x:fx/W,y:fy/H},moved=frameCamera({...s,focusPoint:fp},anchor,W,H);
  // Keep the world where it was: the same world point must stay at the same place on screen.
- const [a0,b0]=cam.toScreen(0,0),[a1,b1]=moved.toScreen(0,0),fr=s.framing??{x:0,y:0};
+ const [a0,b0]=cam.base,[a1,b1]=moved.base,fr=s.framing??{x:0,y:0};
  const c=(v:number)=>Math.max(-1,Math.min(1,v));
  return {focusPoint:fp,framing:{x:c(fr.x+(a0-a1)/(W/2)),y:c(fr.y+(b0-b1)/(H/2))}};
 }
@@ -319,10 +375,19 @@ export function frameCamera(s:Staging,anchor:Staging|undefined,W:number,H:number
  // The centre point sits on the frame's centre (plus the crop pan); the dominant subject's comes to the vertical centre as the shot tightens (a full shot keeps
  // the ground where it is), a centre point the user placed stays exactly where they put it at every zoom.
  const pan:[number,number]=[fr.x*W/2,fr.y*H/2],C:[number,number]=[W/2,s.focusPoint?H/2:F[1]+(H/2-F[1])*Math.max(0,Math.min(1,(k-1)/k))];
- const toWorld=(sx:number,sy:number):[number,number]=>[F[0]+(sx-pan[0]-C[0])/k,F[1]+(sy-pan[1]-C[1])/k];
- const [l,t]=toWorld(0,0),[r,b]=toWorld(W,H);
- return {unitH,k,F,pan,C,toWorld,visible:{left:l,top:t,right:r,bottom:b},toScreen:(wx:number,wy:number):[number,number]=>[pan[0]+C[0]+k*(wx-F[0]),pan[1]+C[1]+k*(wy-F[1])]};
+ // A Dutch angle rolls the whole picture about the frame's centre; `base` is the unrolled offset: screen = roll(base + k·world).
+ const rot=rollOf(s),rr=rot*Math.PI/180,cr=Math.cos(rr),sr=Math.sin(rr),cx=W/2,cy=H/2;
+ const roll=(x:number,y:number,dir=1):[number,number]=>[cx+(x-cx)*cr-dir*(y-cy)*sr,cy+dir*(x-cx)*sr+(y-cy)*cr];
+ const base:[number,number]=[pan[0]+C[0]-k*F[0],pan[1]+C[1]-k*F[1]];
+ const toWorld=(sx:number,sy:number):[number,number]=>{const [x,y]=roll(sx,sy,-1);return [(x-base[0])/k,(y-base[1])/k];};
+ const corners=[toWorld(0,0),toWorld(W,0),toWorld(0,H),toWorld(W,H)];
+ const l=Math.min(...corners.map(c=>c[0])),r=Math.max(...corners.map(c=>c[0])),t=Math.min(...corners.map(c=>c[1])),b=Math.max(...corners.map(c=>c[1]));
+ return {unitH,k,F,pan,C,base,rot,toWorld,visible:{left:l,top:t,right:r,bottom:b},toScreen:(wx:number,wy:number):[number,number]=>roll(base[0]+k*wx,base[1]+k*wy),
+  /** A drag on screen, as a move in the unrolled frame (so dragging right moves right even when the frame is tilted). */
+  unroll:(dx:number,dy:number):[number,number]=>[dx*cr+dy*sr,-dx*sr+dy*cr]};
 }
+/** The camera's roll (Dutch angle) in degrees: set, or the planner's «dutch» at 14°. */
+export const rollOf=(s:Staging)=>s.cameraRoll??(s.cameraAngle==="dutch"?14:0);
 /** How far a prop may go out of the frame: its centre up to this share of its width past a side edge, its ground up to this share of its height below the bottom. */
 const OUT_X=0.4,OUT_Z=0.6;
 /**

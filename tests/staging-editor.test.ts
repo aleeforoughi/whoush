@@ -363,3 +363,34 @@ test("a follow-up about one part of the scene opens «بوم» on just that part
  assert.deepEqual(stagingSections(s,{...s,shotSize:"wide"}),["distance"]);
  const {expandFocus}=await import("../lib/staging");assert.deepEqual(expandFocus(["camera"]),["angle","distance","lens"],"an older saved focus still opens");
 });
+
+test("the frame is a lo-fi previz from one physical camera: lens perspective, depth of field, horizon tilt, Dutch roll, light",async()=>{
+ const {physicalCamera,lensSizeFactor,backdropFactor,blurAt,horizonShift,frameCamera,frameSize,moveFocusPoint,lightLook}=await import("../lib/staging");
+ const woman={kind:"person" as const,label:"زن",x:0,z:-0.25,y:0,main:true},tree={kind:"tree" as const,label:"درخت",x:0.5,z:0.75,y:0};
+ const s:Staging={...base,shotSize:"medium",props:[woman,tree]};
+ const at=(o:Partial<Staging>)=>({...s,...o});
+ // A medium shot stays a medium shot at any lens: a longer lens moves the camera back.
+ assert.ok(physicalCamera(at({lensMm:85})).d>physicalCamera(at({lensMm:24})).d*3);
+ // Perspective: 35 mm is the plain drawing; a long lens makes the background loom and near things shrink; the main subject never changes.
+ assert.ok(Math.abs(lensSizeFactor(at({lensMm:35}),0.75)-1)<0.01);
+ assert.ok(lensSizeFactor(at({lensMm:135}),0.75)>1.3,"tele: the tree behind looms");
+ assert.ok(lensSizeFactor(at({lensMm:18}),0.75)<0.8,"wide: it falls away");
+ assert.ok(Math.abs(lensSizeFactor(at({lensMm:135}),-0.25)-1)<1e-9,"the main subject keeps its size");
+ assert.ok(backdropFactor(at({lensMm:135}))>backdropFactor(at({lensMm:24})));
+ // Depth of field: the subject is sharp; f/1.8 at 85 mm melts the background, f/8 at 24 mm keeps it (nearly) sharp; a macro distance blurs everything off the sliver.
+ assert.ok(blurAt(at({lensMm:85,apertureF:1.8}),-0.25)<0.001);
+ assert.ok(blurAt(at({lensMm:85,apertureF:1.8}),"backdrop")>blurAt(at({lensMm:24,apertureF:8}),"backdrop")*10);
+ assert.ok(blurAt(at({lensMm:85,apertureF:1.8}),0.75)>blurAt(at({lensMm:85,apertureF:11}),0.75)*4,"stopping down sharpens");
+ assert.ok(blurAt(at({shotScale:0.09,lensMm:100,apertureF:2.8}),0.1)>blurAt(at({lensMm:100,apertureF:2.8}),0.1),"macro: paper-thin focus");
+ // Horizon: looking down lifts it, looking up drops it, eye level leaves it.
+ assert.ok(horizonShift(at({cameraElevation:40}))<0&&horizonShift(at({cameraElevation:-30}))>0&&Math.abs(horizonShift(at({cameraElevation:0})))<1e-9);
+ // Dutch roll: the picture rolls about the frame's centre; screen and world stay exact inverses, and a drag is unrolled.
+ const {W,H}=frameSize("16:9"),c=frameCamera(at({cameraRoll:20,cameraAngle:"dutch"}),s,W,H),[sx,sy]=c.toScreen(40,30),[wx,wy]=c.toWorld(sx,sy);
+ assert.ok(Math.abs(wx-40)<1e-9&&Math.abs(wy-30)<1e-9);
+ const [ux,uy]=c.unroll(...([Math.cos(20*Math.PI/180)*10,Math.sin(20*Math.PI/180)*10] as [number,number]));assert.ok(Math.abs(ux-10)<1e-9&&Math.abs(uy)<1e-9,"dragging along the tilted frame is a straight move");
+ const rolled=at({cameraRoll:20,cameraAngle:"dutch"}),mv={...rolled,...moveFocusPoint(rolled,s,W,H,W*0.3,H*0.4)};
+ assert.deepEqual(frameCamera(mv,s,W,H).toScreen(10,20).map(n=>Math.round(n*1000)),frameCamera(rolled,s,W,H).toScreen(10,20).map(n=>Math.round(n*1000)),"moving the centre point never moves a rolled picture");
+ // Light: a key from the right lights the right side; from behind leaves the front dark.
+ const L=(angle:number)=>lightLook(at({lights:[{...base.lights[0],role:"key",angle,direction:"right"}]}));
+ assert.ok(L(0).side>0.9&&L(180).side<-0.9&&L(270).front<-0.9);
+});

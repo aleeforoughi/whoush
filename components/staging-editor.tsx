@@ -4,7 +4,7 @@ import {Box,ChevronDown,Lock,LockOpen,Plus,RotateCcw,Trash2,Undo2,X} from "lucid
 import {Button,Icon} from "@aleeforoughi/feather-react";
 import {FOCUS_DETAILS,LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
- SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
+ SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,rollOf,lensSizeFactor,backdropFactor,blurAt,horizonShift,lightLook,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 import {fa} from "@/lib/format";
 
@@ -569,8 +569,17 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
  // The scene is laid out once, in fixed world positions; the shot size is a pure zoom of that world about the original main subject, which the frame
  // centres (lib/staging.ts, frameCamera): zooming never moves anything relative to anything else, and moving any prop (the main subject too) moves only it.
  const cam=frameCamera({...staging,framing:fr},anchor,W,H),{unitH,k}=cam,horizon=H*0.5;
- const at=(p:SceneProp)=>{const v=propInView(p,W,H,unitH);return {x:v.x,ground:v.groundY,y:v.y,h:v.h};};
- const world="matrix("+k+" 0 0 "+k+" "+cam.toScreen(0,0).join(" ")+")";
+ // The lens's perspective: a prop's size against the main subject follows the focal length (lib/staging.ts, lensSizeFactor); its place on the ground does not,
+ // so dragging stays exact.
+ const at=(p:SceneProp)=>{const v=propInView(p,W,H,unitH),lf=lensSizeFactor(staging,p.z);return {x:v.x,ground:v.groundY,y:v.groundY-(v.groundY-v.y)*lf,h:v.h*lf};};
+ // Screen = roll(base + k·world): the Dutch angle rolls the whole picture about the frame's centre.
+ const world="rotate("+cam.rot+" "+W/2+" "+H/2+") matrix("+k+" 0 0 "+k+" "+cam.base.join(" ")+")";
+ // The backdrop: the horizon moves as the camera tilts to keep the subject framed; a longer lens magnifies the far landscape, a wider one shows more of it.
+ const backdrop="rotate("+cam.rot+" "+W/2+" "+H/2+") translate(0 "+horizonShift(staging)*H+") matrix("+k+" 0 0 "+k+" "+cam.base.join(" ")+")";
+ const bf=backdropFactor(staging);
+ // Depth of field, in the scaled world's own units (a blur of n screen units is n/k there).
+ const blurStd=(z:number|"backdrop")=>{const v=blurAt(staging,z)*H;return v>0.06?v/k:0;};
+ const look=lightLook(staging);
  const onX=Math.abs(Math.abs(fr.x)-THIRD)<0.03,onY=Math.abs(Math.abs(fr.y)-THIRD)<0.03;
  const unit=()=>{const b=svg.current!.getBoundingClientRect();return {sx:(W+4)/b.width,sy:(H+4)/b.height};};
  const commit=(v:{x:number;y:number})=>onFraming?.(v.x===0&&v.y===0?undefined:v);
@@ -595,8 +604,8 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   onPointerMove={e=>{
    if(pivot){const [sx,sy]=svgPt(e);if(Number.isFinite(sx)&&Number.isFinite(sy))onFocus?.(moveFocusPoint({...staging,framing:fr},anchor,W,H,sx,sy));return;}
    const u=unit();
-   if(move){const p0=at({...base[move.i],x:move.x0,z:move.z0,y:0});const g=ground(p0.x+(e.clientX-move.px)*u.sx/k,p0.ground+(e.clientY-move.py)*u.sy/k);if(Number.isFinite(g.x)&&Number.isFinite(g.z))setMove({...move,...within({...base[move.i],z:g.z},g)});return;}
-   if(drag){const c={x:snapAxis(drag.x+(e.clientX-drag.px)*u.sx/(W/2)),y:snapAxis(drag.y+(e.clientY-drag.py)*u.sy/(H/2))};if(Number.isFinite(c.x)&&Number.isFinite(c.y))setDrag({...drag,cur:c});}}}
+   if(move){const p0=propInView({...base[move.i],x:move.x0,z:move.z0,y:0},W,H,unitH),[ddx,ddy]=cam.unroll((e.clientX-move.px)*u.sx,(e.clientY-move.py)*u.sy);const g=ground(p0.x+ddx/k,p0.groundY+ddy/k);if(Number.isFinite(g.x)&&Number.isFinite(g.z))setMove({...move,...within({...base[move.i],z:g.z},g)});return;}
+   if(drag){const [ddx,ddy]=cam.unroll((e.clientX-drag.px)*u.sx,(e.clientY-drag.py)*u.sy);const c={x:snapAxis(drag.x+ddx/(W/2)),y:snapAxis(drag.y+ddy/(H/2))};if(Number.isFinite(c.x)&&Number.isFinite(c.y))setDrag({...drag,cur:c});}}}
   onPointerUp={()=>{setPivot(false);if(move){onProp?.(move.i,move.x,move.z);setMove(null);}if(drag){commit(drag.cur);setDrag(null);}}} onPointerCancel={()=>{setDrag(null);setMove(null);setPivot(false);}}>
   <defs><clipPath id={clip}><rect width={W} height={H} rx={6}/></clipPath>
    <linearGradient id={clip+"g"} x1="0" y1="0" x2="0" y2="1"><stop offset=".5" stopColor="currentColor" stopOpacity="0"/><stop offset="1" stopColor="currentColor" stopOpacity=".14"/></linearGradient></defs>
@@ -605,12 +614,13 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
    {editable&&<rect width={W} height={H} fill="transparent" role="slider" tabIndex={0} aria-label={"جای سوژه در کادر: "+placementFa(staging.framing)} aria-valuetext={placementFa(staging.framing)}
     aria-valuenow={Math.round(fr.x*100)} aria-valuemin={-100} aria-valuemax={100} onKeyDown={key} className={"outline-none "+(drag?"cursor-grabbing":"cursor-grab")}
     onPointerDown={e=>{capture(svg.current,e.pointerId);if(locked&&sel!=null&&base[sel]){moveLocked(e);return;}if(!locked)onSelect?.(null);cropDrag(e);}}/>}
-   <g transform={world} className="pointer-events-none">
+   {blurStd("backdrop")>0&&<defs><filter id={clip+"-bd"} x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation={blurStd("backdrop")}/></filter></defs>}
+   <g transform={backdrop} className="pointer-events-none" filter={blurStd("backdrop")>0?"url(#"+clip+"-bd)":undefined}>
     <rect x={-W*4} y={horizon} width={W*9} height={H*4} fill={"url(#"+clip+"g)"}/>
     <line x1={-W*4} x2={W*5} y1={horizon} y2={horizon} stroke="currentColor" strokeOpacity=".3" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
     {/* The environment is the fixed backdrop behind every prop, in the same world: it zooms with the scene and never moves on its own. */}
     {/* Orbiting the camera turns the backdrop: it slides past, wrapping around once per full turn. */}
-    {[-1,0,1].map(n=><Asset key={n} id="env-mountains" x={W*0.5-wrap180(staging.cameraAzimuth??0)/180*W*1.2+n*W*2.4} y={horizon+1} h={H*0.32} opacity={0.7}/>)}
+    {[-1,0,1].map(n=><Asset key={n} id="env-mountains" x={W*0.5+(-wrap180(staging.cameraAzimuth??0)/180*W*1.2+n*W*2.4)*bf} y={horizon+1} h={H*0.32*bf} opacity={0.7}/>)}
    </g>
    <g transform={world}>
     {order.map(({p,i})=>{const a=at(p),sp=sprite(p),w=spriteW(sp,a.h),on=sel===i;
@@ -627,10 +637,28 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
       {p.y>0.05&&<ellipse cx={a.x} cy={a.ground} rx={w*0.35} ry={Math.max(1,a.h*0.04)} fill="currentColor" fillOpacity=".18"/>}
       <rect x={a.x-Math.max(w,18/k)/2} y={a.y-Math.max(a.h,18/k)} width={Math.max(w,18/k)} height={Math.max(a.h,18/k)} fill="transparent"/>
       {tints[i]&&<Tint id={clip+"-t"+i} color={tints[i]!}/>}
-      {(()=>{const sp=sprite(p);return <Asset id={sp.id} x={a.x} y={a.y} h={a.h} mirror={sp.mirror} sx={sp.sx} tint={tints[i]?clip+"-t"+i:undefined}/>;})()}
+      {(()=>{const sp=sprite(p),bs=blurStd(p.z),id=clip+"-p"+i;
+       // The light as the camera sees it: the key's side lit (in its colour), the other side in shadow, harder or softer; a back light leaves the front dark.
+       const lit=look.side>=0,edge=Math.abs(look.side),shade=(look.hard?0.42:0.26)*(0.35+edge*0.65)+Math.max(0,-look.front)*0.3,glow=0.28*look.strength*(0.4+edge*0.6+Math.max(0,look.front)*0.3);
+       return <g filter={bs>0?"url(#"+id+"-b)":undefined}>
+        <defs>
+         {bs>0&&<filter id={id+"-b"} x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation={bs}/></filter>}
+         <mask id={id+"-m"} maskUnits="userSpaceOnUse"><Asset id={sp.id} x={a.x} y={a.y} h={a.h} mirror={sp.mirror} sx={sp.sx}/></mask>
+         <linearGradient id={id+"-l"} x1={lit?"0":"1"} y1="0" x2={lit?"1":"0"} y2="0">
+          <stop offset="0" stopColor="black" stopOpacity={shade}/><stop offset=".55" stopColor="black" stopOpacity={shade*0.25}/>
+          <stop offset="1" stopColor={look.color} stopOpacity={glow}/>
+         </linearGradient>
+        </defs>
+        <Asset id={sp.id} x={a.x} y={a.y} h={a.h} mirror={sp.mirror} sx={sp.sx} tint={tints[i]?clip+"-t"+i:undefined}/>
+        <rect x={a.x-w/2} y={a.y-a.h} width={w} height={a.h} fill={"url(#"+id+"-l)"} mask={"url(#"+id+"-m)"} className="pointer-events-none"/>
+       </g>;})()}
       {on&&<rect x={a.x-w/2-1} y={a.y-a.h-1} width={w+2} height={a.h+2} rx={2} fill="none" className="stroke-primary" strokeWidth={1} vectorEffect="non-scaling-stroke" strokeDasharray="3 2"/>}
      </g>;})}
    </g>
+   {/* Exposure: a dim scene (few or weak lights, firelight, moonlight) looks dim; the key light's colour washes the whole picture a little. */}
+   <rect width={W} height={H} fill="black" fillOpacity={(1-look.exposure)*0.5} className="pointer-events-none"/>
+   <rect width={W} height={H} fill={look.color} fillOpacity={0.05*look.strength} className="pointer-events-none"/>
+   {editable&&<text x={W-3} y={H-3} direction="rtl" textAnchor="start" fontSize={3.6} fill="currentColor" fillOpacity=".55" className="pointer-events-none" aria-hidden="true">پیش‌نمایش تقریبی</text>}
    {[1,2].map(i=><g key={i} strokeDasharray="3 3" strokeWidth={1} className="pointer-events-none">
     <line vectorEffect="non-scaling-stroke" x1={W*i/3} x2={W*i/3} y1={0} y2={H} className={third(onX,fr.x<0,i)?"stroke-primary":""} stroke={third(onX,fr.x<0,i)?undefined:"currentColor"} strokeOpacity={third(onX,fr.x<0,i)?1:.3}/>
     <line vectorEffect="non-scaling-stroke" x1={0} x2={W} y1={H*i/3} y2={H*i/3} className={third(onY,fr.y<0,i)?"stroke-primary":""} stroke={third(onY,fr.y<0,i)?undefined:"currentColor"} strokeOpacity={third(onY,fr.y<0,i)?1:.3}/>
@@ -728,7 +756,7 @@ function LightView({staging,editable,selected,onSelect,onLight}:{staging:Staging
 }
 
 /** The camera's roll (Dutch angle) in degrees: set, or the planner's «dutch» at 14°. */
-const rollOf=(s:Staging)=>s.cameraRoll??(s.cameraAngle==="dutch"?14:0);
+
 /** Lens and aperture sliders run on log scales (a lens from 12 to 200mm, f/1.4 to f/16), smooth, the way photographers feel the steps. */
 const LENS_RANGE=[12,200] as const,F_RANGE=[1.4,16] as const;
 const lensSlider=(mm:number)=>Math.max(0,Math.min(1,Math.log(mm/LENS_RANGE[0])/Math.log(LENS_RANGE[1]/LENS_RANGE[0])));
