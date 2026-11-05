@@ -231,3 +231,12 @@ test("the focus stays locked on the dominant subject through moves, crops and an
  const v3=cssView({...s1,pivot:focusOnly,cameraAngle:"high",cameraElevation:35},s0,"16:9",1000,562.5);
  assert.ok(Math.hypot(...focusWorld(v3).map((n,i)=>n-focusWorld(v1)[i]))<1e-9);
 });
+
+test("the shot size frames the subject the same at every height: the camera comes closer from above instead of the subject shrinking",()=>{
+ const height=(a:Staging["cameraAngle"],label:string)=>{const p={...man,label},s={...base,cameraAngle:a,shotSize:"full" as const,props:[p]},v=cssView(s,s,"3:4",600,800);
+  const ys=propSprites(v,[p],s,s)[0].quad!.map(c=>toScreen(v,c)![1]);return Math.max(...ys)-Math.min(...ys);};
+ for(const label of ["مرد","زن"]){const eye=height("eye_level",label);
+  for(const a of ["worms_eye","low","high"] as const)assert.ok(Math.abs(height(a,label)/eye-1)<0.12,label+" "+a+": "+height(a,label).toFixed(0)+" vs "+eye.toFixed(0));
+  // Overhead, the camera stays above the head: as full as it can be, never a speck.
+  assert.ok(height("birds_eye",label)>eye*0.4,label+" overhead");}
+});

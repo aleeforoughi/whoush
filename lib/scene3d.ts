@@ -6,7 +6,7 @@
  * is kept as the camera sees it (an orbit has already turned the props), so the camera always stands in front, on +z, raised by its height angle.
  */
 import type {Staging} from "./creative-plan";
-import {sizeOf} from "./sprites";
+import {sizeOf,spanM} from "./sprites";
 import {DETAIL_HEIGHT,METERS_PER_Z,SENSOR_H_MM,backdropM,centerOnSubject,elevationOf,facingOf,focusDepth,frameSize,genderOf,cubeDims,physicalCamera,stackLift,STAGE_X_M,rollOf,scaleOf,type SceneProp} from "./staging";
 
 /** Metres per stage unit sideways (the stage's ±1 is a 6 m wide set). */
@@ -52,7 +52,15 @@ export type Camera3D={
 export function camera3D(s:Staging,anchor:Staging|undefined,aspect:string):Camera3D{
  const c=physicalCamera(s),{W,H}=frameSize(aspect),portrait=H>W,sensorV=portrait?36:SENSOR_H_MM;
  const m=mainOf(s),subjectH=m?propSize(m).h:1.7;
- const d=Math.max(0.12,scaleOf(s)*subjectH*c.f/sensorV);
+ // The shot size frames the subject as it looks from this angle (its height foreshortened plus its depth seen from above or below), so a full shot
+ // from overhead is as full as one at eye level: the camera comes closer, as a photographer would, instead of the subject shrinking in the frame.
+ const span=m?spanM(sizeOf(m),elevationOf(s),"front"):subjectH,eRad=elevationOf(s)*Math.PI/180;
+ // That distance is to the subject's middle (where its picture stands); the camera aims at its face, which from above is nearer the lens and from below
+ // farther. A close-up is about the face itself, so the correction fades in with how much of the body the shot shows.
+ const aimShare=m?.kind==="person"?DETAIL_HEIGHT[s.focusDetail??"face"]:0.5,offset=(aimShare-0.5)*subjectH*Math.sin(eRad)*Math.min(1,scaleOf(s));
+ // Looking down on a whole figure, the camera stays above its head (a full overhead shot cannot be framed tighter than that).
+ const floor=m?.kind==="person"&&eRad>0.5&&scaleOf(s)>0.5?(subjectH*(1-aimShare)+0.15)/Math.sin(eRad):0.12;
+ const d=Math.max(floor,scaleOf(s)*span*c.f/sensorV-offset);
  // Aimed at the anchor (the dominant subject where the camera last framed it): its face for a person, or the detail the brief names; or at the centre
  // point the user placed, measured on the dominant subject where it stands now.
  const am=mainOf(anchor??s);

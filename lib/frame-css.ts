@@ -176,7 +176,10 @@ export function thingSprite(v:CssView,p:Pick<SceneProp,"kind"|"label">,ground:V3
  const mpp=spanM(size,stopDeg,sp.side)/a.height,sx=familyOf(p)==="cube"?(widthM(size,sp.side)/a.width)/mpp:1;
  // Placed by its middle; a camera so close that its middle is beside or behind the lens (a worm's-eye close-up) places it by the point it looks at.
  const lookAt:V3=[ground[0],ground[1]+h*look,ground[2]],mppX=mpp*sx;
- const st=standee(v,centre,a.width,a.height,mppX,mpp,sp.mirror,0.5,stopDeg)??standee(v,lookAt,a.width,a.height,mppX,mpp,sp.mirror,1-look,stopDeg);if(!st)return undefined;
+ // Tilted toward the height the camera sees it from: an image from another height (the pack lacks this one yet) still faces the camera instead of
+ // lying foreshortened (an eye-level picture seen from overhead would shrink to a sliver).
+ const seenDeg=VERTICAL_STOPS.find(x=>x.id===view.stop)!.deg;
+ const st=standee(v,centre,a.width,a.height,mppX,mpp,sp.mirror,0.5,seenDeg)??standee(v,lookAt,a.width,a.height,mppX,mpp,sp.mirror,1-look,seenDeg);if(!st)return undefined;
  const tiles=tilesFor(v,st.o,st.ex,st.ey,a.width,a.height);if(!tiles)return undefined;
  // Drawn at the px it covers on screen, so the lens's blur (screen px) applies as it is.
  return {id:sp.id,src:a.src,tiles,depth:st.depth,blur:blurPx(v,st.depth),side:sp.side,stop:sp.height,quad:st.quad};
@@ -192,12 +195,15 @@ export function propSprites(v:CssView,props:readonly SceneProp[],s:Staging,ancho
  return props.flatMap((p,i):PropSprite[]=>{
   const g=propWorld(p,s,anchor,props).pos as V3,size=sizeOf(p);
   if(isCube(p)){const b=boxFaces(v,g,cubeDims(p),facingOf(p));if(!b)return [];
-   return [{i,id:"box",src:"",tiles:[],depth:supportOf(p,props)?b.depth-0.01:b.depth,blur:b.blur,side:"front" as SpriteSide,stop:"eye" as VerticalStop,faces:b.faces,
+   return [{i,id:"box",src:"",tiles:[],depth:supportOf(p,props)?b.depth-0.01:b.depth,blur:(s.pivot?s.pivot.on===i:Boolean(p.main))?0:b.blur,side:"front" as SpriteSide,stop:"eye" as VerticalStop,faces:b.faces,
     quads:b.faces.map(f=>f.quad),ground:g,top:[g[0],g[1]+size.h*1.05,g[2]] as V3}];}
   const t=thingSprite(v,p,g,size,facingOf(p),m&&p.kind===m.kind?aim:0.5);
   // Something resting on another (a phone on a desk) is drawn after it.
   const under=supportOf(p,props);
-  return t?[{i,...t,depth:under?t.depth-0.01:t.depth,ground:g,top:[g[0],g[1]+size.h*1.05,g[2]] as V3}]:[];
+  // The prop the camera focuses on is sharp: its picture is one flat plane through its middle, but the focus sits on it (its face, or where the user
+  // placed the point), so it is drawn as sharp as that point.
+  const focused=s.pivot?s.pivot.on===i:Boolean(p.main);
+  return t?[{i,...t,blur:focused?0:t.blur,depth:under?t.depth-0.01:t.depth,ground:g,top:[g[0],g[1]+size.h*1.05,g[2]] as V3}]:[];
  });
 }
 /** A view point back to the stage: the ground point (at the prop's lift) under it, in stage units. */
