@@ -9,7 +9,7 @@ import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./
 import {displayTag,inferAttachmentRoles,isGenerationTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
 import {providerForModelId} from "./llm-routing";
 import {replyScriptFor} from "./finglish";
-import {describeStagingEn,describeStagingFa,detectProps,detectSubject,tidyProps} from "./staging";
+import {applyStagingCues,describeStagingEn,describeStagingFa,detectProps,detectSubject,tidyProps} from "./staging";
 import {findGif,type ChatGif} from "./giphy";
 import {detectMediaKind,suggestModel} from "./router";
 import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
@@ -266,6 +266,17 @@ const leaks=(pub:PublicCreativePlan,userText:string)=>{const j=JSON.stringify(pu
 const MAX_PROMPTS=200;
 const store=()=>((globalThis as {__whoushPrompts?:Map<string,string>}).__whoushPrompts??=new Map());
 export const getPrivateMediaPrompt=(turnId:string):string|undefined=>store().get(turnId);
+/**
+ * The scene the user arranged in «بوم» before pressing «بساز»: a new private turn derived from `turnId`, with the arranged staging (enum values and prop kinds
+ * only, never free text) appended to the provider-facing prompt as the deciding direction. The original turn is untouched; quotes bind to the new one.
+ * Undefined when the original turn is unknown or expired.
+ */
+export function deriveTurnWithStaging(turnId:string,staging:Staging,aspect?:string):string|undefined{
+ const base=store().get(turnId);if(base===undefined)return undefined;
+ const extra=" User-adjusted scene (overrides any earlier camera, framing or lighting direction): "+describeStagingEn(staging)+(aspect?" Aspect ratio "+aspect+".":"");
+ const id=randomUUID();keepPrompt(id,(base.slice(0,Math.max(0,3000-extra.length))+extra).slice(0,3000));
+ return id;
+}
 function keepPrompt(turnId:string,prompt:string){const m=store();m.set(turnId,prompt);while(m.size>MAX_PROMPTS)m.delete(m.keys().next().value as string);}
 // ---- attachments ----
 type Audio=NonNullable<ReturnType<typeof CreativeTurnInputSchema.parse>["audio"]>;
@@ -411,8 +422,14 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const {plan,corrections}=fin.e;
  // Provider-facing text names attachments by description; the public Persian text keeps what the user typed. A missing tag is a question, never a block.
  // A scene the user arranged in the diagrams is applied exactly: the staging, a hard constraint naming it and the provider-facing direction.
- // A planner's props are tidied (crowded or all lifted means misread); the user's own arrangement below is applied as is.
- if(plan.staging?.props&&!parsed.stagingOverride)plan.staging={...plan.staging,props:tidyProps(plan.staging.props)};
+ // The canvas is the source of truth for the provider. Without the user's own arrangement: a planner's props are tidied (crowded or all lifted means
+ // misread), what the brief says explicitly (angle, shot size, side, lighting words) wins over the planner's choice, and the resulting scene is written into
+ // the provider prompt as the deciding direction, so the output follows what the canvas shows.
+ if(plan.staging&&!parsed.stagingOverride){
+  plan.staging=applyStagingCues({...plan.staging,props:tidyProps(plan.staging.props)},normalizePersian(parsed.text));
+  const en=" Scene (must match): "+describeStagingEn(plan.staging);
+  plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
+ }
  if(parsed.aspectOverride&&plan.camera&&plan.camera.aspectRatio!==parsed.aspectOverride){
   plan.camera={...plan.camera,aspectRatio:parsed.aspectOverride};
   const en=" Aspect ratio "+parsed.aspectOverride+".";plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;

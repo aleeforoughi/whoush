@@ -141,6 +141,10 @@ export function Studio(){
  const [thinking,setThinking]=useState<{stage:TurnStage;script:"fa"|"finglish"}|null>(null);
  /** Agent messages that arrived in this session: their text types out once. */
  const [fresh,setFresh]=useState<ReadonlySet<string>>(()=>new Set());
+ /** The live generation's scene as the user arranged it in «بوم» (only while it differs from Whoush's): «بساز» builds exactly this scene. */
+ const [sceneEdit,setSceneEdit]=useState<{id:string;staging:Staging;aspect:string}|null>(null);
+ /** Arranged scenes on older generations (their quotes expired): their card offers «این صحنه رو بساز», a revision turn with exactly that scene. */
+ const [pastEdits,setPastEdits]=useState<Record<string,{staging:Staging;aspect:string}>>({});
  /** For the «۶ دقیقه پیش» under each message. */
  const now=useNow();
  const markFresh=(...ids:string[])=>setFresh(f=>new Set([...f,...ids]));
@@ -370,14 +374,16 @@ export function Studio(){
   setAnnounce(displayTag(tag)+" به پیام اضافه شد؛ تغییرها را بنویس.");
  }
  /**
-  * «این صحنه رو بساز» in a generation's scene diagrams: sends a message naming the generation and listing what changed (so the chat shows it and Whoush reads
-  * it), with the arranged scene as structured data that the server applies exactly. Whoush answers with a revised plan and a new price (#تولید-N+1).
+  * «این صحنه رو بساز» on an older generation (its quote expired): sends a message naming it and listing what changed in «بوم», with the arranged scene as
+  * structured data the server applies exactly; Whoush answers with a revised plan and a fresh quote.
   */
- function applyStaging(tag:string,before:Staging,beforeAspect:string|undefined,after:Staging,aspect:string){
-  const lines=describeStagingChangesFa(before,after,beforeAspect,aspect);
+ function buildScene(id:string,tag:string,before:Staging,beforeAspect:string|undefined){
+  const e=pastEdits[id];if(!e)return;
+  const lines=describeStagingChangesFa(before,e.staging,beforeAspect,e.aspect);
   if(!lines.length)return;
-  const text=displayTag(tag)+" رو با این تغییرات صحنه دوباره بچین:\n"+lines.map(l=>"• "+l).join("\n");
-  void runTurn(text.slice(0,4000),[],[],false,undefined,{stagingOverride:{...after,subject:after.subject??"person"},...(aspect&&aspect!==beforeAspect?{aspectOverride:aspect}:{})});
+  const text=displayTag(tag)+" رو با این صحنه بساز:\n"+lines.map(l=>"• "+l).join("\n");
+  setPastEdits(p=>{const n={...p};delete n[id];return n;});
+  void runTurn(text.slice(0,4000),[],[],false,undefined,{stagingOverride:{...e.staging,subject:e.staging.subject??"person"},...(e.aspect&&e.aspect!==beforeAspect?{aspectOverride:e.aspect}:{})});
  }
  /** Toggles a Slack-style reaction on a message (the user's from the palette or a chip; Whoush's from its reply). */
  function react(id:string,emoji:ReactionEmoji,by:"user"|"whoush"){
@@ -520,7 +526,13 @@ export function Studio(){
    const turnId=proposal.turnId;
    if(!turnId)throw new Error("پیشنهاد منقضی شده است؛ دوباره درخواستت را بفرست.");
    const post=(url:string,body:unknown)=>fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-   const q=await post("/api/generation/quote",{modelId:selected,turnId});
+   // The canvas is the source of truth: an arranged scene goes with the quote (the server applies it to this turn's private plan), and the frame's aspect
+   // ratio goes as the model's real aspect-ratio setting, so the output frame matches the canvas exactly where the model supports it.
+   const live=messages.find(m=>m.id===liveId),edit=sceneEdit&&sceneEdit.id===liveId?sceneEdit:null;
+   const planAspect=live?.kind==="proposal"?live.snapshot.plan.camera?.aspectRatio:undefined,aspect=edit?.aspect??planAspect;
+   const quoteBody={modelId:selected,turnId,...(edit?{stagingOverride:edit.staging,...(edit.aspect!==planAspect?{aspectOverride:edit.aspect}:{})}:{})};
+   let q=await post("/api/generation/quote",{...quoteBody,...(aspect?{configuration:{aspectRatio:aspect}}:{})});
+   if(q.status===422&&aspect)q=await post("/api/generation/quote",quoteBody); // a model without that aspect ratio (invalid_configuration): the prompt still carries it
    if(!q.ok)throw new Error(q.status===410?"پیشنهاد منقضی شده است؛ دوباره درخواستت را بفرست.":"مشکل در محاسبه هزینه");
    const quote=await q.json() as {token:string};
    const execution=await post("/api/generation/execute",{token:quote.token,approved:true,idempotencyKey:crypto.randomUUID()});
@@ -649,11 +661,16 @@ export function Studio(){
          </p>}
         {m.kind==="job"&&<PreviewCard tag={m.snapshot.tag} state={m.snapshot.state} messageFa={m.snapshot.messageFa}
          output={m.snapshot.messageFa===job?.messageFa?job?.outputs?.find(o=>isOwnedOutputUrl(o.url,window.location.origin)):undefined} video={m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false} onOpen={()=>openPreview(m.snapshot)}/>}
-        {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan&&<PlanStory plan={m.snapshot.plan} applyDisabled={busy||reading||loadingProject}
-         onApplyStaging={m.kind==="proposal"&&m.snapshot.tag&&m.snapshot.plan.staging?(s,aspect)=>applyStaging(m.snapshot.tag!,m.snapshot.plan.staging!,m.snapshot.plan.camera?.aspectRatio,s,aspect):undefined}/>}
+        {/* «بوم» is adjustable on every generation: on the live one it feeds «بساز» directly; on an older one its card offers a revision with that scene. */}
+        {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan&&<PlanStory plan={m.snapshot.plan}
+         onStagingChange={m.kind==="proposal"?(s,aspect,changed)=>{
+          if(proposal&&m.id===liveId)setSceneEdit(changed?{id:m.id,staging:s,aspect}:null);
+          else setPastEdits(p=>{const n={...p};if(changed)n[m.id]={staging:s,aspect};else delete n[m.id];return n;});
+         }:undefined}/>}
         {m.kind==="proposal"&&(proposal&&m.id===liveId
-         ?<ProposalCard proposal={proposal} tag={m.snapshot.tag} selected={selected} onSelect={setSelected} busy={busy} onApprove={()=>void approve()} onChange={()=>m.snapshot.tag&&changeGeneration(m.snapshot.tag)} onMention={m.snapshot.tag?()=>mentionTag(m.snapshot.tag!):undefined}/>
-         :<PastProposalCard snapshot={m.snapshot} onChange={()=>m.snapshot.tag&&changeGeneration(m.snapshot.tag)} onMention={m.snapshot.tag?()=>mentionTag(m.snapshot.tag!):undefined} disabled={!m.snapshot.tag}/>)}
+         ?<ProposalCard proposal={proposal} tag={m.snapshot.tag} adjusted={sceneEdit?.id===m.id} selected={selected} onSelect={setSelected} busy={busy} onApprove={()=>void approve()} onChange={()=>m.snapshot.tag&&changeGeneration(m.snapshot.tag)} onMention={m.snapshot.tag?()=>mentionTag(m.snapshot.tag!):undefined}/>
+         :<PastProposalCard snapshot={m.snapshot} adjusted={Boolean(pastEdits[m.id])} busy={busy||reading||loadingProject}
+          onBuildScene={pastEdits[m.id]&&m.snapshot.tag&&m.snapshot.plan.staging?()=>buildScene(m.id,m.snapshot.tag!,m.snapshot.plan.staging!,m.snapshot.plan.camera?.aspectRatio):undefined} onChange={()=>m.snapshot.tag&&changeGeneration(m.snapshot.tag)} onMention={m.snapshot.tag?()=>mentionTag(m.snapshot.tag!):undefined} disabled={!m.snapshot.tag}/>)}
         {m.kind==="no_model"&&<NoModelCard result={m.snapshot}/>}
         {/* The question is always the last item of the agent's message; it waits for an answer until something is sent after it. */}
         {m.kind==="question"&&<AgentQuestion question={m.snapshot.question} waiting={i===messages.length-1&&!busy} onAnswer={()=>promptRef.current?.focus()}/>}

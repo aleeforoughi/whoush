@@ -519,7 +519,7 @@ test("mentions: the provider-facing prompt describes attachments in English, the
  // a live planner that writes the tag into its own prompt is rewritten after the fact
  const live:PrivatePlanner=r2=>{const plan=structuredClone(deterministicPlanner(r2).plan) as CreativePlan;plan.mediaPrompt="lake scene following @FILE1 closely";return {plan};};
  const l=planned(await orchestrateCreativeTurn({text:"a lake per @file1",attachments:[att("md")]},{planner:live}));
- assert.equal(getPrivateMediaPrompt(l.turnId),"lake scene following [attached document 1] closely");
+ {const lp=getPrivateMediaPrompt(l.turnId)!;assert.ok(lp.startsWith("lake scene following [attached document 1] closely Scene (must match): Staging:"),lp);}
  // a long brief still leaves room for every role line at the end of the prompt
  const longText="a lake. ".repeat(450)+"@image1";
  const lp=deterministicPlanner((await seenBy(longText,[att("image")])).req).plan.mediaPrompt;
@@ -564,7 +564,7 @@ test("Persian mentions: rewritten in the private media prompt, kept in the publi
  // a live planner that writes the Persian tag into its own prompt is rewritten after the fact
  const live:PrivatePlanner=r2=>{const plan=structuredClone(deterministicPlanner(r2).plan) as CreativePlan;plan.mediaPrompt="lake scene following #فایل-۱ closely";return {plan};};
  const l=planned(await orchestrateCreativeTurn({text:"a lake per #فایل-۱",attachments:[att("md")]},{planner:live}));
- assert.equal(getPrivateMediaPrompt(l.turnId),"lake scene following [attached document 1] closely");
+ {const lp=getPrivateMediaPrompt(l.turnId)!;assert.ok(lp.startsWith("lake scene following [attached document 1] closely Scene (must match): Staging:"),lp);}
 });
 
 const skillsOf=()=>last().activeSkillIds;

@@ -1,5 +1,5 @@
 "use client";
-import {CircleOff,Clapperboard,Image as ImageIcon,Sparkles} from "lucide-react";
+import {Box,CircleOff,Clapperboard,Image as ImageIcon,Sparkles} from "lucide-react";
 import {Badge,Button,Card,Icon,Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from "@aleeforoughi/feather-react";
 import {SuggestedModelNote} from "@/components/plan-details";
 import {TagBadge} from "@/components/attachment-chip";
@@ -29,7 +29,8 @@ const ChangeButton=({onChange,disabled}:{onChange:()=>void;disabled?:boolean})=>
  * The live generation card: short and actionable, the plan itself is in the conversation above it. The kind, the tag (#تولید-۱), the model (recommendation first,
  * alternates marked «جایگزین», each with its fixed Neurons), then [بساز · ۱۰ نورون] and [اصلاح].
  */
-export function ProposalCard({proposal,tag,selected,onSelect,busy,onApprove,onChange,onMention}:{proposal:AgentProposal;tag?:string;selected:string;onSelect:(id:string)=>void;busy:boolean;onApprove:()=>void;onChange:()=>void;onMention?:()=>void}){
+export function ProposalCard({proposal,tag,adjusted,selected,onSelect,busy,onApprove,onChange,onMention}:{proposal:AgentProposal;tag?:string;
+ /** The scene was arranged in «بوم»: «بساز» builds exactly that scene. */adjusted?:boolean;selected:string;onSelect:(id:string)=>void;busy:boolean;onApprove:()=>void;onChange:()=>void;onMention?:()=>void}){
  const chosen=proposal.suggestions.find(s=>s.modelId===selected);
  const price=chosen?.neurons??proposal.fixedNeurons;
  const ordered=[...proposal.suggestions].sort((a,b)=>Number(b.modelId===proposal.recommendedModelId)-Number(a.modelId===proposal.recommendedModelId));
@@ -54,12 +55,14 @@ export function ProposalCard({proposal,tag,selected,onSelect,busy,onApprove,onCh
    </Button>
    <ChangeButton onChange={onChange}/>
   </div>
+  {adjusted&&<p role="status" className="flex items-center gap-2 type-caption text-fg-primary"><Icon icon={Box} size={16} aria-hidden="true" className="size-4 text-primary"/>با صحنه‌ای که توی «بوم» چیدی ساخته می‌شه.</p>}
   <p className="type-caption text-fg-secondary">{DEMO_NOTE_FA}</p>
  </Card>;
 }
 
 /** A generation from earlier in the conversation: its quote has expired (or the page reloaded), so only «اصلاح» remains; the plan is in the conversation. */
-export function PastProposalCard({snapshot,onChange,onMention,disabled}:{snapshot:ProposalSnapshot;onChange:()=>void;onMention?:()=>void;disabled?:boolean}){
+export function PastProposalCard({snapshot,onChange,onMention,disabled,adjusted,onBuildScene,busy}:{snapshot:ProposalSnapshot;onChange:()=>void;onMention?:()=>void;disabled?:boolean;
+ /** The scene was arranged in «بوم»: «این صحنه رو بساز» asks Whoush for a revision with exactly that scene and a fresh quote. */adjusted?:boolean;onBuildScene?:()=>void;busy?:boolean}){
  return <Card size="sm" data-testid="past-proposal" data-generation={snapshot.tag} className="gap-3 p-3">
   <Head kind={snapshot.operation==="generate_video"?"video":"image"} tag={snapshot.tag} onMention={onMention}/>
   <p className="flex flex-wrap items-center justify-between gap-2 type-body-sm text-fg-secondary">
@@ -67,8 +70,9 @@ export function PastProposalCard({snapshot,onChange,onMention,disabled}:{snapsho
    <span className="type-label text-fg-primary">{fa(snapshot.neurons)} نورون</span>
   </p>
   <div className="flex flex-wrap items-center gap-2">
+   {adjusted&&onBuildScene&&<Button type="button" onClick={onBuildScene} disabled={busy}><Icon icon={Box} aria-hidden="true"/>این صحنه رو بساز</Button>}
    <ChangeButton onChange={onChange} disabled={disabled}/>
-   <p role="note" className="min-w-0 flex-1 type-caption text-fg-secondary">{PAST_PROPOSAL_FA}</p>
+   <p role="note" className="min-w-0 flex-1 type-caption text-fg-secondary">{adjusted?"صحنهٔ «بوم» تغییر کرده؛ هووش با همین صحنه یه برنامه و قیمت تازه می‌ده.":PAST_PROPOSAL_FA}</p>
   </div>
  </Card>;
 }

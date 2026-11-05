@@ -116,3 +116,33 @@ test("smooth adjustments: exact camera elevation, zoom and light angle; the name
  assert.deepEqual(describeStagingChangesFa(smooth,{...smooth,cameraElevation:23}),[],"under two degrees is not a change");
  assert.ok(describeStagingEn(smooth).includes("(22° from eye level)")&&describeStagingEn(smooth).includes("(150° in top view)"));
 });
+
+test("the user's own words win: angle, shot size, side and lighting cues override the planner's staging, and the scene always reaches the provider",async()=>{
+ const {applyStagingCues}=await import("../lib/staging");
+ const t=(x:string)=>applyStagingCues(base,normalizePersian(x));
+ assert.equal(t("یه عکس از بالا از یه دریاچه").cameraAngle,"birds_eye");assert.equal(t("a low angle portrait").cameraAngle,"low");
+ assert.equal(t("کلوزآپ از صورت").shotSize,"close_up");assert.equal(t("full body shot of a dancer").shotSize,"full");
+ assert.deepEqual(t("زن سمت چپ کادر").framing,{x:-1/3,y:0});
+ const back=t("پرتره ضدنور با نور طلایی غروب");assert.equal(back.lights[0].direction,"back");assert.equal(back.lights[0].source,"sun");assert.equal(back.lights[0].colorTemperatureK,3500);
+ assert.equal(t("نور پنجره و حس آرام").lights[0].source,"window");
+ assert.deepEqual(t("یه گربه"),{...base},"no cue, no change");
+ // A planner that ignored «از بالا» is corrected, and the provider prompt carries the scene.
+ const ignoring:import("../lib/creative-plan").PrivatePlanner=r=>{const {deterministicPlanner:d}=require("../lib/orchestrator") as typeof import("../lib/orchestrator");const p=structuredClone(d(r).plan);p.staging={...p.staging!,cameraAngle:"eye_level"};return {plan:p};};
+ const r=planned(await orchestrateCreativeTurn({text:"یه عکس از بالا از یه دریاچه"},{planner:ignoring}));
+ assert.equal(r.plan.staging?.cameraAngle,"birds_eye");assert.match(getPrivateMediaPrompt(r.turnId)!,/Scene \(must match\): Staging: bird's-eye \(top-down\) camera/);
+});
+test("«بساز» with an arranged scene: a new private turn with that scene, quoted on that turn; the original turn and unknown turns are safe",async()=>{
+ const {deriveTurnWithStaging}=await import("../lib/orchestrator");
+ const {POST:quote}=await import("../app/api/generation/quote/route");
+ const r=planned(await orchestrateCreativeTurn({text:"portrait of a woman in a garden"}));
+ const before=getPrivateMediaPrompt(r.turnId)!;
+ const id=deriveTurnWithStaging(r.turnId,{...base,cameraAngle:"low",cameraElevation:-20},"9:16")!;
+ assert.ok(id&&id!==r.turnId);assert.equal(getPrivateMediaPrompt(r.turnId),before,"the original turn is untouched");
+ assert.match(getPrivateMediaPrompt(id)!,/User-adjusted scene \(overrides any earlier camera, framing or lighting direction\): Staging: low angle camera \(-20° from eye level\)/);
+ assert.match(getPrivateMediaPrompt(id)!,/Aspect ratio 9:16\.$/);
+ assert.equal(deriveTurnWithStaging("no-such-turn",base),undefined);
+ const res=await quote(new Request("http://x/api/generation/quote",{method:"POST",body:JSON.stringify({modelId:r.proposal.selectedModelId,turnId:r.turnId,stagingOverride:{...base,cameraAngle:"low"}})}));
+ assert.equal(res.status,200);const q=await res.json() as {token:string};assert.ok(q.token&&!("turnId" in q),"the derived turn stays inside the signed token");
+ const bad=await quote(new Request("http://x/api/generation/quote",{method:"POST",body:JSON.stringify({modelId:r.proposal.selectedModelId,turnId:"no-such-turn",stagingOverride:base})}));
+ assert.equal(bad.status,410);
+});

@@ -241,3 +241,32 @@ export const scaleOf=(s:Staging)=>s.shotScale??SHOT_BODY_FRACTION[s.shotSize];
 export const lightAngleOf=(l:StagingLight)=>l.angle??(l.direction==="top"?undefined:LIGHT_ANGLE[l.direction]);
 /** Zoom relative to a full shot, for people: «۱٫۸×» closer, «۰٫۵×» wider. */
 export const zoomFactor=(s:Staging)=>Math.round(SHOT_BODY_FRACTION.full/scaleOf(s)*10)/10;
+
+// ---- reading the brief: what the user said explicitly always wins over a planner's choice ----
+const CUES={
+ angle:[["birds_eye",["from above","top down","top-down","overhead","birds eye","bird's eye","drone shot","aerial view","از بالا","نمای بالا","نمای هوایی","هوایی","پهپاد"]],["worms_eye",["worms eye","worm's eye","from the ground","از روی زمین","از کف زمین"]],["low",["low angle","from below","زاویه پایین","زاویهٔ پایین","از پایین"]],["high",["high angle","زاویه بالا","زاویهٔ بالا"]],["dutch",["dutch angle","tilted angle","زاویه کج","زاویهٔ کج","کج"]],["eye_level",["eye level","هم سطح چشم","همسطح چشم"]]] as [Staging["cameraAngle"],string[]][],
+ shot:[["extreme_close_up",["extreme close up","extreme closeup","macro","ماکرو","خیلی نزدیک"]],["close_up",["close up","closeup","close-up","کلوزآپ","کلوز آپ","نمای نزدیک"]],["medium_close_up",["medium close up","head and shoulders","سر و شانه"]],["medium",["medium shot","waist up","نمای متوسط","تا کمر"]],["medium_full",["knees up","تا زانو"]],["full",["full body","full length","full shot","تمام قد","تمام‌قد","کل بدن"]],["extreme_wide",["extreme wide","خیلی باز"]],["wide",["wide shot","wide angle","نمای باز","نمای عریض"]]] as [Staging["shotSize"],string[]][],
+ side:[[-1/3,["on the left","left side","سمت چپ","طرف چپ"]],[1/3,["on the right","right side","سمت راست","طرف راست"]],[0,["centered","in the center","in the middle","وسط کادر","وسط قاب"]]] as [number,string[]][]
+};
+const LIGHT_CUES:{words:string[];apply:(key:StagingLight)=>StagingLight}[]=[
+ {words:["backlit","backlight","rim lit","ضدنور","نور از پشت"],apply:l=>({...l,direction:"back",angle:undefined})},
+ {words:["side light","side lit","نور کناری","نور از کنار"],apply:l=>({...l,direction:"left",angle:undefined})},
+ {words:["window light","natural window","نور پنجره"],apply:l=>({...l,source:"window",quality:"soft"})},
+ {words:["golden hour","sunset","غروب","نور طلایی"],apply:l=>({...l,source:"sun",colorTemperatureK:3500,height:"low"})},
+ {words:["candle light","candlelight","شمع","fire light","نور آتش"],apply:l=>({...l,source:"fire",colorTemperatureK:1900,quality:"soft"})},
+ {words:["neon","نئون"],apply:l=>({...l,source:"neon",colorHex:l.colorHex??"#4f8cff"})},
+ {words:["hard light","harsh light","نور سخت","نور تند"],apply:l=>({...l,quality:"hard"})},
+ {words:["soft light","diffused light","نور نرم","نور ملایم"],apply:l=>({...l,quality:"soft"})}
+];
+/**
+ * Applies what the brief says explicitly (camera angle, shot size, left/right placement, lighting words) to a staging, so the canvas and the provider prompt
+ * follow the user's own words before any planner choice. Words not present change nothing. The key light is the first light (or the first «key»).
+ */
+export function applyStagingCues(s:Staging,normalizedText:string):Staging{
+ const t=" "+normalizedText+" ",has=(w:string)=>t.includes(" "+w+" ");
+ const angle=CUES.angle.find(([,ws])=>ws.some(has))?.[0],shot=CUES.shot.find(([,ws])=>ws.some(has))?.[0],side=CUES.side.find(([,ws])=>ws.some(has))?.[0];
+ const ki=Math.max(0,s.lights.findIndex(l=>l.role==="key"));
+ let key=s.lights[ki];for(const c of LIGHT_CUES)if(c.words.some(has))key=c.apply(key);
+ return {...s,...(angle?{cameraAngle:angle,cameraElevation:undefined}:{}),...(shot?{shotSize:shot,shotScale:undefined}:{}),
+  ...(side!==undefined?{framing:side===0?undefined:{x:side,y:s.framing?.y??0}}:{}),lights:s.lights.map((l,i)=>i===ki?key:l)};
+}
