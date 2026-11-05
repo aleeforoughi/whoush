@@ -249,6 +249,9 @@ const radiusOf=(v:number,min:number,span:number)=>min+span*Math.max(0,Math.min(1
  */
 function CameraView({staging,editable,onCamera}:{staging:Staging;editable:boolean;onCamera:(c:{elevation:number;distance:number;flip?:boolean})=>void}){
  const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false),tint=useId();
+ // Where the finger took hold of the camera, as an offset from the lens point: the distance only changes by how far the finger then moves in or out, so
+ // grabbing the camera (by its body) never changes the zoom by itself.
+ const grab=useRef(0);
  // Which side of the subject the camera is drawn on (1: right). It changes when a drag carries the camera over the top, so nothing jumps.
  const [dragSide,setSide]=useState<1|-1>(1);
  // The camera is drawn on the same side of the subject as in the top view (its left or right there); straight in front of or behind the subject (where
@@ -268,7 +271,7 @@ function CameraView({staging,editable,onCamera}:{staging:Staging;editable:boolea
  const mTint=m?propTints(staging.props??[])[(staging.props??[]).indexOf(m)]:undefined;
  const at=(e:PointerEvent)=>{const r=svg.current!.getBoundingClientRect();const x=(e.clientX-r.left)*VW/r.width-focus[0],y=(e.clientY-r.top)*VH/r.height-focus[1];
   const psi=Math.atan2(-y,x)*180/Math.PI,s2:1|-1=x>=0?1:-1;
-  return {side:s2,elevation:Math.round(Math.max(-60,Math.min(85,wrap180(s2===1?psi:180-psi)))),distance:Math.max(0,Math.min(1,(Math.hypot(x,y)-RMIN)/RSPAN))};};
+  return {side:s2,elevation:Math.round(Math.max(-60,Math.min(85,wrap180(s2===1?psi:180-psi)))),distance:Math.max(0,Math.min(1,(Math.hypot(x,y)-grab.current-RMIN)/RSPAN)),r:Math.hypot(x,y)};};
  const key=(e:KeyboardEvent)=>{
   const d={ArrowUp:[5,0],ArrowDown:[-5,0],ArrowRight:[0,0.05],ArrowLeft:[0,-0.05]}[e.key as "ArrowUp"];if(!d)return;e.preventDefault();
   onCamera({elevation:Math.max(-60,Math.min(85,Math.round(elev+d[0]))),distance:Math.max(0,Math.min(1,dist+d[1]))});};
@@ -291,7 +294,7 @@ function CameraView({staging,editable,onCamera}:{staging:Staging;editable:boolea
   <line x1={cx} y1={cy} x2={focus[0]} y2={focus[1]} className="stroke-primary" strokeWidth={1.2} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
   <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="ارتفاع و فاصلهٔ دوربین (۳۶۰ درجه)" aria-valuetext={CAMERA_ANGLE_FA[staging.cameraAngle]+"، "+Math.round(elev)+" درجه، "+orbitFa(staging.cameraAzimuth??0)+"، زوم "+zoomFactor(staging)+"×"}
    aria-valuemin={-60} aria-valuemax={85} aria-valuenow={Math.round(elev)}
-   onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);setDragging(true);}:undefined}
+   onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);grab.current=0;grab.current=at(e).r-R;setDragging(true);}:undefined}
    className={editable?(dragging?"cursor-grabbing":"cursor-grab")+" touch-none outline-none focus-visible:[&>circle]:stroke-primary":""}>
    {/* A large, finger-sized grab area around the camera (about 50px on a phone), the camera itself drawn blue. */}
    {(()=>{const away=(aim+180)*Math.PI/180,L=CAMERA_SIZE/2;return <circle cx={cx+Math.cos(away)*L} cy={cy+Math.sin(away)*L} r={36} fill="transparent" strokeWidth={2}/>;})()}
@@ -307,6 +310,9 @@ function CameraView({staging,editable,onCamera}:{staging:Staging;editable:boolea
  */
 function OrbitView({staging,editable,onOrbit}:{staging:Staging;editable:boolean;onOrbit:(c:{azimuth:number;distance:number})=>void}){
  const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false),tint=useId();
+ // Where the finger took hold of the camera, as an offset from the lens point: the distance only changes by how far the finger then moves in or out, so
+ // grabbing the camera (by its body) never changes the zoom by itself.
+ const grab=useRef(0);
  const VW=220,VH=210,C:[number,number]=[110,105],RMIN=30,RSPAN=30,U=44;
  const az=staging.cameraAzimuth??0,dist=distanceOf(staging),R=radiusOf(dist,RMIN,RSPAN),rad=az*Math.PI/180,c=Math.cos(rad),n=Math.sin(rad);
  const props=staging.props??[],m=mainProp(staging),px=m?.x??0,pz=m?.z??0;
@@ -314,7 +320,7 @@ function OrbitView({staging,editable,onOrbit}:{staging:Staging;editable:boolean;
  const place=(p:SceneProp):[number,number]=>{const vx=p.x-px,vz=p.z-pz;return [C[0]+(vx*c-vz*n)*U,C[1]-(vx*n+vz*c)*U];};
  const cam:[number,number]=[C[0]+R*n,C[1]+R*c];
  const at=(e:PointerEvent)=>{const r=svg.current!.getBoundingClientRect();const x=(e.clientX-r.left)*VW/r.width-C[0],y=(e.clientY-r.top)*VH/r.height-C[1];
-  return {azimuth:Math.round(Math.atan2(x,y)*180/Math.PI),distance:Math.max(0,Math.min(1,(Math.hypot(x,y)-RMIN)/RSPAN))};};
+  return {azimuth:Math.round(Math.atan2(x,y)*180/Math.PI),distance:Math.max(0,Math.min(1,(Math.hypot(x,y)-grab.current-RMIN)/RSPAN)),r:Math.hypot(x,y)};};
  const key=(e:KeyboardEvent)=>{
   const d={ArrowRight:[5,0],ArrowLeft:[-5,0],ArrowUp:[0,0.05],ArrowDown:[0,-0.05]}[e.key as "ArrowUp"];if(!d)return;e.preventDefault();
   onOrbit({azimuth:wrap180(az+d[0]),distance:Math.max(0,Math.min(1,dist+d[1]))});};
@@ -338,7 +344,7 @@ function OrbitView({staging,editable,onOrbit}:{staging:Staging;editable:boolean;
   <line x1={cam[0]} y1={cam[1]} x2={C[0]} y2={C[1]} className="stroke-primary" strokeWidth={1.2} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
   <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="چرخش و فاصلهٔ دوربین دور سوژه" aria-valuetext={orbitFa(az)+"، زوم "+zoomFactor(staging)+"×"}
    aria-valuemin={-180} aria-valuemax={180} aria-valuenow={Math.round(az)}
-   onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);setDragging(true);}:undefined}
+   onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);grab.current=0;grab.current=at(e).r-R;setDragging(true);}:undefined}
    className={editable?(dragging?"cursor-grabbing":"cursor-grab")+" touch-none outline-none focus-visible:[&>circle]:stroke-primary":""}>
    <circle cx={cam[0]+n*CAMERA_SIZE/2} cy={cam[1]+c*CAMERA_SIZE/2} r={36} fill="transparent" strokeWidth={2}/>
    <CameraGlyph view="top" x={cam[0]} y={cam[1]} rotate={-az} tint={tint}/>
