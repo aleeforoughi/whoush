@@ -49,7 +49,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
  // Whoush Autopilot (on by default): Whoush keeps the camera's lens and aperture right for the scene and re-centres on the dominant subject when the
  // camera moves. Off: fully manual, nothing changes by itself.
  const autopilot=draft.autopilot!==false;
- const aim=()=>{if(autopilot)setFocusProps(draft.props);};
+ const aim=()=>{if(autopilot&&focusProps!==draft.props)setFocusProps(draft.props);};
  /** Hand-setting the lens or aperture turns Autopilot off and freezes the other at its current value, so nothing changes behind the user's back. */
  const setManual=(p:Partial<Staging>)=>setDraft(d=>{const l=lensFor(d);return {...d,autopilot:false,lensMm:d.lensMm??l.focalLengthMm,apertureF:d.apertureF??l.apertureF,...p};});
  const setAutopilot=(on:boolean)=>{
@@ -79,6 +79,8 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
  const setElevation=(e:number)=>{aim();setElevationOnly(e);};
  const setElevationOnly=(e:number)=>setDraft(d=>({...d,cameraElevation:e,cameraAngle:d.cameraAngle==="dutch"?"dutch":snapElevation(e)}));
  const orbitTo=(az:number)=>{aim();orbitOnly(az);};
+ // A drag of the camera re-centres once, when it starts (not on every move).
+ const orbitDrag=(az:number)=>orbitOnly(az);
  const orbitOnly=(az:number)=>setDraft(d=>orbitCamera(d,wrap180(az-(d.cameraAzimuth??0))));
  const setDistance=(v:number)=>{aim();setDistanceOnly(v);};
  const setDistanceOnly=(v:number)=>setDraft(d=>{const sc=scaleFromSlider(v);return {...d,shotScale:sc,shotSize:nearestShot(sc)};});
@@ -118,13 +120,13 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
   <div id={bodyId} hidden={!open} className="flex min-w-0 flex-col gap-3">
   <div className="flex min-w-0 flex-col gap-3">
    <div ref={frameArea}><Viewport {...cap.frame}>
-    <FrameView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={setPropSel} onProp={(i,x,z)=>setProp(i,{x,z})} onZoom={setDistance} locked={locked} onLock={setLocked}
+    <FrameView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={setPropSel} onProp={(i,x,z)=>setProp(i,{x,z})} onZoom={setDistance} locked={locked} onLock={setLocked} onBack={()=>{setPropSel(null);setLocked(false);}}
      onFocus={f=>{if(f){set(f);return;}
       // Back to the dominant subject without the picture jumping: move the centre point onto the subject's own centre, then drop the custom point.
       const {W,H}=frameSize(aspect),def=frameCamera({...draft,focusPoint:undefined},anchor,W,H),[sx,sy]=frameCamera(draft,anchor,W,H).toScreen(def.F[0],def.F[1]);
       const r=moveFocusPoint(draft,anchor,W,H,sx,sy);setDraft(d=>{const {focusPoint:_p,...rest}=d;void _p;return {...rest,framing:r.framing.x===0&&r.framing.y===0?undefined:r.framing};});}}/>
     {editable&&propSel!==null&&props[propSel]&&<PropInspector prop={withFrameCuts(draft,anchor,aspect).props![propSel]} tag={propTags(props,true)[propSel]} reach={propReach(props[propSel],draft,anchor,aspect)}
-     onChange={p=>setProp(propSel,p)} onClose={()=>{setPropSel(null);setLocked(false);}}/>}
+     onChange={p=>setProp(propSel,p)}/>}
     {editable&&(propSel===null||!props[propSel])&&<>
      <input type="range" dir="ltr" min={0} max={1} step={0.001} value={1-distanceOf(draft)} onChange={e=>setDistance(1-Number(e.target.value))}
       aria-label="زوم (اندازهٔ نما، همون فاصلهٔ دوربین)" aria-valuetext={SHOT_SIZE_FA[draft.shotSize]+"، زوم "+zoomFactor(draft)+"×"} className="h-8 w-full cursor-pointer accent-primary"/>
@@ -142,11 +144,11 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
     {/* The two camera views side by side, each its own tile: from the side (height and distance) and from above (the orbit), synced through one scene. */}
     <div className="grid grid-cols-2 gap-2">
      <Tile label="زاویه دوربین / عمودی">
-      <CameraView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onCamera={c=>{aim();setDraft(d=>{const n=c.flip?orbitCamera(d,180):d;
+      <CameraView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onStart={aim} onCamera={c=>{setDraft(d=>{const n=c.flip?orbitCamera(d,180):d;
        return {...n,cameraElevation:c.elevation,cameraAngle:n.cameraAngle==="dutch"?"dutch":snapElevation(c.elevation)};});}}/>
      </Tile>
      <Tile label="زاویه دوربین / افقی">
-      <OrbitView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onOrbit={c=>orbitTo(c.azimuth)}/>
+      <OrbitView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onStart={aim} onOrbit={c=>orbitDrag(c.azimuth)}/>
      </Tile>
     </div>
     {editable&&<SliderRow label="ارتفاع دوربین" ends={["پایین","بالا"]} valueText={CAMERA_ANGLE_FA[draft.cameraAngle]+" · "+fa(Math.round(elevationOf(draft)))+"°"} min={-60} max={85} step={1} value={elevationOf(draft)}
@@ -161,7 +163,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
       onClick={()=>setDraft(d=>{const {shotStyle:_s,...rest}=d;void _s;return v?{...rest,shotStyle:v}:rest;})}>{l}</Chip>)}</div>}
     {/* The camera's distance on its own tile, after the angles: drag the camera nearer or farther (the frame's zoom follows), or use the slider. */}
     <Tile label="فاصله دوربین">
-     <DistanceView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onDistance={setDistance}/>
+     <DistanceView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onDistance={v=>{aim();setDistanceOnly(v);}}/>
     </Tile>
     {editable&&<SliderRow label="فاصلهٔ دوربین (همون زوم کادر)" ends={["نزدیک","دور"]} valueText={SHOT_SIZE_FA[draft.shotSize]+" · زوم "+fa(zoomFactor(draft))+"×"} min={0} max={1} step={0.001} value={distanceOf(draft)} onChange={setDistance}/>}
     {/* Lens and aperture: Whoush's pick for the scene (lib/staging.ts, lensFor) until the user moves a slider; bokeh is the aperture opened wide. */}
@@ -298,7 +300,8 @@ const SIDE:Record<SceneProp["kind"],string>={person:"person-side",object:"object
  */
 function DistanceView({staging,anchor,aspect,editable,onDistance}:{staging:Staging;anchor?:Staging;aspect?:string;editable:boolean;onDistance:(v:number)=>void}){
  const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false),tint=useId(),grab=useRef(0);
- const VW=440,VH=150,X0=60,NEAR=150,FAR=400,ground=VH-12;
+ // Laid out so the subject and the camera at its farthest are evenly inside the tile (the camera's body reaches CAMERA_SIZE behind its lens).
+ const VW=440,VH=150,X0=46,NEAR=140,FAR=VW-24-CAMERA_SIZE,ground=VH-12;
  const m=mainProp(staging),kind=m?.kind,size=kind?Math.min(116,PROP_HEIGHT[kind]*116):70;
  // The camera's track runs at the height of the frame's centre point on the subject (its face by default).
  const focusY=kind?Math.max(14,Math.min(ground-4,ground-size*centerOnSubject(staging,anchor,aspect??"16:9").height)):ground-30;
@@ -335,7 +338,7 @@ const radiusOf=(v:number,min:number,span:number)=>min+span*Math.max(0,Math.min(1
  * distance (the frame's zoom follows). The subject is drawn the way it faces the camera (its face toward the camera, its back, or side on), like the frame
  * and the top view. Sized so the whole circle stays inside at any distance.
  */
-function CameraView({staging,anchor,aspect,editable,onCamera}:{staging:Staging;/** For the sight line: the frame's centre point (see FrameView). */anchor?:Staging;aspect?:string;editable:boolean;onCamera:(c:{elevation:number;flip?:boolean})=>void}){
+function CameraView({staging,anchor,aspect,editable,onCamera,onStart}:{staging:Staging;/** A drag begins. */onStart?:()=>void;/** For the sight line: the frame's centre point (see FrameView). */anchor?:Staging;aspect?:string;editable:boolean;onCamera:(c:{elevation:number;flip?:boolean})=>void}){
  const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false),tint=useId();
  // Which side of the subject the camera is drawn on (1: right). It changes when a drag carries the camera over the top, so nothing jumps.
  const [dragSide,setSide]=useState<1|-1>(1);
@@ -347,7 +350,10 @@ function CameraView({staging,anchor,aspect,editable,onCamera}:{staging:Staging;/
  // The camera circles the frame's centre point on the subject (its face by default, the detail, or where the user moved the dot): that point is the
  // circle's centre, kept far enough from the edges for the whole circle to show; the subject stands under it.
  const R=56,h=kind?centerOnSubject(staging,anchor,aspect??"16:9").height:0.5,ground0=Math.min(VH-8,focus[1]+(kind==="person"?size*0.9:size*0.55));
- const pivot:[number,number]=[focus[0],Math.max(R+10,Math.min(VH-R-10,kind?ground0-size*h:focus[1]))],ground=kind?pivot[1]+size*h:ground0;
+ const pivot:[number,number]=[focus[0],kind?ground0-size*h:focus[1]],ground=kind?pivot[1]+size*h:ground0;
+ // Everything (the circle with the camera on it, the subject and its ground) is fitted and centred in the tile: never cut, never off to one side.
+ const reach=R+CAMERA_SIZE*0.75,top=Math.min(pivot[1]-reach,ground-size-4),bottom=Math.max(pivot[1]+reach,ground+4);
+ const fit=Math.min(1,(VH-12)/(bottom-top),(VW-12)/(2*reach)),tx=VW/2-fit*pivot[0],ty=VH/2-fit*(top+bottom)/2;
  // Angle only: the camera stays at one distance here (the distance has its own tile).
  const elev=elevationOf(staging);
  const phi=side===1?elev:180-elev,[cx,cy]=polar(pivot[0],pivot[1],R,-phi);
@@ -358,7 +364,7 @@ function CameraView({staging,anchor,aspect,editable,onCamera}:{staging:Staging;/
  // The subject as the camera sees it (front, three-quarter, profile, rear three-quarter or back), the same image as the frame: orbiting behind it shows its back.
  const sp=m?sprite(m):undefined;
  const mTint=m?propTints(staging.props??[])[(staging.props??[]).indexOf(m)]:undefined;
- const at=(e:PointerEvent)=>{const r=svg.current!.getBoundingClientRect();const x=(e.clientX-r.left)*VW/r.width-pivot[0],y=(e.clientY-r.top)*VH/r.height-pivot[1];
+ const at=(e:PointerEvent)=>{const r=svg.current!.getBoundingClientRect();const x=((e.clientX-r.left)*VW/r.width-tx)/fit-pivot[0],y=((e.clientY-r.top)*VH/r.height-ty)/fit-pivot[1];
   const psi=Math.atan2(-y,x)*180/Math.PI,s2:1|-1=x>=0?1:-1;
   return {side:s2,elevation:Math.round(Math.max(-60,Math.min(85,wrap180(s2===1?psi:180-psi))))};};
  const key=(e:KeyboardEvent)=>{
@@ -370,19 +376,21 @@ function CameraView({staging,anchor,aspect,editable,onCamera}:{staging:Staging;/
  return <svg ref={svg} viewBox={"0 0 "+VW+" "+VH} className="mx-auto block aspect-[22/21] w-full max-w-sm touch-pan-y select-none text-fg-primary" aria-hidden={!editable}
   onPointerMove={move} onPointerUp={()=>setDragging(false)} onPointerCancel={()=>setDragging(false)}>
   <BlueTint id={tint}/>
+  <g transform={"translate("+tx+" "+ty+") scale("+fit+")"}>
   <circle cx={pivot[0]} cy={pivot[1]} r={R} fill="none" stroke="currentColor" strokeOpacity=".4" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
-  <line x1={6} x2={VW-6} y1={ground} y2={ground} stroke="currentColor" strokeOpacity=".3" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
+  <line x1={-VW} x2={VW*2} y1={ground} y2={ground} stroke="currentColor" strokeOpacity=".3" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
   {mTint&&<Tint id={tint+"-m"} color={mTint}/>}
   {kind&&sp?<Asset id={sp.id} x={focus[0]} y={ground} h={size} mirror={sp.mirror} sx={sp.sx} tint={mTint?tint+"-m":undefined}/>:<><Asset id="env-mountains" x={focus[0]} y={ground} h={52}/><Asset id="env-tree" x={focus[0]+44} y={ground} h={30}/></>}
   <circle cx={target[0]} cy={target[1]} r={2.2} className="fill-primary"/>
   <line x1={cx} y1={cy} x2={target[0]} y2={target[1]} className="stroke-primary" strokeWidth={1.2} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
   <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="ارتفاع و فاصلهٔ دوربین (۳۶۰ درجه)" aria-valuetext={CAMERA_ANGLE_FA[staging.cameraAngle]+"، "+Math.round(elev)+" درجه، "+orbitFa(staging.cameraAzimuth??0)+"، زوم "+zoomFactor(staging)+"×"}
    aria-valuemin={-60} aria-valuemax={85} aria-valuenow={Math.round(elev)}
-   onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);setDragging(true);}:undefined}
+   onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);onStart?.();setDragging(true);}:undefined}
    className={editable?(dragging?"cursor-grabbing":"cursor-grab")+" touch-none outline-none focus-visible:[&>circle]:stroke-primary":""}>
    {/* A large, finger-sized grab area around the camera (about 50px on a phone), the camera itself drawn blue. */}
    {(()=>{const away=(aim+180)*Math.PI/180,L=CAMERA_SIZE/2;return <circle cx={cx+Math.cos(away)*L} cy={cy+Math.sin(away)*L} r={36} fill="transparent" strokeWidth={2}/>;})()}
    <CameraGlyph view="side" x={cx} y={cy} rotate={aim-180+(camLeft?-roll:roll)} flip={camLeft} tint={tint}/>
+  </g>
   </g>
  </svg>;
 }
@@ -392,7 +400,7 @@ function CameraView({staging,anchor,aspect,editable,onCamera}:{staging:Staging;/
  * and the camera on a circle around it. Drag the camera around for its orbit (front, sides, behind) and in or out for its distance; the frame above turns
  * and zooms to match, live.
  */
-function OrbitView({staging,anchor,aspect,editable,onOrbit}:{staging:Staging;anchor?:Staging;aspect?:string;editable:boolean;onOrbit:(c:{azimuth:number})=>void}){
+function OrbitView({staging,anchor,aspect,editable,onOrbit,onStart}:{staging:Staging;/** A drag begins. */onStart?:()=>void;anchor?:Staging;aspect?:string;editable:boolean;onOrbit:(c:{azimuth:number})=>void}){
  const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false),tint=useId();
  const VW=220,VH=210,C:[number,number]=[110,105],U=44;
  // Angle only: the camera stays at one distance here (the distance has its own tile).
@@ -429,7 +437,7 @@ function OrbitView({staging,anchor,aspect,editable,onOrbit}:{staging:Staging;anc
   <line x1={cam[0]} y1={cam[1]} x2={target[0]} y2={target[1]} className="stroke-primary" strokeWidth={1.2} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
   <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="چرخش و فاصلهٔ دوربین دور سوژه" aria-valuetext={orbitFa(az)+"، زوم "+zoomFactor(staging)+"×"}
    aria-valuemin={-180} aria-valuemax={180} aria-valuenow={Math.round(az)}
-   onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);setDragging(true);}:undefined}
+   onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);onStart?.();setDragging(true);}:undefined}
    className={editable?(dragging?"cursor-grabbing":"cursor-grab")+" touch-none outline-none focus-visible:[&>circle]:stroke-primary":""}>
    <circle cx={cam[0]+n*CAMERA_SIZE/2} cy={cam[1]+c*CAMERA_SIZE/2} r={36} fill="transparent" strokeWidth={2}/>
    <CameraGlyph view="top" x={cam[0]} y={cam[1]} rotate={Math.atan2(target[0]-cam[0],-(target[1]-cam[1]))*180/Math.PI} tint={tint}/>
@@ -507,14 +515,15 @@ const snapAxis=(v:number)=>Math.max(-1,Math.min(1,Math.round(v*100)/100));
  * - Drag the empty background: slides the crop like a crop tool, snapping to the thirds and the centre.
  * - Keyboard: arrow keys move the selected prop (or the crop when the frame itself has focus).
  */
-function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp,onZoom,locked=false,onLock,onFocus}:{staging:Staging;
+function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp,onZoom,locked=false,onLock,onFocus,onBack}:{staging:Staging;
  /** The scene whose main subject anchors the zoom (Whoush's original layout): fixed while props move, so moving the main subject moves only it. */anchor?:Staging;
  aspect:string;editable?:boolean;onFraming?:(f:{x:number;y:number}|undefined)=>void;
  /** The selected prop (null: none, the frame's own settings show). */sel?:number|null;onSelect?:(i:number|null)=>void;onProp?:(i:number,x:number,z:number)=>void;
  /** Pinch to zoom (phones): the new camera distance, 0 closest (the zoom slider's value). */onZoom?:(distance:number)=>void;
  /** The selection is locked (the lock beside its tag): clicks never select anything else, and a drag anywhere moves the locked prop (or the crop). */locked?:boolean;onLock?:(on:boolean)=>void;
  /** The centre-point dot: dragged to a new place (its new centre point and the crop that keeps the picture still), or double-clicked back to the dominant subject. */
- onFocus?:(f:{focusPoint:{x:number;y:number};framing:{x:number;y:number}}|null)=>void}){
+ onFocus?:(f:{focusPoint:{x:number;y:number};framing:{x:number;y:number}}|null)=>void;
+ /** Back to the frame's own settings (the badge's ×). */onBack?:()=>void}){
  const clip=useId(),svg=useRef<SVGSVGElement>(null),{W,H}=frameSize(aspect);
  const [drag,setDrag]=useState<{px:number;py:number;x:number;y:number;cur:{x:number;y:number}}|null>(null);
  const [move,setMove]=useState<{i:number;px:number;py:number;x0:number;z0:number;x:number;z:number}|null>(null);
@@ -620,6 +629,12 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
  if(!tag)return svgEl;
  return <div className="relative mx-auto w-full" style={{maxWidth:maxW+"px"}}>
   {svgEl}
+  {/* What the controls below are adjusting, while a prop is selected: a blue badge in the frame's top-right corner, «تنظیم #آدم ×»; × goes back to the
+      frame's own settings (and unlocks). */}
+  {sel!=null&&base[sel]&&onBack&&<button type="button" onClick={onBack} aria-label={"تنظیم "+propTags(base)[sel]+"، برگشت به تنظیمات کادر"}
+   className="absolute top-3 start-3 z-10 flex h-7 max-w-[70%] items-center gap-1 rounded-full bg-primary ps-2.5 pe-1.5 text-xs font-medium text-primary-foreground shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:h-8">
+   <span className="truncate">تنظیم <bdi>{propTags(base)[sel]}</bdi></span><Icon icon={X} size={16} aria-hidden="true" className="size-3.5! shrink-0"/>
+  </button>}
   {/* Tag text, then (on its right) the lock in a small button: outline when unlocked, filled blue with a white lock when locked. On touch screens the
       button is larger and its tap area reaches about 44px around it (an invisible ::before), so it is easy to hit with a finger. */}
   <div dir="rtl" className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
@@ -698,12 +713,12 @@ function SliderRow({label,valueText,min,max,step,value,onChange,disabled,ends}:{
 }
 const pct=(v:number)=>fa(Math.round(v*100));
 /** The selected prop: its place on the ground (left–right, front–back) and its lift, as sliders synced with dragging it in the frame. */
-function PropInspector({prop:p,tag,reach:r,onChange,onClose}:{prop:SceneProp;tag:string;
+function PropInspector({prop:p,tag,reach:r,onChange}:{prop:SceneProp;tag:string;
  /** How far it may go at this zoom and crop (lib/staging.ts, propReach): the same as dragging it, partly out of the frame on either side. */reach:{xMin:number;xMax:number;zMin:number;zMax:number};
- onChange:(x:Partial<SceneProp>)=>void;onClose:()=>void}){
+ onChange:(x:Partial<SceneProp>)=>void}){
  return <div className="flex flex-col gap-3">
   <div className="flex flex-wrap items-center gap-2"><SourceIcon id={PROP_ASSETS[p.kind].front}/><bdi className="type-label text-primary">{tag}</bdi><span className="type-caption text-fg-secondary">{propPlaceFa(p)}</span>
-   <Button type="button" variant="ghost" size="sm" className="ms-auto" onClick={onClose} aria-label="برگشت به تنظیمات کادر"><Icon icon={X} aria-hidden="true" className="size-4"/>کادر</Button></div>
+</div>
   <SliderRow label="جای افقی (تا بیرون از کادر)" ends={["چپ","راست"]} valueText={pct(p.x)} min={Math.min(r.xMin,p.x)} max={Math.max(r.xMax,p.x)} step={0.01} value={p.x} onChange={x=>onChange({x})}/>
   <SliderRow label="عمق (تا بریده از پایین)" ends={["جلو","عقب"]} valueText={pct(p.z)} min={Math.min(r.zMin,p.z)} max={r.zMax} step={0.01} value={p.z} onChange={z=>onChange({z})}/>
   <SliderRow label="چرخش رو به دوربین" valueText={facingFa(facingOf(p))+" · "+fa(Math.round(facingOf(p)))+"°"} min={-180} max={180} step={1} value={facingOf(p)} onChange={f=>onChange({facing:f})}/>
