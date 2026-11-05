@@ -90,12 +90,19 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
  // A press anywhere outside the frame and its controls (elsewhere in the canvas, or outside it) deselects the prop: the frame is selected again. Not while
  // the selection is locked.
  const frameArea=useRef<HTMLDivElement>(null);
+ // The centre point can be selected too (its dot): its own settings show, and the badge reads «تنظیم مرکز».
+ const [centerSel,setCenterSel]=useState(false);
+ /** Back to the dominant subject without the picture jumping: move the centre point onto the subject's own centre, then drop the custom point. */
+ const resetFocus=()=>{
+  const {W,H}=frameSize(aspect),def=frameCamera({...draft,focusPoint:undefined},anchor,W,H),[sx,sy]=frameCamera(draft,anchor,W,H).toScreen(def.F[0],def.F[1]);
+  const r=moveFocusPoint(draft,anchor,W,H,sx,sy);setDraft(d=>{const {focusPoint:_p,...rest}=d;void _p;return {...rest,framing:r.framing.x===0&&r.framing.y===0?undefined:r.framing};});
+ };
  useEffect(()=>{
-  if(propSel===null||locked)return;
-  const off=(e:Event)=>{const t=e.target as Node|null;if(t&&frameArea.current&&!frameArea.current.contains(t))setPropSel(null);};
+  if((propSel===null&&!centerSel)||locked)return;
+  const off=(e:Event)=>{const t=e.target as Node|null;if(t&&frameArea.current&&!frameArea.current.contains(t)){setPropSel(null);setCenterSel(false);}};
   document.addEventListener("pointerdown",off,true);
   return ()=>document.removeEventListener("pointerdown",off,true);
- },[propSel,locked]);
+ },[propSel,centerSel,locked]);
  // Collapsed: three live snapshots of the scene as it is now (frame, camera, lighting), read-only; opening it shows the canvas and its controls.
  const cap=viewCaptions(draft,aspect);
 
@@ -120,14 +127,17 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
   <div id={bodyId} hidden={!open} className="flex min-w-0 flex-col gap-3">
   <div className="flex min-w-0 flex-col gap-3">
    <div ref={frameArea}><Viewport {...cap.frame}>
-    <FrameView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={setPropSel} onProp={(i,x,z)=>setProp(i,{x,z})} onZoom={setDistance} locked={locked} onLock={setLocked} onBack={()=>{setPropSel(null);setLocked(false);}}
-     onFocus={f=>{if(f){set(f);return;}
-      // Back to the dominant subject without the picture jumping: move the centre point onto the subject's own centre, then drop the custom point.
-      const {W,H}=frameSize(aspect),def=frameCamera({...draft,focusPoint:undefined},anchor,W,H),[sx,sy]=frameCamera(draft,anchor,W,H).toScreen(def.F[0],def.F[1]);
-      const r=moveFocusPoint(draft,anchor,W,H,sx,sy);setDraft(d=>{const {focusPoint:_p,...rest}=d;void _p;return {...rest,framing:r.framing.x===0&&r.framing.y===0?undefined:r.framing};});}}/>
+    <FrameView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={i=>{setPropSel(i);setCenterSel(false);}} centerSel={centerSel} onSelectCenter={()=>{setCenterSel(true);setPropSel(null);}} onProp={(i,x,z)=>setProp(i,{x,z})} onZoom={setDistance} locked={locked} onLock={setLocked} onBack={()=>{setPropSel(null);setCenterSel(false);setLocked(false);}}
+     onFocus={f=>{if(f)set(f);else resetFocus();}}/>
+    {/* The centre point's own settings, while its dot is selected. */}
+    {editable&&centerSel&&<div className="flex flex-col items-center gap-2 py-1 text-center">
+     <p className="type-body-sm text-fg-primary">{draft.focusPoint?"مرکز کادر جابه‌جا شده؛ زوم دور همین نقطه انجام می‌شه.":"مرکز کادر روی سوژهٔ اصلیه"+(props[mainIdx]?" ("+propTags(props)[mainIdx]+")":"")+"؛ زوم دور همین نقطه انجام می‌شه."}</p>
+     <p className="type-caption text-fg-secondary">نقطه رو روی بوم بکش تا جابه‌جا بشه (تصویر تکون نمی‌خوره).</p>
+     {draft.focusPoint&&<Button type="button" variant="secondary" size="sm" onClick={resetFocus}>برگردون روی سوژهٔ اصلی</Button>}
+    </div>}
     {editable&&propSel!==null&&props[propSel]&&<PropInspector prop={withFrameCuts(draft,anchor,aspect).props![propSel]} tag={propTags(props,true)[propSel]} reach={propReach(props[propSel],draft,anchor,aspect)}
      onChange={p=>setProp(propSel,p)}/>}
-    {editable&&(propSel===null||!props[propSel])&&<>
+    {editable&&(propSel===null||!props[propSel])&&!centerSel&&<>
      <input type="range" dir="ltr" min={0} max={1} step={0.001} value={1-distanceOf(draft)} onChange={e=>setDistance(1-Number(e.target.value))}
       aria-label="زوم (اندازهٔ نما، همون فاصلهٔ دوربین)" aria-valuetext={SHOT_SIZE_FA[draft.shotSize]+"، زوم "+zoomFactor(draft)+"×"} className="h-8 w-full cursor-pointer accent-primary"/>
      <span dir="ltr" className="-mt-2 flex justify-between type-caption text-fg-secondary" aria-hidden="true"><span>باز</span><span>نزدیک</span></span>
@@ -515,7 +525,7 @@ const snapAxis=(v:number)=>Math.max(-1,Math.min(1,Math.round(v*100)/100));
  * - Drag the empty background: slides the crop like a crop tool, snapping to the thirds and the centre.
  * - Keyboard: arrow keys move the selected prop (or the crop when the frame itself has focus).
  */
-function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp,onZoom,locked=false,onLock,onFocus,onBack}:{staging:Staging;
+function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp,onZoom,locked=false,onLock,onFocus,onBack,centerSel=false,onSelectCenter}:{staging:Staging;
  /** The scene whose main subject anchors the zoom (Whoush's original layout): fixed while props move, so moving the main subject moves only it. */anchor?:Staging;
  aspect:string;editable?:boolean;onFraming?:(f:{x:number;y:number}|undefined)=>void;
  /** The selected prop (null: none, the frame's own settings show). */sel?:number|null;onSelect?:(i:number|null)=>void;onProp?:(i:number,x:number,z:number)=>void;
@@ -523,11 +533,14 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
  /** The selection is locked (the lock beside its tag): clicks never select anything else, and a drag anywhere moves the locked prop (or the crop). */locked?:boolean;onLock?:(on:boolean)=>void;
  /** The centre-point dot: dragged to a new place (its new centre point and the crop that keeps the picture still), or double-clicked back to the dominant subject. */
  onFocus?:(f:{focusPoint:{x:number;y:number};framing:{x:number;y:number}}|null)=>void;
- /** Back to the frame's own settings (the badge's ×). */onBack?:()=>void}){
+ /** Back to the frame's own settings (the badge's ×). */onBack?:()=>void;
+ /** The centre point's dot is selected (its settings show), and selecting it. */centerSel?:boolean;onSelectCenter?:()=>void}){
  const clip=useId(),svg=useRef<SVGSVGElement>(null),{W,H}=frameSize(aspect);
  const [drag,setDrag]=useState<{px:number;py:number;x:number;y:number;cur:{x:number;y:number}}|null>(null);
  const [move,setMove]=useState<{i:number;px:number;py:number;x0:number;z0:number;x:number;z:number}|null>(null);
  const [pivot,setPivot]=useState(false);
+ /** Taking the centre point's dot: selects it (unless the selection is locked) and starts dragging it. */
+ const pivotDown=(e:PointerEvent)=>{e.stopPropagation();capture(svg.current,e.pointerId);if(!locked)onSelectCenter?.();setPivot(true);};
  /** A pointer position in the frame's own coordinates (the viewBox). */
  const svgPt=(e:PointerEvent):[number,number]=>{const b=svg.current!.getBoundingClientRect();return [(e.clientX-b.left)*(W+4)/b.width-2,(e.clientY-b.top)*(H+4)/b.height-2];};
  const fr=drag?.cur??staging.framing??{x:0,y:0};
@@ -614,10 +627,11 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   {editable&&onFocus&&(()=>{const [dx,dy]=cam.toScreen(cam.F[0],cam.F[1]);if(dx<-1||dx>W+1||dy<-1||dy>H+1)return null;
    return <g role="slider" tabIndex={0} aria-label={"نقطهٔ مرکز کادر"+(staging.focusPoint?" (جابه‌جا شده؛ دوبار بزن تا برگرده روی سوژهٔ اصلی)":" (روی سوژهٔ اصلی)")}
     aria-valuetext={staging.focusPoint?"جابه‌جا شده":"روی سوژهٔ اصلی"} className={"touch-none outline-none "+(pivot?"cursor-grabbing":"cursor-move")}
-    onPointerDown={e=>{e.stopPropagation();capture(svg.current,e.pointerId);setPivot(true);}} onDoubleClick={e=>{e.stopPropagation();onFocus(null);}}
+    onPointerDown={pivotDown} onDoubleClick={e=>{e.stopPropagation();onFocus(null);}}
     onKeyDown={e=>{const d={ArrowLeft:[-2,0],ArrowRight:[2,0],ArrowUp:[0,-2],ArrowDown:[0,2]}[e.key as "ArrowLeft"];if(e.key==="Enter"){e.preventDefault();onFocus(null);return;}if(!d)return;e.preventDefault();e.stopPropagation();onFocus(moveFocusPoint({...staging,framing:fr},anchor,W,H,dx+d[0],dy+d[1]));}}>
     <circle cx={dx} cy={dy} r={10} fill="transparent"/>
-    <circle cx={dx} cy={dy} r={4.2} fill="none" className="stroke-primary" strokeWidth={1.2} vectorEffect="non-scaling-stroke"/>
+    {centerSel&&<circle cx={dx} cy={dy} r={7} fill="none" className="stroke-primary" strokeWidth={1} strokeDasharray="2 2" vectorEffect="non-scaling-stroke"/>}
+    <circle cx={dx} cy={dy} r={4.2} fill="none" className="stroke-primary" strokeWidth={centerSel?1.8:1.2} vectorEffect="non-scaling-stroke"/>
     <circle cx={dx} cy={dy} r={1.8} className={staging.focusPoint?"fill-primary":"fill-primary-foreground stroke-primary"} strokeWidth={0.8} vectorEffect="non-scaling-stroke"/>
    </g>;})()}
   {/* With no prop selected, the frame itself is: a blue outline and its «#کادر» tag, and the controls below are the frame's. */}
@@ -631,9 +645,9 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   {svgEl}
   {/* What the controls below are adjusting, while a prop is selected: a blue badge in the frame's top-right corner, «تنظیم #آدم ×»; × goes back to the
       frame's own settings (and unlocks). */}
-  {sel!=null&&base[sel]&&onBack&&<button type="button" onClick={onBack} aria-label={"تنظیم "+propTags(base)[sel]+"، برگشت به تنظیمات کادر"}
+  {((sel!=null&&base[sel])||centerSel)&&onBack&&<button type="button" onClick={onBack} aria-label={"تنظیم "+(centerSel?"مرکز":propTags(base)[sel!])+"، برگشت به تنظیمات کادر"}
    className="absolute top-3 start-3 z-10 flex h-7 max-w-[70%] items-center gap-1 rounded-full bg-primary ps-2.5 pe-1.5 text-xs font-medium text-primary-foreground shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:h-8">
-   <span className="truncate">تنظیم <bdi>{propTags(base)[sel]}</bdi></span><Icon icon={X} size={16} aria-hidden="true" className="size-3.5! shrink-0"/>
+   <span className="truncate">تنظیم {centerSel?"مرکز":<bdi>{propTags(base)[sel!]}</bdi>}</span><Icon icon={X} size={16} aria-hidden="true" className="size-3.5! shrink-0"/>
   </button>}
   {/* Tag text, then (on its right) the lock in a small button: outline when unlocked, filled blue with a white lock when locked. On touch screens the
       button is larger and its tap area reaches about 44px around it (an invisible ::before), so it is easy to hit with a finger. */}
