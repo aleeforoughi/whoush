@@ -19,3 +19,5 @@ public/visuals/raw/
 
 # 3D model pipeline work files (Spline exports, fused surfaces; scripts/models-3d/README.md)
 .models-3d-work/
+scripts/models-3d/reports/*/view-*.png
+scripts/models-3d/reports/*/wire-*.png

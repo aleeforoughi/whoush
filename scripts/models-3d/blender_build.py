@@ -97,7 +97,7 @@ mat_tris = {}
 for p in src['parts']: mat_tris[p['material']] = mat_tris.get(p['material'], 0) + len(p.get('indices') or p['vertices']) // 3
 for p in src['parts']:
     v, idx = p['vertices'], p.get('indices') or list(range(len(p['vertices']) // 3))
-    me = bpy.data.meshes.new(f"{model_id}_{p['material']}")
+    me = bpy.data.meshes.new(f"{model_id}_{p['part']}_{p['material']}")
     verts = [to_blender(v[i], v[i + 1], v[i + 2]) for i in range(0, len(v), 3)]
     faces = [(idx[t], idx[t + 1], idx[t + 2]) for t in range(0, len(idx), 3)]
     me.from_pydata(verts, [], faces); me.validate(); me.update()
@@ -111,7 +111,11 @@ for p in src['parts']:
     # consistent outward normals, then decimate to the triangle budget
     bm = bmesh.new(); bm.from_mesh(me)
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-6)
+    bmesh.ops.dissolve_degenerate(bm, dist=1e-7, edges=bm.edges)  # the zero-area triangles at the lofts' poles
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    if CFG.get('quads'):
+        # the lofts are quad grids, triangulated by Spline: join them back into quads (clean rings for editing and subdivision)
+        bmesh.ops.join_triangles(bm, faces=bm.faces, angle_face_threshold=math.radians(40), angle_shape_threshold=math.radians(40))
     bm.to_mesh(me); bm.free()
     target = CFG.get('triangles', {}).get(p['material'], CFG.get('triangles', {}).get('default'))
     # the material's triangle budget is shared by its pieces in proportion to their size

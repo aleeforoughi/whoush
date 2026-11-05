@@ -1,36 +1,70 @@
 {
  "man": {
   "unit": 0.01,
-  "triangles": {
-   "clay": 14000,
-   "hair": 3000
-  },
   "skeleton": {
    "parts": {
     "head": "head",
-    "neck": "neck",
-    "chest": [
+    "torso": [
+     [
+      "hips",
+      92.8
+     ],
      [
       "spine",
-      101
+      110.3
      ],
      [
       "chest",
+      133.9
+     ],
+     [
+      "neck",
       999
      ]
     ],
-    "hips": "hips",
-    "upperarm_l": "leftUpperArm",
-    "forearm_l": "leftLowerArm",
+    "arm_l": [
+     [
+      "leftLowerArm",
+      102.4
+     ],
+     [
+      "leftUpperArm",
+      999
+     ]
+    ],
     "hand_l": "leftHand",
-    "thigh_l": "leftUpperLeg",
-    "shin_l": "leftLowerLeg",
+    "leg_l": [
+     [
+      "leftLowerLeg",
+      42.9
+     ],
+     [
+      "leftUpperLeg",
+      999
+     ]
+    ],
     "foot_l": "leftFoot",
-    "upperarm_r": "rightUpperArm",
-    "forearm_r": "rightLowerArm",
+    "arm_r": [
+     [
+      "rightLowerArm",
+      102.4
+     ],
+     [
+      "rightUpperArm",
+      999
+     ]
+    ],
     "hand_r": "rightHand",
-    "thigh_r": "rightUpperLeg",
-    "shin_r": "rightLowerLeg",
+    "leg_r": [
+     [
+      "rightLowerLeg",
+      42.9
+     ],
+     [
+      "rightUpperLeg",
+      999
+     ]
+    ],
     "foot_r": "rightFoot"
    },
    "bones": {
@@ -248,20 +282,8 @@
     }
    }
   },
-  "fuse": {
-   "clay": [
-    [
-     "upperarm_l",
-     "forearm_l",
-     "hand_l"
-    ],
-    [
-     "upperarm_r",
-     "forearm_r",
-     "hand_r"
-    ]
-   ]
-  }
+  "mode": "A",
+  "quads": true
  },
  "woman": {
   "unit": 0.01,

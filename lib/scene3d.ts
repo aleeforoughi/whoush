@@ -118,7 +118,7 @@ export const MODEL_3D_IDS=["man","woman","car","cat","bottle","tree","building",
 export type Model3DId=typeof MODEL_3D_IDS[number];
 /** The models that exist and were checked in the frame (`version` busts the browser's cache when one is replaced); the others use the procedural figures. */
 export const MODELS_3D:Partial<Record<Model3DId,{version:string}>>={
- man:{version:"1"},woman:{version:"1"},car:{version:"1"},cat:{version:"1"},bottle:{version:"1"},tree:{version:"1"},building:{version:"1"},mountains:{version:"2"}
+ man:{version:"2"},woman:{version:"1"},car:{version:"1"},cat:{version:"1"},bottle:{version:"1"},tree:{version:"1"},building:{version:"1"},mountains:{version:"2"}
 };
 /** Which model draws a prop. */
 export function modelIdOf(p:Pick<SceneProp,"kind"|"label">):Model3DId{
