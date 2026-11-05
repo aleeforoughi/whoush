@@ -267,7 +267,7 @@ function CameraView({staging,editable,onCamera}:{staging:Staging;editable:boolea
 }
 
 /**
- * Top view (the camera's orbit, 360°): the scene as Whoush laid it out, the main subject in the middle turned the way it faces, the other props around it,
+ * Top view (the camera's orbit, 360°): only the target, the main subject, in the middle turned the way it faces (no other props),
  * and the camera on a circle around it. Drag the camera around for its orbit (front, sides, behind) and in or out for its distance; the frame above turns
  * and zooms to match, live.
  */
@@ -290,8 +290,8 @@ function OrbitView({staging,editable,onOrbit}:{staging:Staging;editable:boolean;
   <circle cx={C[0]} cy={C[1]} r={R} fill="none" stroke="currentColor" strokeOpacity=".4" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
   {/* Whoush's original camera position, for reference */}
   <circle cx={C[0]} cy={C[1]+R} r={2} fill="currentColor" fillOpacity=".35"/>
-  {props.map((p,i)=>{const [x,y]=place(p),h=p.main?28:Math.min(22,PROP_HEIGHT[p.kind]*14),wf=facingOf(p)+az;
-   return <Asset key={i} id={PROP_ASSETS[p.kind].top} x={x} y={y+h/2} h={h} rotate={-wf} opacity={p.main?1:0.75}/>;})}
+  {/* Only the target (the main subject): the camera views are about the camera around it, not the rest of the scene. */}
+  {m&&<Asset id={PROP_ASSETS[m.kind].top} x={C[0]} y={C[1]+14} h={28} rotate={-(facingOf(m)+az)}/>}
   {!props.length&&<Asset id="env-top" x={C[0]} y={C[1]+22} h={44}/>}
   {/* The main subject's facing, the same as in the frame and the side view: an arrow from it the way it faces. */}
   {m&&(()=>{const fw=(facingOf(m)+az)*Math.PI/180,[x,y]=place(m),d:[number,number]=[Math.sin(fw),Math.cos(fw)],r0=17,r1=31,tip:[number,number]=[x+d[0]*r1,y+d[1]*r1];
