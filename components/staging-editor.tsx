@@ -1,6 +1,6 @@
 "use client";
 import {useEffect,useId,useRef,useState,type KeyboardEvent,type PointerEvent,type ReactNode} from "react";
-import {Box,ChevronDown,Lock,LockOpen,Plus,RotateCcw,Trash2,X} from "lucide-react";
+import {Box,ChevronDown,Lock,LockOpen,Plus,RotateCcw,Trash2,Undo2,X} from "lucide-react";
 import {Button,Icon} from "@aleeforoughi/feather-react";
 import {FOCUS_DETAILS,LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
@@ -92,10 +92,10 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
  const frameArea=useRef<HTMLDivElement>(null);
  // The centre point can be selected too (its dot): its own settings show, and the badge reads «تنظیم مرکز».
  const [centerSel,setCenterSel]=useState(false);
- /** Back to the dominant subject without the picture jumping: move the centre point onto the subject's own centre, then drop the custom point. */
+ /** Back to Whoush's own choice: the centre point on the dominant subject where it stands now, with Whoush's original framing (the crop pan). */
  const resetFocus=()=>{
-  const {W,H}=frameSize(aspect),def=frameCamera({...draft,focusPoint:undefined},anchor,W,H),[sx,sy]=frameCamera(draft,anchor,W,H).toScreen(def.F[0],def.F[1]);
-  const r=moveFocusPoint(draft,anchor,W,H,sx,sy);setDraft(d=>{const {focusPoint:_p,...rest}=d;void _p;return {...rest,framing:r.framing.x===0&&r.framing.y===0?undefined:r.framing};});
+  setFocusProps(draft.props);
+  setDraft(d=>{const {focusPoint:_p,framing:_f,...rest}=d;void _p;void _f;return {...rest,...(initial.framing?{framing:initial.framing}:{})};});
  };
  useEffect(()=>{
   if((propSel===null&&!centerSel)||locked)return;
@@ -133,7 +133,6 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
     {editable&&centerSel&&<div className="flex flex-col items-center gap-2 py-1 text-center">
      <p className="type-body-sm text-fg-primary">{draft.focusPoint?"مرکز کادر جابه‌جا شده؛ زوم دور همین نقطه انجام می‌شه.":"مرکز کادر روی سوژهٔ اصلیه"+(props[mainIdx]?" ("+propTags(props)[mainIdx]+")":"")+"؛ زوم دور همین نقطه انجام می‌شه."}</p>
      <p className="type-caption text-fg-secondary">نقطه رو روی بوم بکش تا جابه‌جا بشه (تصویر تکون نمی‌خوره).</p>
-     {draft.focusPoint&&<Button type="button" variant="secondary" size="sm" onClick={resetFocus}>برگردون روی سوژهٔ اصلی</Button>}
     </div>}
     {editable&&propSel!==null&&props[propSel]&&<PropInspector prop={withFrameCuts(draft,anchor,aspect).props![propSel]} tag={propTags(props,true)[propSel]} reach={propReach(props[propSel],draft,anchor,aspect)}
      onChange={p=>setProp(propSel,p)}/>}
@@ -645,10 +644,16 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   {svgEl}
   {/* What the controls below are adjusting, while a prop is selected: a blue badge in the frame's top-right corner, «تنظیم #آدم ×»; × goes back to the
       frame's own settings (and unlocks). */}
-  {((sel!=null&&base[sel])||centerSel)&&onBack&&<button type="button" onClick={onBack} aria-label={"تنظیم "+(centerSel?"مرکز":propTags(base)[sel!])+"، برگشت به تنظیمات کادر"}
-   className="absolute top-3 start-3 z-10 flex h-7 max-w-[70%] items-center gap-1 rounded-full bg-primary ps-2.5 pe-1.5 text-xs font-medium text-primary-foreground shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:h-8">
+  {((sel!=null&&base[sel])||centerSel)&&onBack&&<div className="absolute top-3 start-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1.5">
+   <button type="button" onClick={onBack} aria-label={"تنظیم "+(centerSel?"مرکز":propTags(base)[sel!])+"، برگشت به تنظیمات کادر"}
+   className="flex h-7 max-w-[70%] items-center gap-1 rounded-full bg-primary ps-2.5 pe-1.5 text-xs font-medium text-primary-foreground shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:h-8">
    <span className="truncate">تنظیم {centerSel?"مرکز":<bdi>{propTags(base)[sel!]}</bdi>}</span><Icon icon={X} size={16} aria-hidden="true" className="size-3.5! shrink-0"/>
-  </button>}
+   </button>
+   {/* With the centre point selected: back to Whoush's default centre (on the dominant subject, Whoush's framing); white badge, blue text. */}
+   {centerSel&&<button type="button" onClick={()=>onFocus?.(null)} aria-label="بازگشت به مرکز سوژه"
+    className="flex h-7 items-center gap-1 rounded-full bg-white ps-2 pe-2.5 text-xs font-medium text-primary shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60 pointer-coarse:h-8">
+    <Icon icon={Undo2} size={16} aria-hidden="true" className="size-3.5! shrink-0"/>بازگشت به مرکز سوژه</button>}
+  </div>}
   {/* Tag text, then (on its right) the lock in a small button: outline when unlocked, filled blue with a white lock when locked. On touch screens the
       button is larger and its tap area reaches about 44px around it (an invisible ::before), so it is easy to hit with a finger. */}
   <div dir="rtl" className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
