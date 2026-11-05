@@ -22,7 +22,7 @@ const last=()=>{const a=readPrivateAuditForTests();return a[a.length-1];};
 const run=async(text:string,extra:Record<string,unknown>={})=>planOf(await orchestrateCreativeTurn({text,...extra}));
 const sha=async(t:string)=>(await import("node:crypto")).createHash("sha256").update(t).digest("hex");
 
-test("all 22 skills are reachable from table-driven contexts",()=>{
+test("all 25 skills are reachable from table-driven contexts",()=>{
  const base:SkillContext={prompt:"x",kind:"image"};
  const table:Array<[SkillId,SkillContext]>=[
   ["prompt_engineer",base],["creative_director",base],["persian_language",base],["qa",base],["anti_drift",base],["continuity",base],["hyper_realism",base],
@@ -30,9 +30,10 @@ test("all 22 skills are reachable from table-driven contexts",()=>{
   ["cinematographer",{...base,kind:"video"}],["videographer",{...base,kind:"video"}],["video_editor",{prompt:"x",kind:"video",task:"edit"}],["anti_teleport",{prompt:"x",kind:"video"}],
   ["audiographer",{...base,hasAudioReference:true}],["visual_designer",{prompt:"poster",kind:"image"}],["creative_copywriter",{prompt:"caption",kind:"image"}],
   ["social_media",{prompt:"instagram reels",kind:"video"}],["iranian_culture",{prompt:"نوروز",kind:"image"}],["iranian_geography",{prompt:"شیراز",kind:"image"}],
-  ["persian_lip_sync_phonetics",{prompt:"lip sync",kind:"video"}],["tehrani_accent",{prompt:"x",kind:"video",accent:"tehrani"}],["character_creation",{...base,characterRef:{id:"char-12345678",angles:["front"],version:1}}]
+  ["persian_lip_sync_phonetics",{prompt:"lip sync",kind:"video"}],["tehrani_accent",{prompt:"x",kind:"video",accent:"tehrani"}],["character_creation",{...base,characterRef:{id:"char-12345678",angles:["front"],version:1}}],
+  ["whoush_voice",base],["persian_colloquial",base],["finglish_writing",{prompt:"salam, ye aks az shab mikham",kind:"image"}]
  ];
- assert.equal(Object.keys(SKILLS).length,22);
+ assert.equal(Object.keys(SKILLS).length,25);
  assert.deepEqual(new Set(table.map(t=>t[0])),new Set(Object.keys(SKILLS)));
  for(const [id,ctx] of table)assert.ok(resolveCreativeSkills(ctx).includes(id),id);
 });
@@ -237,18 +238,20 @@ const stubFetch=(status:number,body:unknown,seen?:{req?:{url:string;init:Request
  globalThis.fetch=(async(url:string|URL|Request,init?:RequestInit)=>{if(seen)seen.req={url:String(url),init:init!};return new Response(JSON.stringify(body),{status,headers:{"content-type":"application/json","retry-after-ms":"1","x-should-retry":"false"}});}) as typeof fetch;
 };
 const reqFor=(text:string):PlannerRequest=>{const input=CreativeTurnInputSchema.parse({text});const prep=preparePrivateCreativeRequest({prompt:text,kind:"image"});return {...prep,privateRoute:null,kind:"image",input};};
+/** A plan in Anthropic's leaner output shape: reply and staging as JSON in `extras` (lib/creative-plan.ts, CreativePlanAnthropicSchema). */
+const toAnthropicWire=(p:CreativePlan)=>{const {staging,reply,...rest}=p;return {...rest,extras:JSON.stringify({...(staging?{staging}:{}),...(reply?{reply}:{})})};};
 test("anthropic adapter: request shape, parsed plan, usage returned for audit only",async()=>{
  process.env.ANTHROPIC_API_KEY="test-key";
  const {planWithAnthropic}=await import("../lib/llm-anthropic");
  const req=reqFor("a photo of a lake");const plan=deterministicPlanner(req).plan;const seen:{req?:{url:string;init:RequestInit}}={};
- stubFetch(200,apiMessage({content:[{type:"text",text:JSON.stringify(plan)}]}),seen);
+ stubFetch(200,apiMessage({content:[{type:"text",text:JSON.stringify(toAnthropicWire(plan))}]}),seen);
  try{
   const out=await planWithAnthropic(req,"claude-test");
   assert.equal(out.modelId,"claude-test");assert.equal(out.usage.input_tokens,10);assert.equal(out.plan.mediaKind,"image");
   const body=JSON.parse(String(seen.req!.init.body));
   assert.equal(body.model,"claude-test");assert.equal(body.max_tokens,16000);
   for(const k of ["temperature","top_p","top_k","thinking"])assert.equal(k in body,false,k);
-  assert.equal(body.system[0].cache_control.type,"ephemeral");assert.equal(body.system[0].text,req.systemInstructions);
+  assert.equal(body.system[0].cache_control.type,"ephemeral");assert.ok(body.system[0].text.startsWith(req.systemInstructions+"\n\nOutput format note:"));
   assert.equal(body.messages[0].content,"<user_brief>\na photo of a lake\n</user_brief>");
   assert.equal(body.output_config.format.type,"json_schema");
  }finally{globalThis.fetch=noNet;}
@@ -272,7 +275,7 @@ test("anthropic adapter: refusal, invalid output and API errors map to vendor-ne
 test("orchestrator uses the live adapter only when llmPolicy allows, and audits usage privately",async()=>{
  Object.assign(process.env,{LLM_PROVIDER_AUTHORIZED:"true",ALLOW_LIVE_LLM:"true",LLM_FAST_MODEL:"claude-test",ANTHROPIC_API_KEY:"test-key"});
  const plan=deterministicPlanner(reqFor("a photo of a lake")).plan;
- stubFetch(200,apiMessage({content:[{type:"text",text:JSON.stringify(plan)}]}));
+ stubFetch(200,apiMessage({content:[{type:"text",text:JSON.stringify(toAnthropicWire(plan))}]}));
  try{
   const r=planned(await orchestrateCreativeTurn({text:"a photo of a lake"}));
   assert.equal(last().planner,"live");assert.deepEqual(last().route,{provider:"anthropic",modelId:"claude-test"});assert.ok(last().usage);
@@ -470,7 +473,7 @@ test("anthropic adapter: attachment excerpts go inside <user_brief> as <attachme
  process.env.ANTHROPIC_API_KEY="test-key";
  const {planWithAnthropic}=await import("../lib/llm-anthropic");
  const req={...reqFor("a photo of a lake"),attachments:[{tag:"file1",kind:"md" as const,textExcerpt:"# moodboard"},{tag:"image1",kind:"image" as const,role:"character" as const}]};
- const seen:{req?:{url:string;init:RequestInit}}={};stubFetch(200,apiMessage({content:[{type:"text",text:JSON.stringify(deterministicPlanner(req).plan)}]}),seen);
+ const seen:{req?:{url:string;init:RequestInit}}={};stubFetch(200,apiMessage({content:[{type:"text",text:JSON.stringify(toAnthropicWire(deterministicPlanner(req).plan))}]}),seen);
  try{
   await planWithAnthropic(req,"claude-test");
   assert.equal(JSON.parse(String(seen.req!.init.body)).messages[0].content,'<user_brief>\na photo of a lake\n<attachment tag="file1" kind="md">\n# moodboard\n</attachment>\n<attachment tag="image1" kind="image" role="character"/>\n</user_brief>');

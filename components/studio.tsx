@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
 import Link from "next/link";
 import {useRouter,useSearchParams} from "next/navigation";
-import {ArrowUp,CircleAlert,Clapperboard,Info,LoaderCircle,Minimize2,PanelLeftOpen,Upload as UploadIcon,UserRound,X} from "lucide-react";
+import {ArrowUp,CircleAlert,Clapperboard,Info,LoaderCircle,Minimize2,PanelLeftOpen,Smile,Upload as UploadIcon,UserRound,X} from "lucide-react";
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Tabs,TabsContent,TabsList,TabsTrigger,Label,Tooltip,TooltipContent,TooltipTrigger} from "@aleeforoughi/feather-react";
 import {OPEN_PREVIEW_FA,PreviewCard} from "@/components/preview-card";
 import {GenerationPreview} from "@/components/generation-preview";
@@ -29,8 +29,12 @@ import {getLocalCharacter,listLocalCharacters} from "@/lib/character-store";
 import {characterCoverage,characterUsability,type CharacterProfile} from "@/lib/characters";
 import {fa} from "@/lib/format";
 import {STORAGE_FULL_FA,getProject,listAssets,saveAsset,saveProject} from "@/lib/project-store";
-import {MAX_MESSAGES,assetToAttachment,attachmentToAsset,autoTitle,rerunSource,uniqueById,answerBrief,generationTagsIn,referencedGenerations,toGenerationRef,withGenerationTags,type ProposalSnapshot,type Project,type StoredMessage} from "@/lib/projects";
-import {MAX_GENERATION_REFS} from "@/lib/creative-plan";
+import {MAX_MESSAGES,assetToAttachment,attachmentToAsset,autoTitle,rerunSource,uniqueById,answerBrief,historyFor,toggleReaction,generationTagsIn,referencedGenerations,toGenerationRef,withGenerationTags,type GifSnapshot,type ProposalSnapshot,type Project,type StoredMessage} from "@/lib/projects";
+import {MAX_GENERATION_REFS,type ReactionEmoji} from "@/lib/creative-plan";
+import {ChatGif} from "@/components/chat-gif";
+import {COMPOSER_EMOJIS,EmojiPalette} from "@/components/emoji-palette";
+import {GifPicker} from "@/components/gif-picker";
+import {MessageReactions} from "@/components/message-reactions";
 import type {GenerationStyle} from "@/lib/creative-plan";
 import type {AgentPreference} from "@/lib/types";
 import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,acceptFor,bumpTagCounters,displayTag,insertMention,lowestFreeTag,nextGenerationTag,newTagCounters,parseMentions,tooManyFa,toWireAttachment,validateAttachmentSet,withRole,withoutRole,type AttachmentKind,type AttachmentRole,type LocalAttachment} from "@/lib/attachments";
@@ -48,6 +52,8 @@ const LIMIT_FA="این گفت‌وگو به سقف تعداد پیام‌ها ر
 const opening="سلام! دوست داری چه تصویر یا ویدیویی بسازیم؟ می‌تونی مدل موردعلاقه‌ات رو هم توی پیام بنویسی.";
 const idlePreview="شروع کن: ایده‌ات رو در چت بنویس.";
 const CHARACTER_KEY="whoush-character";
+/** The composer's compact tool buttons beside «+» (emoji, GIF): 36px to the eye, 44px touch targets. */
+const COMPOSER_TOOL="hit-area flex size-9 shrink-0 items-center justify-center rounded-control text-fg-secondary motion-hover hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
 /** sessionStorage can throw (private windows, blocked storage); the selection then simply does not persist. */
 const rememberCharacter=(id:string|null)=>{try{if(id)window.sessionStorage.setItem(CHARACTER_KEY,id);else window.sessionStorage.removeItem(CHARACTER_KEY);}catch{ /* not persisted */ }};
@@ -351,6 +357,15 @@ export function Studio(){
   if(!parseMentions(draft).includes(tag))mentionTag(tag);else promptRef.current?.focus();
   setAnnounce(displayTag(tag)+" به پیام اضافه شد؛ تغییرها را بنویس.");
  }
+ /** Toggles a Slack-style reaction on a message (the user's from the palette or a chip; Whoush's from its reply). */
+ function react(id:string,emoji:ReactionEmoji,by:"user"|"whoush"){
+  setMessages(ms=>ms.map(x=>x.id!==id?x:{...x,reactions:toggleReaction(x.reactions,emoji,by)}));touch();
+ }
+ /** Sends a GIF from the picker as the user's own message. It stays in the chat and in what Whoush remembers, but it is not a brief: no plan is made for it. */
+ function sendGif(gif:GifSnapshot){
+  setMessages(m=>[...m,item({role:"user",text:"",kind:"gif",snapshot:gif})]);touch();
+  setAnnounce("گیف فرستاده شد.");
+ }
  /** Scrolls to a generation's card in the conversation and moves focus to it. */
  function showGeneration(tag:string){
   const el=document.querySelector<HTMLElement>('[data-generation="'+CSS.escape(tag)+'"]');
@@ -438,12 +453,15 @@ export function Studio(){
   const sent=files,firstText=messages.find(m=>m.role==="user")?.text??text,characterId=current?.id??null;
   if(fromComposer){setDraft("");setAttachments([]);setSlots([]);setProblems([]);}
   setError("");setNotice("");setBusy(true);setProposal(null);setLiveId(null);setAnnounce("");
-  setMessages(m=>[...m,item({role:"user",text,...(sent.length?{attachments:sent}:{}),...(cardRefs.length?{generationTags:cardRefs}:{}),...(brief?{brief}:{})})]);touch();
+  const userMsg=item({role:"user",text,...(sent.length?{attachments:sent}:{}),...(cardRefs.length?{generationTags:cardRefs}:{}),...(brief?{brief}:{})});
+  setMessages(m=>[...m,userMsg]);touch();
+  // Whoush's emoji reaction lands on this message (Slack-style), when it chose one.
+  const whoushReacts=(emoji?:ReactionEmoji)=>{if(emoji)react(userMsg.id,emoji,"whoush");};
   const characterRef=current?{id:current.id,name:current.name,angles:characterCoverage(current.references).uploaded,version:current.version}:undefined;
   try{
-   const r=await fetch("/api/agent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(toWireAttachment)}:{}),...(generations.length?{generations}:{})})});
+   const r=await fetch("/api/agent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(toWireAttachment)}:{}),...(generations.length?{generations}:{})})});
    if(!r.ok){
-    const errorBody=await r.json().catch(()=>({})) as {error?:string;message?:string;question?:string;plan?:AgentProposal["plan"]};
+    const errorBody=await r.json().catch(()=>({})) as {error?:string;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"]};
     if(r.status===422&&errorBody.error==="no_compatible_model"){
      const message=typeof errorBody.message==="string"?errorBody.message:"مدل سازگاری برای این درخواست پیدا نشد.";
      setMessages(m=>[...m,item({role:"agent",text:message,kind:"no_model",snapshot:{message,...(errorBody.plan?{plan:errorBody.plan}:{})}})]);setPreview("مدل سازگار پیدا نشد");
@@ -451,7 +469,7 @@ export function Studio(){
      return;
     }
     if(r.status===422&&errorBody.error==="needs_input"&&typeof errorBody.question==="string"){
-     setMessages(m=>[...m,item({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"",kind:"question",snapshot:{question:errorBody.question!}})]);
+     setMessages(m=>[...m,item({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"",kind:"question",snapshot:{question:errorBody.question!}})]);whoushReacts(errorBody.reaction);
      adoptProject(firstText,characterId);
      return;
     }
@@ -462,12 +480,13 @@ export function Studio(){
     }
     throw new Error(typeof errorBody.message==="string"?errorBody.message:"خطا در آماده‌سازی پیشنهاد");
    }
-   const data=await r.json() as AgentProposal&{message:string};
+   const data=await r.json() as AgentProposal&{message:string;gif?:GifSnapshot;reaction?:ReactionEmoji};
    const picked=data.suggestions.find(s=>s.modelId===data.recommendedModelId)??data.suggestions[0];
    const tag=nextGenerationTag(generationTagsIn(messages));
    const reply=item({role:"agent",text:data.message,kind:"proposal",snapshot:{...(tag?{tag}:{}),operation:data.operation,modelName:picked?.name??"",neurons:picked?.neurons??data.fixedNeurons,intentSummaryFa:data.plan.intentSummaryFa,plan:data.plan}});
    setProposal(data);setLiveId(reply.id);setSelected(data.selectedModelId);setPreview("در انتظار تأیید تولید");setJob(null);
-   setMessages(m=>[...m,reply]);
+   // Like a friend: the reply, then (sometimes) a GIF as its own message.
+   setMessages(m=>[...m,reply,...(data.gif?[item({role:"agent",text:"",kind:"gif",snapshot:data.gif})]:[])]);whoushReacts(data.reaction);
    adoptProject(firstText,characterId);
   }catch(err){setError(err instanceof Error?err.message:"خطای ناشناخته");}
   finally{setBusy(false);}
@@ -580,15 +599,19 @@ export function Studio(){
           they were in the chat input. Agent messages: full-width plain text, then the plan as part of the conversation (icons and diagrams), then the compact card
           that carries the actions (generate, change). Each message gets the hover action bar (copy, run again, time). */}
       {messages.map((m,i)=>{
-       const actions=<MessageActions text={m.text} at={m.at} now={now} onRerun={()=>rerun(m.id)} rerunDisabled={busy||reading||loadingProject}/>;
+       const actions=<MessageActions text={m.text} at={m.at} now={now} onRerun={m.kind==="gif"?undefined:()=>rerun(m.id)} rerunDisabled={busy||reading||loadingProject} onReact={e=>react(m.id,e,"user")}/>;
+       const reactions=<MessageReactions reactions={m.reactions} onToggle={e=>react(m.id,e,"user")}/>;
        if(m.role==="user")return <div key={m.id} className="group flex flex-col items-start gap-2">
         {((m.attachments?.length??0)>0||(m.generationTags?.length??0)>0)&&<ul aria-label="پیوست‌های این پیام" className="flex max-w-full flex-wrap gap-2">
          {(m.generationTags??[]).flatMap(t=>{const g=generationMap.get(t);return g?[<GenerationRefCard key={t} snapshot={g} onMention={()=>mentionTag(t)} onOpen={()=>showGeneration(t)}/>]:[];})}
          {(m.attachments??[]).map(a=><SentAttachmentCard key={a.id} item={a} onPreview={()=>openViewer(a)} onMention={()=>mentionTag(a.tag)}/>)}
         </ul>}
-        <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-card bg-secondary px-4 py-3 type-body-sm text-fg-primary">
-         <span className="sr-only">شما: </span><MessageText text={m.text} attachments={byTag} onOpen={openViewer} generations={generationSet} onGeneration={showGeneration}/>
-        </div>
+        {m.kind==="gif"
+         ?<div><span className="sr-only">شما: </span><ChatGif gif={m.snapshot}/></div>
+         :<div className="max-w-[85%] whitespace-pre-wrap break-words rounded-card bg-secondary px-4 py-3 type-body-sm text-fg-primary">
+          <span className="sr-only">شما: </span><MessageText text={m.text} attachments={byTag} onOpen={openViewer} generations={generationSet} onGeneration={showGeneration}/>
+         </div>}
+        {reactions}
         <div className="-mt-1">{actions}</div>
        </div>;
        return <div key={m.id} className="group flex flex-col gap-3">
@@ -597,6 +620,7 @@ export function Studio(){
           <Icon icon={Info} size={16} aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-fg-secondary"/>
           <p className="min-w-0 whitespace-pre-wrap break-words"><span className="sr-only">هووش: </span><span className="type-label">این درخواست قابل انجام نیست.</span> {m.text}</p>
          </div>
+         :m.kind==="gif"?<div><span className="sr-only">هووش: </span><ChatGif gif={m.snapshot}/></div>
          :m.kind!=="job"&&<p className="whitespace-pre-wrap break-words type-body-sm text-fg-primary">
           <span className="sr-only">هووش: </span>{m.text}
          </p>}
@@ -610,6 +634,7 @@ export function Studio(){
         {/* The question is always the last item of the agent's message; it waits for an answer until something is sent after it. */}
         {m.kind==="question"&&<AgentQuestion question={m.snapshot.question} waiting={i===messages.length-1&&!busy} onAnswer={()=>promptRef.current?.focus()}/>}
         {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan?.clarifyingQuestionFa&&<AgentQuestion question={m.snapshot.plan.clarifyingQuestionFa} waiting={i===messages.length-1&&!busy} onAnswer={()=>promptRef.current?.focus()}/>}
+        {reactions}
         <div className="-mt-2">{actions}</div>
        </div>;
       })}
@@ -629,7 +654,13 @@ export function Studio(){
      <Label className="sr-only" id="whoush-prompt-label">توضیح تصویر یا ویدیو</Label>
      <MentionTextarea id="whoush-prompt" handleRef={promptRef} value={draft} onValueChange={setDraft} options={mentionOptions} onPaste={onPaste} placeholder="چی می‌خوای بسازیم؟" labelledBy="whoush-prompt-label" describedBy="prompt-hint" maxLength={4000}
       onSubmitShortcut={()=>{if(draft.trim()&&!busy&&!reading)formRef.current?.requestSubmit();}}
-      startAction={<InsertMenu disabled={reading} onPick={pickInsert}/>}
+      startPad="ps-32"
+      startAction={<div className="flex items-center">
+       <InsertMenu disabled={reading} onPick={pickInsert}/>
+       <EmojiPalette emojis={COMPOSER_EMOJIS} label="ایموجی" onPick={e=>promptRef.current?.insertText(e)}
+        trigger={<button type="button" aria-label="ایموجی" title="ایموجی" className={COMPOSER_TOOL}><Icon icon={Smile} aria-hidden="true"/></button>}/>
+       <GifPicker onPick={sendGif} trigger={<button type="button" aria-label="فرستادن گیف" title="گیف" className={COMPOSER_TOOL+" type-label"}>GIF</button>}/>
+      </div>}
       top={cards.length>0?<ul aria-label="پیوست‌ها" className="flex items-stretch gap-2 overflow-x-auto pb-2 [scrollbar-width:thin]">
        {cards.map(c=>c.type==="slot"
         ?<UploadSlotCard key={c.slot.id} slot={c.slot} disabled={reading} onUpload={()=>openSlotPicker(c.slot)} onDropFiles={f=>void fillSlot(c.slot,f)} onRemove={()=>dropSlot(c.slot.id)}/>

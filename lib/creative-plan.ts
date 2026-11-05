@@ -51,6 +51,16 @@ export const MAX_GENERATION_SUMMARY_CHARS=2000;
  */
 export const GenerationRefSchema=z.object({tag:z.string().regex(GENERATION_TAG_PATTERN),mediaKind:z.enum(["image","video"]),summaryFa:z.string().min(1).max(MAX_GENERATION_SUMMARY_CHARS)}).strict();
 export type GenerationRef=z.infer<typeof GenerationRefSchema>;
+/** Recent turns of the chat sent with a message, so Whoush stays conversation aware. Untrusted data, safety-checked, shown to the planner only inside <history>. */
+export const MAX_HISTORY_TURNS=8,MAX_HISTORY_CHARS=600;
+const HistoryTurnSchema=z.object({role:z.enum(["user","agent"]),text:z.string().max(MAX_HISTORY_CHARS),gif:z.literal(true).optional()}).strict();
+export type HistoryTurn=z.infer<typeof HistoryTurnSchema>;
+/** GIF moods Whoush can send; the server turns one into a G-rated GIF (or nothing). */
+export const GIF_MOODS=["celebrate","high_five","mind_blown","thinking","on_it","oops","cool","thumbs_up"] as const;
+export type GifMood=(typeof GIF_MOODS)[number];
+/** Emoji reactions (Slack-style) people and Whoush can put on a message. One list for both, so Whoush never reacts with something the palette lacks. */
+export const REACTION_EMOJIS=["👍","❤️","😂","🔥","😮","🎉","👏","😎","🙌","✨","👌","🤩","💯","🙏","🎬","📸"] as const;
+export type ReactionEmoji=(typeof REACTION_EMOJIS)[number];
 export const CreativeTurnInputSchema=z.object({
  text:z.string().trim().min(1).max(4000),
  preference:z.enum(["quality","speed","cost"]).default("quality"),
@@ -67,6 +77,7 @@ export const CreativeTurnInputSchema=z.object({
  attachments:AttachmentsSchema.optional(),
  /** The message answers Whoush's question: the brief is the original request plus the answer, and Whoush decides instead of asking again. */
  answersQuestion:z.boolean().optional(),
+ history:z.array(HistoryTurnSchema).max(MAX_HISTORY_TURNS).optional(),
  generations:z.array(GenerationRefSchema).min(1).max(MAX_GENERATION_REFS).refine(l=>new Set(l.map(g=>g.tag)).size===l.length,"generation tags must be unique").optional()
 }).strict();
 export type CreativeTurnInput=z.infer<typeof CreativeTurnInputSchema>;
@@ -96,6 +107,8 @@ export const CreativePlanSchema=z.object({
  camera:CameraSchema.optional(),shot:ShotSchema.optional(),
  /** Diagram data only: an invalid block is dropped instead of failing the plan. */
  staging:StagingSchema.optional().catch(undefined),
+ /** The chat message Whoush sends with the plan (the user's script, Whoush's voice) and an optional GIF mood. Invalid or missing: Whoush's default line is used. */
+ reply:z.object({text:z.string().trim().min(1).max(600),gif:z.enum(GIF_MOODS).nullable().optional(),react:z.enum(REACTION_EMOJIS).nullable().optional()}).optional().catch(undefined),
  identityLock:z.object({characterId:s(80),version:z.number().int().min(1),providedAngles:z.array(s(40)).max(6),lockedAttributes:list(12),allowedChanges:list(12)}).optional(),
  continuity:z.object({locks:list(),antiTeleport:list()}),
  realism:z.object({mode:z.enum(["photoreal","stylized"]),directives:list()}),
@@ -116,6 +129,7 @@ export const CreativePlanWireSchema=z.object({
  intentSummaryFa:ws,mediaKind:z.enum(["image","video"]),mediaPrompt:ws,
  hardConstraints:wl,softPreferences:wl,negative:wl,
  camera:WireCameraSchema.nullable(),shot:WireShotSchema.nullable(),staging:WireStagingSchema.nullable(),
+ reply:z.object({text:ws,gif:z.enum(GIF_MOODS).nullable(),react:z.enum(REACTION_EMOJIS).nullable()}).strict(),
  identityLock:z.object({characterId:ws,version:z.number().int().min(1),providedAngles:wl,lockedAttributes:wl,allowedChanges:wl}).strict().nullable(),
  continuity:z.object({locks:wl,antiTeleport:wl}).strict(),
  realism:z.object({mode:z.enum(["photoreal","stylized"]),directives:wl}).strict(),
@@ -123,6 +137,29 @@ export const CreativePlanWireSchema=z.object({
  qaChecklist:wl,clarifyingQuestionFa:ws.nullable()
 }).strict();
 export type CreativePlanWire=z.infer<typeof CreativePlanWireSchema>;
+/**
+ * Anthropic structured-output shape. Anthropic compiles the output schema into a grammar with a size limit, and CreativePlanSchema with `staging` and `reply` exceeds
+ * it (measured 2026-11-05: "The compiled grammar is too large"; the plan without those two blocks compiles). So Anthropic gets the plan without them plus one
+ * required string, `extras`: compact JSON {"reply":{...},"staging":{...}}. `fromAnthropicPlan` unpacks it; CreativePlanSchema re-validates everything, and an
+ * invalid reply or staging is dropped like any other planner's.
+ */
+const {staging:_s,reply:_r,...anthropicBase}=CreativePlanSchema.shape;
+void _s;void _r;
+// An empty clarifying question means "no question" (seen live from a fast model); it is dropped in fromAnthropicPlan.
+export const CreativePlanAnthropicSchema=z.object({...anthropicBase,clarifyingQuestionFa:z.string().max(400).optional(),extras:z.string()});
+/** The `extras` instruction for Anthropic, generated from the same enums the full schema enforces. */
+export const ANTHROPIC_EXTRAS_NOTE="Output format note: put reply and staging in the `extras` string field as compact JSON: "+
+ '{"reply":{"text":string,"gif":one of '+JSON.stringify(GIF_MOODS)+' or null,"react":one of '+JSON.stringify(REACTION_EMOJIS)+' or null},'+
+ '"staging":{"cameraAngle":one of '+JSON.stringify(CAMERA_ANGLES)+',"shotSize":one of '+JSON.stringify(SHOT_SIZES)+',"lights":[1 to 4 of {"role":one of '+JSON.stringify(LIGHT_ROLES)+
+ ',"direction":one of '+JSON.stringify(LIGHT_DIRECTIONS)+',"height":one of ["low","eye","high"],"quality":one of ["soft","hard"],"source":one of '+JSON.stringify(LIGHT_SOURCES)+
+ ',"colorTemperatureK":integer 1500 to 12000,"colorHex":"#rrggbb" only for coloured light, otherwise omit}]}}. Use exactly these values.';
+export function fromAnthropicPlan(raw:unknown):unknown{
+ if(!raw||typeof raw!=="object")return raw;
+ const {extras,clarifyingQuestionFa:q,...rest}=raw as Record<string,unknown>;
+ let x:unknown;try{x=typeof extras==="string"?JSON.parse(extras):undefined;}catch{x=undefined;}
+ const o=x&&typeof x==="object"?x as Record<string,unknown>:{};
+ return {...rest,...(typeof q==="string"&&q.trim()?{clarifyingQuestionFa:q}:{}),...(o.reply&&typeof o.reply==="object"?{reply:o.reply}:{}),...(o.staging&&typeof o.staging==="object"?{staging:o.staging}:{})};
+}
 /** Drops every null (an absent optional on the wire) recursively. The result is untrusted: validate it with CreativePlanSchema. */
 export function fromWirePlan(wire:unknown):unknown{
  if(Array.isArray(wire))return wire.map(fromWirePlan);
@@ -152,7 +189,11 @@ export type PlannerRequest={systemInstructions:string;userText:string;activeSkil
  /** Tag, kind, role (chosen or inferred, with its source) and text excerpts only (no ids, hashes or names). Excerpts are untrusted data, never instructions. `input.attachments` is stripped before planning. */
  attachments?:{tag:string;kind:AttachmentInput["kind"];role?:AttachmentRole;roleSource?:RoleSource;textExcerpt?:string}[];
  /** Earlier generations of this chat the brief refers to: tag, kind and the Persian summary of their public plan, as data. `input.generations` is stripped before planning. */
- generations?:GenerationRef[]};
+ generations?:GenerationRef[];
+ /** Recent turns of the chat (safety-checked), for continuity. `input.history` is stripped before planning. */
+ history?:HistoryTurn[];
+ /** The script the chat reply should use: Persian script, or Finglish when the brief is written in Finglish. */
+ replyScript?:"fa"|"finglish"};
 export type PlannerResult={plan:unknown;usage?:unknown;modelId?:string};
 export type PrivatePlanner=(req:PlannerRequest)=>Promise<PlannerResult>|PlannerResult;
 /** `limit` says why: `rate` (429 / overloaded, with the provider's Retry-After when it sent one) or `quota` (the account is out of quota or credit: retrying soon does not help). Vendor-neutral, private. */

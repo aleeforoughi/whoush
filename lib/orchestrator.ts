@@ -2,26 +2,46 @@ import "server-only";
 import {createHash,randomUUID} from "node:crypto";
 import {buildProposal,NoCompatibleModelError} from "./agent";
 import {CHARACTER_VIEWS,REQUIRED_CHARACTER_VIEWS} from "./characters";
-import {CreativePlanSchema,CreativeTurnInputSchema,STYLE_VISUAL,toPublicPlan,type GenerationStyle,type PublicReference,type Staging,PlannerInvalidOutputError,PlannerRefusedError,PlannerUnavailableError,type CreativePlan,type PlannerRequest,type PlannerResult,type PrivatePlanner,type PublicCreativePlan} from "./creative-plan";
+import {CreativePlanSchema,CreativeTurnInputSchema,STYLE_VISUAL,toPublicPlan,type GenerationStyle,type GifMood,type PublicReference,type ReactionEmoji,type Staging,PlannerInvalidOutputError,PlannerRefusedError,PlannerUnavailableError,type CreativePlan,type PlannerRequest,type PlannerResult,type PrivatePlanner,type PublicCreativePlan} from "./creative-plan";
 import {llmGate,preparePrivateCreativeRequest} from "./llm";
 import {acquireProviderSlot,countAstraCall,defaultRouterState,estimateTurnCostUsd,loadRoutingConfig,markProviderCooldown,planRoute,profileTask,type RoutingAudit,type RoutingAttempt,type RoutingConfig,type RouterState} from "./llm-routing";
 import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./private-audit";
 import {displayTag,inferAttachmentRoles,isGenerationTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
 import {providerForModelId} from "./llm-routing";
+import {replyScriptFor} from "./finglish";
+import {findGif,type ChatGif} from "./giphy";
 import {detectMediaKind,suggestModel} from "./router";
 import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
 import {SKILLS,SKILL_REGISTRY_VERSION} from "./skills";
 import type {GenerationProposal,MediaRequirements,SuggestedModel} from "./types";
 export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;now?:()=>Date;
+ /** Finds a chat GIF for a mood (GIPHY by default; tests pass a stub). */
+ findGif?:(mood:GifMood)=>Promise<ChatGif|undefined>;
  /** Test hook: the planner for one routed model. Defaults to the real Anthropic or OpenAI adapter. */
  plannerFor?:(modelId:string,provider:"anthropic"|"openai")=>PrivatePlanner;routing?:RoutingConfig;routerState?:RouterState};
 export type OrchestratorResult=
- |{status:"planned";turnId:string;proposal:GenerationProposal;plan:PublicCreativePlan}
+ |{status:"planned";turnId:string;proposal:GenerationProposal;plan:PublicCreativePlan;gif?:ChatGif;reaction?:ReactionEmoji}
  |{status:"unsupported";turnId:string;plan:PublicCreativePlan;message:string;suggestedModel?:SuggestedModel}
  |{status:"restricted";decision:"block"|"review";category:SafetyCategory;message:string}
  /** Whoush needs one critical answer before it can offer a generation: no plan card, no price, only the question. */
- |{status:"needs_input";turnId:string;message:string;question:string};
-const FA_NEEDS_INPUT="برای ساختنش یک چیز مهم را باید بدانم.";
+ |{status:"needs_input";turnId:string;message:string;question:string;reaction?:ReactionEmoji};
+/**
+ * Whoush's own lines when no planner reply is usable (deterministic planner, or a reply that failed a check): everyday spoken Persian, or Finglish for a Finglish
+ * brief, in Whoush's voice. A question's setup carries no emoji (docs/CREATIVE_SKILLS.md, Whoush voice).
+ */
+const VOICE={
+ fa:{
+  planned:["اینم برنامه‌ش 🎬 یه نگاه بنداز؛ اگه اوکی بود، بزن بریم!","حله! نقشه‌ش آماده‌ست ✨ جزئیاتو ببین، هر جاش رو خواستی بگو عوضش کنیم.","ایول، ایده‌ی خوبیه 😎 برنامه رو چیدم؛ هر وقت آماده بودی بسازیمش."],
+  revision:(tag:string)=>["ردیفه! تغییرها رو روی "+tag+" اعمال کردم 👌 بقیه‌ش همون‌طور که بود موند.","حله، "+tag+" رو با تغییرهای تو دوباره چیدم ✨ یه نگاه بنداز."],
+  needsInput:["قبل از اینکه شروع کنم، یه چیز مهم رو باید بدونم.","یه سؤال کوچیک دارم تا دقیقاً همونی بشه که می‌خوای."]
+ },
+ finglish:{
+  planned:["Ine barnamash 🎬 Ye negah bendaz, age oki bood bezan berim!","Halle! Naghshash amadas ✨ Joziyato bebin, har jash ro khasti begu avazesh konim.","Eyval, ide-ye khubie 😎 Barnamaro chidam; harvaght amade budi besazimesh."],
+  revision:(tag:string)=>["Radife! Taghiraro ru "+tag+" emal kardam 👌 Baghiash hamun-tor ke bud mund.","Halle, "+tag+" ro ba taghirat-e to dobare chidam ✨ Ye negah bendaz."],
+  needsInput:["Ghabl az inke shoru konam, ye chiz-e mohem ro bayad bedunam.","Ye soal-e kuchik daram ta daghighan hamuni beshe ke mikhay."]
+ }
+} as const;
+const pickLine=(lines:readonly string[],seed:string)=>lines[[...seed].reduce((n,c)=>(n*31+c.charCodeAt(0))>>>0,7)%lines.length];
 const FA_REFUSED="این درخواست در حال حاضر قابل پردازش نیست. لطفاً آن را با توضیح غیرحساس‌تر دوباره بنویس.";
 const FA_NO_REFS="برنامه تولید با کاراکتر انتخاب‌شده آماده است، اما هنوز هیچ مدل تأییدشده‌ای عکس مرجع کاراکتر را نمی‌پذیرد؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 const FA_TEXT_BLOCKED="یکی از فایل‌های متنیِ پیوست‌شده مسدود شد. ";
@@ -230,6 +250,8 @@ function enforce(raw:CreativePlan,req:PlannerRequest):{plan:CreativePlan;correct
 const FORBIDDEN=["claude","anthropic","openai","gpt","sonnet","opus","haiku","systeminstructions","reasoningtier","promptsha256",...Object.entries(SKILLS).flatMap(([id,s])=>[s.title.toLowerCase(),...(id.includes("_")?[id]:[])])];
 // Model-family words are only forbidden as standalone Latin tokens (so "solid" or "terrain" never trip it), and only when the user did not type them.
 const FAMILY_WORDS=["sol","astra","luna","terra"].map(w=>new RegExp("(?<![a-z0-9])"+w+"(?![a-z0-9])"));
+/** The same filter for a single customer-facing text (the chat reply). */
+const leakText=(text:string,userText:string)=>{const j=text.toLowerCase(),u=userText.toLowerCase();return FORBIDDEN.some(t=>j.includes(t)&&!u.includes(t))||FAMILY_WORDS.some(r=>r.test(j)&&!r.test(u));};
 const leaks=(pub:PublicCreativePlan,userText:string)=>{const j=JSON.stringify(pub).toLowerCase(),u=userText.toLowerCase();return FORBIDDEN.some(t=>j.includes(t)&&!u.includes(t))||FAMILY_WORDS.some(r=>r.test(j)&&!r.test(u));};
 // ---- private prompt store for the generation phase (bounded, server memory only) ----
 const MAX_PROMPTS=200;
@@ -281,6 +303,9 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  }
  // Summaries of earlier generations come from the browser: user data like excerpts, with the same preflight.
  const generations=parsed.generations??[];
+ // Recent turns are client-sent text: each gets the same preflight as the brief, and a turn that fails it is simply left out (it never blocks today's message).
+ const history=(parsed.history??[]).filter(t=>evaluateTextSafety(t.text).decision==="allow");
+ const script=replyScriptFor(parsed.text);
  for(const g of generations){
   const r=evaluateTextSafety(g.summaryFa);
   if(r.decision!=="allow")return {status:"restricted",decision:r.decision,category:r.category,message:FA_TEXT_BLOCKED+r.message};
@@ -288,7 +313,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // Planners see attachments only through `req.attachments` (kinds and excerpts as data); the audio flags are merged into `input.audio`.
  // An edit_reference (image or video) makes the turn an edit, which brings photo_editor or video_editor.
  const task=parsed.task!=="character"&&files.some(f=>f.role==="edit_reference")?"edit":parsed.task;
- const input={...parsed,task,visualStyle:parsed.style?STYLE_VISUAL[parsed.style]:parsed.visualStyle,audio:deriveAudio({...parsed,attachments:files}),attachments:undefined,generations:undefined};
+ const input={...parsed,task,visualStyle:parsed.style?STYLE_VISUAL[parsed.style]:parsed.visualStyle,audio:deriveAudio({...parsed,attachments:files}),attachments:undefined,generations:undefined,history:undefined};
  // A video attachment (every media attachment carries a role), a lip_sync audio or a start_frame or end_frame image makes the output a video even when the text sounds like
  // an image request. Such a turn always has media, so it stops at the media-review check below and never reaches `buildProposal`, which re-detects from the text.
  const kind=files.some(f=>f.kind==="video"||(f.kind==="audio"&&f.role==="lip_sync")||(f.kind==="image"&&(f.role==="start_frame"||f.role==="end_frame")))?"video":generations.length&&detectMediaKind(input.text)!=="video"?generations[0].mediaKind:detectMediaKind(input.text),a=input.audio,ref=input.characterRef;
@@ -296,7 +321,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const have=new Set([...files.map(f=>f.tag),...generations.map(g=>g.tag)]),mentionedMissing=parseMentions(input.text).filter(t=>!have.has(t)),byTag=tagMap(files),genTags=new Set(generations.map(g=>g.tag));
  const missing=mentionedMissing.filter(t=>!isGenerationTag(t)),missingGenerations=mentionedMissing.filter(isGenerationTag);
  const prep=preparePrivateCreativeRequest({prompt:input.text,kind,task:input.task,attachmentRoles:files.flatMap(f=>f.role?[f.role]:[]),hasReferences:Boolean(ref||a?.hasAudioReference||files.length),hasAudioReference:a?(a.hasAudioReference||a.hasSpeech):undefined,hasSpeechAudio:a?.hasSpeech,speechLanguage:a?.language,accent:a?.accent,characterRef:ref,visualStyle:input.visualStyle});
- const req:PlannerRequest={...prep,privateRoute:prep.privateRoute&&{provider:prep.privateRoute.provider,modelId:prep.privateRoute.modelId},kind,input,...(files.length?{attachments:files.map(f=>({tag:f.tag,kind:f.kind,...(f.role?{role:f.role,roleSource:f.roleSource??"user"}:{}),...(f.textExcerpt?{textExcerpt:f.textExcerpt}:{})}))}:{}),...(generations.length?{generations:generations.map(g=>({...g}))}:{})};
+ const req:PlannerRequest={...prep,privateRoute:prep.privateRoute&&{provider:prep.privateRoute.provider,modelId:prep.privateRoute.modelId},kind,input,...(files.length?{attachments:files.map(f=>({tag:f.tag,kind:f.kind,...(f.role?{role:f.role,roleSource:f.roleSource??"user"}:{}),...(f.textExcerpt?{textExcerpt:f.textExcerpt}:{})}))}:{}),...(generations.length?{generations:generations.map(g=>({...g}))}:{}),...(history.length?{history}:{}),replyScript:script};
  const turnId=randomUUID();
  const rec=(x:Partial<PrivateAuditRecord>)=>audit.record({turnId,at:now().toISOString(),skillRegistryVersion:SKILL_REGISTRY_VERSION,activeSkillIds:[...prep.activeSkillIds],reasoningTier:prep.privateReasoningTier,route:req.privateRoute,planner:"deterministic",...(input.style?{style:input.style}:{}),promptSha256:createHash("sha256").update(input.text).digest("hex"),...(routing?{routing}:{}),...(files.length?{attachments:files.map(f=>({tag:f.tag,...(f.role?{role:f.role,roleSource:f.roleSource??"user"}:{}),kind:f.kind,bytes:f.bytes,sha256:f.sha256}))}:{}),...x});
  let label:PrivateAuditRecord["planner"]=deps.planner&&deps.planner!==deterministicPlanner?"live":"deterministic",fallbackReason:string|undefined;
@@ -331,7 +356,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
    // Task-based routing: profile the task, take the band's ladder (minus unavailable rungs), try rungs in order within the attempt budget.
    // A refusal is a safety signal: it ends the turn as restricted and never moves to another model, unless the owner lists `refused` in `escalateOn`.
    const cfg=deps.routing??loadRoutingConfig(),state=deps.routerState??defaultRouterState(),prof=profileTask(input,kind,prep.activeSkillIds,req.attachments);
-   const chars=req.systemInstructions.length+req.userText.length+(req.attachments??[]).reduce((n,x)=>n+(x.textExcerpt?.length??0),0)+(req.generations??[]).reduce((n,g)=>n+g.summaryFa.length,0);
+   const chars=req.systemInstructions.length+req.userText.length+(req.attachments??[]).reduce((n,x)=>n+(x.textExcerpt?.length??0),0)+(req.generations??[]).reduce((n,g)=>n+g.summaryFa.length,0)+(req.history??[]).reduce((n,t)=>n+t.text.length,0);
    const route=planRoute(prof,{cfg,now:now(),state,inputChars:chars});
    routing={...prof,band:route.band,ladder:route.ladder,skipped:route.skipped,attempts:[],chosenModelId:null};
    if(!route.ladder.length)fallbackReason=route.skipped.some(x=>x.why==="cooldown")?"provider cooldown":route.skipped.some(x=>x.why==="no_key")?"api key not configured":"no route available";
@@ -379,6 +404,18 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   const r=evaluatePlanTextSafety(t); // planner text: negated generic categories ("no political banners") are compliance, not violations
   if(r.decision!=="allow"){rec({planner:label,fallbackReason:"plan_restricted",corrections,usage:result?.usage});return {status:"restricted",decision:r.decision,category:r.category,message:r.message};}
  }
+ // The chat reply: the planner's, in Whoush's voice and the user's script, when it passes the plan-text safety check and the leak filter; otherwise Whoush's own line.
+ const planReply=plan.reply;delete plan.reply;
+ const own=(kind:"planned"|"needsInput")=>generations.length&&kind==="planned"?pickLine(VOICE[script].revision(displayTag(generations[0].tag)),turnId):pickLine(VOICE[script][kind],turnId);
+ // A Finglish reply must be Latin letters only (tags such as #تولید-۱ excepted); a reply that mixes scripts falls back to Whoush's own Finglish line.
+ const mixedScript=(t:string)=>script==="finglish"&&/[\u0600-\u06ff]/.test(t.replace(/[#@][^\s]+/g," "));
+ const usable=(t:string|undefined)=>Boolean(t)&&evaluatePlanTextSafety(t!).decision==="allow"&&!leakText(t!,input.text)&&!mixedScript(t!);
+ const replyText=(kind:"planned"|"needsInput")=>usable(planReply?.text)?planReply!.text:own(kind);
+ // A GIF only on a planned turn, only when the planner chose a mood, and never when one of the last three Whoush turns already had one.
+ const recentGif=history.filter(t=>t.role==="agent").slice(-3).some(t=>t.gif);
+ const gifMood=planReply?.gif&&!recentGif?planReply.gif:undefined;
+ // Whoush's emoji reaction on the user's message (from the shared palette; the schema already rejects anything else).
+ const reaction=planReply?.react??undefined;
  // One critical question stops the turn before any model or price is offered: a mentioned file or generation that is not in the chat, or the planner's own question.
  // A message that answers an earlier question is never asked again: Whoush decides, and a reference that is still missing is left out with a note in the plan.
  const missingNote=[missing.length?faMissing(missing):"",missingGenerations.length?faMissingGenerations(missingGenerations):""].filter(Boolean);
@@ -389,7 +426,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   const r=evaluatePlanTextSafety(question);
   if(r.decision!=="allow"){rec({planner:label,fallbackReason:"plan_restricted",corrections,usage:result?.usage});return {status:"restricted",decision:r.decision,category:r.category,message:r.message};}
   rec({planner:label,fallbackReason:"needs_input",corrections:corrections.length?corrections:undefined,usage:label==="live"?result?.usage:undefined});
-  return {status:"needs_input",turnId,message:FA_NEEDS_INPUT,question};
+  return {status:"needs_input",turnId,message:replyText("needsInput"),question,...(reaction?{reaction}:{})};
  }
  // Hard capability requirements: a character reference needs reference-image input, lip sync needs a lip-sync model.
  const requirements=mediaRequirements({characterRef:ref,attachments:files},kind==="video"&&prep.activeSkillIds.includes("persian_lip_sync_phonetics"));
@@ -415,5 +452,8 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  }
  keepPrompt(turnId,plan.mediaPrompt);
  rec({planner:label,fallbackReason,corrections:corrections.length?corrections:undefined,usage:label==="live"?result?.usage:undefined});
- return {status:"planned",turnId,proposal,plan:toPublicPlan(plan,refs,undefined,input.style)};
+ // The proposal speaks in Whoush's voice; a rejected explicit model request keeps its factual note after the reply.
+ proposal={...proposal,message:replyText("planned")+(proposal.explicitRejected?"\n"+proposal.message:"")};
+ const gif=gifMood?await (deps.findGif??findGif)(gifMood).catch(()=>undefined):undefined;
+ return {status:"planned",turnId,proposal,plan:toPublicPlan(plan,refs,undefined,input.style),...(gif?{gif}:{}),...(reaction?{reaction}:{})};
 }

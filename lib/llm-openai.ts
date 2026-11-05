@@ -4,7 +4,7 @@ import OpenAI from "openai";
 import {ZodError} from "zod";
 import {zodTextFormat} from "openai/helpers/zod";
 import {CreativePlanSchema,CreativePlanWireSchema,fromWirePlan,PlannerInvalidOutputError,PlannerRefusedError,PlannerUnavailableError,type CreativePlan} from "./creative-plan";
-import {buildBriefMessage,type BriefAttachment,type BriefGeneration} from "./planner-brief";
+import {buildBriefMessage,type BriefAttachment,type BriefGeneration,type BriefTurn} from "./planner-brief";
 import {loadRoutingConfig,retryAfterMsFrom} from "./llm-routing";
 /** Vendor-neutral mapping of an SDK API error. 429 with `insufficient_quota` is a quota limit (retrying soon does not help); any other 429 is a rate limit with the provider's Retry-After. */
 export function openAIUnavailable(e:InstanceType<typeof OpenAI.APIError>):PlannerUnavailableError{
@@ -16,7 +16,7 @@ export function openAIUnavailable(e:InstanceType<typeof OpenAI.APIError>):Planne
  return new PlannerUnavailableError();
 }
 /** Live private planner (OpenAI Responses API, Structured Outputs). Errors map to vendor-neutral types; usage is normalized for the private audit only. */
-export async function planWithOpenAI(req:{systemInstructions:string;userText:string;attachments?:readonly BriefAttachment[];generations?:readonly BriefGeneration[]},modelId:string):Promise<{plan:CreativePlan;usage:{input_tokens:number;output_tokens:number};modelId:string}>{
+export async function planWithOpenAI(req:{systemInstructions:string;userText:string;attachments?:readonly BriefAttachment[];generations?:readonly BriefGeneration[];history?:readonly BriefTurn[];replyScript?:"fa"|"finglish"},modelId:string):Promise<{plan:CreativePlan;usage:{input_tokens:number;output_tokens:number};modelId:string}>{
  const rl=loadRoutingConfig().rateLimits;
  // The SDK retries 408/409/429/5xx and connection errors itself (exponential backoff, honouring Retry-After up to 60 s) before we see the error.
  const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY,maxRetries:rl.sdkMaxRetries,timeout:rl.requestTimeoutMs});
@@ -25,7 +25,7 @@ export async function planWithOpenAI(req:{systemInstructions:string;userText:str
   response=await client.responses.parse({
    model:modelId,max_output_tokens:16000,
    instructions:req.systemInstructions,
-   input:buildBriefMessage(req.userText,req.attachments,req.generations),
+   input:buildBriefMessage(req.userText,req.attachments,req.generations,req.history,req.replyScript),
    text:{format:zodTextFormat(CreativePlanWireSchema,"creative_plan")}
   });
  }catch(e){

@@ -40,8 +40,8 @@ test("character workflow and attached identity refs activate character creation"
  assert.ok(ids.includes("character_creation"));
  assert.ok(resolveCreativeSkills({prompt:"portrait",kind:"image",hasCharacterReference:true}).includes("character_creation"));
 });
-test("all 22 professional skills include objectives and checks",()=>{
- assert.equal(Object.keys(SKILLS).length,22);
+test("all 25 professional skills include objectives and checks",()=>{
+ assert.equal(Object.keys(SKILLS).length,25);
  for(const [id,s] of Object.entries(SKILLS)){
   assert.ok(s.title.length>4,id);
   assert.ok(s.objective.length>20,id);

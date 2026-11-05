@@ -1,3 +1,4 @@
+import {containsFinglish,normalizeFinglish} from "./finglish";
 /** First-pass Persian-aware moderation. NOT sufficient for production: add contextual
  * multimodal moderation before provider calls and after model output. */
 export type SafetyCategory="politics"|"sexualized_content"|"sexualization_of_minors"|"graphic_violence"|"religious_hostility"|"regulated_content"|"ambiguous_politics"|"sensitive_language"|"none";
@@ -35,32 +36,50 @@ const REGULATED_CONTENT=["casino gambling","promote gambling","make alcohol ad",
 const AMBIGUOUS_REGULATED=["شراب","مشروب","قمار","سیگار","مواد مخدر","religious parody"];
 const AMBIGUOUS_POLITICAL=["پهلوی","pahlavi","روحانی","انقلاب ایران","revolution","شورای نگهبان"];
 const SENSITIVE_LANGUAGE=["فحش","فحاشی","فحاش","کصکش","fuck","motherfucker"];
+/**
+ * The same categories as typed in Finglish (Persian in Latin letters), matched after `normalizeFinglish` folds spelling variants (kh/x, gh/q, oo/u, ee/i, aa/a, digit
+ * letters). English words already in the lists above keep matching as before; these add the Persian words people type in Latin letters.
+ */
+const FINGLISH:Record<"minors"|"violence"|"religion"|"regulated"|"political"|"figures"|"sexual"|"ambiguousRegulated"|"ambiguousPolitical"|"sensitive",readonly string[]>={
+ minors:["koodak berahne","kudak berahne","bache lokht","bacheye lokht","sex koodak","seks kudak"],
+ violence:["sar boride","sar borideh","mosle kardan","tike tike kardan badan","tekke tekke kardan badan"],
+ religion:["tohin be quran","tohin be ghoran","ehanat be payambar","tohin be adyan"],
+ regulated:["ghomarkhane","tablighe mashrub","tablighe mashroob","tablighe sharab","tablighe shart bandi"],
+ political:["siasat","siasi","siyasi","entekhabat","tazahorat","eterazat","raees jomhur","rais jomhur","raeis jomhur","raeise jomhur","jomhuri eslami","majles shoraye eslami","nokhost vazir","koodeta","kudeta","hokumat","shoare siasi","tablighate siasi","rahbar enghelab","rahbare enghelab"],
+ figures:["khamenei","khamenehei","khomeini","khomeyni","pezeshkian","raisi","raeisi","raeesi","khatami","rouhani","hasan rohani","reza shah","rezashah","mohammadreza shah","mohamad reza shah","tramp","baiden","putin"],
+ sexual:["lokht","lokhti","berahne","berahneh","nime berahne","oryan","oriyan","seksi","sexi","shahvani","tahrik amiz","lebas zir","lebase zir","sutian","sootian","mayo do tekke","lebas badan nama","lebase badan nama","lebas shafaf","raghs berahne"],
+ ambiguousRegulated:["sharab","mashrub","mashroob","ghomar","sigar","sigaret","mavad mokhader"],
+ ambiguousPolitical:["enghelab iran","enghelabe iran","shoraye negahban","pahlavi"],
+ sensitive:["koskesh","kos kesh","kosnane","kos nane","jende","madar jende"]
+};
 function contains(text:string,phrase:string):boolean{return (" "+text+" ").includes(" "+normalizePersian(phrase)+" ");}
 function matches(text:string,terms:readonly string[]):boolean{return terms.some(term=>contains(text,term));}
 export function evaluateTextSafety(raw:string):SafetyResult {
- const text=normalizePersian(raw);
- if(matches(text,MINOR_SEXUALIZATION))
+ const text=normalizePersian(raw),fin=normalizeFinglish(raw);
+ // Finglish (Persian in Latin letters) goes through the same categories, in the same order, after spelling variants are folded.
+ const f=(k:keyof typeof FINGLISH)=>FINGLISH[k].some(t=>containsFinglish(fin,t));
+ if(matches(text,MINOR_SEXUALIZATION)||f("minors"))
   return {decision:"block",category:"sexualization_of_minors",message:"تولید محتوای جنسی مرتبط با کودکان ممنوع است."};
- if(matches(text,GRAPHIC_VIOLENCE))
+ if(matches(text,GRAPHIC_VIOLENCE)||f("violence"))
   return {decision:"block",category:"graphic_violence",message:"ساخت تصاویر خشونت بسیار شدید در هووش پشتیبانی نمی‌شود."};
- if(matches(text,RELIGIOUS_HOSTILITY))
+ if(matches(text,RELIGIOUS_HOSTILITY)||f("religion"))
   return {decision:"block",category:"religious_hostility",message:"محتوای توهین‌آمیز نسبت به باورهای مذهبی پشتیبانی نمی‌شود."};
- if(matches(text,REGULATED_CONTENT))
+ if(matches(text,REGULATED_CONTENT)||f("regulated"))
   return {decision:"block",category:"regulated_content",message:"تبلیغ فعالیت‌ها و کالاهای پرخطر در هووش پشتیبانی نمی‌شود."};
- if(matches(text,POLITICAL_TERMS)||matches(text,POLITICAL_FIGURES))
+ if(matches(text,POLITICAL_TERMS)||matches(text,POLITICAL_FIGURES)||f("political")||f("figures"))
   return {decision:"block",category:"politics",message:"در هووش تولید محتوای سیاسی یا استفاده از شخصیت‌های سیاسی پشتیبانی نمی‌شود. لطفاً یک موضوع غیرسیاسی انتخاب کن."};
  // Nude cosmetic color words are not necessarily nudity.
  const cosmetics=["nude lipstick","nude makeup","nude color","رنگ نود","رژ نود","آرایش نود"];
  let contextual=text;
  for(const shade of cosmetics)contextual=contextual.replaceAll(normalizePersian(shade)," ");
  contextual=contextual.replace(/\s+/g," ").trim();
- if(matches(contextual,SEXUALIZED))
+ if(matches(contextual,SEXUALIZED)||FINGLISH.sexual.some(t=>containsFinglish(normalizeFinglish(contextual),t)))
   return {decision:"block",category:"sexualized_content",message:"این درخواست با قوانین پوشش و محتوای بصری هووش سازگار نیست. لطفاً لباس و ژست غیرتحریک‌آمیز انتخاب کن."};
- if(matches(text,AMBIGUOUS_REGULATED))
+ if(matches(text,AMBIGUOUS_REGULATED)||f("ambiguousRegulated"))
   return {decision:"review",category:"regulated_content",message:"این درخواست به بررسی محتوای حساس نیاز دارد. لطفاً هدف هنری یا غیرتبلیغاتی آن را روشن‌تر کن."};
- if(matches(text,AMBIGUOUS_POLITICAL))
+ if(matches(text,AMBIGUOUS_POLITICAL)||f("ambiguousPolitical"))
   return {decision:"review",category:"ambiguous_politics",message:"برای رعایت سیاست غیرسیاسی هووش، لطفاً درخواست را بدون ارجاع به چهره‌ها و موضوعات سیاسی دقیق‌تر کن."};
- if(matches(text,SENSITIVE_LANGUAGE))
+ if(matches(text,SENSITIVE_LANGUAGE)||f("sensitive"))
   return {decision:"review",category:"sensitive_language",message:"این عبارت نیاز به بررسی معنایی دارد. لطفاً منظورت را دقیق‌تر و بدون عبارت توهین‌آمیز توضیح بده."};
  return {decision:"allow",category:"none",message:""};
 }

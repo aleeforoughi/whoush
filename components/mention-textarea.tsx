@@ -9,7 +9,7 @@ export type MentionOption={id:string;tag:string;badgeFa:string;captionFa?:string
 /** A conversation file as a picker entry: its kind, and for media its role or «انتخاب خودکار هووش». */
 export const attachmentOption=(a:Pick<LocalAttachment,"id"|"tag"|"kind"|"role">):MentionOption=>({id:a.id,tag:a.tag,badgeFa:ATTACHMENT_KINDS[a.kind].labelFa,...(isMediaKind(a.kind)?{captionFa:a.role?roleLabelFa(a.role,a.kind):"انتخاب خودکار هووش"}:{})});
 /** What the studio can do with the prompt: focus it, or put a tag badge at the caret (at the end when the prompt is not focused). */
-export type MentionEditorHandle={focus:()=>void;insertTag:(tag:string)=>void};
+export type MentionEditorHandle={focus:()=>void;insertTag:(tag:string)=>void;/** Inserts plain text (an emoji) at the caret, or at the end when the prompt is not focused. */insertText:(text:string)=>void};
 const NAV_KEYS=["ArrowUp","ArrowDown","Enter","Tab","Escape"];
 const ZWSP="​";
 const BADGE_CLASS="mx-0.5 inline-flex h-6 items-center gap-1 rounded-control bg-secondary ps-2 pe-0.5 align-middle type-caption font-medium text-fg-primary select-none";
@@ -83,10 +83,10 @@ function renderSegments(root:HTMLElement,segments:readonly EditorSegment[]){
  * `startAction` (the «+» menu) and `endAction` (send) are pinned to the bottom corners; the text reserves both with padding. Ctrl/Cmd+Enter calls
  * `onSubmitShortcut`, but never while the mention list is open (there Enter and Tab insert a mention).
  */
-export function MentionTextarea({id,value,onValueChange,options,handleRef,startAction,endAction,top,onSubmitShortcut,onPaste,placeholder,maxLength,labelledBy,describedBy}:{
+export function MentionTextarea({id,value,onValueChange,options,handleRef,startAction,endAction,top,onSubmitShortcut,onPaste,placeholder,maxLength,labelledBy,describedBy,startPad="ps-14"}:{
  id?:string;value:string;onValueChange:(v:string)=>void;options:readonly MentionOption[];handleRef:RefObject<MentionEditorHandle|null>;startAction?:ReactNode;endAction?:ReactNode;
  /** Content inside the field's border, above the text (the upload cards). */top?:ReactNode;onSubmitShortcut?:()=>void;onPaste?:(e:ClipboardEvent<HTMLDivElement>)=>void;
- placeholder?:string;maxLength?:number;labelledBy?:string;describedBy?:string}){
+ placeholder?:string;maxLength?:number;labelledBy?:string;describedBy?:string;/** Inline-start padding reserved for `startAction` (wider when it holds several buttons). */startPad?:string}){
  const listId=useId(),optionId=(i:number)=>listId+"-"+i;
  const el=useRef<HTMLDivElement>(null);
  const rendered=useRef<string|null>(null);
@@ -152,6 +152,13 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
  }
  useImperativeHandle(handleRef,()=>({
   focus:()=>{const root=el.current;if(!root)return;root.focus();if(caretOf(root)===undefined)placeCaret(root,(rendered.current??value).length);},
+  insertText:(text:string)=>{
+   const root=el.current;if(!root)return;
+   const base=rendered.current??value,caret=caretOf(root)??base.length,next=base.slice(0,caret)+text+base.slice(caret);
+   if(maxLength&&next.length>maxLength)return;
+   root.focus();
+   onValueChange(show(next,caret+text.length));
+  },
   insertTag:(tag:string)=>{
    const root=el.current;if(!root)return;
    const base=rendered.current??value,caret=caretOf(root)??base.length;
@@ -175,11 +182,11 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
   {endAction&&<div className="absolute bottom-1 end-1 z-10">{endAction}</div>}
   {top&&<div className="px-2 pt-2">{top}</div>}
   <div className="relative">
-   {empty&&placeholder&&<span aria-hidden="true" className={"pointer-events-none absolute inset-y-0 start-0 truncate px-control py-control type-body text-fg-tertiary "+(startAction?"ps-14 ":"")+(endAction?"pe-14":"")}>{placeholder}</span>}
+   {empty&&placeholder&&<span aria-hidden="true" className={"pointer-events-none absolute inset-y-0 start-0 truncate px-control py-control type-body text-fg-tertiary "+(startAction?startPad+" ":"")+(endAction?"pe-14":"")}>{placeholder}</span>}
    <div ref={el} id={id} contentEditable="plaintext-only" suppressContentEditableWarning spellCheck={false} tabIndex={0}
     role="combobox" aria-labelledby={labelledBy} aria-describedby={describedBy}
     aria-autocomplete="list" aria-haspopup="listbox" aria-controls={listId} aria-expanded={open} aria-activedescendant={open?optionId(current):undefined}
-    className={"block max-h-40 min-h-13 overflow-y-auto whitespace-pre-wrap break-words px-control py-control type-body text-fg-primary outline-hidden "+(startAction?"ps-14 ":"")+(endAction?"pe-14":"")}
+    className={"block max-h-40 min-h-13 overflow-y-auto whitespace-pre-wrap break-words px-control py-control type-body text-fg-primary outline-hidden "+(startAction?startPad+" ":"")+(endAction?"pe-14":"")}
     onInput={onInput}
     onCompositionStart={()=>{composing.current=true;}}
     onCompositionEnd={()=>{composing.current=false;onInput();}}
