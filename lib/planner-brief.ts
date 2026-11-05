@@ -2,7 +2,7 @@
 /** Removes brief, attachment and generation tags so user or document text cannot close or forge the data blocks it sits in. */
 export function stripBriefTags(text:string):string{
  let s=text,prev;
- do{prev=s;s=s.replace(/<\/?\s*(?:attachment|generation|history|turn|reply_in|user_brief)\b[^>]*>?/gi,"");}while(s!==prev);
+ do{prev=s;s=s.replace(/<\/?\s*(?:attachment|generation|history|turn|reply_in|staging_override|user_brief)\b[^>]*>?/gi,"");}while(s!==prev);
  return s;
 }
 export type BriefAttachment={tag?:string;kind:string;role?:string;roleSource?:string;textExcerpt?:string};
@@ -13,7 +13,7 @@ export type BriefGeneration={tag:string;mediaKind:string;summaryFa:string};
  * carry their excerpt), then every earlier generation of the chat the brief refers to, as a `<generation>` block with the Persian summary of its plan.
  */
 export type BriefTurn={role:"user"|"agent";text:string;gif?:true};
-export function buildBriefMessage(userText:string,attachments:readonly BriefAttachment[]=[],generations:readonly BriefGeneration[]=[],history:readonly BriefTurn[]=[],replyScript?:"fa"|"finglish"):string{
+export function buildBriefMessage(userText:string,attachments:readonly BriefAttachment[]=[],generations:readonly BriefGeneration[]=[],history:readonly BriefTurn[]=[],replyScript?:"fa"|"finglish",stagingOverride?:unknown):string{
  const docs=attachments.filter(a=>a.tag&&SAFE_ID.test(a.tag)).map(a=>{
   const attrs=" tag=\""+a.tag+"\" kind=\""+(SAFE_ID.test(a.kind)?a.kind:"file")+"\""+(a.role&&SAFE_ID.test(a.role)?" role=\""+a.role+"\""+(a.roleSource==="inferred"||a.roleSource==="user"?" role_source=\""+a.roleSource+"\"":""):"");
   return a.textExcerpt?"\n<attachment"+attrs+">\n"+stripBriefTags(a.textExcerpt)+"\n</attachment>":"\n<attachment"+attrs+"/>";
@@ -23,5 +23,7 @@ export function buildBriefMessage(userText:string,attachments:readonly BriefAtta
  const hist=history.length?"<history>\n"+history.map(t=>"<turn role=\""+(t.role==="agent"?"whoush":"user")+"\""+(t.gif?" gif=\"true\"":"")+">"+stripBriefTags(t.text)+"</turn>").join("\n")+"\n</history>\n":"";
  // The script Whoush's reply must use, decided on the server from the brief (Finglish gets Latin letters only).
  const script=replyScript==="finglish"?"\n<reply_in>finglish: reply.text and clarifyingQuestionFa in Finglish, Latin letters only</reply_in>":"";
- return "<user_brief>\n"+hist+stripBriefTags(userText)+docs+gens+"\n</user_brief>"+script;
+ // A scene the user arranged in the diagrams: plan exactly this staging (JSON of enum values only; no free text to strip).
+ const scene=stagingOverride?"\n<staging_override>"+JSON.stringify(stagingOverride)+"</staging_override>":"";
+ return "<user_brief>\n"+hist+stripBriefTags(userText)+docs+gens+"\n</user_brief>"+script+scene;
 }

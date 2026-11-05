@@ -30,7 +30,8 @@ import {characterCoverage,characterUsability,type CharacterProfile} from "@/lib/
 import {fa} from "@/lib/format";
 import {STORAGE_FULL_FA,getProject,listAssets,saveAsset,saveProject} from "@/lib/project-store";
 import {MAX_MESSAGES,assetToAttachment,attachmentToAsset,autoTitle,rerunSource,uniqueById,answerBrief,historyFor,toggleReaction,generationTagsIn,referencedGenerations,toGenerationRef,withGenerationTags,type GifSnapshot,type ProposalSnapshot,type Project,type StoredMessage} from "@/lib/projects";
-import {MAX_GENERATION_REFS,type ReactionEmoji} from "@/lib/creative-plan";
+import {MAX_GENERATION_REFS,type ReactionEmoji,type Staging} from "@/lib/creative-plan";
+import {describeStagingChangesFa} from "@/lib/staging";
 import {ChatGif} from "@/components/chat-gif";
 import {COMPOSER_EMOJIS,EmojiPalette} from "@/components/emoji-palette";
 import {GifPicker} from "@/components/gif-picker";
@@ -357,6 +358,16 @@ export function Studio(){
   if(!parseMentions(draft).includes(tag))mentionTag(tag);else promptRef.current?.focus();
   setAnnounce(displayTag(tag)+" به پیام اضافه شد؛ تغییرها را بنویس.");
  }
+ /**
+  * «این صحنه رو بساز» in a generation's scene diagrams: sends a message naming the generation and listing what changed (so the chat shows it and Whoush reads
+  * it), with the arranged scene as structured data that the server applies exactly. Whoush answers with a revised plan and a new price (#تولید-N+1).
+  */
+ function applyStaging(tag:string,before:Staging,beforeAspect:string|undefined,after:Staging,aspect:string){
+  const lines=describeStagingChangesFa(before,after,beforeAspect,aspect);
+  if(!lines.length)return;
+  const text=displayTag(tag)+" رو با این تغییرات صحنه دوباره بچین:\n"+lines.map(l=>"• "+l).join("\n");
+  void runTurn(text.slice(0,4000),[],[],false,undefined,{stagingOverride:{...after,subject:after.subject??"person"},...(aspect&&aspect!==beforeAspect?{aspectOverride:aspect}:{})});
+ }
  /** Toggles a Slack-style reaction on a message (the user's from the palette or a chip; Whoush's from its reply). */
  function react(id:string,emoji:ReactionEmoji,by:"user"|"whoush"){
   setMessages(ms=>ms.map(x=>x.id!==id?x:{...x,reactions:toggleReaction(x.reactions,emoji,by)}));touch();
@@ -428,7 +439,7 @@ export function Studio(){
   * chat it mentions (#تولید-۱). From the composer (`fromComposer`) the draft, cards and tray clear; a rerun leaves them alone. `brief` is what is sent when the
   * message answers Whoush's question (the original request plus the answer); the transcript keeps the answer as typed.
   */
- async function runTurn(text:string,files:LocalAttachment[],changes:string[],fromComposer:boolean,brief?:string){
+ async function runTurn(text:string,files:LocalAttachment[],changes:string[],fromComposer:boolean,brief?:string,scene?:{stagingOverride:Staging;aspectOverride?:string}){
   if(!text||busy||reading||loadingProject)return;
   if(messages.length>=MAX_MESSAGES-4){setError(LIMIT_FA);return;}
   // This message's own files plus any earlier file it mentions as #تصویر-۱ or @image1 (metadata only, as before).
@@ -459,7 +470,7 @@ export function Studio(){
   const whoushReacts=(emoji?:ReactionEmoji)=>{if(emoji)react(userMsg.id,emoji,"whoush");};
   const characterRef=current?{id:current.id,name:current.name,angles:characterCoverage(current.references).uploaded,version:current.version}:undefined;
   try{
-   const r=await fetch("/api/agent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(toWireAttachment)}:{}),...(generations.length?{generations}:{})})});
+   const r=await fetch("/api/agent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(toWireAttachment)}:{}),...(generations.length?{generations}:{})})});
    if(!r.ok){
     const errorBody=await r.json().catch(()=>({})) as {error?:string;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"]};
     if(r.status===422&&errorBody.error==="no_compatible_model"){
@@ -626,7 +637,8 @@ export function Studio(){
          </p>}
         {m.kind==="job"&&<PreviewCard tag={m.snapshot.tag} state={m.snapshot.state} messageFa={m.snapshot.messageFa}
          output={m.snapshot.messageFa===job?.messageFa?job?.outputs?.find(o=>isOwnedOutputUrl(o.url,window.location.origin)):undefined} video={m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false} onOpen={()=>openPreview(m.snapshot)}/>}
-        {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan&&<PlanStory plan={m.snapshot.plan}/>}
+        {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan&&<PlanStory plan={m.snapshot.plan} applyDisabled={busy||reading||loadingProject}
+         onApplyStaging={m.kind==="proposal"&&m.snapshot.tag&&m.snapshot.plan.staging?(s,aspect)=>applyStaging(m.snapshot.tag!,m.snapshot.plan.staging!,m.snapshot.plan.camera?.aspectRatio,s,aspect):undefined}/>}
         {m.kind==="proposal"&&(proposal&&m.id===liveId
          ?<ProposalCard proposal={proposal} tag={m.snapshot.tag} selected={selected} onSelect={setSelected} busy={busy} onApprove={()=>void approve()} onChange={()=>m.snapshot.tag&&changeGeneration(m.snapshot.tag)} onMention={m.snapshot.tag?()=>mentionTag(m.snapshot.tag!):undefined}/>
          :<PastProposalCard snapshot={m.snapshot} onChange={()=>m.snapshot.tag&&changeGeneration(m.snapshot.tag)} onMention={m.snapshot.tag?()=>mentionTag(m.snapshot.tag!):undefined} disabled={!m.snapshot.tag}/>)}

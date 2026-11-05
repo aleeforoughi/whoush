@@ -13,3 +13,6 @@ public/fonts/iransans/*
 
 # Planner evaluation outputs (scripts/planner-eval.ts)
 evals/planner/results/
+
+# Raw image-model outputs for the visual asset pack (the processed PNGs in public/visuals are committed)
+public/visuals/raw/

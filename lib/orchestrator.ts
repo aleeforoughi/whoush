@@ -9,6 +9,7 @@ import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./
 import {displayTag,inferAttachmentRoles,isGenerationTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
 import {providerForModelId} from "./llm-routing";
 import {replyScriptFor} from "./finglish";
+import {describeStagingEn,describeStagingFa,detectSubject} from "./staging";
 import {findGif,type ChatGif} from "./giphy";
 import {detectMediaKind,suggestModel} from "./router";
 import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
@@ -148,14 +149,18 @@ export function deterministicPlanner(req:PlannerRequest):{plan:CreativePlan}{
   :{look:d.look.fa,focalLengthMm:35,aperture:night?"f/2.8":"f/5.6",shutter:night?"1/60s":"1/250s",iso:night?1600:100,whiteBalanceK:night?4000:5600,framing:d.framing.fa,lighting:d.lighting.fa,focus:d.focus.fa,aspectRatio:vertical?"9:16":"3:2"};
  // Diagram staging, consistent with the camera and shot text above: a soft key at 45 degrees with fill and rim for people, directional daylight (or practicals and moon at night) for scenes.
  const warm=night?3200:camera.whiteBalanceK;
- const staging:Staging=portrait
-  ?{cameraAngle:"eye_level",shotSize:"medium_close_up",lights:[
+ // The subject decides what the diagrams show; person scenes get a 45-degree soft key with fill and rim, objects a soft product light, open scenes daylight or practicals.
+ const subject=detectSubject(p,Boolean(ref));
+ const staging:Staging=subject==="person"
+  ?{subject,cameraAngle:"eye_level",shotSize:portrait?"medium_close_up":"medium",lights:[
     {role:"key",direction:"front_left",height:"high",quality:"soft",source:night?"practical":"softbox",colorTemperatureK:warm},
     {role:"fill",direction:"front_right",height:"eye",quality:"soft",source:night?"practical":"softbox",colorTemperatureK:warm},
     {role:"rim",direction:"back_right",height:"high",quality:"hard",source:night?"neon":"led_panel",colorTemperatureK:night?6500:5600,...(night?{colorHex:"#4f8cff"}:{})}]}
-  :{cameraAngle:"eye_level",shotSize:"wide",lights:night
-    ?[{role:"key",direction:"front_left",height:"eye",quality:"soft",source:"practical",colorTemperatureK:3200},{role:"fill",direction:"back",height:"high",quality:"soft",source:"moon",colorTemperatureK:7500}]
-    :[{role:"key",direction:"back_left",height:"high",quality:"hard",source:"sun",colorTemperatureK:5600},{role:"fill",direction:"top",height:"high",quality:"soft",source:"sky",colorTemperatureK:7000}]};
+  :subject==="object"
+   ?{subject,cameraAngle:"high",shotSize:"medium",lights:[{role:"key",direction:"front_left",height:"high",quality:"soft",source:"softbox",colorTemperatureK:5600},{role:"rim",direction:"back_right",height:"high",quality:"hard",source:"led_panel",colorTemperatureK:6000}]}
+   :{subject,cameraAngle:"eye_level",shotSize:subject==="environment"?"wide":"full",lights:night
+     ?[{role:"key",direction:"front_left",height:"eye",quality:"soft",source:"practical",colorTemperatureK:3200},{role:"fill",direction:"back",height:"high",quality:"soft",source:"moon",colorTemperatureK:7500}]
+     :[{role:"key",direction:"back_left",height:"high",quality:"hard",source:"sun",colorTemperatureK:5600},{role:"fill",direction:"top",height:"high",quality:"soft",source:"sky",colorTemperatureK:7000}]};
  const gens=req.generations??[],revision=gens[0];
  const mv=MOVES.find(([re])=>re.test(p))?.[1]??DOLLY;
  const size=portrait?P("medium close-up","نمای نزدیک متوسط"):P("wide establishing shot","نمای باز معرفی صحنه");
@@ -313,7 +318,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // Planners see attachments only through `req.attachments` (kinds and excerpts as data); the audio flags are merged into `input.audio`.
  // An edit_reference (image or video) makes the turn an edit, which brings photo_editor or video_editor.
  const task=parsed.task!=="character"&&files.some(f=>f.role==="edit_reference")?"edit":parsed.task;
- const input={...parsed,task,visualStyle:parsed.style?STYLE_VISUAL[parsed.style]:parsed.visualStyle,audio:deriveAudio({...parsed,attachments:files}),attachments:undefined,generations:undefined,history:undefined};
+ const input={...parsed,task,visualStyle:parsed.style?STYLE_VISUAL[parsed.style]:parsed.visualStyle,audio:deriveAudio({...parsed,attachments:files}),attachments:undefined,generations:undefined,history:undefined,stagingOverride:undefined,aspectOverride:undefined};
  // A video attachment (every media attachment carries a role), a lip_sync audio or a start_frame or end_frame image makes the output a video even when the text sounds like
  // an image request. Such a turn always has media, so it stops at the media-review check below and never reaches `buildProposal`, which re-detects from the text.
  const kind=files.some(f=>f.kind==="video"||(f.kind==="audio"&&f.role==="lip_sync")||(f.kind==="image"&&(f.role==="start_frame"||f.role==="end_frame")))?"video":generations.length&&detectMediaKind(input.text)!=="video"?generations[0].mediaKind:detectMediaKind(input.text),a=input.audio,ref=input.characterRef;
@@ -321,7 +326,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const have=new Set([...files.map(f=>f.tag),...generations.map(g=>g.tag)]),mentionedMissing=parseMentions(input.text).filter(t=>!have.has(t)),byTag=tagMap(files),genTags=new Set(generations.map(g=>g.tag));
  const missing=mentionedMissing.filter(t=>!isGenerationTag(t)),missingGenerations=mentionedMissing.filter(isGenerationTag);
  const prep=preparePrivateCreativeRequest({prompt:input.text,kind,task:input.task,attachmentRoles:files.flatMap(f=>f.role?[f.role]:[]),hasReferences:Boolean(ref||a?.hasAudioReference||files.length),hasAudioReference:a?(a.hasAudioReference||a.hasSpeech):undefined,hasSpeechAudio:a?.hasSpeech,speechLanguage:a?.language,accent:a?.accent,characterRef:ref,visualStyle:input.visualStyle});
- const req:PlannerRequest={...prep,privateRoute:prep.privateRoute&&{provider:prep.privateRoute.provider,modelId:prep.privateRoute.modelId},kind,input,...(files.length?{attachments:files.map(f=>({tag:f.tag,kind:f.kind,...(f.role?{role:f.role,roleSource:f.roleSource??"user"}:{}),...(f.textExcerpt?{textExcerpt:f.textExcerpt}:{})}))}:{}),...(generations.length?{generations:generations.map(g=>({...g}))}:{}),...(history.length?{history}:{}),replyScript:script};
+ const req:PlannerRequest={...prep,privateRoute:prep.privateRoute&&{provider:prep.privateRoute.provider,modelId:prep.privateRoute.modelId},kind,input,...(files.length?{attachments:files.map(f=>({tag:f.tag,kind:f.kind,...(f.role?{role:f.role,roleSource:f.roleSource??"user"}:{}),...(f.textExcerpt?{textExcerpt:f.textExcerpt}:{})}))}:{}),...(generations.length?{generations:generations.map(g=>({...g}))}:{}),...(history.length?{history}:{}),replyScript:script,...(parsed.stagingOverride?{stagingOverride:parsed.stagingOverride}:{})};
  const turnId=randomUUID();
  const rec=(x:Partial<PrivateAuditRecord>)=>audit.record({turnId,at:now().toISOString(),skillRegistryVersion:SKILL_REGISTRY_VERSION,activeSkillIds:[...prep.activeSkillIds],reasoningTier:prep.privateReasoningTier,route:req.privateRoute,planner:"deterministic",...(input.style?{style:input.style}:{}),promptSha256:createHash("sha256").update(input.text).digest("hex"),...(routing?{routing}:{}),...(files.length?{attachments:files.map(f=>({tag:f.tag,...(f.role?{role:f.role,roleSource:f.roleSource??"user"}:{}),kind:f.kind,bytes:f.bytes,sha256:f.sha256}))}:{}),...x});
  let label:PrivateAuditRecord["planner"]=deps.planner&&deps.planner!==deterministicPlanner?"live":"deterministic",fallbackReason:string|undefined;
@@ -398,6 +403,17 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  if(!fin.e)throw new Error("deterministic planner produced an invalid plan");
  const {plan,corrections}=fin.e;
  // Provider-facing text names attachments by description; the public Persian text keeps what the user typed. A missing tag is a question, never a block.
+ // A scene the user arranged in the diagrams is applied exactly: the staging, a hard constraint naming it and the provider-facing direction.
+ if(parsed.aspectOverride&&plan.camera&&plan.camera.aspectRatio!==parsed.aspectOverride){
+  plan.camera={...plan.camera,aspectRatio:parsed.aspectOverride};
+  const en=" Aspect ratio "+parsed.aspectOverride+".";plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
+ }
+ if(parsed.stagingOverride){
+  const o=parsed.stagingOverride,fa=describeStagingFa(o),en=" "+describeStagingEn(o);
+  plan.staging=o;
+  if(!plan.hardConstraints.includes(fa))plan.hardConstraints=[...plan.hardConstraints,fa];
+  plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
+ }
  plan.mediaPrompt=rewriteMentions(plan.mediaPrompt,byTag,genTags).slice(0,3000);
  // plan inspection: LLM output never bypasses the safety layer
  for(const t of [plan.mediaPrompt,...plan.hardConstraints]){

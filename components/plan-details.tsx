@@ -2,7 +2,8 @@
 import type {ReactNode} from "react";
 import {Aperture,Camera,CircleHelp,Clapperboard,Film,Focus,Frame,Gauge,Lightbulb,ListChecks,Move,Paperclip,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Thermometer,Timer,type LucideIcon} from "lucide-react";
 import {Accordion,AccordionContent,AccordionItem,AccordionTrigger,Badge,Icon} from "@aleeforoughi/feather-react";
-import {StagingDiagrams} from "@/components/plan-diagrams";
+import {StagingEditor} from "@/components/staging-editor";
+import type {Staging} from "@/lib/creative-plan";
 import {STYLE_LABEL_FA,type PublicCreativePlan} from "@/lib/creative-plan";
 import {CHARACTER_VIEWS} from "@/lib/characters";
 import {displayTag} from "@/lib/attachments";
@@ -65,7 +66,8 @@ function Line({icon,label,children}:{icon:LucideIcon;label:string;children:React
  * diagrams, the camera or shot settings as icon chips and lines, and the hard constraints; preferences, identity lock, continuity, speech and the QA checklist
  * fold under «جزئیات بیشتر». All of it is Whoush's proposal, not verified model settings.
  */
-export function PlanStory({plan}:{plan:PublicCreativePlan}){
+export function PlanStory({plan,onApplyStaging,applyDisabled}:{plan:PublicCreativePlan;
+ /** When set, the scene diagrams are adjustable and a changed scene is sent back as a revision of this generation. */onApplyStaging?:(s:Staging,aspect:string)=>void;applyDisabled?:boolean}){
  const {camera,shot,identityLock,speech,references,staging}=plan;
  const more=plan.softPreferences.length+plan.continuity.locks.length+plan.continuity.antiTeleport.length+plan.qaChecklist.length>0||identityLock||speech;
  return <div className="flex flex-col gap-5">
@@ -81,7 +83,7 @@ export function PlanStory({plan}:{plan:PublicCreativePlan}){
     <bdi className="type-label">{displayTag(r.tag)}</bdi><span className="text-fg-secondary">{r.labelFa}{r.roleSource==="inferred"&&" (انتخاب هووش)"}</span></li>)}</ul>
   </Section>}
   {staging&&<Section icon={Frame} title="کارگردانی تصویر">
-   <StagingDiagrams staging={staging} aspectRatio={camera?.aspectRatio}/>
+   <StagingEditor staging={staging} aspectRatio={camera?.aspectRatio} onApply={onApplyStaging} disabled={applyDisabled}/>
   </Section>}
   {camera&&<Section icon={Camera} title="دوربین">
    <ul className="flex flex-wrap gap-2">

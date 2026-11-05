@@ -78,6 +78,10 @@ export const CreativeTurnInputSchema=z.object({
  /** The message answers Whoush's question: the brief is the original request plus the answer, and Whoush decides instead of asking again. */
  answersQuestion:z.boolean().optional(),
  history:z.array(HistoryTurnSchema).max(MAX_HISTORY_TURNS).optional(),
+ /** The scene the user arranged in the interactive diagrams (camera, framing, lights). Applied to the plan exactly; the media prompt and constraints follow it. */
+ stagingOverride:z.lazy(()=>StagingSchema.extend({subject:z.enum(SUBJECTS)})).optional(),
+ /** The aspect ratio the user chose in the frame diagram (images): applied to the camera plan. */
+ aspectOverride:z.string().regex(/^(?:1|2|3|4|5|9|16|21):(?:1|2|3|4|5|9|16)$/).optional(),
  generations:z.array(GenerationRefSchema).min(1).max(MAX_GENERATION_REFS).refine(l=>new Set(l.map(g=>g.tag)).size===l.length,"generation tags must be unique").optional()
 }).strict();
 export type CreativeTurnInput=z.infer<typeof CreativeTurnInputSchema>;
@@ -92,13 +96,17 @@ const ShotSchema=z.object({shotSize:s(120),cameraMovement:s(300),lens:s(120),tar
  * camera: `front` is from the camera's side, `left` is the camera's left (the left of the frame), `back` is behind the subject. A proposal, not provider settings.
  */
 export const CAMERA_ANGLES=["birds_eye","high","eye_level","low","worms_eye","dutch"] as const;
+/** What the scene is about, so the diagrams show a person, an object, an animal, a vehicle or an environment only. */
+export const SUBJECTS=["person","object","animal","vehicle","environment"] as const;
 export const SHOT_SIZES=["extreme_close_up","close_up","medium_close_up","medium","medium_full","full","wide","extreme_wide"] as const;
 export const LIGHT_ROLES=["key","fill","rim","background","practical"] as const;
 export const LIGHT_DIRECTIONS=["front","front_left","left","back_left","back","back_right","right","front_right","top"] as const;
 export const LIGHT_SOURCES=["sun","sky","window","softbox","led_panel","practical","neon","fire","moon","flash"] as const;
 const LightSchema=z.object({role:z.enum(LIGHT_ROLES),direction:z.enum(LIGHT_DIRECTIONS),height:z.enum(["low","eye","high"]),quality:z.enum(["soft","hard"]),source:z.enum(LIGHT_SOURCES),
  colorTemperatureK:z.number().int().min(1500).max(12000),colorHex:z.string().regex(/^#[0-9a-fA-F]{6}$/).optional()});
-export const StagingSchema=z.object({cameraAngle:z.enum(CAMERA_ANGLES),shotSize:z.enum(SHOT_SIZES),lights:z.array(LightSchema).min(1).max(4)});
+/** Where the subject sits in the frame (the crop): x from -1 (left edge) to 1 (right), y from -1 (top) to 1 (bottom); 0, 0 is centred. */
+const FramingSchema=z.object({x:z.number().min(-1).max(1),y:z.number().min(-1).max(1)});
+export const StagingSchema=z.object({subject:z.enum(SUBJECTS).optional(),cameraAngle:z.enum(CAMERA_ANGLES),shotSize:z.enum(SHOT_SIZES),framing:FramingSchema.optional(),lights:z.array(LightSchema).min(1).max(4)});
 export type Staging=z.infer<typeof StagingSchema>;
 export type StagingLight=Staging["lights"][number];
 export const CreativePlanSchema=z.object({
@@ -123,7 +131,7 @@ export type CreativePlan=z.infer<typeof CreativePlanSchema>;
 const ws=z.string(),wl=z.array(ws);
 const WireCameraSchema=z.object({look:ws,focalLengthMm:z.number().int().min(8).max(600),aperture:ws,shutter:ws,iso:z.number().int().min(50).max(25600),whiteBalanceK:z.number().int().min(2000).max(12000),framing:ws,lighting:ws,focus:ws,aspectRatio:ws}).strict();
 const WireShotSchema=z.object({shotSize:ws,cameraMovement:ws,lens:ws,targetFps:z.number().int().min(8).max(120),shutterAngle:z.number().int().min(1).max(360),durationSeconds:z.number().min(1).max(60),blocking:ws,continuityNotes:wl}).strict();
-const WireStagingSchema=z.object({cameraAngle:z.enum(CAMERA_ANGLES),shotSize:z.enum(SHOT_SIZES),lights:z.array(z.object({role:z.enum(LIGHT_ROLES),direction:z.enum(LIGHT_DIRECTIONS),
+const WireStagingSchema=z.object({subject:z.enum(SUBJECTS),cameraAngle:z.enum(CAMERA_ANGLES),shotSize:z.enum(SHOT_SIZES),framing:z.object({x:z.number().min(-1).max(1),y:z.number().min(-1).max(1)}).strict().nullable(),lights:z.array(z.object({role:z.enum(LIGHT_ROLES),direction:z.enum(LIGHT_DIRECTIONS),
  height:z.enum(["low","eye","high"]),quality:z.enum(["soft","hard"]),source:z.enum(LIGHT_SOURCES),colorTemperatureK:z.number().int().min(1500).max(12000),colorHex:ws.nullable()}).strict()).min(1).max(4)}).strict();
 export const CreativePlanWireSchema=z.object({
  intentSummaryFa:ws,mediaKind:z.enum(["image","video"]),mediaPrompt:ws,
@@ -150,7 +158,7 @@ export const CreativePlanAnthropicSchema=z.object({...anthropicBase,clarifyingQu
 /** The `extras` instruction for Anthropic, generated from the same enums the full schema enforces. */
 export const ANTHROPIC_EXTRAS_NOTE="Output format note: put reply and staging in the `extras` string field as compact JSON: "+
  '{"reply":{"text":string,"gif":one of '+JSON.stringify(GIF_MOODS)+' or null,"react":one of '+JSON.stringify(REACTION_EMOJIS)+' or null},'+
- '"staging":{"cameraAngle":one of '+JSON.stringify(CAMERA_ANGLES)+',"shotSize":one of '+JSON.stringify(SHOT_SIZES)+',"lights":[1 to 4 of {"role":one of '+JSON.stringify(LIGHT_ROLES)+
+ '"staging":{"subject":one of '+JSON.stringify(SUBJECTS)+',"cameraAngle":one of '+JSON.stringify(CAMERA_ANGLES)+',"shotSize":one of '+JSON.stringify(SHOT_SIZES)+',"framing":{"x":-1 to 1,"y":-1 to 1} (where the subject sits in the frame; 0,0 centred; omit when centred),"lights":[1 to 4 of {"role":one of '+JSON.stringify(LIGHT_ROLES)+
  ',"direction":one of '+JSON.stringify(LIGHT_DIRECTIONS)+',"height":one of ["low","eye","high"],"quality":one of ["soft","hard"],"source":one of '+JSON.stringify(LIGHT_SOURCES)+
  ',"colorTemperatureK":integer 1500 to 12000,"colorHex":"#rrggbb" only for coloured light, otherwise omit}]}}. Use exactly these values.';
 export function fromAnthropicPlan(raw:unknown):unknown{
@@ -193,7 +201,9 @@ export type PlannerRequest={systemInstructions:string;userText:string;activeSkil
  /** Recent turns of the chat (safety-checked), for continuity. `input.history` is stripped before planning. */
  history?:HistoryTurn[];
  /** The script the chat reply should use: Persian script, or Finglish when the brief is written in Finglish. */
- replyScript?:"fa"|"finglish"};
+ replyScript?:"fa"|"finglish";
+ /** The scene the user arranged in the diagrams; the planner sees it as data and the orchestrator applies it exactly. `input.stagingOverride` is stripped. */
+ stagingOverride?:Staging};
 export type PlannerResult={plan:unknown;usage?:unknown;modelId?:string};
 export type PrivatePlanner=(req:PlannerRequest)=>Promise<PlannerResult>|PlannerResult;
 /** `limit` says why: `rate` (429 / overloaded, with the provider's Retry-After when it sent one) or `quota` (the account is out of quota or credit: retrying soon does not help). Vendor-neutral, private. */
