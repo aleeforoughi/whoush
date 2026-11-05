@@ -35,6 +35,8 @@ const FRAME_FILL=0.78;
 const FRAME_FULLSCREEN=false;
 /** Beta: the «فهمیدم سوژهٔ اصلی…» check (confirm or pick another dominant subject) is off. */
 const SHOW_DOMINANT=false;
+/** Beta: the shot type buttons (normal, over the shoulder, point of view) are off; a brief can still ask for one. */
+const SHOW_SHOT_STYLES=false;
 let webglOk:boolean|undefined;
 /** Whether this browser can draw WebGL (checked once; the test context is released at once). */
 function hasWebGL():boolean{
@@ -268,7 +270,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     {editable&&<SliderRow label="زاویهٔ کج (داچ)" ends={["به چپ","به راست"]} valueText={rollOf(draft)?fa(Math.abs(Math.round(rollOf(draft))))+"° "+(rollOf(draft)>0?"به راست":"به چپ"):"صاف"}
      min={-30} max={30} step={1} value={rollOf(draft)} onChange={v=>setDraft(d=>{const {cameraRoll:_r,...rest}=d;void _r;
       return v===0?{...rest,cameraAngle:d.cameraAngle==="dutch"?snapElevation(elevationOf(d)):d.cameraAngle}:{...rest,cameraRoll:v,cameraAngle:"dutch"};})}/>}
-    {editable&&<div className="flex flex-wrap justify-center gap-1" role="radiogroup" aria-label="نوع نما">
+    {editable&&SHOW_SHOT_STYLES&&<div className="flex flex-wrap justify-center gap-1" role="radiogroup" aria-label="نوع نما">
      {([[undefined,"معمولی"],["ots","روی شانه (OTS)"],["pov","دید سوژه (POV)"]] as const).map(([v,l])=><Chip key={l} role="radio" on={draft.shotStyle===v}
       onClick={()=>setDraft(d=>{const {shotStyle:_s,...rest}=d;void _s;return v?{...rest,shotStyle:v}:rest;})}>{l}</Chip>)}</div>}
     </>}
