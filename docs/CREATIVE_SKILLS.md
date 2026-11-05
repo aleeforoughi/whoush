@@ -159,3 +159,9 @@ If the text sounds like an image request but there is a video attachment, or an 
 **Capability flags (unverified).** `motionReference`, `videoReference`, `startImage`, `endImage` and `videoContinuation` are model capabilities and requirements (`lib/catalog.ts`, `lib/router.ts`). No model has evidence for them (the agent-catalogue entries for Intone and Genjutsu do not claim them either), so every model records `false` and can never satisfy them; they are for when the media-review stop is lifted. Reference-image requirements already count every attached image.
 
 **PDF.** PDFs are accepted and counted, but their text is not extracted (no parser dependency yet); the plan states that the PDF has no effect.
+
+## Chat messages
+- **User messages** sit on the right (the start in RTL) in a filled grey bubble with no border (`bg-secondary`: dark grey in dark mode, light grey in light mode). Their files appear above the bubble as the same cards the user built in the chat input (`SentAttachmentCard`: same size, thumbnail, tag and role row with its icon), read-only: the thumbnail opens the viewer, the tag inserts itself into the prompt.
+- **Agent messages** are full-width plain text with no bubble. Only cards that carry an action (the live proposal, past proposals, no compatible model) have a container; a restricted request is plain text with an info icon.
+- **Action bar** under every message (user and agent): copy, «اجرای دوباره» and the time («۶ دقیقه پیش»; the full Jalali date and time in the tooltip). Icon-only, with each name in a tooltip and as the accessible name. It keeps its space but stays invisible until the pointer is over the message or focus is inside it; on touch screens (no hover) it is always shown.
+- **«اجرای دوباره»** sends the user message again as a new turn (for an agent message, the user message it answered), with its files and the current mode, style and character. The draft and the cards in the chat input are left alone.

@@ -167,3 +167,15 @@ export function filterAssets<T extends {kind:AttachmentKind;projectId:string}>(a
 export const sortAssets=<T extends {id:string;createdAt:string}>(assets:readonly T[]):T[]=>[...assets].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)||a.id.localeCompare(b.id));
 export const isAssetKind=(v:unknown):v is AttachmentKind=>(ATTACHMENT_KIND_IDS as readonly unknown[]).includes(v);
 export const isAssetRole=(v:unknown):v is AttachmentRole=>(ATTACHMENT_ROLE_IDS as readonly unknown[]).includes(v);
+/**
+ * The user message «اجرای دوباره» sends again: the message itself for a user message, the user message it answered (the nearest one before it) for an agent
+ * message. Undefined for an unknown id or an agent message with no user message before it.
+ */
+export function rerunSource<T extends {id:string;role:"user"|"agent"}>(messages:readonly T[],id:string):T|undefined{
+ const i=messages.findIndex(m=>m.id===id);
+ if(i<0)return undefined;
+ for(let j=i;j>=0;j--)if(messages[j].role==="user")return messages[j];
+ return undefined;
+}
+/** Each item once, by id, first occurrence kept (a message sent again carries the same files as the original). */
+export const uniqueById=<T extends {id:string}>(items:readonly T[]):T[]=>{const seen=new Set<string>();return items.filter(x=>!seen.has(x.id)&&(seen.add(x.id),true));};

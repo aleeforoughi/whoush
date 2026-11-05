@@ -1,5 +1,5 @@
 "use client";
-import {Fragment,useEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
+import {useEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
 import Link from "next/link";
 import {useRouter,useSearchParams} from "next/navigation";
 import {ArrowUp,CircleAlert,Clapperboard,Info,LoaderCircle,Upload as UploadIcon,UserRound,X} from "lucide-react";
@@ -10,10 +10,11 @@ import {CharacterDialog} from "@/components/character-dialog";
 import {InsertMenu} from "@/components/insert-menu";
 import {UploadSlotCard} from "@/components/upload-slot";
 import {SLOTS_FULL_FA,addSlot,composerCards,fillSlotWith,forgetAttachment,removeSlot,reserveSlotTag,slotFor,tagsInUse,uploadRejection,type Upload,type UploadSlot} from "@/lib/upload-slots";
-import {AttachmentCard} from "@/components/attachment-card";
+import {AttachmentCard,SentAttachmentCard} from "@/components/attachment-card";
+import {MessageActions,useNow} from "@/components/message-actions";
 import {ModeControl,useMode} from "@/components/mode-control";
 import {StyleControl,useStyleSetting} from "@/components/style-control";
-import {AttachmentChip,type AttachmentPatch} from "@/components/attachment-chip";
+import type {AttachmentPatch} from "@/components/attachment-chip";
 import {MediaViewer,type ViewerItem} from "@/components/media-viewer";
 import {MentionTextarea} from "@/components/mention-textarea";
 import {MessageText} from "@/components/message-text";
@@ -24,7 +25,7 @@ import {getLocalCharacter,listLocalCharacters} from "@/lib/character-store";
 import {characterCoverage,characterUsability,type CharacterProfile} from "@/lib/characters";
 import {fa} from "@/lib/format";
 import {STORAGE_FULL_FA,getProject,listAssets,saveAsset,saveProject} from "@/lib/project-store";
-import {MAX_MESSAGES,assetToAttachment,attachmentToAsset,autoTitle,jobStateFa,type Project,type StoredMessage} from "@/lib/projects";
+import {MAX_MESSAGES,assetToAttachment,attachmentToAsset,autoTitle,jobStateFa,rerunSource,uniqueById,type Project,type StoredMessage} from "@/lib/projects";
 import type {GenerationStyle} from "@/lib/creative-plan";
 import type {AgentPreference} from "@/lib/types";
 import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,acceptFor,bumpTagCounters,insertMention,lowestFreeTag,newTagCounters,parseMentions,tooManyFa,toWireAttachment,validateAttachmentSet,withRole,withoutRole,type AttachmentKind,type AttachmentRole,type LocalAttachment} from "@/lib/attachments";
@@ -116,7 +117,9 @@ export function Studio(){
  const character=characters.find(c=>c.id===characterId)??null;
  useEffect(()=>{latest.current={messages,mode,style,character};});
  /** Every attachment of this conversation that still exists: sent messages first, then the tray. */
- const conversation=[...messages.flatMap(m=>m.attachments??[]),...attachments];
+ const conversation=uniqueById([...messages.flatMap(m=>m.attachments??[]),...attachments]);
+ /** For the «۶ دقیقه پیش» under each message. */
+ const now=useNow();
  const byTag=new Map(conversation.map(a=>[a.tag,a]));
  /** Keep ?project= and ?character= in step with the state without reloading or adding history entries. */
  function syncUrl(project:string|null,character:string|null){
@@ -365,12 +368,22 @@ export function Studio(){
   dirty.current=false;window.clearTimeout(timer.current);
   newChat();
  }
- async function send(e:FormEvent){
-  e.preventDefault();const text=draft.trim();if(!text||busy||reading||loadingProject)return;
+ function send(e:FormEvent){
+  e.preventDefault();const text=draft.trim();if(!text)return;
+  void runTurn(text,attachments,true);
+ }
+ /** «اجرای دوباره» under a message: sends that user message (or the one an agent message answered) again as a new turn, with its files and today's settings. */
+ function rerun(id:string){
+  const source=rerunSource(messages,id);
+  if(source)void runTurn(source.text,source.attachments??[],false);
+ }
+ /** One turn: a user message with `files` goes to the agent. From the composer (`fromComposer`) the draft, cards and tray clear; a rerun leaves them alone. */
+ async function runTurn(text:string,files:LocalAttachment[],fromComposer:boolean){
+  if(!text||busy||reading||loadingProject)return;
   if(messages.length>=MAX_MESSAGES-4){setError(LIMIT_FA);return;}
-  // This message's new files plus any earlier file it mentions as #تصویر-۱ or @image1 (metadata only, as before).
-  const mentioned=parseMentions(text),inTray=new Set(attachments.map(a=>a.id));
-  const outgoing=[...messages.flatMap(m=>m.attachments??[]).filter(a=>mentioned.includes(a.tag)&&!inTray.has(a.id)),...attachments];
+  // This message's own files plus any earlier file it mentions as #تصویر-۱ or @image1 (metadata only, as before).
+  const mentioned=parseMentions(text),own=new Set(files.map(a=>a.id));
+  const outgoing=uniqueById([...messages.flatMap(m=>m.attachments??[]).filter(a=>mentioned.includes(a.tag)&&!own.has(a.id)),...files]);
   const fits=validateAttachmentSet(outgoing);
   if(!fits.ok){setError(fits.error);return;}
   // The profile may have been edited or withdrawn in another tab: send what is stored now, and only if it is still usable.
@@ -385,8 +398,9 @@ export function Studio(){
    const fresh=current;setCharacters(list=>list.map(c=>c.id===fresh.id?fresh:c));
   }
   // The tray clears, but the files stay (with their object URLs) on the sent message; they are released on new chat, project switch or unmount.
-  const sent=attachments,firstText=messages.find(m=>m.role==="user")?.text??text,characterId=current?.id??null;
-  setDraft("");setError("");setNotice("");setBusy(true);setProposal(null);setLiveId(null);setAttachments([]);setSlots([]);setProblems([]);setAnnounce("");
+  const sent=files,firstText=messages.find(m=>m.role==="user")?.text??text,characterId=current?.id??null;
+  if(fromComposer){setDraft("");setAttachments([]);setSlots([]);setProblems([]);}
+  setError("");setNotice("");setBusy(true);setProposal(null);setLiveId(null);setAnnounce("");
   setMessages(m=>[...m,item({role:"user",text,...(sent.length?{attachments:sent}:{})})]);touch();
   const characterRef=current?{id:current.id,name:current.name,angles:characterCoverage(current.references).uploaded,version:current.version}:undefined;
   try{
@@ -502,23 +516,37 @@ export function Studio(){
      <div aria-live="polite" aria-label="گفت‌وگو" role="log" className="flex flex-col gap-4 p-4">
       <div className="type-body-sm text-fg-primary"><span className="sr-only">هووش: </span>{opening}</div>
       {loadingProject&&<p role="status" className="type-body-sm text-fg-secondary">در حال باز کردن پروژه…</p>}
-      {messages.map(m=><Fragment key={m.id}>
-       {m.kind==="restricted"
-        ?<Alert role="status">
-         <Icon icon={Info} aria-hidden="true"/>
-         <AlertTitle>این درخواست قابل انجام نیست</AlertTitle>
-         <AlertDescription>{m.text}</AlertDescription>
-        </Alert>
-        :<div className={m.role==="user"?"max-w-[85%] self-end rounded-card bg-surface-subtle px-4 py-3 type-body-sm text-fg-primary":"type-body-sm text-fg-primary"}>
-         <span className="sr-only">{m.role==="user"?"شما: ":"هووش: "}</span>{m.role==="user"?<MessageText text={m.text} attachments={byTag} onOpen={openViewer}/>:m.text}
-         {m.kind==="job"&&<> <Badge variant="outline">{jobStateFa(m.snapshot.state)}</Badge></>}
-         {m.attachments&&<ul aria-label="پیوست‌های این پیام" className="mt-2 flex flex-wrap gap-2">{m.attachments.map(a=><AttachmentChip key={a.id} item={a} onPreview={()=>openViewer(a)} onMention={()=>mentionTag(a.tag)}/>)}</ul>}
-        </div>}
-       {m.kind==="proposal"&&(proposal&&m.id===liveId
-        ?<ProposalCard proposal={proposal} selected={selected} onSelect={setSelected} busy={busy} onApprove={()=>void approve()}/>
-        :<PastProposalCard snapshot={m.snapshot}/>)}
-       {m.kind==="no_model"&&<NoModelCard result={m.snapshot}/>}
-      </Fragment>)}
+      {/* User messages: on the right (the start in RTL), in a filled grey bubble with no border, their files above it as the same cards they were in the chat
+          input. Agent messages: full-width plain text; only the cards that carry an action (proposal, no model) have a container. Each message gets the hover
+          action bar (copy, run again, time). */}
+      {messages.map(m=>{
+       const actions=<MessageActions text={m.text} at={m.at} now={now} onRerun={()=>rerun(m.id)} rerunDisabled={busy||reading||loadingProject}/>;
+       if(m.role==="user")return <div key={m.id} className="group flex flex-col items-start gap-2">
+        {m.attachments&&m.attachments.length>0&&<ul aria-label="پیوست‌های این پیام" className="flex max-w-full flex-wrap gap-2">
+         {m.attachments.map(a=><SentAttachmentCard key={a.id} item={a} onPreview={()=>openViewer(a)} onMention={()=>mentionTag(a.tag)}/>)}
+        </ul>}
+        <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-card bg-secondary px-4 py-3 type-body-sm text-fg-primary">
+         <span className="sr-only">شما: </span><MessageText text={m.text} attachments={byTag} onOpen={openViewer}/>
+        </div>
+        <div className="-mt-1">{actions}</div>
+       </div>;
+       return <div key={m.id} className="group flex flex-col gap-3">
+        {m.kind==="restricted"
+         ?<div role="status" className="flex items-start gap-2 type-body-sm text-fg-primary">
+          <Icon icon={Info} size={16} aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-fg-secondary"/>
+          <p className="min-w-0 whitespace-pre-wrap break-words"><span className="sr-only">هووش: </span><span className="type-label">این درخواست قابل انجام نیست.</span> {m.text}</p>
+         </div>
+         :<p className="whitespace-pre-wrap break-words type-body-sm text-fg-primary">
+          <span className="sr-only">هووش: </span>{m.text}
+          {m.kind==="job"&&<> <Badge variant="outline" className="align-middle">{jobStateFa(m.snapshot.state)}</Badge></>}
+         </p>}
+        {m.kind==="proposal"&&(proposal&&m.id===liveId
+         ?<ProposalCard proposal={proposal} selected={selected} onSelect={setSelected} busy={busy} onApprove={()=>void approve()}/>
+         :<PastProposalCard snapshot={m.snapshot}/>)}
+        {m.kind==="no_model"&&<NoModelCard result={m.snapshot}/>}
+        <div className="-mt-2">{actions}</div>
+       </div>;
+      })}
       <div ref={endRef}/>
      </div>
     </ScrollArea>

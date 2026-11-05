@@ -29,13 +29,28 @@ export function CardRemove({label,onClick}:{label:string;onClick:()=>void}){
   <Icon icon={X} size={16} aria-hidden="true"/>
  </button>;
 }
-/** The role row: the role's icon at the start (right in RTL), the role name, and the delete button at the end (left in RTL). No frame around the role. */
-export function CardRoleRow({icon,label,muted,remove}:{icon:InsertIconKey;label:string;muted?:boolean;remove:{label:string;onClick:()=>void}}){
+/** The role row: the role's icon at the start (right in RTL), the role name, and the delete button at the end (left in RTL); no delete button on a sent card. No frame around the role. */
+export function CardRoleRow({icon,label,muted,remove}:{icon:InsertIconKey;label:string;muted?:boolean;remove?:{label:string;onClick:()=>void}}){
  return <span className={CARD_FOOT}>
   <Icon icon={INSERT_ICONS[icon]} size={16} aria-hidden="true" className="shrink-0 text-fg-secondary"/>
   <span className={"min-w-0 flex-1 truncate type-label "+(muted?"text-fg-secondary":"text-fg-primary")}>{label}</span>
-  <CardRemove {...remove}/>
+  {remove&&<CardRemove {...remove}/>}
  </span>;
+}
+
+/** The card's media area: the thumbnail (a button that opens the full-screen viewer for images and video), or the kind's icon and the file name. */
+function CardMedia({item:a,onPreview}:{item:LocalAttachment;onPreview:()=>void}){
+ const frame=CARD_MEDIA+" bg-surface-hover text-fg-secondary";
+ const visual=a.kind==="image"&&a.previewUrl
+  // eslint-disable-next-line @next/next/no-img-element -- a local blob: URL; next/image cannot optimize it
+  ?<img src={a.previewUrl} alt="" className="size-full object-cover"/>
+  :a.kind==="video"&&a.previewUrl
+   ?<><video src={a.previewUrl+"#t=0.1"} preload="metadata" muted playsInline aria-hidden="true" tabIndex={-1} className="size-full object-cover"/>
+    <span className="absolute inset-0 flex items-center justify-center"><span className="flex size-8 items-center justify-center rounded-control bg-background/70 text-fg-primary"><Icon icon={Play} size={16} aria-hidden="true"/></span></span></>
+   :<span className="flex min-w-0 flex-col items-center gap-1 px-3 text-center"><Icon icon={KIND_ICONS[a.kind]} size={32} aria-hidden="true"/><span className="max-w-full truncate type-caption" title={a.name}><bdi>{a.name}</bdi></span></span>;
+ return canPreview(a)
+  ?<button type="button" onClick={onPreview} data-viewer-open={a.id} aria-label={"نمایش تمام‌صفحه "+displayTag(a.tag)} title={a.name} className={frame+" motion-hover not-disabled:hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"}>{visual}</button>
+  :<span className={frame}>{visual}</span>;
 }
 
 /**
@@ -50,18 +65,8 @@ export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention}:{i
  const lip=a.role==="lip_sync"?a.speech:undefined;
  const set=(patch:Partial<AttachmentSpeech>)=>a.speech&&onChange({speech:{...a.speech,...patch}});
  const remove={label:"حذف "+a.name,onClick:onRemove};
- const frame=CARD_MEDIA+" bg-surface-hover text-fg-secondary";
- const visual=a.kind==="image"&&a.previewUrl
-  // eslint-disable-next-line @next/next/no-img-element -- a local blob: URL; next/image cannot optimize it
-  ?<img src={a.previewUrl} alt="" className="size-full object-cover"/>
-  :a.kind==="video"&&a.previewUrl
-   ?<><video src={a.previewUrl+"#t=0.1"} preload="metadata" muted playsInline aria-hidden="true" tabIndex={-1} className="size-full object-cover"/>
-    <span className="absolute inset-0 flex items-center justify-center"><span className="flex size-8 items-center justify-center rounded-control bg-background/70 text-fg-primary"><Icon icon={Play} size={16} aria-hidden="true"/></span></span></>
-   :<span className="flex min-w-0 flex-col items-center gap-1 px-3 text-center"><Icon icon={KIND_ICONS[a.kind]} size={32} aria-hidden="true"/><span className="max-w-full truncate type-caption" title={a.name}><bdi>{a.name}</bdi></span></span>;
  return <li id={"attachment-"+a.id} className={CARD_FRAME+" border-line-primary bg-surface-subtle"}>
-  {canPreview(a)
-   ?<button type="button" onClick={onPreview} data-viewer-open={a.id} aria-label={"نمایش تمام‌صفحه "+displayTag(a.tag)} title={a.name} className={frame+" motion-hover not-disabled:hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"}>{visual}</button>
-   :<span className={frame}>{visual}</span>}
+  <CardMedia item={a} onPreview={onPreview}/>
   <span className={CARD_META} title={a.name+" · "+faBytes(a.bytes)}>
    <TagBadge tag={a.tag} onMention={onMention}/>
    {a.durationSeconds!==undefined&&<span className="type-caption text-fg-secondary"><bdi>{faDuration(a.durationSeconds)}</bdi></span>}
@@ -86,5 +91,26 @@ export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention}:{i
     <SelectContent>{ACCENTS.map(l=><SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>)}</SelectContent>
    </Select>
   </>}
+ </li>;
+}
+
+/**
+ * A file in a sent message, as the same card the user built in the chat input (same size, thumbnail, tag and role row with its icon), read-only: the thumbnail
+ * opens the viewer, the tag inserts itself into the prompt, and there is no delete button or role menu. A file with no role reads «خودکار»; a lip-sync audio
+ * adds its language and accent.
+ */
+export function SentAttachmentCard({item:a,onPreview,onMention}:{item:LocalAttachment;onPreview:()=>void;onMention:()=>void}){
+ const media=isMediaKind(a.kind),lip=a.role==="lip_sync"?a.speech:undefined;
+ const label=(list:readonly {value:string;label:string}[],v:string)=>list.find(x=>x.value===v)?.label??v;
+ return <li className={CARD_FRAME+" border-line-primary bg-surface-subtle"}>
+  <CardMedia item={a} onPreview={onPreview}/>
+  <span className={CARD_META} title={a.name+" · "+faBytes(a.bytes)}>
+   <TagBadge tag={a.tag} onMention={onMention}/>
+   {a.durationSeconds!==undefined&&<span className="type-caption text-fg-secondary"><bdi>{faDuration(a.durationSeconds)}</bdi></span>}
+  </span>
+  {media
+   ?<CardRoleRow icon={a.role?roleIconKey(a.kind,a.role):"auto"} label={a.role?roleLabelFa(a.role,a.kind):CARD_AUTO_ROLE_FA}/>
+   :<CardRoleRow icon="document" label={a.name}/>}
+  {lip&&<span className={CARD_FOOT+" type-caption text-fg-secondary"}>{label(LANGUAGES,lip.language)} · {label(ACCENTS,lip.accent)}</span>}
  </li>;
 }
