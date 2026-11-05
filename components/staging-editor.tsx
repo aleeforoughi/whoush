@@ -1,6 +1,6 @@
 "use client";
 import {useEffect,useId,useRef,useState,type KeyboardEvent,type PointerEvent,type ReactNode} from "react";
-import {Box,ChevronDown,Plus,RotateCcw,Trash2,X} from "lucide-react";
+import {Box,ChevronDown,Lock,LockOpen,Plus,RotateCcw,Trash2,X} from "lucide-react";
 import {Button,Icon} from "@aleeforoughi/feather-react";
 import {FOCUS_DETAILS,LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
@@ -311,22 +311,6 @@ function OrbitView({staging,editable,onOrbit}:{staging:Staging;editable:boolean;
  </svg>;
 }
 
-/**
- * The selection's tag in the frame («#ماشین-قرمز», «#کادر»), Figma-like small blue text, with a small lock before it: locked, clicks select nothing else
- * (no accidental selection) until it is unlocked. The lock has a larger invisible touch target than it looks.
- */
-function SelLabel({x,y,text,locked,onLock}:{x:number;y:number;text:string;locked:boolean;onLock?:(on:boolean)=>void}){
- const lx=x,ly=y-0.4,toggle=()=>onLock?.(!locked);
- return <g>
-  {onLock&&<g role="button" tabIndex={0} aria-pressed={locked} aria-label={(locked?"باز کردن قفل انتخاب ":"قفل کردن انتخاب ")+text} className="cursor-pointer touch-none outline-none focus-visible:[&>rect:last-child]:stroke-primary"
-   onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();toggle();}} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();e.stopPropagation();toggle();}}}>
-   <rect x={lx+0.3} y={ly-3} width={3.6} height={2.9} rx={0.5} className={locked?"fill-primary stroke-primary":"stroke-primary"} fill={locked?undefined:"none"} strokeWidth={0.6}/>
-   <path d={"M"+(lx+1.1)+" "+(ly-3)+" V"+(ly-4.1)+" a1 1 0 0 1 2 0"+(locked?" V"+(ly-3):"")} fill="none" className="stroke-primary" strokeWidth={0.6}/>
-   <rect x={lx-2.5} y={ly-8} width={10} height={10} fill="transparent" strokeWidth={0.4}/>
-  </g>}
-  <text x={onLock?lx+5.6:lx} y={y} direction="rtl" textAnchor="end" fontSize={4.6} className="pointer-events-none fill-primary font-medium" aria-hidden="true">{text}</text>
- </g>;
-}
 /** One labelled view tile (the camera's side and top views): bordered, the label above the drawing. */
 function Tile({label,children}:{label:string;children:ReactNode}){
  return <div className="flex min-w-0 flex-col gap-1 rounded-card border border-line-secondary p-2">
@@ -398,7 +382,12 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   commit({x:snapAxis(fr.x+d[0]),y:snapAxis(fr.y+d[1])});
  };
  const third=(on:boolean,neg:boolean,i:number)=>on&&(i===1)===neg;
- return <svg ref={svg} viewBox={"-2 -2 "+(W+4)+" "+(H+4)} {...(editable&&onZoom?pinch:{})} className="mx-auto block w-full touch-none select-none text-fg-primary" style={{aspectRatio:String((W+4)/(H+4)),maxWidth:Math.round(320*(W+4)/(H+4))+"px"}} aria-hidden={!editable}
+ // The selection's tag (Figma-like, on the top-left of the selected prop's box, or inside the frame's top-left for «#کادر») with its lock, as HTML over the drawing.
+ const maxW=Math.round(320*(W+4)/(H+4));
+ const tag=!editable?undefined:sel!=null&&base[sel]?(()=>{const p=base[sel],a=at(p),wf=spriteW(sprite(p),a.h);
+  const [lx,ty]=cam.toScreen(a.x-wf/2-1,a.y-a.h-1);return {x:Math.max(1,Math.min(W-52,lx)),y:Math.max(0,Math.min(H-2,ty)),above:ty>12,text:propTags(base,true)[sel]};})()
+  :{x:3,y:3,above:false,text:"#کادر"};
+ const svgEl=<svg ref={svg} viewBox={"-2 -2 "+(W+4)+" "+(H+4)} {...(editable&&onZoom?pinch:{})} className="mx-auto block w-full touch-none select-none text-fg-primary" style={{aspectRatio:String((W+4)/(H+4)),maxWidth:Math.round(320*(W+4)/(H+4))+"px"}} aria-hidden={!editable}
   onPointerMove={e=>{
    const u=unit();
    if(move){const p0=at({...base[move.i],x:move.x0,z:move.z0,y:0});const g=ground(p0.x+(e.clientX-move.px)*u.sx/k,p0.ground+(e.clientY-move.py)*u.sy/k);if(Number.isFinite(g.x)&&Number.isFinite(g.z))setMove({...move,...within({...base[move.i],z:g.z},g)});return;}
@@ -441,16 +430,24 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
     <line vectorEffect="non-scaling-stroke" x1={0} x2={W} y1={H*i/3} y2={H*i/3} className={third(onY,fr.y<0,i)?"stroke-primary":""} stroke={third(onY,fr.y<0,i)?undefined:"currentColor"} strokeOpacity={third(onY,fr.y<0,i)?1:.3}/>
    </g>)}
   </g>
-  {/* The selected prop's tag, Figma-like: small blue text on the top-left corner of its selection box, constant size on screen, kept inside the frame. */}
-  {editable&&sel!=null&&base[sel]&&(()=>{const p=base[sel],a=at(p),wf=spriteW(sprite(p),a.h);
-   const [lx,ty]=cam.toScreen(a.x-wf/2-1,a.y-a.h-1),x=Math.max(1,Math.min(W-30,lx)),y=Math.max(5.5,Math.min(H-1,ty-1.5));
-   return <SelLabel x={x} y={y} text={propTags(base,true)[sel]} locked={locked} onLock={onLock}/>;})()}
   {/* With no prop selected, the frame itself is: a blue outline and its «#کادر» tag, and the controls below are the frame's. */}
   {editable&&(sel==null||!base[sel])
    ?<><rect width={W} height={H} rx={6} fill="none" className="pointer-events-none stroke-primary" strokeWidth={1.6} vectorEffect="non-scaling-stroke"/>
-    <SelLabel x={3} y={7} text="#کادر" locked={locked} onLock={onLock}/></>
+</>
    :<rect width={W} height={H} rx={6} fill="none" stroke="currentColor" strokeOpacity=".75" strokeWidth={1.2} vectorEffect="non-scaling-stroke" className="pointer-events-none"/>}
  </svg>;
+ if(!tag)return svgEl;
+ return <div className="relative mx-auto w-full" style={{maxWidth:maxW+"px"}}>
+  {svgEl}
+  {/* Tag text, then (on its right) the lock in a small button: outline when unlocked, filled blue with a white lock when locked. */}
+  <div dir="rtl" className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
+   style={{left:((tag.x+2)/(W+4)*100)+"%",top:((tag.y+2)/(H+4)*100)+"%"}}>
+   {onLock&&<button type="button" aria-pressed={locked} aria-label={(locked?"باز کردن قفل انتخاب ":"قفل کردن انتخاب ")+tag.text} onClick={()=>onLock(!locked)}
+    className={"pointer-events-auto flex size-5 items-center justify-center rounded-control border border-primary motion-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring "+(locked?"bg-primary text-primary-foreground":"bg-background/70 text-primary hover:bg-surface-hover")}>
+    <Icon icon={locked?Lock:LockOpen} size={16} aria-hidden="true" className={"size-3! "+(locked?"fill-current":"")}/></button>}
+   <bdi className="whitespace-nowrap text-[11px] font-medium leading-none text-primary">{tag.text}</bdi>
+  </div>
+ </div>;
 }
 
 /**
