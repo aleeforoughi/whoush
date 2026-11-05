@@ -44,13 +44,21 @@ export function kelvinToHex(kelvin:number):string{
 /** How strong a coloured light's colour is when unset (a clear colour, not fully saturated). */
 export const TINT_DEFAULT=0.7;
 export const tintOf=(l:StagingLight)=>l.tint??TINT_DEFAULT;
-/** Two colours mixed: `k` of the way from `a` to `b`. */
-const mixHex=(a:string,b:string,k:number)=>"#"+[1,3,5].map(i=>Math.round(parseInt(a.slice(i,i+2),16)*(1-k)+parseInt(b.slice(i,i+2),16)*k).toString(16).padStart(2,"0")).join("");
-/** The light's colour as drawn: its white at its temperature, or its colour, mixed in as strongly as its tint says. */
-export const lightHex=(l:StagingLight)=>l.colorHex?mixHex(kelvinToHex(l.colorTemperatureK),l.colorHex.toLowerCase(),0.3+0.7*tintOf(l)):kelvinToHex(l.colorTemperatureK);
-/** A tint in words: how strong the colour is. */
-export const tintFa=(t:number)=>t<0.35?"کم‌رنگ":t<0.7?"متوسط":"پررنگ";
-const tintEn=(t:number)=>t<0.35?"a subtle":t<0.7?"a clear":"a saturated";
+/** A colour's hue (degrees). */
+const hueOf=(hex:string)=>{const [r,g,b]=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255),mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;if(d===0)return 0;
+ const h=mx===r?((g-b)/d)%6:mx===g?(b-r)/d+2:(r-g)/d+4;return ((h*60)+360)%360;};
+/** A fully saturated colour of hue `h` at lightness `l` (0 to 1). */
+const hslHex=(h:number,l:number)=>{const c=(1-Math.abs(2*l-1)),x=c*(1-Math.abs((h/60)%2-1)),m=l-c/2,[r,g,b]=h<60?[c,x,0]:h<120?[x,c,0]:h<180?[0,c,x]:h<240?[0,x,c]:h<300?[x,0,c]:[c,0,x];
+ return "#"+[r,g,b].map(v=>Math.round((v+m)*255).toString(16).padStart(2,"0")).join("");};
+/** A coloured light at a tint: always fully saturated, from a bright neon glow (light, never washed out) to a deep, strong colour. */
+// An orange's bright end stops sooner: lighter, it would read as warm white light (tungsten, a candle) instead of a coloured one.
+export const tintHex=(colorHex:string,tint:number)=>{const h=hueOf(colorHex.toLowerCase()),top=h>=15&&h<=50?0.6:0.72,t=Math.max(0,Math.min(1,tint));
+ return hslHex(h,top-(top-0.46)*t);};
+/** The light's colour as drawn: its white at its temperature, or its colour at its tint. */
+export const lightHex=(l:StagingLight)=>l.colorHex?tintHex(l.colorHex,tintOf(l)):kelvinToHex(l.colorTemperatureK);
+/** A tint in words: from a bright, light colour to a deep, strong one. */
+export const tintFa=(t:number)=>t<0.35?"روشن":t<0.7?"متوسط":"پررنگ";
+const tintEn=(t:number)=>t<0.35?"a bright, neon-like":t<0.7?"a vivid":"a deep, strongly saturated";
 /** A short Persian word for the colour of a light, for the legend: گرم, خنثی, سرد, or رنگی for a gel or neon colour. */
 export function lightToneFa(l:StagingLight):string{
  if(l.colorHex)return "رنگی";
@@ -141,8 +149,9 @@ export const SUBJECT_ASSETS:Partial<Record<NonNullable<Staging["subject"]>,{side
 }
 export const LIGHT_ASSETS:Record<StagingLight["source"],string>={sun:"light-sun",sky:"light-sky",window:"light-window",softbox:"light-softbox",led_panel:"light-led-panel",practical:"light-practical",neon:"light-neon",fire:"light-fire",moon:"light-moon",flash:"light-flash"};
 /** Gel colours offered for a light (none means its colour temperature). */
-/** The light colours offered: red, a deep orange (clearly coloured, never mistaken for warm tungsten or candle light), green, blue and violet. */
-export const GEL_COLORS=["#ff5a5f","#ff6a00","#3ddc97","#4f8cff","#b07cff"] as const;
+/** The light colours offered, vivid: red, a deep orange (clearly coloured, never mistaken for warm tungsten or candle light), green, blue and violet. Their
+ * tint (lib/staging.ts, lightHex) runs each from a bright neon glow to a deep, strong colour. */
+export const GEL_COLORS=["#ff1744","#ff6d00","#00e676","#2979ff","#d500f9"] as const;
 /**
  * What the user changed in the diagrams, as short Persian lines for the message sent to Whoush («زاویهٔ دوربین: هم‌سطح چشم ← زاویهٔ پایین»). Lights are compared by
  * position in the list; added and removed lights are named. Empty when nothing changed.

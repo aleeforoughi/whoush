@@ -425,8 +425,10 @@ test("the place is detected from the brief and sets the background's distance: a
 test("a coloured light's tint: how strong its colour is reaches the drawing, Whoush and the provider",async()=>{
  const {lightHex,describeStagingEn,describeStagingFa,describeStagingChangesFa}=await import("../lib/staging");
  const l={role:"key" as const,direction:"left" as const,height:"high" as const,quality:"soft" as const,source:"softbox" as const,colorTemperatureK:5600,colorHex:"#ff5a5f"};
- assert.equal(lightHex({...l,tint:1}),"#ff5a5f");assert.notEqual(lightHex({...l,tint:0}),"#ff5a5f");
+ // Always fully saturated: light at a low tint (a bright glow, not washed out toward white), deep at a high one.
+ const lum=(h:string)=>[1,3,5].reduce((a,i)=>a+parseInt(h.slice(i,i+2),16),0),sat=(h:string)=>{const v=[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));return Math.max(...v)-Math.min(...v);};
+ assert.ok(lum(lightHex({...l,tint:0}))>lum(lightHex({...l,tint:1})));assert.ok(sat(lightHex({...l,tint:0}))>=110&&sat(lightHex({...l,tint:1}))>=230);
  const s={...base,lights:[{...l,tint:0.2}]};
- assert.match(describeStagingEn(s),/a subtle #ff5a5f colour gel/);assert.match(describeStagingFa(s),/رنگ #ff5a5f \(کم‌رنگ\)/);
- assert.ok(describeStagingChangesFa(s,{...s,lights:[{...l,tint:0.9}]}).some(x=>x.includes("شدت رنگ کم‌رنگ ← پررنگ")));
+ assert.match(describeStagingEn(s),/a bright, neon-like #ff5a5f colour gel/);assert.match(describeStagingFa(s),/رنگ #ff5a5f \(روشن\)/);
+ assert.ok(describeStagingChangesFa(s,{...s,lights:[{...l,tint:0.9}]}).some(x=>x.includes("شدت رنگ روشن ← پررنگ")));
 });
