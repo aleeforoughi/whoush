@@ -193,9 +193,9 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
   <div className="flex min-w-0 flex-col gap-3 rounded-card border border-line-secondary bg-surface-subtle p-2">
   <button type="button" aria-expanded={open} aria-controls={bodyId} onClick={()=>setOpen(o=>!o)}
    aria-label={"بوم، تنظیمات پیشرفته: "+CAMERA_ANGLE_FA[draft.cameraAngle]+"، "+SHOT_SIZE_FA[draft.shotSize]+"، "+(draft.lights.length===1?"یک نور":fa(draft.lights.length)+" نور")+(changed?"، تغییر کرده":"")}
-   className="flex w-full flex-col gap-3 rounded-card p-3 text-start motion-hover hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+   className={"flex w-full flex-col gap-3 rounded-card p-3 text-start motion-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring "+(open?"bg-surface-selected":"hover:bg-surface-hover")}>
    <span className="flex items-center gap-2 px-1">
-    <Icon icon={Box} size={16} aria-hidden="true" className="size-4 shrink-0 text-fg-secondary"/>
+    <Icon icon={Box} size={16} aria-hidden="true" className={"size-4 shrink-0 "+(open?"text-primary":"text-fg-secondary")}/>
     <span className="type-label text-fg-primary">بوم</span><span className="type-caption text-fg-secondary">{full||!focused?"تنظیمات پیشرفته":"تنظیم "+focus!.map(f=>CANVAS_SECTION_FA[f]).join(" و ")}</span>
     {changed&&<span className="rounded-control bg-surface-selected px-2 py-0.5 type-caption text-fg-primary">تغییر کرده</span>}
     <Icon icon={ChevronDown} size={16} aria-hidden="true" className={"ms-auto size-4 shrink-0 text-fg-secondary transition-transform motion-reduce:transition-none "+(open?"rotate-180":"")}/>

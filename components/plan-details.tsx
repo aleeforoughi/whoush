@@ -124,7 +124,7 @@ export function PlanStory({plan,onStagingChange,focus}:{plan:PublicCreativePlan;
   </Section>}
   {more&&<Accordion>
    <AccordionItem value="more" className="border-b-0">
-    <AccordionTrigger className="py-0"><span className="flex items-center gap-2"><Icon icon={ListChecks} size={16} aria-hidden="true" className="size-4 text-fg-secondary"/>جزئیات بیشتر</span></AccordionTrigger>
+    <AccordionTrigger className="rounded-card px-3 py-2.5 hover:no-underline hover:bg-surface-hover aria-expanded:bg-surface-selected aria-expanded:hover:bg-surface-selected"><span className="flex items-center gap-2"><Icon icon={ListChecks} size={16} aria-hidden="true" className="size-4 text-fg-secondary group-aria-expanded/accordion-trigger:text-primary"/>جزئیات بیشتر</span></AccordionTrigger>
     <AccordionContent>
      <div className="flex flex-col gap-5 pt-3">
       <p className="type-caption text-fg-secondary">این‌ها پیشنهاد کارگردانی هووش است، نه تنظیمات تأییدشدهٔ مدل.</p>
@@ -148,7 +148,7 @@ export function PlanStory({plan,onStagingChange,focus}:{plan:PublicCreativePlan;
   {editor}
   <Accordion>
    <AccordionItem value="plan" className="border-b-0">
-    <AccordionTrigger className="py-0"><span className="flex items-center gap-2"><Icon icon={ListChecks} size={16} aria-hidden="true" className="size-4 text-fg-secondary"/>جزئیات برنامه</span></AccordionTrigger>
+    <AccordionTrigger className="rounded-card px-3 py-2.5 hover:no-underline hover:bg-surface-hover aria-expanded:bg-surface-selected aria-expanded:hover:bg-surface-selected"><span className="flex items-center gap-2"><Icon icon={ListChecks} size={16} aria-hidden="true" className="size-4 text-fg-secondary group-aria-expanded/accordion-trigger:text-primary"/>جزئیات برنامه</span></AccordionTrigger>
     <AccordionContent><div className="flex flex-col gap-5 pt-3">{details}</div></AccordionContent>
    </AccordionItem>
   </Accordion>
