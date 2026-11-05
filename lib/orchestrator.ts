@@ -9,6 +9,7 @@ import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./
 import {displayTag,inferAttachmentRoles,isGenerationTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
 import {providerForModelId} from "./llm-routing";
 import {replyScriptFor} from "./finglish";
+import {compileImagePrompt} from "./scene-compiler";
 import {applyStagingCues,applyTypedMappings,lensFor,describeStagingEn,describeStagingFa,sceneLeadEn,detectProps,detectSubject,expandMappings,mapReferences,tidyProps,typedMappings} from "./staging";
 import {findGif,type ChatGif} from "./giphy";
 import {describeFocus} from "./frame-css";
@@ -268,6 +269,9 @@ const leaks=(pub:PublicCreativePlan,userText:string)=>{const j=JSON.stringify(pu
 // ---- private prompt store for the generation phase (bounded, server memory only) ----
 const MAX_PROMPTS=200;
 const store=()=>((globalThis as {__whoushPrompts?:Map<string,string>}).__whoushPrompts??=new Map());
+/** What an image turn's prompt was compiled from (the planner's text and the aspect ratio), so a canvas change recompiles it. Private, like the prompt. */
+type SceneContent={content:string;aspect:string};
+const contents=()=>((globalThis as {__whoushPromptContent?:Map<string,SceneContent>}).__whoushPromptContent??=new Map());
 export const getPrivateMediaPrompt=(turnId:string):string|undefined=>store().get(turnId);
 /**
  * The scene the user arranged in «بوم» before pressing «بساز»: a new private turn derived from `turnId`, with the arranged staging (enum values and prop kinds
@@ -276,6 +280,9 @@ export const getPrivateMediaPrompt=(turnId:string):string|undefined=>store().get
  */
 export function deriveTurnWithStaging(turnId:string,staging:Staging,aspect?:string):string|undefined{
  const base=store().get(turnId);if(base===undefined)return undefined;
+ // An image turn is compiled again from its content and the new scene: the old scene never stays next to the new one.
+ const kept=contents().get(turnId);
+ if(kept){const c={content:kept.content,aspect:aspect??kept.aspect},id=randomUUID();keepPrompt(id,compileImagePrompt({...c,staging}).prompt,c);return id;}
  // The lens follows the adjusted scene (Whoush's choice for what it now shows), so the camera direction never contradicts it.
  // The user's camera and light open the prompt in plain words (the model weighs the start; a long description before them outweighed them), and the
  // full scene follows at the end; the planner's own text sits between, cut to fit.
@@ -284,7 +291,10 @@ export function deriveTurnWithStaging(turnId:string,staging:Staging,aspect?:stri
  const id=randomUUID();keepPrompt(id,(lead+base.slice(0,Math.max(0,3000-extra.length-lead.length))+extra).slice(0,3000));
  return id;
 }
-function keepPrompt(turnId:string,prompt:string){const m=store();m.set(turnId,prompt);while(m.size>MAX_PROMPTS)m.delete(m.keys().next().value as string);}
+function keepPrompt(turnId:string,prompt:string,content?:SceneContent){
+ const m=store(),c=contents();m.set(turnId,prompt);if(content)c.set(turnId,content);
+ while(m.size>MAX_PROMPTS){const k=m.keys().next().value as string;m.delete(k);c.delete(k);}
+}
 // ---- attachments ----
 type Audio=NonNullable<ReturnType<typeof CreativeTurnInputSchema.parse>["audio"]>;
 /** One set of audio flags from the legacy `audio` field and from audio attachments; the first source that has speech decides language and accent. */
@@ -453,8 +463,8 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   const lens=lensFor(plan.staging);
   if(plan.camera)plan.camera={...plan.camera,focalLengthMm:lens.focalLengthMm,aperture:lens.aperture,iso:lens.iso,focus:lens.fa};
   if(plan.shot)plan.shot={...plan.shot,lens:lens.focalLengthMm+"mm "+lens.aperture};
-  const en=" Scene (must match): "+describeStagingEn(plan.staging)+describeFocus(plan.staging,undefined,plan.camera?.aspectRatio??"16:9").en+" "+lens.en;
-  plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
+  if(plan.mediaKind!=="image"){const en=" Scene (must match): "+describeStagingEn(plan.staging)+describeFocus(plan.staging,undefined,plan.camera?.aspectRatio??"16:9").en+" "+lens.en;
+   plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;}
  }
  // Keeping it is a hard rule, naming the photos (the provider-facing text names them by description).
  if(need&&needTags.size){
@@ -469,7 +479,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  }
  if(parsed.aspectOverride&&plan.camera&&plan.camera.aspectRatio!==parsed.aspectOverride){
   plan.camera={...plan.camera,aspectRatio:parsed.aspectOverride};
-  const en=" Aspect ratio "+parsed.aspectOverride+".";plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
+  if(plan.mediaKind!=="image"){const en=" Aspect ratio "+parsed.aspectOverride+".";plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;}
  }
  if(parsed.stagingOverride){
   const o=parsed.stagingOverride,lens=lensFor(o),asp=parsed.aspectOverride??plan.camera?.aspectRatio??"16:9",focus=describeFocus(o,undefined,asp);
@@ -479,9 +489,15 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   if(plan.camera)plan.camera={...plan.camera,focalLengthMm:lens.focalLengthMm,aperture:lens.aperture,iso:lens.iso,focus:lens.fa};
   if(plan.shot)plan.shot={...plan.shot,lens:lens.focalLengthMm+"mm "+lens.aperture};
   if(!plan.hardConstraints.includes(fa))plan.hardConstraints=[...plan.hardConstraints,fa];
-  plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
+  if(plan.mediaKind!=="image")plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
  }
  plan.mediaPrompt=rewriteMentions(plan.mediaPrompt,byTag,genTags).slice(0,3000);
+ // An image prompt is compiled once from the final scene: the planner's text without its own camera and light words, then the canvas (lib/scene-compiler.ts).
+ let content:SceneContent|undefined;
+ if(plan.mediaKind==="image"&&plan.staging){
+  const aspect=plan.camera?.aspectRatio??"16:9";
+  content={content:plan.mediaPrompt,aspect};plan.mediaPrompt=compileImagePrompt({content:plan.mediaPrompt,staging:plan.staging,aspect}).prompt;
+ }
  stage("checking");
  // plan inspection: LLM output never bypasses the safety layer
  for(const t of [plan.mediaPrompt,...plan.hardConstraints]){
@@ -535,7 +551,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   const suggestedModel=suggestModel(requirements,kind),base=ref?FA_NO_REFS:lipsMsg;
   return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs,suggestedModel,input.style),message:base+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{})};
  }
- keepPrompt(turnId,plan.mediaPrompt);
+ keepPrompt(turnId,plan.mediaPrompt,content);
  rec({planner:label,fallbackReason,corrections:corrections.length?corrections:undefined,usage:label==="live"?result?.usage:undefined});
  // The proposal speaks in Whoush's voice; a rejected explicit model request keeps its factual note after the reply.
  proposal={...proposal,message:replyText("planned")+(proposal.explicitRejected?"\n"+proposal.message:"")};

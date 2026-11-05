@@ -140,7 +140,16 @@ test("«بساز» with an arranged scene: a new private turn with that scene, q
  const before=getPrivateMediaPrompt(r.turnId)!;
  const id=deriveTurnWithStaging(r.turnId,{...base,cameraAngle:"low",cameraElevation:-20},"9:16")!;
  assert.ok(id&&id!==r.turnId);assert.equal(getPrivateMediaPrompt(r.turnId),before,"the original turn is untouched");
- assert.match(getPrivateMediaPrompt(id)!,/User-adjusted scene \(overrides any earlier camera, framing or lighting direction\): Staging: low angle camera \(-20° from eye level\)/);
+ const derived=getPrivateMediaPrompt(id)!;
+ // Compiled again from the turn's content: one scene, the new one; the planner's own camera and light words and the old scene are gone.
+ assert.match(derived,/^Camera and light, exactly as arranged: Low-angle shot looking up at the subject\./);
+ assert.match(derived,/Scene \(must match\): Staging: low angle camera \(-20° from eye level\)/);
+ assert.equal(derived.split("Scene (must match)").length,2,"exactly one scene");
+ assert.ok(!/eye level camera|Direction:|\b\d{2,3}mm, f\//.test(derived),derived);
+ assert.ok(derived.includes("portrait of a woman in a garden"),"the content stays");
+ const again=getPrivateMediaPrompt(deriveTurnWithStaging(id,{...base,cameraAngle:"high",cameraElevation:30},"1:1")!)!;
+ assert.equal(again.split("Scene (must match)").length,2,"a second change replaces the scene, never stacks it");assert.ok(!again.includes("low angle camera"),again);
+ assert.match(again,/Aspect ratio 1:1\.$/);
  assert.match(getPrivateMediaPrompt(id)!,/Aspect ratio 9:16\.$/);
  assert.equal(deriveTurnWithStaging("no-such-turn",base),undefined);
  const res=await quote(new Request("http://x/api/generation/quote",{method:"POST",body:JSON.stringify({modelId:r.proposal.selectedModelId,turnId:r.turnId,stagingOverride:{...base,cameraAngle:"low"}})}));
