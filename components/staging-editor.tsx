@@ -41,7 +41,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
  const initial=withProps(staging);
  const [draft,setDraft]=useState<Staging>(initial),[aspect,setAspect]=useState(aspectRatio??"16:9");
  // The frame shows its own settings (zoom, aspect, crop) until a prop is selected; then only that prop's settings, until it is deselected. Lights select apart.
- const [propSel,setPropSel]=useState<number|null>(null),[lightSel,setLightSel]=useState(0);
+ const [propSel,setPropSel]=useState<number|null>(null),[lightSel,setLightSel]=useState(0),[locked,setLocked]=useState(false);
  // The zoom's anchor: Whoush's original layout (so dragging never moves the zoom), with the main subject and its detail as now chosen (they can change).
  const mainIdx=(draft.props??[]).findIndex(p=>p.main);
  const anchor:Staging={...initial,focusDetail:draft.focusDetail,props:initial.props?.map((p,i)=>{const {main:_m,...q}=p;void _m;return i===mainIdx?{...q,main:true}:q;})};
@@ -93,9 +93,9 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
   <div id={bodyId} hidden={!open} className="flex min-w-0 flex-col gap-3">
   <div className="flex min-w-0 flex-col gap-3">
    <div><Viewport {...cap.frame}>
-    <FrameView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={setPropSel} onProp={(i,x,z)=>setProp(i,{x,z})} onZoom={setDistance}/>
+    <FrameView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={setPropSel} onProp={(i,x,z)=>setProp(i,{x,z})} onZoom={setDistance} locked={locked} onLock={setLocked}/>
     {editable&&propSel!==null&&props[propSel]&&<PropInspector prop={withFrameCuts(draft,anchor,aspect).props![propSel]} tag={propTags(props,true)[propSel]} reach={propReach(props[propSel],draft,anchor,aspect)}
-     onChange={p=>setProp(propSel,p)} onClose={()=>setPropSel(null)}/>}
+     onChange={p=>setProp(propSel,p)} onClose={()=>{setPropSel(null);setLocked(false);}}/>}
     {editable&&(propSel===null||!props[propSel])&&<>
      <input type="range" min={0} max={1} step={0.001} value={1-distanceOf(draft)} onChange={e=>setDistance(1-Number(e.target.value))}
       aria-label="زوم (اندازهٔ نما، همون فاصلهٔ دوربین)" aria-valuetext={SHOT_SIZE_FA[draft.shotSize]+"، زوم "+zoomFactor(draft)+"×"} className="h-8 w-full cursor-pointer accent-primary"/>
@@ -137,7 +137,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
   </div>
   {!editable&&<ul className="flex flex-col gap-1">{draft.lights.map((l,i)=><LightRow key={i} l={l}/>)}</ul>}
   {editable&&changed&&<div className="flex flex-wrap items-center gap-2">
-   <Button type="button" variant="ghost" size="sm" onClick={()=>{setDraft(initial);setAspect(aspectRatio??"16:9");setPropSel(null);setLightSel(0);}}><Icon icon={RotateCcw} aria-hidden="true"/>برگرد به پیشنهاد هووش</Button>
+   <Button type="button" variant="ghost" size="sm" onClick={()=>{setDraft(initial);setAspect(aspectRatio??"16:9");setPropSel(null);setLightSel(0);setLocked(false);}}><Icon icon={RotateCcw} aria-hidden="true"/>برگرد به پیشنهاد هووش</Button>
    <p className="type-caption text-fg-secondary">با «بساز» همین صحنه ساخته می‌شه.</p>
   </div>}
   </div>
@@ -311,6 +311,22 @@ function OrbitView({staging,editable,onOrbit}:{staging:Staging;editable:boolean;
  </svg>;
 }
 
+/**
+ * The selection's tag in the frame («#ماشین-قرمز», «#کادر»), Figma-like small blue text, with a small lock before it: locked, clicks select nothing else
+ * (no accidental selection) until it is unlocked. The lock has a larger invisible touch target than it looks.
+ */
+function SelLabel({x,y,text,locked,onLock}:{x:number;y:number;text:string;locked:boolean;onLock?:(on:boolean)=>void}){
+ const lx=x,ly=y-0.4,toggle=()=>onLock?.(!locked);
+ return <g>
+  {onLock&&<g role="button" tabIndex={0} aria-pressed={locked} aria-label={(locked?"باز کردن قفل انتخاب ":"قفل کردن انتخاب ")+text} className="cursor-pointer touch-none outline-none focus-visible:[&>rect:last-child]:stroke-primary"
+   onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();toggle();}} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();e.stopPropagation();toggle();}}}>
+   <rect x={lx+0.3} y={ly-3} width={3.6} height={2.9} rx={0.5} className={locked?"fill-primary stroke-primary":"stroke-primary"} fill={locked?undefined:"none"} strokeWidth={0.6}/>
+   <path d={"M"+(lx+1.1)+" "+(ly-3)+" V"+(ly-4.1)+" a1 1 0 0 1 2 0"+(locked?" V"+(ly-3):"")} fill="none" className="stroke-primary" strokeWidth={0.6}/>
+   <rect x={lx-2.5} y={ly-8} width={10} height={10} fill="transparent" strokeWidth={0.4}/>
+  </g>}
+  <text x={onLock?lx+5.6:lx} y={y} direction="rtl" textAnchor="end" fontSize={4.6} className="pointer-events-none fill-primary font-medium" aria-hidden="true">{text}</text>
+ </g>;
+}
 /** One labelled view tile (the camera's side and top views): bordered, the label above the drawing. */
 function Tile({label,children}:{label:string;children:ReactNode}){
  return <div className="flex min-w-0 flex-col gap-1 rounded-card border border-line-secondary p-2">
@@ -346,11 +362,12 @@ const snapAxis=(v:number)=>Math.max(-1,Math.min(1,Math.round(v*100)/100));
  * - Drag the empty background: slides the crop like a crop tool, snapping to the thirds and the centre.
  * - Keyboard: arrow keys move the selected prop (or the crop when the frame itself has focus).
  */
-function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp,onZoom}:{staging:Staging;
+function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp,onZoom,locked=false,onLock}:{staging:Staging;
  /** The scene whose main subject anchors the zoom (Whoush's original layout): fixed while props move, so moving the main subject moves only it. */anchor?:Staging;
  aspect:string;editable?:boolean;onFraming?:(f:{x:number;y:number}|undefined)=>void;
  /** The selected prop (null: none, the frame's own settings show). */sel?:number|null;onSelect?:(i:number|null)=>void;onProp?:(i:number,x:number,z:number)=>void;
- /** Pinch to zoom (phones): the new camera distance, 0 closest (the zoom slider's value). */onZoom?:(distance:number)=>void}){
+ /** Pinch to zoom (phones): the new camera distance, 0 closest (the zoom slider's value). */onZoom?:(distance:number)=>void;
+ /** The selection is locked (the lock beside its tag): clicks never select anything else, and a drag anywhere moves the locked prop (or the crop). */locked?:boolean;onLock?:(on:boolean)=>void}){
  const clip=useId(),svg=useRef<SVGSVGElement>(null),{W,H}=frameSize(aspect);
  const [drag,setDrag]=useState<{px:number;py:number;x:number;y:number;cur:{x:number;y:number}}|null>(null);
  const [move,setMove]=useState<{i:number;px:number;py:number;x0:number;z0:number;x:number;z:number}|null>(null);
@@ -372,6 +389,8 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
  const commit=(v:{x:number;y:number})=>onFraming?.(v.x===0&&v.y===0?undefined:v);
  /** A ground point limited to where the prop may go at this zoom and crop: as far out of the frame on the left as on the right, and into the bottom edge. */
  const within=(p:SceneProp,g:{x:number;z:number})=>{const r=propReach(p,staging,anchor,aspect);const c=(v:number,lo:number,hi:number)=>Math.round(Math.max(lo,Math.min(hi,v))*100)/100;return {x:c(g.x,r.xMin,r.xMax),z:c(g.z,r.zMin,r.zMax)};};
+ const cropDrag=(e:PointerEvent)=>setDrag({px:e.clientX,py:e.clientY,x:fr.x,y:fr.y,cur:fr});
+ const moveLocked=(e:PointerEvent)=>{const q=base[sel!];setMove({i:sel!,px:e.clientX,py:e.clientY,x0:q.x,z0:q.z,x:q.x,z:q.z});};
  /** The ground point (x, z) under a world point: the inverse of `at` on the ground plane. */
  const ground=(gx:number,gy:number)=>groundFromView(gx,gy,W,H);
  const key=(e:KeyboardEvent)=>{
@@ -391,7 +410,7 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
    <rect width={W} height={H} className="fill-background"/>
    {editable&&<rect width={W} height={H} fill="transparent" role="slider" tabIndex={0} aria-label={"جای سوژه در کادر: "+placementFa(staging.framing)} aria-valuetext={placementFa(staging.framing)}
     aria-valuenow={Math.round(fr.x*100)} aria-valuemin={-100} aria-valuemax={100} onKeyDown={key} className={"outline-none "+(drag?"cursor-grabbing":"cursor-grab")}
-    onPointerDown={e=>{onSelect?.(null);capture(svg.current,e.pointerId);setDrag({px:e.clientX,py:e.clientY,x:fr.x,y:fr.y,cur:fr});}}/>}
+    onPointerDown={e=>{capture(svg.current,e.pointerId);if(locked&&sel!=null&&base[sel]){moveLocked(e);return;}if(!locked)onSelect?.(null);cropDrag(e);}}/>}
    <g transform={world} className="pointer-events-none">
     <rect x={-W*4} y={horizon} width={W*9} height={H*4} fill={"url(#"+clip+"g)"}/>
     <line x1={-W*4} x2={W*5} y1={horizon} y2={horizon} stroke="currentColor" strokeOpacity=".3" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
@@ -401,11 +420,15 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
    </g>
    <g transform={world}>
     {order.map(({p,i})=>{const a=at(p),sp=sprite(p),w=spriteW(sp,a.h),on=sel===i;
-     const pkey=(e:KeyboardEvent)=>{if(e.key==="Escape"&&on){e.preventDefault();e.stopPropagation();onSelect?.(null);return;}
+     const pkey=(e:KeyboardEvent)=>{if(e.key==="Escape"&&on){e.preventDefault();e.stopPropagation();if(!locked)onSelect?.(null);return;}
+      if(locked&&!on)return;
       const d={ArrowLeft:[-0.1,0],ArrowRight:[0.1,0],ArrowUp:[0,0.1],ArrowDown:[0,-0.1]}[e.key as "ArrowLeft"];if(!d)return;e.preventDefault();e.stopPropagation();onSelect?.(i);const g=within(p,{x:p.x+d[0],z:p.z+d[1]});onProp?.(i,g.x,g.z);};
      return <g key={i} role={editable?"button":undefined} tabIndex={editable?0:undefined} aria-label={propTags(base)[i]+"، "+propPlaceFa(placed[i]??p)} aria-pressed={editable?on:undefined}
-      onKeyDown={editable?pkey:undefined} onClick={editable?()=>onSelect?.(i):undefined}
-      onPointerDown={editable?e=>{e.stopPropagation();onSelect?.(i);capture(svg.current,e.pointerId);setMove({i,px:e.clientX,py:e.clientY,x0:p.x,z0:p.z,x:p.x,z:p.z});}:undefined}
+      onKeyDown={editable?pkey:undefined} onClick={editable?()=>{if(!locked)onSelect?.(i);}:undefined}
+      onPointerDown={editable?e=>{e.stopPropagation();capture(svg.current,e.pointerId);
+       // Locked: this prop is not selected; the drag goes to the locked prop, or to the crop when the frame is locked.
+       if(locked&&!on){if(sel!=null&&base[sel])moveLocked(e);else cropDrag(e);return;}
+       onSelect?.(i);setMove({i,px:e.clientX,py:e.clientY,x0:p.x,z0:p.z,x:p.x,z:p.z});}:undefined}
       className={editable?(move?.i===i?"cursor-grabbing outline-none":"cursor-grab outline-none"):""}>
       {p.y>0.05&&<ellipse cx={a.x} cy={a.ground} rx={w*0.35} ry={Math.max(1,a.h*0.04)} fill="currentColor" fillOpacity=".18"/>}
       <rect x={a.x-Math.max(w,12/k)/2} y={a.y-Math.max(a.h,12/k)} width={Math.max(w,12/k)} height={Math.max(a.h,12/k)} fill="transparent"/>
@@ -421,11 +444,11 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   {/* The selected prop's tag, Figma-like: small blue text on the top-left corner of its selection box, constant size on screen, kept inside the frame. */}
   {editable&&sel!=null&&base[sel]&&(()=>{const p=base[sel],a=at(p),wf=spriteW(sprite(p),a.h);
    const [lx,ty]=cam.toScreen(a.x-wf/2-1,a.y-a.h-1),x=Math.max(1,Math.min(W-30,lx)),y=Math.max(5.5,Math.min(H-1,ty-1.5));
-   return <text x={x} y={y} direction="rtl" textAnchor="end" fontSize={4.6} className="pointer-events-none fill-primary font-medium" aria-hidden="true">{propTags(base,true)[sel]}</text>;})()}
+   return <SelLabel x={x} y={y} text={propTags(base,true)[sel]} locked={locked} onLock={onLock}/>;})()}
   {/* With no prop selected, the frame itself is: a blue outline and its «#کادر» tag, and the controls below are the frame's. */}
   {editable&&(sel==null||!base[sel])
    ?<><rect width={W} height={H} rx={6} fill="none" className="pointer-events-none stroke-primary" strokeWidth={1.6} vectorEffect="non-scaling-stroke"/>
-    <text x={3} y={7} direction="rtl" textAnchor="end" fontSize={4.6} className="pointer-events-none fill-primary font-medium" aria-hidden="true">#کادر</text></>
+    <SelLabel x={3} y={7} text="#کادر" locked={locked} onLock={onLock}/></>
    :<rect width={W} height={H} rx={6} fill="none" stroke="currentColor" strokeOpacity=".75" strokeWidth={1.2} vectorEffect="non-scaling-stroke" className="pointer-events-none"/>}
  </svg>;
 }
