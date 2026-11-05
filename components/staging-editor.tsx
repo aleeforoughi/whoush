@@ -178,11 +178,10 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
     {/* Lens and aperture: Whoush's pick for the scene (lib/staging.ts, lensFor) until the user moves a slider; bokeh is the aperture opened wide. */}
     {editable&&(()=>{const l=lensFor(draft),auto=(on:boolean)=>on?" · خودکار":"";
      return <>
-      {/* Right after the distance: Whoush Autopilot (on: Whoush keeps the lens and aperture right for the scene; off: fully manual) beside bokeh (on: the
-          aperture opens wide for a soft background; off: stopped down, everything sharp). */}
+      {/* Right after the distance: Whoush Autopilot (on: Whoush keeps the lens and aperture right for the scene; off: fully manual). The bokeh toggle is
+          off the canvas for now (the aperture slider still sets the background blur). */}
       <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1">
        <Toggle label="اتوپایلوت هووش" on={autopilot} onChange={setAutopilot}/>
-       <Toggle label="بوکه" on={!l.deep} onChange={on=>setManual({apertureF:on?1.8:8})}/>
       </div>
       <p className="-mt-1 text-center type-caption text-fg-secondary">{autopilot?"هووش بهترین لنز و دیافراگم رو خودش انتخاب می‌کنه.":"دستی: هر چی تنظیم کنی همون می‌مونه."}</p>
       <SliderRow label="لنز (فاصلهٔ کانونی)" ends={["واید","تله"]} valueText={fa(l.focalLengthMm)+" میلی‌متر"+auto(l.auto.lens)} min={0} max={1} step={0.001} value={lensSlider(l.focalLengthMm)}
