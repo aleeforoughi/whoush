@@ -261,3 +261,12 @@ test("Whoush picks the lens for the scene around its dominant subject: distance,
  const fire=lensFor({...s,shotSize:"full",lights:[{...base.lights[0],source:"fire",colorTemperatureK:1900}]});
  assert.equal(fire.iso,1600);assert.equal(fire.aperture,"f/2.0","low light: open up and raise the ISO");
 });
+
+test("light strength: each role has its usual strength; a set strength reaches Whoush, the provider and the change list",async()=>{
+ const {intensityOf,describeStagingEn,describeStagingFa,describeStagingChangesFa}=await import("../lib/staging");
+ assert.equal(intensityOf({...base.lights[0],role:"key"}),1);assert.ok(intensityOf({...base.lights[0],role:"fill"})<0.5,"a fill sits under the key");
+ const dim:Staging={...base,lights:[{...base.lights[0],intensity:0.3}]};
+ assert.match(describeStagingEn(dim),/30% strength/);assert.match(describeStagingFa(dim),/شدت ۳۰٪/);
+ assert.ok(describeStagingChangesFa({...base,lights:[base.lights[0]]},dim).some(l=>l.includes("شدت")));
+ assert.ok(CreativeTurnInputSchema.shape.stagingOverride.safeParse({...dim,subject:"person"}).success);
+});

@@ -64,12 +64,12 @@ export function placementEn(f?:{x:number;y:number}):string{
 }
 /** The arranged scene in Persian, for the plan's hard constraints (what the user set in the diagrams). */
 export function describeStagingFa(s:Staging):string{
- const lights=s.lights.map(l=>LIGHT_ROLE_FA[l.role]+": "+LIGHT_SOURCE_FA[l.source]+"، "+LIGHT_QUALITY_FA[l.quality]+"، "+LIGHT_DIRECTION_FA[l.direction]+"، ارتفاع "+LIGHT_HEIGHT_FA[l.height]+"، "+l.colorTemperatureK+" کلوین"+(l.colorHex?"، رنگ "+l.colorHex:""));
+ const lights=s.lights.map(l=>LIGHT_ROLE_FA[l.role]+": "+LIGHT_SOURCE_FA[l.source]+"، "+LIGHT_QUALITY_FA[l.quality]+"، "+LIGHT_DIRECTION_FA[l.direction]+"، ارتفاع "+LIGHT_HEIGHT_FA[l.height]+"، "+l.colorTemperatureK+" کلوین"+(l.intensity!==undefined?"، شدت "+intensityFa(l.intensity):"")+(l.colorHex?"، رنگ "+l.colorHex:""));
  return "صحنهٔ تنظیم‌شده: زاویهٔ دوربین «"+CAMERA_ANGLE_FA[s.cameraAngle]+"»"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+" درجه)":"")+(Math.abs(s.cameraAzimuth??0)>=1?"، دوربین "+orbitFa(s.cameraAzimuth!):"")+(s.focusDetail?"، تمرکز روی "+FOCUS_DETAIL_FA[s.focusDetail]:"")+"، کادر «"+SHOT_SIZE_FA[s.shotSize]+"»"+(s.shotScale!==undefined?" (زوم "+zoomFactor(s)+"×)":"")+(s.subject?"، سوژه: "+SUBJECT_FA[s.subject]:"")+"، جای سوژه: "+placementFa(s.framing)+(s.props?.length?"؛ "+describeLayoutFa(s.props):"")+"؛ "+lights.join("؛ ");
 }
 /** The arranged scene in English, appended to the provider-facing media prompt. */
 export function describeStagingEn(s:Staging):string{
- const lights=s.lights.map(l=>l.role+" light: "+l.quality+" "+l.source.replace("_"," ")+" from "+DIR_EN[l.direction]+(l.angle!==undefined?" ("+Math.round(l.angle)+"° in top view)":"")+", "+LIGHT_HEIGHT_EN[l.height]+", "+l.colorTemperatureK+"K"+(l.colorHex?" "+l.colorHex+" gel":""));
+ const lights=s.lights.map(l=>l.role+" light: "+l.quality+" "+l.source.replace("_"," ")+" from "+DIR_EN[l.direction]+(l.angle!==undefined?" ("+Math.round(l.angle)+"° in top view)":"")+", "+LIGHT_HEIGHT_EN[l.height]+", "+l.colorTemperatureK+"K"+(l.intensity!==undefined?", "+Math.round(l.intensity*100)+"% strength":"")+(l.colorHex?" "+l.colorHex+" gel":""));
  return "Staging: "+ANGLE_EN[s.cameraAngle]+" camera"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+"° from eye level)":"")+(orbitEn(s.cameraAzimuth??0)?", "+orbitEn(s.cameraAzimuth??0):"")+(s.focusDetail?", framed on the main subject's "+(s.focusDetail==="feet"?"feet and shoes":s.focusDetail):"")+", "+SHOT_EN[s.shotSize]+(s.shotScale!==undefined?" ("+zoomFactor(s)+"x of a full shot)":"")+", "+placementEn(s.framing)+"; "+lights.join("; ")+"."+(s.props?.length?" "+describeLayoutEn(s.props):"");
 }
 /** The subject a brief is about, from its words: a person, an animal, a vehicle, a product or object, or an environment when there is no single main subject. */
@@ -150,6 +150,7 @@ export function describeStagingChangesFa(before:Staging,after:Staging,aspectBefo
   const aa=lightAngleOf(a),ba=lightAngleOf(b);
   if(a.direction!==b.direction||(aa!==undefined&&ba!==undefined&&Math.abs(aa-ba)>=3))d.push("جهت "+arrow(LIGHT_DIRECTION_FA[a.direction]+(aa!==undefined&&b.angle!==undefined?" ("+Math.round(aa)+"°)":""),LIGHT_DIRECTION_FA[b.direction]+(ba!==undefined&&b.angle!==undefined?" ("+Math.round(ba)+"°)":"")));
   if(a.height!==b.height)d.push("ارتفاع "+arrow(LIGHT_HEIGHT_FA[a.height],LIGHT_HEIGHT_FA[b.height]));
+  if(Math.abs(intensityOf(a)-intensityOf(b))>=0.03)d.push("شدت "+arrow(intensityFa(intensityOf(a)),intensityFa(intensityOf(b))));
   if(a.quality!==b.quality)d.push(arrow(LIGHT_QUALITY_FA[a.quality],LIGHT_QUALITY_FA[b.quality]));
   if(a.colorTemperatureK!==b.colorTemperatureK)d.push(arrow(String(a.colorTemperatureK),String(b.colorTemperatureK))+" کلوین");
   if((a.colorHex??"")!==(b.colorHex??""))d.push("ژل "+arrow(a.colorHex??"بدون ژل",b.colorHex??"بدون ژل"));
@@ -450,6 +451,10 @@ export const sliderFromScale=(s:number)=>(Math.log(Math.min(ZOOM_RANGE[1],Math.m
 /** The effective values of a staging: exact ones when set, otherwise the named ones. */
 export const elevationOf=(s:Staging)=>s.cameraElevation??CAMERA_ELEVATION[s.cameraAngle];
 export const scaleOf=(s:Staging)=>s.shotScale??SHOT_BODY_FRACTION[s.shotSize];
+/** A light's strength, 0 to 1: set, or its role's usual share (a key light leads, a fill sits well under it, a rim and practicals in between). */
+const ROLE_INTENSITY:Record<StagingLight["role"],number>={key:1,fill:0.45,rim:0.7,background:0.55,practical:0.55};
+export const intensityOf=(l:StagingLight)=>l.intensity??ROLE_INTENSITY[l.role];
+export const intensityFa=(v:number)=>String(Math.round(v*100)).replace(/\d/g,d=>"۰۱۲۳۴۵۶۷۸۹"[Number(d)])+"٪";
 export const lightAngleOf=(l:StagingLight)=>l.angle??(l.direction==="top"?undefined:LIGHT_ANGLE[l.direction]);
 /** Zoom relative to a full shot, for people: «۱٫۸×» closer, «۰٫۵×» wider. */
 export const zoomFactor=(s:Staging)=>Math.round(SHOT_BODY_FRACTION.full/scaleOf(s)*10)/10;

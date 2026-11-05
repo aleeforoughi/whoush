@@ -109,7 +109,8 @@ const LightSchema=z.object({role:z.enum(LIGHT_ROLES),direction:z.enum(LIGHT_DIRE
  angle:z.number().min(0).max(360).optional(),
  /** How high the light sits: from the floor up to the ceiling (the planner uses low, eye or high; «بوم» adds floor and ceiling). */
  height:z.enum(LIGHT_HEIGHTS),quality:z.enum(["soft","hard"]),source:z.enum(LIGHT_SOURCES),
- colorTemperatureK:z.number().int().min(1500).max(12000),colorHex:z.string().regex(/^#[0-9a-fA-F]{6}$/).optional()});
+ colorTemperatureK:z.number().int().min(1500).max(12000),colorHex:z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+ /** How strong the light is, 0 to 1 (unset: its role's usual strength, lib/staging.ts intensityOf). */intensity:z.number().min(0).max(1).optional()});
 /** Kinds of movable props in a scene (the environment itself is the fixed backdrop, never a prop). */
 export const PROP_KINDS=["person","object","animal","vehicle","tree","building"] as const;
 export const MAX_PROPS=6;
