@@ -454,6 +454,11 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  }
  // Keeping it is a hard rule, naming the photos (the provider-facing text names them by description).
  if(need&&needTags.size){
+  // The photos are kept exactly: the general reference's «loose reference, do not copy its details» rule would contradict that, so it goes.
+  for(const t of needTags){
+   const loose=roleRule("image","general",t).hard;
+   if(loose){plan.hardConstraints=plan.hardConstraints.filter(c=>c!==loose.fa);plan.mediaPrompt=plan.mediaPrompt.split(loose.en).join("");}
+  }
   const shown=[...needTags].map(displayTag).join("، "),fa=need.keepFa(shown),en=" "+need.keepEn([...needTags].map(displayTag).join(", "));
   if(!plan.hardConstraints.includes(fa))plan.hardConstraints=[...plan.hardConstraints,fa];
   plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;

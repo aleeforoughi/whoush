@@ -28,4 +28,5 @@ test("without the photos Whoush asks for exactly the angles it needs; with them,
  const plan=(withPhoto as {plan:import("../lib/creative-plan").PublicCreativePlan}).plan;
  assert.deepEqual(plan.staging?.props?.find(p=>p.kind==="person")?.refs,["image1"],"the tattoo photo is mapped to the person");
  assert.ok(plan.hardConstraints.some(c=>c.includes("تتوها دقیقاً مثل #تصویر-۱")),"keeping them is a hard rule");
+ assert.ok(!plan.hardConstraints.some(c=>c.includes("مرجع کلی سبک")),"no «loose reference, do not copy its details» rule contradicting it");
 });
