@@ -3,7 +3,7 @@ import {useEffect,useId,useRef,useState,useSyncExternalStore,type KeyboardEvent,
 import dynamic from "next/dynamic";
 import {Dialog as DialogPrimitive} from "@base-ui/react/dialog";
 import {Box,Camera,ChevronDown,ChevronLeft,ChevronRight,ChevronUp,Lock,LockOpen,Maximize2,Plus,RotateCcw,Trash2,Undo2,X,Lightbulb,Frame,type LucideIcon} from "lucide-react";
-import {Button,Dialog,DialogBody,DialogContent,DialogHeader,DialogPortal,DialogTitle,Icon} from "@aleeforoughi/feather-react";
+import {Button,Dialog,DialogBody,DialogContent,DialogHeader,DialogPortal,DialogTitle,Icon,Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from "@aleeforoughi/feather-react";
 import {FOCUS_DETAILS,LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
  SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,rollOf,lensSizeFactor,backdropFactor,wallDepth,blurAt,horizonShift,focusDepth,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,VERTICAL_STOPS,verticalIndex,snapVertical,SIDE_STEP,snapSide,sideStopFa,isCube,cubeDims,isCharacter,showsFrame,liftFa,type SceneProp} from "@/lib/staging";
@@ -1160,9 +1160,11 @@ function LightInspector({light:l,tag,canRemove,onChange,onRemove,onAdd}:{light:S
   <div className="flex items-center gap-2"><SourceIcon id={LIGHT_ASSETS[l.source]}/><bdi className="type-label text-primary">{tag}</bdi><span className="type-caption text-fg-secondary">{LIGHT_SOURCE_FA[l.source]}</span></div>
   <SliderRow label="جهت نور" valueText={l.direction==="top"?"از بالا":LIGHT_DIRECTION_FA[l.direction]+" · "+fa(Math.round(ang))+"°"} min={0} max={359} step={1} value={ang}
    disabled={l.direction==="top"} onChange={v=>onChange({angle:v,direction:snapDirection(v)})}/>
-  <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="منبع نور">{LIGHT_SOURCES.map(s=><button key={s} type="button" role="radio" aria-checked={l.source===s} onClick={()=>onChange({source:s})} title={LIGHT_SOURCE_FA[s]}
-   className={"flex h-9 items-center gap-1 rounded-control border px-2 type-caption motion-hover "+(l.source===s?"border-primary bg-surface-selected text-fg-primary":"border-line-secondary text-fg-secondary hover:bg-surface-hover")}>
-   <SourceIcon id={LIGHT_ASSETS[s]}/>{LIGHT_SOURCE_FA[s]}</button>)}</div>
+  {/* The light's source as a dropdown, each source with its picture (the trigger shows the chosen one's). */}
+  <Select value={l.source} onValueChange={v=>onChange({source:v as StagingLight["source"]})} items={LIGHT_SOURCES.map(s=>({value:s,label:LIGHT_SOURCE_FA[s]}))}>
+   <SelectTrigger size="sm" aria-label="منبع نور" className="w-full"><SourceIcon id={LIGHT_ASSETS[l.source]}/><SelectValue/></SelectTrigger>
+   <SelectContent>{LIGHT_SOURCES.map(s=><SelectItem key={s} value={s}><span className="flex items-center gap-2"><SourceIcon id={LIGHT_ASSETS[s]}/>{LIGHT_SOURCE_FA[s]}</span></SelectItem>)}</SelectContent>
+  </Select>
   <div className="flex flex-wrap items-center gap-3">
    <div className="flex gap-1" role="radiogroup" aria-label="کیفیت نور">{(["soft","hard"] as const).map(q=><Chip key={q} role="radio" on={l.quality===q} onClick={()=>onChange({quality:q})}>{LIGHT_QUALITY_FA[q]}</Chip>)}</div>
   </div>
