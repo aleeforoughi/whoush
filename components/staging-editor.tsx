@@ -875,7 +875,7 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   const over=r?{left:(left-r.w*2/W)*100+"%",top:(top-r.h*2/H)*100+"%",width:r.w*(W+4)/W*100+"%",height:r.h*(H+4)/H*100+"%"}:undefined;
   return <div className="relative w-full overflow-hidden rounded-[10px]">
    <div ref={box} role="slider" tabIndex={0} aria-label={"جای کادر: "+placementFa(staging.framing)} aria-valuetext={placementFa(staging.framing)} aria-valuenow={Math.round(fr.x*100)} aria-valuemin={-100} aria-valuemax={100}
-    onKeyDown={key} {...(onZoom?pinch:{})} className={"relative w-full touch-none overflow-hidden bg-background outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring @lg:max-h-[300px] "+(drag?"cursor-grabbing":"cursor-grab")}
+    onKeyDown={key} {...(onZoom?pinch:{})} className={"relative w-full touch-none overflow-hidden bg-background outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring min-h-[500px] @lg:min-h-0 @lg:max-h-[300px] "+(drag?"cursor-grabbing":"cursor-grab")}
     style={{aspectRatio:String(boxAspect)}}
     onPointerDown={e=>{if(propHit.current){propHit.current=false;return;}if(e.button>0)return;capture(e.currentTarget,e.pointerId);cropDrag(e);}}
     onPointerMove={e=>{if(!drag||!r||!box.current)return;const b=box.current.getBoundingClientRect(),fw=r.w*b.width,fh=r.h*b.height;
