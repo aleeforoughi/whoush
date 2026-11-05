@@ -83,7 +83,7 @@ function Model({src,h,tint,selected}:{src:string;h:number;tint?:string;selected?
   const o=cloneSkinned(gltf.scene);
   o.traverse(n=>{const m=n as THREE.Mesh;if(!m.isMesh)return;
    const one=(mat:THREE.Material)=>{const c=mat.clone() as THREE.MeshStandardMaterial;
-    if(tint&&c.color&&(/clay|body|skin/i.test(mat.name)||c.color.getHSL({h:0,s:0,l:0}).l>0.6))c.color.set(tint);
+    if(tint&&c.color&&(/clay|body|skin/i.test(mat.name)||(!mat.name&&c.color.getHSL({h:0,s:0,l:0}).l>0.6)))c.color.set(tint);
     if(selected&&c.emissive){c.emissive.set(C.selected);c.emissiveIntensity=0.25;}return c;};
    m.material=Array.isArray(m.material)?m.material.map(one):one(m.material);});
   const box=new THREE.Box3().setFromObject(o),size=box.getSize(new THREE.Vector3()),k=size.y>0?h/size.y:1;
@@ -112,7 +112,7 @@ function ClayFigure({p,tint,selected}:{p:SceneProp;tint?:string;selected?:boolea
 
 // ---- the place: the ground and what stands behind, at its real distance ----
 function Place({env,backdrop}:{env:NonNullable<Staging["environment"]>;backdrop:number}){
- const ground=<mesh rotation={[-Math.PI/2,0,0]} position={[0,0,0]}><planeGeometry args={[4000,4000]}/><meshStandardMaterial color={C.ground} roughness={1}/></mesh>;
+ const ground=<mesh rotation={[-Math.PI/2,0,0]} position={[0,0,0]}><circleGeometry args={[5400,96]}/><meshStandardMaterial color={C.ground} roughness={1}/></mesh>;
  const rnd=(i:number)=>((Math.sin(i*12.9898)*43758.5453)%1+1)%1;
  if(env==="room"){
   const D=backdrop,Wd=4.5,Hc=3;
@@ -132,8 +132,32 @@ function Place({env,backdrop}:{env:NonNullable<Staging["environment"]>;backdrop:
  if(env==="forest")return <group>{ground}{Array.from({length:40},(_,i)=><group key={i} position={[(rnd(i)-0.5)*120,0,-backdrop-rnd(i+7)*25]}><Tree h={5+rnd(i+11)*5}/></group>)}</group>;
  if(env==="beach")return <group>{ground}<mesh rotation={[-Math.PI/2,0,0]} position={[0,0.02,-30-2000]}><planeGeometry args={[4000,4000]}/><meshStandardMaterial color={C.sea} roughness={0.4}/></mesh></group>;
  if(env==="desert")return <group>{ground}{Array.from({length:14},(_,i)=><mesh key={i} position={[(i-7)*90,0,-backdrop-rnd(i)*80]} scale={[70,10+rnd(i+2)*14,40]}><sphereGeometry args={[1,24,12,0,Math.PI*2,0,Math.PI/2]}/><meshStandardMaterial color={C.clay} roughness={1}/></mesh>)}</group>;
- return <group>{ground}{Array.from({length:11},(_,i)=><mesh key={i} position={[(i-5)*110+rnd(i)*40,0,-backdrop-rnd(i+5)*120]}><coneGeometry args={[70+rnd(i+1)*50,50+rnd(i+2)*70,7]}/><meshStandardMaterial color={C.clay} roughness={1} flatShading/></mesh>)}</group>;
+ const cones=<group>{Array.from({length:11},(_,i)=><mesh key={i} position={[(i-5)*110+rnd(i)*40,0,-backdrop-rnd(i+5)*120]}><coneGeometry args={[70+rnd(i+1)*50,50+rnd(i+2)*70,7]}/><meshStandardMaterial color={C.clay} roughness={1} flatShading/></mesh>)}</group>;
+ const src=modelSrc("mountains");
+ return <group>{ground}{src?<Fallback fallback={cones}><Suspense fallback={cones}><Mountains src={src} backdrop={backdrop}/></Suspense></Fallback>:cones}</group>;
 }
+/**
+ * The pack's mountains (the env-mountains massif as a 3D model, 160 m high at full size) as a range: a near row at the place's distance and a taller far
+ * row the haze softens, both deterministic so the range never jumps.
+ */
+function Mountains({src,backdrop}:{src:string;backdrop:number}){
+ const gltf=useLoader(GLTFLoader,src);
+ const peaks=useMemo(()=>{const rnd=(i:number)=>((Math.sin(i*78.233)*43758.5453)%1+1)%1;return [
+  ...Array.from({length:11},(_,i)=>({x:(i-5)*230+(rnd(i)-0.5)*80,z:-backdrop-120-rnd(i+3)*260,s:0.32+rnd(i+7)*0.3,r:(rnd(i+11)-0.5)*0.9})),
+  ...Array.from({length:9},(_,i)=>({x:(i-4)*560+(rnd(i+20)-0.5)*160,z:-backdrop-1300-rnd(i+23)*700,s:1.4+rnd(i+27)*0.9,r:(rnd(i+31)-0.5)*0.9})),
+ ];},[backdrop]);
+ const objs=useMemo(()=>peaks.map(()=>gltf.scene.clone(true)),[gltf,peaks]);
+ return <group>{peaks.map((p,i)=><primitive key={i} object={objs[i]} position={[p.x,0,p.z]} scale={p.s} rotation={[0,p.r,0]}/>)}</group>;
+}
+/** The open sky down to the horizon: dark overhead, lighter toward the horizon, where the hazed ground meets it. */
+function Sky(){
+ const geo=useMemo(()=>{const g=new THREE.SphereGeometry(5600,32,24),top=new THREE.Color(C.sky),hz=new THREE.Color(C.horizon),col:number[]=[],pos=g.attributes.position;
+  for(let i=0;i<pos.count;i++){const t=Math.min(1,Math.max(0,pos.getY(i)/5600)),c=hz.clone().lerp(top,Math.pow(t,0.45));col.push(c.r,c.g,c.b);}
+  g.setAttribute("color",new THREE.Float32BufferAttribute(col,3));return g;},[]);
+ return <mesh geometry={geo}><meshBasicMaterial vertexColors side={THREE.BackSide} fog={false} depthWrite={false}/></mesh>;
+}
+/** Outdoor places reach the horizon: the ground runs out to it under a haze of the horizon's colour. */
+const OUTDOOR=new Set(["landscape","street","forest","beach","desert"]);
 
 // ---- the camera, depth of field and fisheye ----
 /** A barrel distortion (fisheye) on the final picture: the centre bulges, straight lines bow toward the edges. */
@@ -226,6 +250,7 @@ export default function Scene3D({staging,anchor,aspect,editable,sel,onSelect,onP
  return <Canvas frameloop="demand" dpr={[1,2]} gl={{antialias:true,powerPreference:"low-power"}} camera={{position:cam.position,fov:cam.fov,near:0.03,far:6000}}
   style={{position:"absolute",inset:0,touchAction:"none"}}>
   <color attach="background" args={[C.sky]}/>
+  {OUTDOOR.has(staging.environment??"landscape")&&<><Sky/><fog attach="fog" args={[C.horizon,120,3200]}/></>}
   <hemisphereLight args={[C.clay,C.ground,1.1]}/>
   <directionalLight position={[4,8,6]} intensity={1.6}/>
   <Rig cam={cam} wide={wide} frameAspect={W/H} onFrameRect={onFrameRect}/>

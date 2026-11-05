@@ -84,7 +84,7 @@ export function wideFrameRect(cam:Pick<Camera3D,"shift">,frameAspect:number,vw:n
  return {w:fw/vw,h:fh/vh,x:0.5+cam.shift[0]*fw/vw,y:0.5+cam.shift[1]*fh/vh};
 }
 /** The clay look of the asset pack, for the 3D figures, and the dark set they stand in (colours live here: TSX holds no hex values). */
-export const SCENE_COLORS={clay:"#d9dadd",hair:"#8a8d93",dark:"#2b2d31",glass:"#3c4048",tail:"#c4453f",ground:"#17181b",sky:"#0b0b0c",wall:"#25272b",window:"#6d7480",sea:"#2a3340",foliage:"#9fa3a8",bark:"#7c7f84",selected:"#1d4ed8",black:"#000000"} as const;
+export const SCENE_COLORS={clay:"#d9dadd",hair:"#8a8d93",dark:"#2b2d31",glass:"#3c4048",tail:"#c4453f",ground:"#17181b",sky:"#0b0b0c",wall:"#25272b",window:"#6d7480",sea:"#2a3340",horizon:"#202227",foliage:"#9fa3a8",bark:"#7c7f84",selected:"#1d4ed8",black:"#000000"} as const;
 /**
  * The frame's centre point from a point on the subject (the inverse of centerOnSubject): `lateral` stage units sideways, `height` as a share of its height.
  * Used when the user drags the centre point in the 3D view.
@@ -103,16 +103,23 @@ export function focusPointFrom(s:Staging,anchor:Staging|undefined,aspect:string,
 
 // ---- the 3D figures as models (glTF), matching the 2D asset pack ----
 /**
- * Each prop kind's 3D model, in `public/visuals/3d/<id>.glb`, made to match the 2D pack (public/visuals, docs/VISUAL_ASSETS.md): the same matte light-grey
- * clay, the same grey hair. Conventions every model follows (the frame relies on them; it also re-measures each model, so small slips are corrected):
+ * Each prop kind's 3D model, in `public/visuals/3d/<id>.glb`, made to match the 2D pack (public/visuals, docs/VISUAL_ASSETS.md): the same matte light
+ * clay, the same grey hair. Built from silhouettes measured on the pack's PNGs, modelled in Spline, fused, rigged and exported with Blender
+ * (scripts/models-3d/README.md, which also records each model's measured match). Conventions every model follows (the frame relies on them; it also
+ * re-measures each prop, so small slips are corrected):
  * - glTF 2.0 binary, y up, metres; its front (face, windscreen, label) toward +z; standing on y = 0, centred on x = 0, z = 0;
- * - real size (man 1.75 m, woman 1.65 m, car 4 m long, cat 0.45 m high...), as lib/scene3d.ts propSize says;
- * - a figure in materials named `clay` (tinted when several props of the same kind need telling apart) and `hair`, `glass`, `dark`, `tail` as needed.
+ * - real size (man 1.75 m, woman 1.65 m, car 1.5 m high, cat 0.45 m high...), as lib/scene3d.ts propSize says; the mountains at their own scale (a 160 m
+ *   massif) since the place is not fitted;
+ * - materials named `clay` (tinted when several props of the same kind need telling apart) and `hair`, `glass`, `dark`, `tail` as needed;
+ * - the people carry a humanoid skeleton (hips, spine, chest, neck, head, left/right upper arm, lower arm, hand, upper leg, lower leg, foot) with smooth
+ *   weights, in the rest pose of the 2D figures, so they can be posed later.
  */
-export const MODEL_3D_IDS=["man","woman","car","cat","bottle","tree","building"] as const;
+export const MODEL_3D_IDS=["man","woman","car","cat","bottle","tree","building","mountains"] as const;
 export type Model3DId=typeof MODEL_3D_IDS[number];
 /** The models that exist and were checked in the frame (`version` busts the browser's cache when one is replaced); the others use the procedural figures. */
-export const MODELS_3D:Partial<Record<Model3DId,{version:string}>>={};
+export const MODELS_3D:Partial<Record<Model3DId,{version:string}>>={
+ man:{version:"1"},woman:{version:"1"},car:{version:"1"},cat:{version:"1"},bottle:{version:"1"},tree:{version:"1"},building:{version:"1"},mountains:{version:"2"}
+};
 /** Which model draws a prop. */
 export function modelIdOf(p:Pick<SceneProp,"kind"|"label">):Model3DId{
  switch(p.kind){

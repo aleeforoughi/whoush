@@ -35,3 +35,6 @@
 
 ## Live progress in the chat
 POST /api/agent streams real stages (`Accept: application/x-ndjson`): reading, planning, checking, pricing, then the result. The chat shows «هووش داره کار می‌کنه» with the current stage from the moment a message is sent, in Persian or Finglish. The reply is checked in full on the server (safety, leaks, script) before it is shown, then types itself out (instantly under reduced motion). Raw model tokens are never streamed to the user.
+
+## 3D models for the frame
+«بوم»'s 3D frame draws each prop and the mountains from `public/visuals/3d/<id>.glb` (`MODELS_3D` in `lib/scene3d.ts`), built to match this pack: silhouettes measured on the PNGs, modelled in Spline, fused, rigged (the man and the woman carry a humanoid skeleton for posing) and exported with Blender. The pipeline, the tools and each model's measured match are in `scripts/models-3d/README.md`. In open places the ground runs out to a hazed horizon with the mountain range at the place's distance.
