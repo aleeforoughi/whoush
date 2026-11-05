@@ -359,7 +359,8 @@ function Dominant({tags,props,main,detail,mediaKind,confirmed,editable,onConfirm
  */
 /** A snapshot's details: its title in a small pill, then its value. */
 function SnapCaption({c,icon}:{c:{title:string;value:string};/** Its icon, in the pill before the title. */icon?:LucideIcon}){
- return <span className="flex min-w-0 flex-col items-start gap-1 px-0.5">
+ // On one line: the pill, then the value beside it (wrapping under it only when there is no room).
+ return <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 px-0.5">
   <span className="flex items-center gap-1 rounded-control bg-surface-hover px-2 py-0.5 type-caption text-fg-secondary">{icon&&<Icon icon={icon} size={16} aria-hidden="true" className="size-3.5! shrink-0"/>}{c.title}</span>
   <span className="type-label text-fg-primary">{c.value}</span>
  </span>;
