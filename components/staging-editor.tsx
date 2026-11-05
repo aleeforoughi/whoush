@@ -344,7 +344,7 @@ function Asset({id,x,y,h,mirror,sx=1,rotate=0,opacity=1,tint}:{id:string;x:numbe
  * side on, narrower as it turns toward or away from the camera; mirrored when it faces frame left. Trees, buildings and objects look the same all round.
  */
 /** A sprite's width on screen at height h. */
-const spriteW=(sp:Fig,h:number)=>{if(sp.box){const c=VISUALS["cube-front"];return c?h*c.width/c.height:h;}const v=VISUALS[sp.id];return v?h*sp.sx*v.width/v.height:h;};
+const spriteW=(sp:Fig,h:number)=>{if(sp.box){const c=VISUALS["cube-3q"];return c?h*c.width/c.height:h;}const v=VISUALS[sp.id];return v?h*sp.sx*v.width/v.height:h;};
 /** The eye-level image for a prop, by which way it faces (lib/sprites.ts): the 2D drawings (the collapsed frame, the camera's side view). */
 type Fig={id:string;mirror:boolean;sx:number;/** A cube (anything but a character): its real size, drawn as a vector box. */box?:{w:number;h:number;d:number}};
 function sprite(p:SceneProp):Fig{if(isCube(p))return {id:"",mirror:false,sx:1,box:cubeDims(p)};const sp=spriteFor(p,"eye",facingOf(p));return {id:sp.id,mirror:sp.mirror,sx:1};}
@@ -359,15 +359,16 @@ function PropTop({p,x,y,h,rotate=0,tint}:{p:SceneProp;x:number;y:number;h:number
  return <CubeTop x={x} y={y} h={h} rotate={rotate} tint={tint}/>;
 }
 /**
- * Anything but a character (a product, a car, a tree, a place alone) in the camera and lighting diagrams: one clean, equal cube, the same size whatever
- * it stands for (beta). The pack's picture of it, or a vector clay box until the picture is there.
+ * Anything but a character (a product, a car, a tree, a place alone) in the camera and lighting diagrams: one smooth, minimal cube, the same small size
+ * whatever it stands for (beta): in a three-quarter view from the side, only its top from above. A vector clay box until the pictures are there.
  */
-const CUBE_SIDE=64;
+const CUBE_SIDE=44;
 function Cube({x,y,h,tint}:{x:number;y:number;h:number;tint?:string}){
- return VISUALS["cube-front"]?<Asset id="cube-front" x={x} y={y} h={h} tint={tint}/>:<ClayBox x={x} y={y} h={h} box={{w:1,h:1,d:1}} tint={tint}/>;
+ return VISUALS["cube-3q"]?<Asset id="cube-3q" x={x} y={y} h={h} tint={tint}/>:<ClayBox x={x} y={y} h={h} box={{w:1,h:1,d:1}} tint={tint}/>;
 }
+/** The cube from above: its top turned 45° (a diamond), as the three-quarter view sees it from the side, corner first. */
 function CubeTop({x,y,h,rotate=0,tint}:{x:number;y:number;h:number;rotate?:number;tint?:string}){
- return VISUALS["cube-top"]?<Asset id="cube-top" x={x} y={y} h={h} rotate={rotate} tint={tint}/>:<ClayFootprint cx={x} cy={y-h/2} size={h} box={{w:1,d:1}} rotate={rotate} tint={tint}/>;
+ return VISUALS["cube-top"]?<Asset id="cube-top" x={x} y={y} h={h} rotate={rotate+45} tint={tint}/>:<ClayFootprint cx={x} cy={y-h/2} size={h} box={{w:1,d:1}} rotate={rotate+45} tint={tint}/>;
 }
 
 /** The main prop (or the first), whose side view the camera view shows; an environment-only scene shows the landscape. */
@@ -508,7 +509,7 @@ function OrbitView({staging,anchor,aspect,editable,onOrbit,onStart}:{staging:Sta
   <circle cx={C[0]} cy={C[1]+R} r={2} fill="currentColor" fillOpacity=".35"/>
   {/* Only the target (the main subject): the camera views are about the camera around it, not the rest of the scene. */}
   {m&&(()=>{const t=propTints(props)[props.indexOf(m)];return <>{t&&<Tint id={tint+"-m"} color={t}/>}<PropTop p={m} x={S[0]} y={S[1]+14} h={28} rotate={-(facingOf(m)+az)} tint={t?tint+"-m":undefined}/></>;})()}
-  {!props.length&&<CubeTop x={C[0]} y={C[1]+22} h={36}/>}
+  {!props.length&&<CubeTop x={C[0]} y={C[1]+14} h={28}/>}
   {/* The main subject's facing, the same as in the frame and the side view: an arrow from it the way it faces. */}
   {m&&(()=>{const fw=(facingOf(m)+az)*Math.PI/180,[x,y]=S,d:[number,number]=[Math.sin(fw),Math.cos(fw)],r0=17,r1=31,tip:[number,number]=[x+d[0]*r1,y+d[1]*r1];
    const side:[number,number]=[-d[1],d[0]];
@@ -975,7 +976,7 @@ function LightView({staging,editable,selected,onSelect,onLight}:{staging:Staging
    </g>;
   })}
   {target&&targetTint&&<Tint id={uid+"-m"} color={targetTint}/>}
-  {target?<PropTop tint={targetTint?uid+"-m":undefined} p={target} x={C[0]} y={C[1]+20} h={isCharacter(target)?40:36}/>:<CubeTop x={C[0]} y={C[1]+22} h={36}/>}
+  {target?<PropTop tint={targetTint?uid+"-m":undefined} p={target} x={C[0]} y={C[1]+20} h={isCharacter(target)?40:28}/>:<CubeTop x={C[0]} y={C[1]+14} h={28}/>}
   <Asset id="camera-top" x={C[0]} y={VH-4} h={28}/>
  </svg>;
 }

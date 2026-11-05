@@ -97,12 +97,11 @@ for(const [pet,looks] of [["dog","a stylized medium-sized DOG standing on all fo
  {id:pet+"-3q-back",ref:pet+"-side",size:"1536x1024",prompt:"The same "+pet+" as the second reference in a REAR THREE-QUARTER view: we see its back and its right side, its head turned away toward the upper RIGHT."},
  {id:pet+"-back",ref:pet+"-side",size:"1024x1024",prompt:"The same "+pet+" as the second reference seen exactly from BEHIND (symmetrical): its back, its rear legs and its tail; its head hidden behind its body."});
 /**
- * The product: everything but the characters is a box at its real size (lib/sprites.ts, cubeDims). «بوم»'s diagrams draw it from these two pictures,
- * stretched to the thing's width, height and depth: from the side and from directly above. (No angle matrix: the frame does not draw products in the beta.)
+ * Anything but a character (a product, a car, a tree, a place alone) in «بوم»'s camera and lighting diagrams: one smooth, minimal clay cube, in a
+ * three-quarter view from the side and showing only its top from above (beta).
  */
-ASSETS.push(
- {id:"cube-front",size:"1024x1024",prompt:"A simple placeholder block: a perfect CUBE with softly rounded edges and corners and plain smooth faces, no details, no text, no logo, seen exactly from the FRONT at eye level (we see only its front face, a rounded square; its top face is not visible)."},
- {id:"cube-top",ref:"cube-front",size:"1024x1024",prompt:"The same rounded clay CUBE as the second reference seen exactly from DIRECTLY ABOVE (top-down orthographic view): only its top face, a rounded square with softly rounded edges; no sides visible."});
+ASSETS.push({id:"cube-top",ref:"cube-3q",size:"1024x1024",prompt:"The same rounded clay CUBE as the second reference seen exactly from DIRECTLY ABOVE (top-down orthographic view): only its top face, a rounded square with softly rounded edges; no sides visible."},
+ {id:"cube-3q",ref:"human-3q",size:"1024x1024",prompt:"A single smooth minimal CUBE, all sides equal, with softly rounded edges and corners and plain smooth faces, no details, no text, no logo, in a classic THREE-QUARTER view from a little above: we see its top face and two of its side faces, the vertical edge between the sides toward the viewer, the sides lit differently (the left one lighter) so it reads clearly as a 3D cube. Simple and elegant."});
 /** The people's worm's-eye view in plainer words (the image model refused one with the generic wording): a toy-like figure seen from the ground. */
 const PEOPLE=new Set(["human","woman"]);
 const PERSON_BOTTOM="seen from a WORM'S-EYE VIEW: the camera stands on the ground a few steps in front of it and looks up at it. Strong upward perspective: its shoes are large in the foreground, the figure tapers upward and its head is small. A plain, neutral, toy-like mannequin figure.";

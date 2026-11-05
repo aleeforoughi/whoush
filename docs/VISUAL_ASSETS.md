@@ -37,7 +37,7 @@
 ## Beta: characters only
 «بوم»'s frame draws only the characters: people and the pets with their own images (cat, dog, horse). Other props (objects, vehicles, buildings, trees, other animals) stay in the scene, the plan and the provider prompt, but the frame doesn't draw them and the focus can't be placed on them (`isCharacter`). A scene without a character (only a place, or only other props) shows no frame, only the camera and the lighting (`showsFrame`).
 
-**The cube in the diagrams:** in the camera, distance, orbit and lighting tiles, anything that isn't a character (a product, a car, a tree, or a place with no props) is one clean, equal cube at a fixed size, whatever it stands for. Its pictures are `cube-front` (from the side) and `cube-top` (from above), from the pack's generator; `components/clay-box.tsx` draws a vector clay box until they exist.
+**The cube in the diagrams:** in the camera, distance, orbit and lighting tiles, anything that isn't a character (a product, a car, a tree, or a place with no props) is one smooth, minimal cube at a small fixed size, whatever it stands for. From the side it's `cube-3q` (a three-quarter view, corner first). From above it's `cube-top` (only its top face), turned 45° into a diamond to match. Both come from the pack's generator; `components/clay-box.tsx` draws a vector clay box until they exist.
 
 ## The frame renderer
 - **CSS 3D (Plan A, default):** `components/frame-css.tsx` with `lib/frame-css.ts`. It uses one pinhole camera, the same one the prompt uses (`camera3D`).

@@ -10,7 +10,7 @@ export const VISUALS:Record<string,VisualAsset>={
  "animal-top":{src:"/visuals/animal-top.png",width:516,height:640,hd:"/visuals/hd/animal-top.webp",hdHeight:719},
  "camera-side":{src:"/visuals/camera-side.png",width:640,height:360},
  "camera-top":{src:"/visuals/camera-top.png",width:373,height:640},
- "cube-front":{src:"/visuals/cube-front.png",width:613,height:550},
+ "cube-3q":{src:"/visuals/cube-3q.png",width:584,height:610},
  "cube-top":{src:"/visuals/cube-top.png",width:538,height:578},
  "env-mountains":{src:"/visuals/env-mountains.png",width:640,height:376},
  "env-top":{src:"/visuals/env-top.png",width:606,height:640},
