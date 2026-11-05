@@ -5,13 +5,15 @@
  * figures as they are, the Dutch angle rolls the camera, very wide lenses bow into a fisheye, and depth of field follows the lens, aperture and focus.
  * Loaded only when «بوم» is open (one WebGL view at a time); the collapsed snapshots stay 2D drawings.
  */
-import {useEffect,useLayoutEffect,useMemo,useRef,useState} from "react";
-import {Canvas,useThree,type ThreeEvent} from "@react-three/fiber";
+import {Component,Suspense,useEffect,useLayoutEffect,useMemo,useRef,useState,type ReactNode} from "react";
+import {Canvas,useLoader,useThree,type ThreeEvent} from "@react-three/fiber";
+import {GLTFLoader} from "three/examples/jsm/loaders/GLTFLoader.js";
+import {clone as cloneSkinned} from "three/examples/jsm/utils/SkeletonUtils.js";
 import {EffectComposer,DepthOfField} from "@react-three/postprocessing";
 import {Effect} from "postprocessing";
 import * as THREE from "three";
 import type {Staging} from "@/lib/creative-plan";
-import {SCENE_COLORS as C,camera3D,stageFromWorld,depthOfField,propSize,propWorld,type Camera3D,type FrameRect,wideFrameRect} from "@/lib/scene3d";
+import {SCENE_COLORS as C,camera3D,stageFromWorld,depthOfField,propSize,propWorld,type Camera3D,type FrameRect,modelIdOf,modelSrc,wideFrameRect} from "@/lib/scene3d";
 import {frameSize as frameSizeOf,genderOf,propTints,type SceneProp} from "@/lib/staging";
 
 /** A material for one figure: clay, or the soft tint that tells several props of the same kind apart. */
@@ -65,7 +67,38 @@ const Tree=({tint,selected,h=6}:{tint?:string;selected?:boolean;h?:number})=><gr
 </group>;
 const Building=({tint,selected,h=14}:{tint?:string;selected?:boolean;h?:number})=><mesh position={[0,h/2,0]}><boxGeometry args={[9,h,9]}/><Mat tint={tint} selected={selected}/></mesh>;
 
+/** A model that fails to load (missing, broken) quietly falls back to the procedural figure. */
+class Fallback extends Component<{fallback:ReactNode;children:ReactNode},{failed:boolean}>{
+ state={failed:false};
+ static getDerivedStateFromError(){return {failed:true};}
+ render(){return this.state.failed?this.props.fallback:this.props.children;}
+}
+/**
+ * A prop's glTF model, measured and fitted: scaled to the prop's real height, standing on the ground, centred; its `clay` materials take the prop's tint,
+ * and the whole figure glows blue while selected (lib/scene3d.ts, MODELS_3D).
+ */
+function Model({src,h,tint,selected}:{src:string;h:number;tint?:string;selected?:boolean}){
+ const gltf=useLoader(GLTFLoader,src);
+ const obj=useMemo(()=>{
+  const o=cloneSkinned(gltf.scene);
+  o.traverse(n=>{const m=n as THREE.Mesh;if(!m.isMesh)return;
+   const one=(mat:THREE.Material)=>{const c=mat.clone() as THREE.MeshStandardMaterial;
+    if(tint&&c.color&&(/clay|body|skin/i.test(mat.name)||c.color.getHSL({h:0,s:0,l:0}).l>0.6))c.color.set(tint);
+    if(selected&&c.emissive){c.emissive.set(C.selected);c.emissiveIntensity=0.25;}return c;};
+   m.material=Array.isArray(m.material)?m.material.map(one):one(m.material);});
+  const box=new THREE.Box3().setFromObject(o),size=box.getSize(new THREE.Vector3()),k=size.y>0?h/size.y:1;
+  o.scale.setScalar(k);const c=box.getCenter(new THREE.Vector3());o.position.set(-c.x*k,-box.min.y*k,-c.z*k);
+  const g=new THREE.Group();g.add(o);return g;
+ },[gltf,h,tint,selected]);
+ return <primitive object={obj}/>;
+}
 function Figure({p,tint,selected}:{p:SceneProp;tint?:string;selected?:boolean}){
+ const src=modelSrc(modelIdOf(p)),clayFig=<ClayFigure p={p} tint={tint} selected={selected}/>;
+ if(!src)return clayFig;
+ return <Fallback fallback={clayFig}><Suspense fallback={clayFig}><Model src={src} h={propSize(p).h} tint={tint} selected={selected}/></Suspense></Fallback>;
+}
+/** The procedural clay figure (no model yet, or while it loads). */
+function ClayFigure({p,tint,selected}:{p:SceneProp;tint?:string;selected?:boolean}){
  const sz=propSize(p);
  switch(p.kind){
   case "person":return <Person h={sz.h} female={genderOf(p)==="female"} tint={tint} selected={selected}/>;

@@ -100,3 +100,29 @@ export function focusPointFrom(s:Staging,anchor:Staging|undefined,aspect:string,
  void base;void W;void H;
  return {x:o.x+(lateral-a.lateral)/(dLx||1),y:o.y+(height-a.height)/(dHy||1)};
 }
+
+// ---- the 3D figures as models (glTF), matching the 2D asset pack ----
+/**
+ * Each prop kind's 3D model, in `public/visuals/3d/<id>.glb`, made to match the 2D pack (public/visuals, docs/VISUAL_ASSETS.md): the same matte light-grey
+ * clay, the same grey hair. Conventions every model follows (the frame relies on them; it also re-measures each model, so small slips are corrected):
+ * - glTF 2.0 binary, y up, metres; its front (face, windscreen, label) toward +z; standing on y = 0, centred on x = 0, z = 0;
+ * - real size (man 1.75 m, woman 1.65 m, car 4 m long, cat 0.45 m high...), as lib/scene3d.ts propSize says;
+ * - a figure in materials named `clay` (tinted when several props of the same kind need telling apart) and `hair`, `glass`, `dark`, `tail` as needed.
+ */
+export const MODEL_3D_IDS=["man","woman","car","cat","bottle","tree","building"] as const;
+export type Model3DId=typeof MODEL_3D_IDS[number];
+/** The models that exist and were checked in the frame (`version` busts the browser's cache when one is replaced); the others use the procedural figures. */
+export const MODELS_3D:Partial<Record<Model3DId,{version:string}>>={};
+/** Which model draws a prop. */
+export function modelIdOf(p:Pick<SceneProp,"kind"|"label">):Model3DId{
+ switch(p.kind){
+  case "person":return genderOf(p)==="female"?"woman":"man";
+  case "vehicle":return "car";
+  case "animal":return "cat";
+  case "object":return "bottle";
+  case "tree":return "tree";
+  case "building":return "building";
+ }
+}
+/** The model's URL, when it exists. */
+export function modelSrc(id:Model3DId):string|undefined{const m=MODELS_3D[id];return m?"/visuals/3d/"+id+".glb?v="+encodeURIComponent(m.version):undefined;}
