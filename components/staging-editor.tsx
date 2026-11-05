@@ -343,18 +343,22 @@ function CameraView({staging,anchor,aspect,editable,onCamera}:{staging:Staging;/
  const side:1|-1=dragSide;
  const VW=220,VH=210,focus:[number,number]=[110,104];
  const m=mainProp(staging),kind=m?.kind;
- const size=kind?Math.min(92,PROP_HEIGHT[kind]*92):58,ground=Math.min(VH-8,focus[1]+(kind==="person"?size*0.9:size*0.55));
+ const size=kind?Math.min(92,PROP_HEIGHT[kind]*92):58;
+ // The camera circles the frame's centre point on the subject (its face by default, the detail, or where the user moved the dot): that point is the
+ // circle's centre, kept far enough from the edges for the whole circle to show; the subject stands under it.
+ const R=56,h=kind?centerOnSubject(staging,anchor,aspect??"16:9").height:0.5,ground0=Math.min(VH-8,focus[1]+(kind==="person"?size*0.9:size*0.55));
+ const pivot:[number,number]=[focus[0],Math.max(R+10,Math.min(VH-R-10,kind?ground0-size*h:focus[1]))],ground=kind?pivot[1]+size*h:ground0;
  // Angle only: the camera stays at one distance here (the distance has its own tile).
- const elev=elevationOf(staging),R=56;
- const phi=side===1?elev:180-elev,[cx,cy]=polar(focus[0],focus[1],R,-phi);
+ const elev=elevationOf(staging);
+ const phi=side===1?elev:180-elev,[cx,cy]=polar(pivot[0],pivot[1],R,-phi);
  // The sight line ends at the frame's centre point on the subject (its face by default, the detail the shot is about, or where the user moved the dot).
- const target:[number,number]=kind?[focus[0],Math.max(6,Math.min(VH-6,ground-size*centerOnSubject(staging,anchor,aspect??"16:9").height))]:focus;
- const aim=Math.atan2(target[1]-cy,target[0]-cx)*180/Math.PI,roll=rollOf(staging),camLeft=cx<focus[0];
+ const target=pivot;
+ const aim=Math.atan2(target[1]-cy,target[0]-cx)*180/Math.PI,roll=rollOf(staging),camLeft=cx<pivot[0];
  // The subject as this diagram's viewer sees it: facing the camera's side when it faces the camera (sprite: 90 faces right, 0 faces the viewer).
  // The subject as the camera sees it (front, three-quarter, profile, rear three-quarter or back), the same image as the frame: orbiting behind it shows its back.
  const sp=m?sprite(m):undefined;
  const mTint=m?propTints(staging.props??[])[(staging.props??[]).indexOf(m)]:undefined;
- const at=(e:PointerEvent)=>{const r=svg.current!.getBoundingClientRect();const x=(e.clientX-r.left)*VW/r.width-focus[0],y=(e.clientY-r.top)*VH/r.height-focus[1];
+ const at=(e:PointerEvent)=>{const r=svg.current!.getBoundingClientRect();const x=(e.clientX-r.left)*VW/r.width-pivot[0],y=(e.clientY-r.top)*VH/r.height-pivot[1];
   const psi=Math.atan2(-y,x)*180/Math.PI,s2:1|-1=x>=0?1:-1;
   return {side:s2,elevation:Math.round(Math.max(-60,Math.min(85,wrap180(s2===1?psi:180-psi))))};};
  const key=(e:KeyboardEvent)=>{
@@ -366,7 +370,7 @@ function CameraView({staging,anchor,aspect,editable,onCamera}:{staging:Staging;/
  return <svg ref={svg} viewBox={"0 0 "+VW+" "+VH} className="mx-auto block aspect-[22/21] w-full max-w-sm touch-pan-y select-none text-fg-primary" aria-hidden={!editable}
   onPointerMove={move} onPointerUp={()=>setDragging(false)} onPointerCancel={()=>setDragging(false)}>
   <BlueTint id={tint}/>
-  <circle cx={focus[0]} cy={focus[1]} r={R} fill="none" stroke="currentColor" strokeOpacity=".4" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
+  <circle cx={pivot[0]} cy={pivot[1]} r={R} fill="none" stroke="currentColor" strokeOpacity=".4" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
   <line x1={6} x2={VW-6} y1={ground} y2={ground} stroke="currentColor" strokeOpacity=".3" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
   {mTint&&<Tint id={tint+"-m"} color={mTint}/>}
   {kind&&sp?<Asset id={sp.id} x={focus[0]} y={ground} h={size} mirror={sp.mirror} sx={sp.sx} tint={mTint?tint+"-m":undefined}/>:<><Asset id="env-mountains" x={focus[0]} y={ground} h={52}/><Asset id="env-tree" x={focus[0]+44} y={ground} h={30}/></>}
@@ -393,11 +397,11 @@ function OrbitView({staging,anchor,aspect,editable,onOrbit}:{staging:Staging;anc
  const VW=220,VH=210,C:[number,number]=[110,105],U=44;
  // Angle only: the camera stays at one distance here (the distance has its own tile).
  const az=staging.cameraAzimuth??0,R=58,rad=az*Math.PI/180,c=Math.cos(rad),n=Math.sin(rad);
- const props=staging.props??[],m=mainProp(staging),px=m?.x??0,pz=m?.z??0;
- // The scene is kept as the camera sees it; turning it back by the orbit draws it as laid out, with the camera moving around it.
- const place=(p:SceneProp):[number,number]=>{const vx=p.x-px,vz=p.z-pz;return [C[0]+(vx*c-vz*n)*U,C[1]-(vx*n+vz*c)*U];};
+ const props=staging.props??[],m=mainProp(staging);
  const cam:[number,number]=[C[0]+R*n,C[1]+R*c];
- const lat=centerOnSubject(staging,anchor,aspect??"16:9").lateral,target:[number,number]=[C[0]+lat*c*U,C[1]-lat*n*U];
+ // The camera circles the frame's centre point: it is the circle's centre (C), and the subject stands where it is relative to that point (sideways of it
+ // when the user moved the dot; kept inside the tile).
+ const lat=Math.max(-1.1,Math.min(1.1,centerOnSubject(staging,anchor,aspect??"16:9").lateral)),target:[number,number]=C,S:[number,number]=[C[0]-lat*c*U,C[1]+lat*n*U];
  const at=(e:PointerEvent)=>{const r=svg.current!.getBoundingClientRect();const x=(e.clientX-r.left)*VW/r.width-C[0],y=(e.clientY-r.top)*VH/r.height-C[1];
   return {azimuth:Math.round(Math.atan2(x,y)*180/Math.PI)};};
  const key=(e:KeyboardEvent)=>{
@@ -411,10 +415,10 @@ function OrbitView({staging,anchor,aspect,editable,onOrbit}:{staging:Staging;anc
   {/* Whoush's original camera position, for reference */}
   <circle cx={C[0]} cy={C[1]+R} r={2} fill="currentColor" fillOpacity=".35"/>
   {/* Only the target (the main subject): the camera views are about the camera around it, not the rest of the scene. */}
-  {m&&(()=>{const t=propTints(props)[props.indexOf(m)];return <>{t&&<Tint id={tint+"-m"} color={t}/>}<Asset id={topAssetOf(m)} x={C[0]} y={C[1]+14} h={28} rotate={-(facingOf(m)+az)} tint={t?tint+"-m":undefined}/></>;})()}
+  {m&&(()=>{const t=propTints(props)[props.indexOf(m)];return <>{t&&<Tint id={tint+"-m"} color={t}/>}<Asset id={topAssetOf(m)} x={S[0]} y={S[1]+14} h={28} rotate={-(facingOf(m)+az)} tint={t?tint+"-m":undefined}/></>;})()}
   {!props.length&&<Asset id="env-top" x={C[0]} y={C[1]+22} h={44}/>}
   {/* The main subject's facing, the same as in the frame and the side view: an arrow from it the way it faces. */}
-  {m&&(()=>{const fw=(facingOf(m)+az)*Math.PI/180,[x,y]=place(m),d:[number,number]=[Math.sin(fw),Math.cos(fw)],r0=17,r1=31,tip:[number,number]=[x+d[0]*r1,y+d[1]*r1];
+  {m&&(()=>{const fw=(facingOf(m)+az)*Math.PI/180,[x,y]=S,d:[number,number]=[Math.sin(fw),Math.cos(fw)],r0=17,r1=31,tip:[number,number]=[x+d[0]*r1,y+d[1]*r1];
    const side:[number,number]=[-d[1],d[0]];
    return <g className="pointer-events-none" aria-hidden="true">
     <line x1={x+d[0]*r0} y1={y+d[1]*r0} x2={tip[0]} y2={tip[1]} className="stroke-primary" strokeWidth={1.4} vectorEffect="non-scaling-stroke"/>
