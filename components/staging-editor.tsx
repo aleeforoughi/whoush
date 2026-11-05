@@ -11,6 +11,7 @@ import {VISUALS} from "@/lib/visual-assets";
 import {fa} from "@/lib/format";
 import type {FrameRect} from "./scene-3d";
 import FrameCSS from "./frame-css";
+import {ClayBox,ClayFootprint} from "./clay-box";
 import {spriteFor} from "@/lib/sprites";
 import {SCENE_COLORS} from "@/lib/scene3d";
 import {shade,pickPivot,zoomLimits,propReach3D} from "@/lib/frame-css";
@@ -343,26 +344,30 @@ function Asset({id,x,y,h,mirror,sx=1,rotate=0,opacity=1,tint}:{id:string;x:numbe
  * side on, narrower as it turns toward or away from the camera; mirrored when it faces frame left. Trees, buildings and objects look the same all round.
  */
 /** A sprite's width on screen at height h. */
-const spriteW=(sp:Fig,h:number)=>{if(sp.box)return h*sp.box.w/sp.box.h;const v=VISUALS[sp.id];return v?h*sp.sx*v.width/v.height:h;};
+const spriteW=(sp:Fig,h:number)=>{if(sp.box){const c=VISUALS["cube-front"];return c?h*c.width/c.height:h;}const v=VISUALS[sp.id];return v?h*sp.sx*v.width/v.height:h;};
 /** The eye-level image for a prop, by which way it faces (lib/sprites.ts): the 2D drawings (the collapsed frame, the camera's side view). */
 type Fig={id:string;mirror:boolean;sx:number;/** A cube (anything but a character): its real size, drawn as a vector box. */box?:{w:number;h:number;d:number}};
 function sprite(p:SceneProp):Fig{if(isCube(p))return {id:"",mirror:false,sx:1,box:cubeDims(p)};const sp=spriteFor(p,"eye",facingOf(p));return {id:sp.id,mirror:sp.mirror,sx:1};}
 /** A prop in a side or camera view: its figure from the pack, or a cube drawn as a box of its size (front face, a little of its top and side). */
 function PropFig({sp,x,y,h,tint}:{sp:Fig;x:number;y:number;h:number;tint?:string}){
  if(!sp.box)return <Asset id={sp.id} x={x} y={y} h={h} mirror={sp.mirror} sx={sp.sx} tint={tint}/>;
- const W=h*sp.box.w/sp.box.h,dd=Math.min(h*0.4,W*0.4,h*sp.box.d/sp.box.h*0.35),l=x-W/2,r=x+W/2,t=y-h,up=dd*0.6;
- return <g filter={tint?"url(#"+tint+")":undefined}>
-  <path d={"M"+l+" "+t+"L"+(l+dd)+" "+(t-up)+"L"+(r+dd)+" "+(t-up)+"L"+r+" "+t+"Z"} fill={shade(SCENE_COLORS.clay,1)}/>
-  <path d={"M"+r+" "+t+"L"+(r+dd)+" "+(t-up)+"L"+(r+dd)+" "+(y-up)+"L"+r+" "+y+"Z"} fill={shade(SCENE_COLORS.clay,0.72)}/>
-  <rect x={l} y={t} width={W} height={h} fill={shade(SCENE_COLORS.clay,0.88)}/>
- </g>;
+ return <Cube x={x} y={y} h={h} tint={tint}/>;
 }
-/** A prop from above (the camera's orbit, the lighting): its pack image, or a cube's footprint (width × depth) turned with it. */
+/** A prop from above (the camera's orbit, the lighting): a character's pack image, or the cube from above for anything else. */
 function PropTop({p,x,y,h,rotate=0,tint}:{p:SceneProp;x:number;y:number;h:number;rotate?:number;tint?:string}){
- if(!isCube(p))return <Asset id={topAssetOf(p)} x={x} y={y} h={h} rotate={rotate} tint={tint}/>;
- const d=cubeDims(p),k=h/Math.max(d.w,d.d),cy=y-h/2;
- return <rect x={x-d.w*k/2} y={cy-d.d*k/2} width={d.w*k} height={d.d*k} rx={Math.min(d.w,d.d)*k*0.12} fill={shade(SCENE_COLORS.clay,1)} stroke={SCENE_COLORS.edge}
-  transform={"rotate("+rotate+" "+x+" "+cy+")"} filter={tint?"url(#"+tint+")":undefined}/>;
+ if(isCharacter(p))return <Asset id={topAssetOf(p)} x={x} y={y} h={h} rotate={rotate} tint={tint}/>;
+ return <CubeTop x={x} y={y} h={h} rotate={rotate} tint={tint}/>;
+}
+/**
+ * Anything but a character (a product, a car, a tree, a place alone) in the camera and lighting diagrams: one clean, equal cube, the same size whatever
+ * it stands for (beta). The pack's picture of it, or a vector clay box until the picture is there.
+ */
+const CUBE_SIDE=64;
+function Cube({x,y,h,tint}:{x:number;y:number;h:number;tint?:string}){
+ return VISUALS["cube-front"]?<Asset id="cube-front" x={x} y={y} h={h} tint={tint}/>:<ClayBox x={x} y={y} h={h} box={{w:1,h:1,d:1}} tint={tint}/>;
+}
+function CubeTop({x,y,h,rotate=0,tint}:{x:number;y:number;h:number;rotate?:number;tint?:string}){
+ return VISUALS["cube-top"]?<Asset id="cube-top" x={x} y={y} h={h} rotate={rotate} tint={tint}/>:<ClayFootprint cx={x} cy={y-h/2} size={h} box={{w:1,d:1}} rotate={rotate} tint={tint}/>;
 }
 
 /** The main prop (or the first), whose side view the camera view shows; an environment-only scene shows the landscape. */
@@ -376,7 +381,7 @@ function DistanceView({staging,anchor,aspect,editable,onDistance}:{staging:Stagi
  const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false),tint=useId(),grab=useRef(0);
  // Laid out so the subject and the camera at its farthest are evenly inside the tile (the camera's body reaches CAMERA_SIZE behind its lens).
  const VW=440,VH=150,X0=46,NEAR=140,FAR=VW-24-CAMERA_SIZE,ground=VH-12;
- const m=mainProp(staging),kind=m?.kind,size=kind?Math.min(116,PROP_HEIGHT[kind]*116):70;
+ const m=mainProp(staging),kind=m?.kind,size=m&&isCharacter(m)?Math.min(116,PROP_HEIGHT[m.kind]*116):CUBE_SIDE;
  // The camera's track runs at the height of the frame's centre point on the subject (its face by default).
  const focusY=kind?Math.max(14,Math.min(ground-4,ground-size*centerOnSubject(staging,anchor,aspect??"16:9").height)):ground-30;
  const dist=distanceOf(staging),camX=NEAR+(FAR-NEAR)*dist;
@@ -384,7 +389,7 @@ function DistanceView({staging,anchor,aspect,editable,onDistance}:{staging:Stagi
  const sp=m?sprite(m):undefined,mTint=m?propTints(staging.props??[])[(staging.props??[]).indexOf(m)]:undefined;
  // The tile is as tall as what it shows: from just above the taller of the subject and the camera down to just under the ground, so a short subject
  // (the mountains, a cat) leaves no empty band above it.
- const subjectTop=ground-(kind&&sp?size:56),top=Math.max(0,Math.min(subjectTop,focusY-CAMERA_SIZE*0.55)-10),viewH=VH-top;
+ const subjectTop=ground-(kind&&sp?size:CUBE_SIDE),top=Math.max(0,Math.min(subjectTop,focusY-CAMERA_SIZE*0.55)-10),viewH=VH-top;
  const toDist=(e:PointerEvent)=>{const r=svg.current!.getBoundingClientRect();const x=(e.clientX-r.left)*VW/r.width-grab.current;return Math.max(0,Math.min(1,(x-NEAR)/(FAR-NEAR)));};
  const key=(e:KeyboardEvent)=>{const d={ArrowRight:0.05,ArrowUp:0.05,ArrowLeft:-0.05,ArrowDown:-0.05}[e.key as "ArrowUp"];if(!d)return;e.preventDefault();onDistance(Math.max(0,Math.min(1,dist+d)));};
  return <svg ref={svg} viewBox={"0 "+top+" "+VW+" "+viewH} className="mx-auto block w-full touch-pan-y select-none text-fg-primary" style={{aspectRatio:VW+"/"+viewH}} aria-hidden={!editable}
@@ -394,7 +399,7 @@ function DistanceView({staging,anchor,aspect,editable,onDistance}:{staging:Stagi
   {/* The track: from nearest to farthest, with a tick at each end. */}
   <line x1={NEAR} x2={FAR} y1={focusY} y2={focusY} stroke="currentColor" strokeOpacity=".35" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
   {[NEAR,FAR].map(x=><line key={x} x1={x} x2={x} y1={focusY-5} y2={focusY+5} stroke="currentColor" strokeOpacity=".35" strokeWidth={1} vectorEffect="non-scaling-stroke"/>)}
-  {kind&&sp?<PropFig sp={sp} x={X0} y={ground} h={size} tint={mTint?tint+"-m":undefined}/>:<Asset id="env-mountains" x={X0} y={ground} h={56}/>}
+  {kind&&sp?<PropFig sp={sp} x={X0} y={ground} h={size} tint={mTint?tint+"-m":undefined}/>:<Cube x={X0} y={ground} h={CUBE_SIDE}/>}
   <line x1={camX} y1={focusY} x2={X0} y2={focusY} className="stroke-primary" strokeWidth={1.2} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
   <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="فاصلهٔ دوربین" aria-valuetext={SHOT_SIZE_FA[staging.shotSize]+"، زوم "+zoomFactor(staging)+"×"}
    aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(dist*100)} onKeyDown={editable?key:undefined}
@@ -425,7 +430,7 @@ function CameraView({staging,anchor,aspect,editable,onCamera,onStart}:{staging:S
  const side:1|-1=dragSide;
  const VW=220,VH=210,focus:[number,number]=[110,104];
  const m=mainProp(staging),kind=m?.kind;
- const size=kind?Math.min(92,PROP_HEIGHT[kind]*92):58;
+ const size=m&&isCharacter(m)?Math.min(92,PROP_HEIGHT[m.kind]*92):CUBE_SIDE*0.8;
  // The camera circles the frame's centre point on the subject (its face by default, the detail, or where the user moved the dot): that point is the
  // circle's centre, kept far enough from the edges for the whole circle to show; the subject stands under it.
  const R=56,h=kind?centerOnSubject(staging,anchor,aspect??"16:9").height:0.5,ground0=Math.min(VH-8,focus[1]+(kind==="person"?size*0.9:size*0.55));
@@ -459,7 +464,7 @@ function CameraView({staging,anchor,aspect,editable,onCamera,onStart}:{staging:S
   <circle cx={pivot[0]} cy={pivot[1]} r={R} fill="none" stroke="currentColor" strokeOpacity=".4" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
   <line x1={-VW} x2={VW*2} y1={ground} y2={ground} stroke="currentColor" strokeOpacity=".3" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
   {mTint&&<Tint id={tint+"-m"} color={mTint}/>}
-  {kind&&sp?<PropFig sp={sp} x={focus[0]} y={ground} h={size} tint={mTint?tint+"-m":undefined}/>:<Asset id="env-mountains" x={focus[0]} y={ground} h={52}/>}
+  {kind&&sp?<PropFig sp={sp} x={focus[0]} y={ground} h={size} tint={mTint?tint+"-m":undefined}/>:<Cube x={focus[0]} y={ground} h={size}/>}
   <circle cx={target[0]} cy={target[1]} r={2.2} className="fill-primary"/>
   <line x1={cx} y1={cy} x2={target[0]} y2={target[1]} className="stroke-primary" strokeWidth={1.2} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
   <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="ارتفاع و فاصلهٔ دوربین (۳۶۰ درجه)" aria-valuetext={CAMERA_ANGLE_FA[staging.cameraAngle]+"، "+Math.round(elev)+" درجه، "+orbitFa(staging.cameraAzimuth??0)+"، زوم "+zoomFactor(staging)+"×"}
@@ -503,7 +508,7 @@ function OrbitView({staging,anchor,aspect,editable,onOrbit,onStart}:{staging:Sta
   <circle cx={C[0]} cy={C[1]+R} r={2} fill="currentColor" fillOpacity=".35"/>
   {/* Only the target (the main subject): the camera views are about the camera around it, not the rest of the scene. */}
   {m&&(()=>{const t=propTints(props)[props.indexOf(m)];return <>{t&&<Tint id={tint+"-m"} color={t}/>}<PropTop p={m} x={S[0]} y={S[1]+14} h={28} rotate={-(facingOf(m)+az)} tint={t?tint+"-m":undefined}/></>;})()}
-  {!props.length&&<Asset id="env-top" x={C[0]} y={C[1]+22} h={44}/>}
+  {!props.length&&<CubeTop x={C[0]} y={C[1]+22} h={36}/>}
   {/* The main subject's facing, the same as in the frame and the side view: an arrow from it the way it faces. */}
   {m&&(()=>{const fw=(facingOf(m)+az)*Math.PI/180,[x,y]=S,d:[number,number]=[Math.sin(fw),Math.cos(fw)],r0=17,r1=31,tip:[number,number]=[x+d[0]*r1,y+d[1]*r1];
    const side:[number,number]=[-d[1],d[0]];
@@ -970,7 +975,7 @@ function LightView({staging,editable,selected,onSelect,onLight}:{staging:Staging
    </g>;
   })}
   {target&&targetTint&&<Tint id={uid+"-m"} color={targetTint}/>}
-  {target?<PropTop tint={targetTint?uid+"-m":undefined} p={target} x={C[0]} y={C[1]+20} h={target.kind==="building"?44:target.kind==="vehicle"?48:40}/>:<Asset id="env-top" x={C[0]} y={C[1]+26} h={52}/>}
+  {target?<PropTop tint={targetTint?uid+"-m":undefined} p={target} x={C[0]} y={C[1]+20} h={isCharacter(target)?40:36}/>:<CubeTop x={C[0]} y={C[1]+22} h={36}/>}
   <Asset id="camera-top" x={C[0]} y={VH-4} h={28}/>
  </svg>;
 }
