@@ -212,7 +212,8 @@ function Asset({id,x,y,h,mirror,sx=1,rotate=0,opacity=1,tint}:{id:string;x:numbe
 const spriteW=(sp:{id:string;sx:number},h:number)=>{const v=VISUALS[sp.id];return v?h*sp.sx*v.width/v.height:h;};
 function sprite(p:SceneProp):{id:string;mirror:boolean;sx:number}{
  const f=wrap180(facingOf(p)),a=Math.abs(f),mirror=f<0;
- if(p.kind==="person")return a<45||a>135?{id:"person-front",mirror:false,sx:1}:{id:"person-side",mirror,sx:1};
+ // The person's side image faces left (its head is forward of the neck on the left), unlike the vehicle's and animal's: mirrored to face right.
+ if(p.kind==="person")return a<45||a>135?{id:"person-front",mirror:false,sx:1}:{id:"person-side",mirror:!mirror,sx:1};
  if(p.kind==="vehicle"||p.kind==="animal")return {id:SIDE[p.kind],mirror,sx:Math.max(0.42,Math.abs(Math.sin(f*Math.PI/180)))};
  return {id:PROP_ASSETS[p.kind].front,mirror:false,sx:1};
 }
