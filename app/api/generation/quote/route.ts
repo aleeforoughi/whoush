@@ -3,7 +3,7 @@ import {z} from "zod";
 import {CHARACTER_VIEWS} from "@/lib/characters";
 import {createQuote,FA_PRICE_PENDING,QuoteError} from "@/lib/quotes";
 import {StagingSchema} from "@/lib/creative-plan";
-import {deriveTurnWithStaging,SceneEditConflict} from "@/lib/orchestrator";
+import {deriveTurnWithStaging,SceneEditConflict,SceneOccluded} from "@/lib/orchestrator";
 const headers={"Cache-Control":"no-store"};
 const VIEW_IDS=CHARACTER_VIEWS.map(v=>v.id) as [string,...string[]];
 // The prompt is NEVER accepted from the client: it is looked up server-side by turnId.
@@ -27,6 +27,7 @@ export async function POST(request:Request){
  }
  catch(e){
   // A photo edit that changes the camera and the light together is refused before any price, with what to do instead.
+  if(e instanceof SceneOccluded)return NextResponse.json({error:e.code,message:e.messageFa},{status:409,headers});
   if(e instanceof SceneEditConflict)return NextResponse.json({error:e.code,message:e.messageFa},{status:409,headers});
   if(e instanceof QuoteError)return NextResponse.json(e.code==="price_pending"?{error:e.code,message:FA_PRICE_PENDING}:{error:e.code},{status:e.status,headers});
   return NextResponse.json({error:"internal_error"},{status:500,headers});
