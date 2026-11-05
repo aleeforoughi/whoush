@@ -61,8 +61,8 @@ test("CSS frame: the main subject shows the height stop chosen, at every distanc
   const want=VERTICAL_STOPS.find(x=>x.angle===a)!.id;
   assert.equal(sp.length,1,a+" "+shot);
   // The image shows that height (or the nearest one toward eye level when the pack lacks it).
-  // A wide worm's-eye shot puts the camera on the ground, backed away: it sees the figure flatter, from low.
-  const ok=sp[0].stop===want||!VISUALS["human-"+want+"-front"]||(a==="worms_eye"&&shot==="wide"&&sp[0].stop==="low");
+  // A full or wide worm's-eye shot puts the camera on the ground, backed away: it sees the figure flatter, from low.
+  const ok=sp[0].stop===want||!VISUALS["human-"+want+"-front"]||(a==="worms_eye"&&shot!=="medium"&&sp[0].stop==="low");
   assert.ok(ok,a+" "+shot+" → "+sp[0].id);
  }
 });
@@ -271,4 +271,22 @@ test("beta: the frame draws only characters (people and the pets); props but no 
  // A box is not something the focus can land on while it is hidden.
  const desk={kind:"object" as const,label:"میز",x:0,z:-0.25,y:0,main:true},s:Staging={...base,shotSize:"medium",props:[desk]};
  assert.notEqual(pickPivot(s,s,"16:9",0.5,0.6).on,0);
+});
+
+test("changing the angle never changes the zoom, the lens, the aperture or the focus",async()=>{
+ const {lensFor,orbitCamera}=await import("../lib/staging");
+ const woman={kind:"person" as const,label:"زن",x:0.5,z:0.6,y:0},s0:Staging={...base,shotSize:"medium",props:[man,woman]};
+ const l0=lensFor(s0);
+ for(const [a,e] of [["birds_eye",80],["high",35],["low",-25],["worms_eye",-55]] as const){
+  const l=lensFor({...s0,cameraAngle:a,cameraElevation:e});
+  assert.equal(l.focalLengthMm,l0.focalLengthMm,a+": focal length");assert.equal(l.apertureF,l0.apertureF,a+": aperture");
+ }
+ for(const d of [45,90,180,-135]){const o=orbitCamera(s0,d),l=lensFor(o);
+  assert.equal(l.focalLengthMm,l0.focalLengthMm,"orbit "+d);assert.equal(l.apertureF,l0.apertureF,"orbit "+d+": aperture");
+  assert.equal(o.shotScale,s0.shotScale);}
+ // The focus stays on the dominant subject's face from every height.
+ for(const a of ["eye_level","high","birds_eye","low"] as const){
+  const s={...s0,cameraAngle:a},v=cssView(s,s,"16:9",1000,562.5),f=focusWorld(v);
+  assert.ok(Math.abs(f[1]-1.75*0.88)<1e-9&&Math.abs(f[0])<1e-9,a);
+ }
 });

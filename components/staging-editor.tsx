@@ -115,13 +115,18 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  const setElevation=(e:number)=>{aim();setElevationOnly(e);};
  // A new height or side: a focus point the user placed keeps the focus (on a prop it follows the prop around); only its zoom anchor, which belonged to
  // the old view, goes. Orbiting swings the ground around, so a point on the ground or the far background goes back to the dominant subject.
- const dropPivot=(d:Staging,orbit=false):Staging=>{if(!d.pivot)return d;const {pivot,...rest}=d;const {a:_a,b:_b,k:_k,...focus}=pivot;void _a;void _b;void _k;
-  return orbit&&(typeof focus.on!=="number"||!focus.rel)?rest:{...rest,pivot:focus};};
- const setElevationOnly=(e:number)=>setDraft(d=>fitZoom({...dropPivot(d),cameraElevation:e,cameraAngle:d.cameraAngle==="dutch"?"dutch":snapElevation(e)}));
+ const dropPivot=(d:Staging):Staging=>{if(!d.pivot)return d;const {pivot,...rest}=d;const {a:_a,b:_b,k:_k,...focus}=pivot;void _a;void _b;void _k;return {...rest,pivot:focus};};
+ /** An orbit swings the scene around the main subject (lib/staging.ts, orbitCamera): a focus point the user placed swings with it, so it stays on the same spot. */
+ const orbitPivot=(d:Staging,delta:number):Staging=>{const pv=d.pivot;if(!pv)return d;
+  const props=d.props??[],m=props.find(p=>p.main)??props[0],px=m?.x??0,pz=m?.z??0,a=delta*Math.PI/180,c=Math.cos(a),n=Math.sin(a),dx=pv.x-px,dz=pv.z-pz;
+  const rel=pv.rel?[pv.rel[0]*c-pv.rel[2]*n,pv.rel[1],pv.rel[0]*n+pv.rel[2]*c]:undefined;
+  return {...d,pivot:{...pv,x:px+dx*c+dz*n,z:pz-dx*n+dz*c,...(rel?{rel}:{})}};};
+ // Changing the angle never changes the zoom, the lens, the aperture or the focus: only the camera's height or side moves.
+ const setElevationOnly=(e:number)=>setDraft(d=>({...dropPivot(d),cameraElevation:e,cameraAngle:d.cameraAngle==="dutch"?"dutch":snapElevation(e)}));
  const orbitTo=(az:number)=>{aim();orbitOnly(az);};
  // A drag of the camera re-centres once, when it starts (not on every move).
  const orbitDrag=(az:number)=>orbitOnly(snapSide(az));
- const orbitOnly=(az:number)=>setDraft(d=>fitZoom(orbitCamera(dropPivot(d,true),wrap180(az-(d.cameraAzimuth??0)))));
+ const orbitOnly=(az:number)=>setDraft(d=>{const delta=wrap180(az-(d.cameraAzimuth??0));return orbitCamera(orbitPivot(dropPivot(d),delta),delta);});
  const setDistance=(v:number)=>{aim();setDistanceOnly(v);};
  // The zoom stays within what this scene allows (the camera never inside or past the subject: lib/frame-css.ts, zoomLimits); a new lens or angle that
  // would put it there pulls the zoom back to the nearest allowed.
@@ -210,7 +215,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     {/* The two camera views side by side, each its own tile: from the side (height and distance) and from above (the orbit), synced through one scene. */}
     <div className="grid grid-cols-2 gap-2">
      <Tile label="زاویه دوربین / عمودی">
-      <CameraView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onStart={aim} onCamera={c=>{setDraft(d=>{const n=c.flip?orbitCamera(dropPivot(d,true),180):dropPivot(d);
+      <CameraView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onStart={aim} onCamera={c=>{setDraft(d=>{const n=c.flip?orbitCamera(orbitPivot(dropPivot(d),180),180):dropPivot(d);
        const e=snapVertical(c.elevation);return {...n,cameraElevation:e,cameraAngle:n.cameraAngle==="dutch"?"dutch":snapElevation(e)};});}}/>
      </Tile>
      <Tile label="زاویه دوربین / افقی">

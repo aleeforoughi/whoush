@@ -250,7 +250,7 @@ test("Whoush picks the lens for the scene around its dominant subject: distance,
  const at=(p:Partial<Staging>)=>lensFor({...s,...p});
  assert.deepEqual([at({shotSize:"close_up",shotScale:undefined}).focalLengthMm,at({shotSize:"close_up",shotScale:undefined}).aperture],[85,"f/1.8"],"a close portrait: 85mm wide open for bokeh");
  assert.equal(at({shotSize:"wide"}).aperture,"f/8");assert.ok(at({shotSize:"wide"}).focalLengthMm<=24,"a wide shot: a wide lens, everything sharp");
- assert.equal(at({shotSize:"full",cameraElevation:-45}).focalLengthMm,24,"a steep worm's-eye camera: wider");
+ assert.equal(at({shotSize:"full",cameraElevation:-45}).focalLengthMm,at({shotSize:"full"}).focalLengthMm,"the camera's angle never changes the lens");
  const shoes=applyStagingCues({...s,shotSize:"close_up"},normalizePersian("کلوزآپ از کفش‌های زن روی آسفالت خیس"));
  assert.equal(shoes.focusDetail,"feet");
  const l=lensFor(shoes);assert.equal(l.focalLengthMm,100);assert.match(l.fa,/پاها و کفش/);assert.match(l.en,/feet and shoes/);

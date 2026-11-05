@@ -663,7 +663,8 @@ export function lensFor(s:Staging):LensChoice{
  const sc=scaleOf(s),subject=s.subject??"person",props=s.props??[],main=props.find(p=>p.main)??props[0];
  const kind=main?.kind??(subject==="environment"?undefined:subject);
  const others=props.filter(p=>p!==main&&(p.kind==="person"||p.kind==="animal"||p.kind==="vehicle"||p.kind==="object"));
- const depthSpread=others.length&&main?Math.max(...others.map(p=>Math.abs(p.z-main.z))):0;
+ // How far the other subjects stand from the main one, on the ground (not only in depth), so turning the camera around them never changes the aperture.
+ const depthSpread=others.length&&main?Math.max(...others.map(p=>Math.hypot(p.x-main.x,p.z-main.z))):0;
  const elev=elevationOf(s);
  let f:number,ap:number,macro=false,why:string;
  const detail=kind==="person"?s.focusDetail:undefined;
@@ -685,8 +686,8 @@ export function lensFor(s:Staging):LensChoice{
  const together=others.length>0&&depthSpread>0.4&&!macro&&ap<5.6;
  if(together)ap=5.6;
  // A steep camera: a wider lens for the perspective (not for a macro).
- const steep=!macro&&(elev<=-30||elev>=60);
- if(steep)f=Math.min(f,elev<=-30?24:28);
+ // The camera's angle never changes the lens: the same shot keeps its focal length and aperture from any height or side.
+ const steep=false;void elev;
  // Low light (fire, candles, a lamp, the moon, or very warm light only): open up a stop and raise the ISO instead of losing the shot to noise or blur.
  const lowLight=s.lights.length>0&&s.lights.every(l=>l.source==="fire"||l.source==="practical"||l.source==="moon"||l.colorTemperatureK<=2400);
  if(lowLight&&!macro)ap=Math.max(1.4,ap>=8?4:ap>=5.6?2.8:ap>=4?2:ap);
