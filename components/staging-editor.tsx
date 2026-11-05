@@ -712,8 +712,9 @@ function SubSection({title,icon,open,onToggle,children}:{title:string;/** The se
  const id=useId();
  return <div className="flex flex-col gap-3">
   <button type="button" aria-expanded={open} aria-controls={id} onClick={onToggle}
-   className="flex w-full items-center gap-3 rounded-card px-3 py-2.5 text-start motion-hover hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
-   <Icon icon={icon} size={16} aria-hidden="true" className="size-4 shrink-0 text-fg-secondary"/>
+   className={"flex w-full items-center gap-3 rounded-card px-3 py-2.5 text-start motion-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring "+(open?"bg-surface-selected":"hover:bg-surface-hover")}>
+   {/* Open: the header stays selected (its background and a blue icon), so it reads which part is open. */}
+   <Icon icon={icon} size={16} aria-hidden="true" className={"size-4 shrink-0 "+(open?"text-primary":"text-fg-secondary")}/>
    <span className="min-w-0 truncate type-label text-fg-primary">{title}</span>
    <Icon icon={ChevronDown} size={16} aria-hidden="true" className={"ms-auto size-4 shrink-0 text-fg-secondary transition-transform motion-reduce:transition-none "+(open?"rotate-180":"")}/>
   </button>
