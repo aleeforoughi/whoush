@@ -413,9 +413,11 @@ export function cropOnSubject(s:Staging,anchor:Staging|undefined,aspect:string):
  const T=hit(w/2,0),B=hit(w/2,h),L=hit(0,h/2),R=hit(w,h/2);
  return {top:T?T[1]-g[1]:Infinity,bottom:B?B[1]-g[1]:-Infinity,left:L?dot(sub(L,g),side):-Infinity,right:R?dot(sub(R,g),side):Infinity};
 }
+/** How high above its usual place the camera may be raised, metres (a tall stand or a short crane). */
+export const LIFT_MAX=3;
 /** How far the camera may be lowered (it stays above the ground) or raised, metres, at its current angle and distance. */
 export function liftLimits(s:Staging,anchor:Staging|undefined,aspect:string):[number,number]{
- const v=cssView({...s,cameraLift:0},anchor,aspect,100,100);return [Math.min(0,Math.round((0.05-v.pos[1])*100)/100),6];
+ const v=cssView({...s,cameraLift:0},anchor,aspect,100,100);return [Math.min(0,Math.ceil((0.05-v.pos[1])*20)/20),LIFT_MAX];
 }
 
 // ---- an extreme close-up past what the frame can draw ----

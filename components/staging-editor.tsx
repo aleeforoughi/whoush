@@ -6,15 +6,15 @@ import {Box,ChevronDown,ChevronLeft,ChevronRight,ChevronUp,Lock,LockOpen,Maximiz
 import {Button,Dialog,DialogBody,DialogContent,DialogHeader,DialogPortal,DialogTitle,Icon} from "@aleeforoughi/feather-react";
 import {FOCUS_DETAILS,LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
- SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,rollOf,lensSizeFactor,backdropFactor,wallDepth,blurAt,horizonShift,focusDepth,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,VERTICAL_STOPS,verticalIndex,snapVertical,SIDE_STEP,snapSide,sideStopFa,isCube,cubeDims,isCharacter,showsFrame,type SceneProp} from "@/lib/staging";
+ SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,rollOf,lensSizeFactor,backdropFactor,wallDepth,blurAt,horizonShift,focusDepth,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,VERTICAL_STOPS,verticalIndex,snapVertical,SIDE_STEP,snapSide,sideStopFa,isCube,cubeDims,isCharacter,showsFrame,liftFa,type SceneProp} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 import {fa} from "@/lib/format";
 import type {FrameRect} from "./scene-3d";
 import FrameCSS from "./frame-css";
 import {ClayBox,ClayFootprint} from "./clay-box";
-import {spriteFor} from "@/lib/sprites";
+import {spriteFor,sizeOf} from "@/lib/sprites";
 import {SCENE_COLORS} from "@/lib/scene3d";
-import {shade,pickPivot,zoomLimits,propReach3D} from "@/lib/frame-css";
+import {shade,pickPivot,zoomLimits,propReach3D,cropOnSubject,liftLimits} from "@/lib/frame-css";
 
 /** The frame in real 3D (three.js), loaded only in the browser and only when «بوم» is open; the 2D drawing stays as the collapsed snapshot and the fallback. */
 const Scene3D=dynamic(()=>import("./scene-3d"),{ssr:false,loading:()=>null});
@@ -136,6 +136,8 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  const zoomTo=(d:Staging,v:number):Staging=>{const lo=tightest(d),sc=scaleFromSlider(Math.max(lo,Math.min(1,v)));return {...d,shotScale:sc,shotSize:nearestShot(sc)};};
  const fitZoom=(d:Staging):Staging=>{const v=sliderFromScale(scaleOf(d)),lo=tightest(d);return v<lo?zoomTo(d,lo):d;};
  const setDistanceOnly=(v:number)=>setDraft(d=>zoomTo(d,v));
+ // The camera raised or lowered on its stand, in 5 cm steps, within what keeps it above the ground.
+ const setLift=(v:number)=>setDraft(d=>{const [lo,hi]=liftLimits(d,anchor,aspect),l=Math.round(Math.max(lo,Math.min(hi,v))*20)/20;const {cameraLift:_l,...rest}=d;void _l;return Math.abs(l)<0.025?rest:{...rest,cameraLift:l};});
  const setProp=(i:number,p:Partial<SceneProp>)=>setDraft(d=>({...d,props:(d.props??[]).map((x,j)=>j===i?{...x,...p}:x)}));
  // Collapsed by default: «بوم» is advanced settings. The card shows the scene in one line; opening it shows the canvas and its controls.
  // Collapsed by default. A focused follow-up (one part, e.g. the camera's distance) shows just that part's controls in the collapsed card, live; expanding shows
@@ -240,9 +242,12 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     {show("distance")&&<>
     {/* The camera's distance on its own tile, after the angles: drag the camera nearer or farther (the frame's zoom follows), or use the slider. */}
     <Tile label="فاصله دوربین">
-     <DistanceView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onDistance={v=>{aim();setDistanceOnly(v);}}/>
+     <DistanceView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onDistance={v=>{aim();setDistanceOnly(v);}} onLift={setLift}/>
     </Tile>
     {editable&&<SliderRow label="فاصلهٔ دوربین (همون زوم کادر)" ends={["نزدیک","دور"]} valueText={SHOT_SIZE_FA[draft.shotSize]+" · زوم "+fa(zoomFactor(draft))+"×"} min={0} max={1} step={0.001} value={distanceOf(draft)} onChange={setDistance}/>}
+    {/* The camera's stand: raised or lowered with its aim, the angle unchanged (a pedestal move); never under the ground (lib/frame-css.ts, liftLimits). */}
+    {editable&&(()=>{const [lo,hi]=liftLimits(draft,anchor,aspect);return <SliderRow label="بالا و پایین بردن دوربین (پایه)" ends={["پایین‌تر","بالاتر"]} valueText={liftFa(draft.cameraLift)}
+     min={lo} max={hi} step={0.05} value={Math.max(lo,Math.min(hi,draft.cameraLift??0))} onChange={setLift}/>;})()}
     </>}
     {/* Lens and aperture: Whoush's pick for the scene (lib/staging.ts, lensFor) until the user moves a slider; bokeh is the aperture opened wide. */}
     {editable&&show("lens")&&(()=>{const l=lensFor(draft),auto=(on:boolean)=>on?" · خودکار":"";
@@ -383,39 +388,66 @@ function CubeTop({x,y,h,rotate=0,tint}:{x:number;y:number;h:number;rotate?:numbe
 const mainProp=(s:Staging)=>(s.props??[]).find(p=>p.main)??(s.props??[])[0];
 
 /**
- * The camera's distance, its own tile: the dominant subject on the left and the camera on a track to its right, its lens on the line to the subject's
- * focus (the face for a person). Drag the camera along the track: nearer zooms the frame in, farther zooms out (the same value as the frame's zoom).
+ * The camera's distance, its own tile: the dominant subject on the left and the camera on its stand to its right, its lens on the line to the subject's
+ * focus (the face for a person). Drag the camera sideways for its distance (the frame's zoom follows) or up and down for its height on the stand (the
+ * angle stays; lib/scene3d.ts, cameraLift). For a character, a blue dotted rectangle on the subject shows what the frame covers: its crop, from the
+ * frame's real view (lens, angle, crop and height all count; lib/frame-css.ts, cropOnSubject).
  */
-function DistanceView({staging,anchor,aspect,editable,onDistance}:{staging:Staging;anchor?:Staging;aspect?:string;editable:boolean;onDistance:(v:number)=>void}){
- const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false),tint=useId(),grab=useRef(0);
+function DistanceView({staging,anchor,aspect,editable,onDistance,onLift}:{staging:Staging;anchor?:Staging;aspect?:string;editable:boolean;onDistance:(v:number)=>void;onLift:(m:number)=>void}){
+ const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false),tint=useId();
+ const grab=useRef<{x:number;y:number;dist:number;lift:number;axis?:"x"|"y";only?:"y"}|null>(null);
  // Laid out so the subject and the camera at its farthest are evenly inside the tile (the camera's body reaches CAMERA_SIZE behind its lens).
- const VW=440,VH=150,X0=46,NEAR=140,FAR=VW-24-CAMERA_SIZE,ground=VH-12;
- const m=mainProp(staging),kind=m?.kind,size=m&&isCharacter(m)?Math.min(116,PROP_HEIGHT[m.kind]*116):CUBE_SIDE;
- // The camera's track runs at the height of the frame's centre point on the subject (its face by default).
- const focusY=kind?Math.max(14,Math.min(ground-4,ground-size*centerOnSubject(staging,anchor,aspect??"16:9").height)):ground-30;
+ const VW=440,VH=150,X0=46,NEAR=140,FAR=VW-24-CAMERA_SIZE,ground=VH-12,asp=aspect??"16:9";
+ const m=mainProp(staging),kind=m?.kind,character=Boolean(m&&isCharacter(m)),size=m&&character?Math.min(116,PROP_HEIGHT[m.kind]*116):CUBE_SIDE;
+ // Screen units per metre: the character at its real height; a cube (not to scale) as if a person stood there.
+ const perM=m&&character?size/sizeOf(m).h:116/1.75;
+ // The camera's track runs at the height of the frame's centre point on the subject (its face by default), raised or lowered with the camera's stand.
+ const lift=staging.cameraLift??0;
+ const focusY=kind?Math.max(14,Math.min(ground-4,ground-size*centerOnSubject(staging,anchor,asp).height)):ground-30;
+ const camY=Math.min(ground-14,focusY-lift*perM);
  const dist=distanceOf(staging),camX=NEAR+(FAR-NEAR)*dist;
  // The subject as the camera sees it, the same image as the frame and the vertical angle tile.
  const sp=m?sprite(m):undefined,mTint=m?propTints(staging.props??[])[(staging.props??[]).indexOf(m)]:undefined;
- // The tile is as tall as what it shows: from just above the taller of the subject and the camera down to just under the ground, so a short subject
- // (the mountains, a cat) leaves no empty band above it.
- const subjectTop=ground-(kind&&sp?size:CUBE_SIDE),top=Math.max(0,Math.min(subjectTop,focusY-CAMERA_SIZE*0.55)-10),viewH=VH-top;
- const toDist=(e:PointerEvent)=>{const r=svg.current!.getBoundingClientRect();const x=(e.clientX-r.left)*VW/r.width-grab.current;return Math.max(0,Math.min(1,(x-NEAR)/(FAR-NEAR)));};
- const key=(e:KeyboardEvent)=>{const d={ArrowRight:0.05,ArrowUp:0.05,ArrowLeft:-0.05,ArrowDown:-0.05}[e.key as "ArrowUp"];if(!d)return;e.preventDefault();onDistance(Math.max(0,Math.min(1,dist+d)));};
+ // What the frame covers on a character, as a rectangle on it (kept within reach of the tile: a wide shot's crop runs off it).
+ const crop=character?cropOnSubject(staging,anchor,asp):undefined;
+ const subjectTop=ground-(kind&&sp?size:CUBE_SIDE);
+ const cropBox=crop&&Number.isFinite(crop.top)&&Number.isFinite(crop.bottom)?(()=>{const y1=Math.max(subjectTop-size*0.35,ground-crop.top*perM),y2=Math.min(ground+8,ground-crop.bottom*perM),
+  cx=X0+Math.max(-30,Math.min(30,(crop.left+crop.right)/2*perM)),half=Math.min(cx-6,Math.max(4,(crop.right-crop.left)/2*perM));return y2>y1?{x:cx-half,y:y1,w:half*2,h:y2-y1}:undefined;})():undefined;
+ // The tile is as tall as what it shows: from just above the tallest of the subject, the camera and the crop down to just under the ground, so a short
+ // subject (a cat) leaves no empty band above it.
+ const top=Math.max(-60,Math.min(subjectTop,camY-CAMERA_SIZE*0.55,cropBox?cropBox.y-4:Infinity)-10),viewH=VH-top;
+ const at=(e:PointerEvent):[number,number]=>{const r=svg.current!.getBoundingClientRect();return [(e.clientX-r.left)*VW/r.width,(e.clientY-r.top)*viewH/r.height+top];};
+ const move=(e:PointerEvent)=>{const g=grab.current;if(!g)return;const [x,y]=at(e),dx=x-g.x,dy=y-g.y;
+  // A drag moves one thing: its first clear direction decides (sideways the distance, up and down the height); the stand's arrows move only the height.
+  if(!g.axis){if(Math.hypot(dx,dy)<5)return;g.axis=g.only??(Math.abs(dx)>=Math.abs(dy)?"x":"y");}
+  if(g.axis==="x"){const v=g.dist+dx/(FAR-NEAR);onDistance(Math.max(0,Math.min(1,v)));}else onLift(g.lift-dy/perM);};
+ const begin=(e:PointerEvent,only?:"y")=>{capture(svg.current,e.pointerId);const [x,y]=at(e);grab.current={x,y,dist,lift,only};setDragging(true);e.stopPropagation();};
+ const end=()=>{grab.current=null;setDragging(false);};
+ const key=(e:KeyboardEvent)=>{const d={ArrowRight:0.05,ArrowLeft:-0.05}[e.key as "ArrowRight"],l={ArrowUp:0.1,ArrowDown:-0.1}[e.key as "ArrowUp"];
+  if(d){e.preventDefault();onDistance(Math.max(0,Math.min(1,dist+d)));}else if(l){e.preventDefault();onLift(lift+l);}};
+ const poleX=camX+CAMERA_SIZE*0.45,arrowsY=(camY+ground)/2;
  return <svg ref={svg} viewBox={"0 "+top+" "+VW+" "+viewH} className="mx-auto block w-full touch-pan-y select-none text-fg-primary" style={{aspectRatio:VW+"/"+viewH}} aria-hidden={!editable}
-  onPointerMove={e=>{if(!dragging)return;const v=toDist(e);if(Number.isFinite(v))onDistance(v);}} onPointerUp={()=>setDragging(false)} onPointerCancel={()=>setDragging(false)}>
+  onPointerMove={dragging?move:undefined} onPointerUp={end} onPointerCancel={end}>
   <BlueTint id={tint}/>{mTint&&<Tint id={tint+"-m"} color={mTint}/>}
   <line x1={8} x2={VW-8} y1={ground} y2={ground} stroke="currentColor" strokeOpacity=".3" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
-  {/* The track: from nearest to farthest, with a tick at each end. */}
-  <line x1={NEAR} x2={FAR} y1={focusY} y2={focusY} stroke="currentColor" strokeOpacity=".35" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
-  {[NEAR,FAR].map(x=><line key={x} x1={x} x2={x} y1={focusY-5} y2={focusY+5} stroke="currentColor" strokeOpacity=".35" strokeWidth={1} vectorEffect="non-scaling-stroke"/>)}
+  {/* The track: from nearest to farthest, with a tick at each end, at the camera's height. */}
+  <line x1={NEAR} x2={FAR} y1={camY} y2={camY} stroke="currentColor" strokeOpacity=".35" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
+  {[NEAR,FAR].map(x=><line key={x} x1={x} x2={x} y1={camY-5} y2={camY+5} stroke="currentColor" strokeOpacity=".35" strokeWidth={1} vectorEffect="non-scaling-stroke"/>)}
   {kind&&sp?<PropFig sp={sp} x={X0} y={ground} h={size} tint={mTint?tint+"-m":undefined}/>:<Cube x={X0} y={ground} h={CUBE_SIDE}/>}
-  <line x1={camX} y1={focusY} x2={X0} y2={focusY} className="stroke-primary" strokeWidth={1.2} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
-  <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="فاصلهٔ دوربین" aria-valuetext={SHOT_SIZE_FA[staging.shotSize]+"، زوم "+zoomFactor(staging)+"×"}
-   aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(dist*100)} onKeyDown={editable?key:undefined}
-   onPointerDown={editable?e=>{capture(svg.current,e.pointerId);const r=svg.current!.getBoundingClientRect();grab.current=(e.clientX-r.left)*VW/r.width-camX;setDragging(true);}:undefined}
+  {cropBox&&<rect x={cropBox.x} y={cropBox.y} width={cropBox.w} height={cropBox.h} rx={2} fill="none" className="stroke-primary" strokeWidth={1.4} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>}
+  <line x1={camX} y1={camY} x2={X0} y2={camY} className="stroke-primary" strokeWidth={1.2} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
+  {/* The stand: a pole down to the ground on a small foot, with arrows to raise or lower the camera. */}
+  <line x1={poleX} x2={poleX} y1={camY+8} y2={ground} stroke="currentColor" strokeOpacity=".45" strokeWidth={1.5} vectorEffect="non-scaling-stroke"/>
+  <line x1={poleX-10} x2={poleX+10} y1={ground} y2={ground} stroke="currentColor" strokeOpacity=".45" strokeWidth={2} strokeLinecap="round" vectorEffect="non-scaling-stroke"/>
+  {editable&&<g role="slider" tabIndex={-1} aria-label="بالا و پایین بردن دوربین" aria-valuetext={liftFa(lift)} className={(dragging?"cursor-grabbing":"cursor-ns-resize")+" touch-none"} onPointerDown={e=>begin(e,"y")}>
+   <circle cx={poleX} cy={arrowsY} r={11} fill="var(--color-bg-primary,transparent)" stroke="currentColor" strokeOpacity=".35" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
+   <path d={"M"+(poleX-4)+" "+(arrowsY-2)+"L"+poleX+" "+(arrowsY-7)+"L"+(poleX+4)+" "+(arrowsY-2)+"M"+(poleX-4)+" "+(arrowsY+2)+"L"+poleX+" "+(arrowsY+7)+"L"+(poleX+4)+" "+(arrowsY+2)} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
+  </g>}
+  <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="فاصلهٔ دوربین" aria-valuetext={SHOT_SIZE_FA[staging.shotSize]+"، زوم "+zoomFactor(staging)+"×"+"، پایه: "+liftFa(lift)}
+   aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(dist*100)} onKeyDown={editable?key:undefined} onPointerDown={editable?e=>begin(e):undefined}
    className={editable?(dragging?"cursor-grabbing":"cursor-grab")+" touch-none outline-none focus-visible:[&>circle]:stroke-primary":""}>
-   <circle cx={camX+CAMERA_SIZE/2} cy={focusY} r={36} fill="transparent" strokeWidth={2}/>
-   <CameraGlyph view="side" x={camX} y={focusY} rotate={0} tint={tint}/>
+   <circle cx={camX+CAMERA_SIZE/2} cy={camY} r={36} fill="transparent" strokeWidth={2}/>
+   <CameraGlyph view="side" x={camX} y={camY} rotate={0} tint={tint}/>
   </g>
  </svg>;
 }
