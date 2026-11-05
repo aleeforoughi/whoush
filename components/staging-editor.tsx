@@ -2,7 +2,7 @@
 import {useEffect,useId,useRef,useState,useSyncExternalStore,type KeyboardEvent,type PointerEvent,type ReactNode} from "react";
 import dynamic from "next/dynamic";
 import {Dialog as DialogPrimitive} from "@base-ui/react/dialog";
-import {Box,ChevronDown,ChevronLeft,ChevronRight,ChevronUp,Lock,LockOpen,Maximize2,Plus,RotateCcw,Trash2,Undo2,X} from "lucide-react";
+import {Box,Camera,ChevronDown,ChevronLeft,ChevronRight,ChevronUp,Lock,LockOpen,Maximize2,Plus,RotateCcw,Trash2,Undo2,X,Lightbulb,type LucideIcon} from "lucide-react";
 import {Button,Dialog,DialogBody,DialogContent,DialogHeader,DialogPortal,DialogTitle,Icon} from "@aleeforoughi/feather-react";
 import {FOCUS_DETAILS,LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
@@ -245,7 +245,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     </>}
    </Viewport>
    </div>}
-   {(show("angle")||show("distance")||show("lens"))&&<div><SubSection c={cap.camera} open={camOpen} onToggle={()=>setSubOpen(o=>({...o,camera:!camOpen}))}><Viewport {...cap.camera}>
+   {(show("angle")||show("distance")||show("lens"))&&<div><SubSection c={cap.camera} icon={Camera} open={camOpen} onToggle={()=>setSubOpen(o=>({...o,camera:!camOpen}))}><Viewport {...cap.camera}>
     {show("angle")&&<>
     {/* The two camera views, each its own tile: from the side (height and distance) and from above (the orbit), synced through one scene. Stacked on a
         phone, so each is big enough to drag with a finger; side by side where the card is wide. */}
@@ -301,7 +301,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
        onChange={v=>setManual({apertureF:apertureFromSlider(v)})}/>
      </>;})()}
    </Viewport></SubSection></div>}
-   {show("light")&&<div><SubSection c={cap.light} open={lightOpen} onToggle={()=>setSubOpen(o=>({...o,light:!lightOpen}))}>
+   {show("light")&&<div><SubSection c={cap.light} icon={Lightbulb} open={lightOpen} onToggle={()=>setSubOpen(o=>({...o,light:!lightOpen}))}>
     <Viewport {...cap.light}>
      <LightView staging={draft} editable={editable} selected={lightSel} onSelect={setLightSel} onLight={(i,deg)=>setLight(i,{angle:deg,direction:snapDirection(deg)})}/>
     </Viewport>
@@ -703,11 +703,12 @@ function Toggle({label,on,onChange}:{label:string;on:boolean;onChange:(on:boolea
  * A sub-section of the expanded card (the camera, the lighting): a header row with its title and current value that opens or closes it, closed by
  * default so the card stays short; the frame above it is always open.
  */
-function SubSection({c,open,onToggle,children}:{c:{title:string;value:string};open:boolean;onToggle:()=>void;children:ReactNode}){
+function SubSection({c,icon,open,onToggle,children}:{c:{title:string;value:string};/** The section's icon, before its title. */icon:LucideIcon;open:boolean;onToggle:()=>void;children:ReactNode}){
  const id=useId();
  return <div className="flex flex-col gap-3">
   <button type="button" aria-expanded={open} aria-controls={id} onClick={onToggle}
    className="flex w-full items-center gap-3 rounded-card px-3 py-2.5 text-start motion-hover hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+   <Icon icon={icon} size={16} aria-hidden="true" className="size-4 shrink-0 text-fg-secondary"/>
    <span className="rounded-control bg-surface-hover px-2 py-0.5 type-caption text-fg-secondary">{c.title}</span>
    <span className="min-w-0 truncate type-label text-fg-primary">{c.value}</span>
    <Icon icon={ChevronDown} size={16} aria-hidden="true" className={"ms-auto size-4 shrink-0 text-fg-secondary transition-transform motion-reduce:transition-none "+(open?"rotate-180":"")}/>
