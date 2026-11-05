@@ -34,6 +34,8 @@ export const ASSETS:{id:string;ref?:string;prompt:string;size:"1024x1024"|"1024x
  {id:"env-tree",ref:"env-mountains",size:"1024x1536",prompt:"A stylized simple tree with a smooth rounded lollipop-like canopy and a short straight trunk, seen from the side."},
  {id:"env-building",ref:"env-tree",size:"1024x1536",prompt:"A stylized simple modern building block, a rounded tall box with a few rounded rectangular windows, seen from the front three-quarter."},
  {id:"env-top",ref:"env-building",size:"1024x1024",prompt:"A small stylized landscape scene seen exactly from directly above (top-down orthographic view): three rounded tree canopies and one small rounded square building roof, arranged in a loose cluster."},
+ {id:"tree-top",ref:"env-tree",size:"1024x1024",prompt:"The same single stylized tree seen exactly from directly above (top-down orthographic view): one round fluffy canopy, no trunk visible."},
+ {id:"building-top",ref:"env-building",size:"1024x1024",prompt:"The same single stylized building seen exactly from directly above (top-down orthographic view): a rounded rectangular flat roof with a small rooftop box."},
  {id:"light-softbox",size:"1024x1024",prompt:"A photography softbox light on a short stand, seen from the front three-quarter: a square diffuser panel glowing softly warm white, rounded edges."},
  {id:"light-led-panel",ref:"light-softbox",size:"1024x1024",prompt:"A flat rectangular LED panel light on a small yoke mount, seen from the front three-quarter, the panel face glowing softly white."},
  {id:"light-practical",ref:"light-softbox",size:"1024x1024",prompt:"A small modern table lamp with a rounded shade, the bulb glowing warm amber inside the shade."},

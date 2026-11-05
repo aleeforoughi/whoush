@@ -3,6 +3,7 @@ export type VisualAsset={src:string;width:number;height:number};
 export const VISUALS:Record<string,VisualAsset>={
  "animal-side":{src:"/visuals/animal-side.png",width:541,height:640},
  "animal-top":{src:"/visuals/animal-top.png",width:516,height:640},
+ "building-top":{src:"/visuals/building-top.png",width:416,height:640},
  "camera-side":{src:"/visuals/camera-side.png",width:640,height:360},
  "camera-top":{src:"/visuals/camera-top.png",width:373,height:640},
  "env-building":{src:"/visuals/env-building.png",width:390,height:640},
@@ -24,6 +25,7 @@ export const VISUALS:Record<string,VisualAsset>={
  "person-front":{src:"/visuals/person-front.png",width:196,height:640},
  "person-side":{src:"/visuals/person-side.png",width:153,height:640},
  "person-top":{src:"/visuals/person-top.png",width:640,height:388},
+ "tree-top":{src:"/visuals/tree-top.png",width:517,height:513},
  "vehicle-side":{src:"/visuals/vehicle-side.png",width:640,height:319},
  "vehicle-top":{src:"/visuals/vehicle-top.png",width:315,height:640}
 };

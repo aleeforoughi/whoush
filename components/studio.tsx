@@ -32,6 +32,10 @@ import {STORAGE_FULL_FA,getProject,listAssets,saveAsset,saveProject} from "@/lib
 import {MAX_MESSAGES,assetToAttachment,attachmentToAsset,autoTitle,rerunSource,uniqueById,answerBrief,historyFor,toggleReaction,generationTagsIn,referencedGenerations,toGenerationRef,withGenerationTags,type GifSnapshot,type ProposalSnapshot,type Project,type StoredMessage} from "@/lib/projects";
 import {MAX_GENERATION_REFS,type ReactionEmoji,type Staging} from "@/lib/creative-plan";
 import {describeStagingChangesFa} from "@/lib/staging";
+import {STAGE_TEXT,postAgentTurn} from "@/lib/agent-stream";
+import type {TurnStage} from "@/lib/orchestrator-stages";
+import {replyScriptFor} from "@/lib/finglish";
+import {ThinkingRow,TypeOut} from "@/components/type-out";
 import {ChatGif} from "@/components/chat-gif";
 import {COMPOSER_EMOJIS,EmojiPalette} from "@/components/emoji-palette";
 import {GifPicker} from "@/components/gif-picker";
@@ -133,8 +137,15 @@ export function Studio(){
  useEffect(()=>{latest.current={messages,mode,style,character};});
  /** Every attachment of this conversation that still exists: sent messages first, then the tray. */
  const conversation=uniqueById([...messages.flatMap(m=>m.attachments??[]),...attachments]);
+ /** While a turn runs: the real stage the server reports, in the script of the user's message. Shown at once as «هووش داره کار می‌کنه». */
+ const [thinking,setThinking]=useState<{stage:TurnStage;script:"fa"|"finglish"}|null>(null);
+ /** Agent messages that arrived in this session: their text types out once. */
+ const [fresh,setFresh]=useState<ReadonlySet<string>>(()=>new Set());
  /** For the «۶ دقیقه پیش» under each message. */
  const now=useNow();
+ const markFresh=(...ids:string[])=>setFresh(f=>new Set([...f,...ids]));
+ /** An agent message from this turn: it types out once when it appears. */
+ const agentItem=(m:Parameters<typeof item>[0])=>{const it=item(m);markFresh(it.id);return it;};
  const byTag=new Map(conversation.map(a=>[a.tag,a]));
  /** The generations of this chat by tag (#تولید-۱ ...): every proposal is one. Only these can be referenced from this chat. */
  const generationMap=new Map(messages.flatMap(m=>m.kind==="proposal"&&m.snapshot.tag?[[m.snapshot.tag,m.snapshot as ProposalSnapshot&{tag:string}] as const]:[]));
@@ -283,7 +294,7 @@ export function Studio(){
   // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount; syncUrl only needs the router, which is stable
  },[]);
  useEffect(()=>{const live=urls.current;return()=>{live.forEach(u=>URL.revokeObjectURL(u));live.clear();};},[]);
- useEffect(()=>{endRef.current?.scrollIntoView({block:"end"});},[messages,proposal,error]);
+ useEffect(()=>{endRef.current?.scrollIntoView({block:"end"});},[messages,proposal,error,thinking?.stage]);
  const blobFor=(id:string)=>blobs.current.get(id);
  /** Opens the viewer on one attachment, with every attachment of this conversation (sent messages first, then the tray) to step through. */
  function openViewer(a:LocalAttachment){
@@ -470,22 +481,23 @@ export function Studio(){
   const whoushReacts=(emoji?:ReactionEmoji)=>{if(emoji)react(userMsg.id,emoji,"whoush");};
   const characterRef=current?{id:current.id,name:current.name,angles:characterCoverage(current.references).uploaded,version:current.version}:undefined;
   try{
-   const r=await fetch("/api/agent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(toWireAttachment)}:{}),...(generations.length?{generations}:{})})});
+   setThinking({stage:"reading",script:replyScriptFor(sentText)});
+   const r=await postAgentTurn(JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(toWireAttachment)}:{}),...(generations.length?{generations}:{})}),stage=>setThinking(t=>t&&{...t,stage}));
    if(!r.ok){
     const errorBody=await r.json().catch(()=>({})) as {error?:string;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"]};
     if(r.status===422&&errorBody.error==="no_compatible_model"){
      const message=typeof errorBody.message==="string"?errorBody.message:"مدل سازگاری برای این درخواست پیدا نشد.";
-     setMessages(m=>[...m,item({role:"agent",text:message,kind:"no_model",snapshot:{message,...(errorBody.plan?{plan:errorBody.plan}:{})}})]);setPreview("مدل سازگار پیدا نشد");
+     setMessages(m=>[...m,agentItem({role:"agent",text:message,kind:"no_model",snapshot:{message,...(errorBody.plan?{plan:errorBody.plan}:{})}})]);setPreview("مدل سازگار پیدا نشد");
      adoptProject(firstText,characterId);
      return;
     }
     if(r.status===422&&errorBody.error==="needs_input"&&typeof errorBody.question==="string"){
-     setMessages(m=>[...m,item({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"",kind:"question",snapshot:{question:errorBody.question!}})]);whoushReacts(errorBody.reaction);
+     setMessages(m=>[...m,agentItem({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"",kind:"question",snapshot:{question:errorBody.question!}})]);whoushReacts(errorBody.reaction);
      adoptProject(firstText,characterId);
      return;
     }
     if(r.status===422&&errorBody.error==="content_restricted"){
-     setMessages(m=>[...m,item({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"این درخواست را نمی‌توانم انجام بدهم.",kind:"restricted"})]);
+     setMessages(m=>[...m,agentItem({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"این درخواست را نمی‌توانم انجام بدهم.",kind:"restricted"})]);
      adoptProject(firstText,characterId);
      return;
     }
@@ -494,13 +506,13 @@ export function Studio(){
    const data=await r.json() as AgentProposal&{message:string;gif?:GifSnapshot;reaction?:ReactionEmoji};
    const picked=data.suggestions.find(s=>s.modelId===data.recommendedModelId)??data.suggestions[0];
    const tag=nextGenerationTag(generationTagsIn(messages));
-   const reply=item({role:"agent",text:data.message,kind:"proposal",snapshot:{...(tag?{tag}:{}),operation:data.operation,modelName:picked?.name??"",neurons:picked?.neurons??data.fixedNeurons,intentSummaryFa:data.plan.intentSummaryFa,plan:data.plan}});
+   const reply=agentItem({role:"agent",text:data.message,kind:"proposal",snapshot:{...(tag?{tag}:{}),operation:data.operation,modelName:picked?.name??"",neurons:picked?.neurons??data.fixedNeurons,intentSummaryFa:data.plan.intentSummaryFa,plan:data.plan}});
    setProposal(data);setLiveId(reply.id);setSelected(data.selectedModelId);setPreview("در انتظار تأیید تولید");setJob(null);
    // Like a friend: the reply, then (sometimes) a GIF as its own message.
-   setMessages(m=>[...m,reply,...(data.gif?[item({role:"agent",text:"",kind:"gif",snapshot:data.gif})]:[])]);whoushReacts(data.reaction);
+   setMessages(m=>[...m,reply,...(data.gif?[agentItem({role:"agent",text:"",kind:"gif",snapshot:data.gif})]:[])]);whoushReacts(data.reaction);
    adoptProject(firstText,characterId);
   }catch(err){setError(err instanceof Error?err.message:"خطای ناشناخته");}
-  finally{setBusy(false);}
+  finally{setBusy(false);setThinking(null);}
  }
  async function approve(){
   if(!proposal||busy)return;setBusy(true);setError("");
@@ -633,7 +645,7 @@ export function Studio(){
          </div>
          :m.kind==="gif"?<div><span className="sr-only">هووش: </span><ChatGif gif={m.snapshot}/></div>
          :m.kind!=="job"&&<p className="whitespace-pre-wrap break-words type-body-sm text-fg-primary">
-          <span className="sr-only">هووش: </span>{m.text}
+          <span className="sr-only">هووش: </span><TypeOut text={m.text} animate={fresh.has(m.id)}/>
          </p>}
         {m.kind==="job"&&<PreviewCard tag={m.snapshot.tag} state={m.snapshot.state} messageFa={m.snapshot.messageFa}
          output={m.snapshot.messageFa===job?.messageFa?job?.outputs?.find(o=>isOwnedOutputUrl(o.url,window.location.origin)):undefined} video={m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false} onOpen={()=>openPreview(m.snapshot)}/>}
@@ -650,6 +662,7 @@ export function Studio(){
         <div className="-mt-2">{actions}</div>
        </div>;
       })}
+      {thinking&&<ThinkingRow text={STAGE_TEXT[thinking.script][thinking.stage]}/>}
       <div ref={endRef}/>
      </div>
     </ScrollArea>

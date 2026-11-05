@@ -9,17 +9,21 @@ import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./
 import {displayTag,inferAttachmentRoles,isGenerationTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
 import {providerForModelId} from "./llm-routing";
 import {replyScriptFor} from "./finglish";
-import {describeStagingEn,describeStagingFa,detectSubject} from "./staging";
+import {describeStagingEn,describeStagingFa,detectProps,detectSubject,tidyProps} from "./staging";
 import {findGif,type ChatGif} from "./giphy";
 import {detectMediaKind,suggestModel} from "./router";
 import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
 import {SKILLS,SKILL_REGISTRY_VERSION} from "./skills";
 import type {GenerationProposal,MediaRequirements,SuggestedModel} from "./types";
 export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;now?:()=>Date;
+ /** Progress for the chat's live status: called as each real stage of the turn starts (never invented, never with private details). */
+ onStage?:(stage:TurnStage)=>void;
  /** Finds a chat GIF for a mood (GIPHY by default; tests pass a stub). */
  findGif?:(mood:GifMood)=>Promise<ChatGif|undefined>;
  /** Test hook: the planner for one routed model. Defaults to the real Anthropic or OpenAI adapter. */
  plannerFor?:(modelId:string,provider:"anthropic"|"openai")=>PrivatePlanner;routing?:RoutingConfig;routerState?:RouterState};
+export {TURN_STAGES,type TurnStage} from "./orchestrator-stages";
+import type {TurnStage} from "./orchestrator-stages";
 export type OrchestratorResult=
  |{status:"planned";turnId:string;proposal:GenerationProposal;plan:PublicCreativePlan;gif?:ChatGif;reaction?:ReactionEmoji}
  |{status:"unsupported";turnId:string;plan:PublicCreativePlan;message:string;suggestedModel?:SuggestedModel}
@@ -150,15 +154,15 @@ export function deterministicPlanner(req:PlannerRequest):{plan:CreativePlan}{
  // Diagram staging, consistent with the camera and shot text above: a soft key at 45 degrees with fill and rim for people, directional daylight (or practicals and moon at night) for scenes.
  const warm=night?3200:camera.whiteBalanceK;
  // The subject decides what the diagrams show; person scenes get a 45-degree soft key with fill and rim, objects a soft product light, open scenes daylight or practicals.
- const subject=detectSubject(p,Boolean(ref));
+ const subject=detectSubject(p,Boolean(ref)),props=detectProps(p,subject);
  const staging:Staging=subject==="person"
-  ?{subject,cameraAngle:"eye_level",shotSize:portrait?"medium_close_up":"medium",lights:[
+  ?{subject,props,cameraAngle:"eye_level",shotSize:portrait?"medium_close_up":"medium",lights:[
     {role:"key",direction:"front_left",height:"high",quality:"soft",source:night?"practical":"softbox",colorTemperatureK:warm},
     {role:"fill",direction:"front_right",height:"eye",quality:"soft",source:night?"practical":"softbox",colorTemperatureK:warm},
     {role:"rim",direction:"back_right",height:"high",quality:"hard",source:night?"neon":"led_panel",colorTemperatureK:night?6500:5600,...(night?{colorHex:"#4f8cff"}:{})}]}
   :subject==="object"
-   ?{subject,cameraAngle:"high",shotSize:"medium",lights:[{role:"key",direction:"front_left",height:"high",quality:"soft",source:"softbox",colorTemperatureK:5600},{role:"rim",direction:"back_right",height:"high",quality:"hard",source:"led_panel",colorTemperatureK:6000}]}
-   :{subject,cameraAngle:"eye_level",shotSize:subject==="environment"?"wide":"full",lights:night
+   ?{subject,props,cameraAngle:"high",shotSize:"medium",lights:[{role:"key",direction:"front_left",height:"high",quality:"soft",source:"softbox",colorTemperatureK:5600},{role:"rim",direction:"back_right",height:"high",quality:"hard",source:"led_panel",colorTemperatureK:6000}]}
+   :{subject,props,cameraAngle:"eye_level",shotSize:subject==="environment"?"wide":"full",lights:night
      ?[{role:"key",direction:"front_left",height:"eye",quality:"soft",source:"practical",colorTemperatureK:3200},{role:"fill",direction:"back",height:"high",quality:"soft",source:"moon",colorTemperatureK:7500}]
      :[{role:"key",direction:"back_left",height:"high",quality:"hard",source:"sun",colorTemperatureK:5600},{role:"fill",direction:"top",height:"high",quality:"soft",source:"sky",colorTemperatureK:7000}]};
  const gens=req.generations??[],revision=gens[0];
@@ -294,6 +298,8 @@ export function mediaRequirements(input:{characterRef?:{angles:readonly string[]
 // ---- orchestration ----
 export async function orchestrateCreativeTurn(rawInput:unknown,deps:OrchestratorDeps={}):Promise<OrchestratorResult>{
  const parsed=CreativeTurnInputSchema.parse(rawInput),audit=deps.audit??defaultAuditSink,now=deps.now??(()=>new Date());
+ const stage=(x:TurnStage)=>{try{deps.onStage?.(x);}catch{ /* progress is best effort */ }};
+ stage("reading");
  const safety=evaluateTextSafety(parsed.text);
  if(safety.decision!=="allow")return {status:"restricted",decision:safety.decision,category:safety.category,message:safety.message};
  // A role is optional: media without one gets Whoush's best guess from the words of the brief (no media analysis), before skills resolve.
@@ -348,6 +354,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   return {outcome:f.e?"ok":(f.reason as Outcome),result:r,fin:f};
  };
  const refusedResult=():OrchestratorResult=>({status:"restricted",decision:"review",category:"none",message:FA_REFUSED});
+ stage("planning");
  let routing:RoutingAudit|undefined;
  if(deps.planner){
   const o=await attempt(deps.planner);
@@ -404,6 +411,8 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const {plan,corrections}=fin.e;
  // Provider-facing text names attachments by description; the public Persian text keeps what the user typed. A missing tag is a question, never a block.
  // A scene the user arranged in the diagrams is applied exactly: the staging, a hard constraint naming it and the provider-facing direction.
+ // A planner's props are tidied (crowded or all lifted means misread); the user's own arrangement below is applied as is.
+ if(plan.staging?.props&&!parsed.stagingOverride)plan.staging={...plan.staging,props:tidyProps(plan.staging.props)};
  if(parsed.aspectOverride&&plan.camera&&plan.camera.aspectRatio!==parsed.aspectOverride){
   plan.camera={...plan.camera,aspectRatio:parsed.aspectOverride};
   const en=" Aspect ratio "+parsed.aspectOverride+".";plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
@@ -415,6 +424,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
  }
  plan.mediaPrompt=rewriteMentions(plan.mediaPrompt,byTag,genTags).slice(0,3000);
+ stage("checking");
  // plan inspection: LLM output never bypasses the safety layer
  for(const t of [plan.mediaPrompt,...plan.hardConstraints]){
   const r=evaluatePlanTextSafety(t); // planner text: negated generic categories ("no political banners") are compliance, not violations
@@ -458,6 +468,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   const suggestedModel=suggestModel(requirements,kind);
   return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs,suggestedModel,input.style),message:FA_MEDIA_REVIEW+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{})};
  }
+ stage("pricing");
  let proposal:GenerationProposal;
  try{proposal=buildProposal(input.text,input.preference,requirements);}
  catch(e){

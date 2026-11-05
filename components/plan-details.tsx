@@ -1,6 +1,6 @@
 "use client";
 import type {ReactNode} from "react";
-import {Aperture,Camera,CircleHelp,Clapperboard,Film,Focus,Frame,Gauge,Lightbulb,ListChecks,Move,Paperclip,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Thermometer,Timer,type LucideIcon} from "lucide-react";
+import {Aperture,Box,Camera,CircleHelp,Clapperboard,Film,Focus,Frame,Gauge,Lightbulb,ListChecks,Move,Paperclip,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Thermometer,Timer,type LucideIcon} from "lucide-react";
 import {Accordion,AccordionContent,AccordionItem,AccordionTrigger,Badge,Icon} from "@aleeforoughi/feather-react";
 import {StagingEditor} from "@/components/staging-editor";
 import type {Staging} from "@/lib/creative-plan";
@@ -82,7 +82,7 @@ export function PlanStory({plan,onApplyStaging,applyDisabled}:{plan:PublicCreati
    <ul className="flex flex-wrap gap-2">{references.map(r=><li key={r.tag} className="inline-flex h-7 items-center gap-1.5 rounded-control bg-surface-subtle px-2 type-caption text-fg-primary">
     <bdi className="type-label">{displayTag(r.tag)}</bdi><span className="text-fg-secondary">{r.labelFa}{r.roleSource==="inferred"&&" (انتخاب هووش)"}</span></li>)}</ul>
   </Section>}
-  {staging&&<Section icon={Frame} title="کارگردانی تصویر">
+  {staging&&<Section icon={Box} title="بوم">
    <StagingEditor staging={staging} aspectRatio={camera?.aspectRatio} onApply={onApplyStaging} disabled={applyDisabled}/>
   </Section>}
   {camera&&<Section icon={Camera} title="دوربین">

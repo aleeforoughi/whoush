@@ -62,12 +62,12 @@ export function placementEn(f?:{x:number;y:number}):string{
 /** The arranged scene in Persian, for the plan's hard constraints (what the user set in the diagrams). */
 export function describeStagingFa(s:Staging):string{
  const lights=s.lights.map(l=>LIGHT_ROLE_FA[l.role]+": "+LIGHT_SOURCE_FA[l.source]+"، "+LIGHT_QUALITY_FA[l.quality]+"، "+LIGHT_DIRECTION_FA[l.direction]+"، ارتفاع "+LIGHT_HEIGHT_FA[l.height]+"، "+l.colorTemperatureK+" کلوین"+(l.colorHex?"، رنگ "+l.colorHex:""));
- return "صحنهٔ تنظیم‌شده: زاویهٔ دوربین «"+CAMERA_ANGLE_FA[s.cameraAngle]+"»، کادر «"+SHOT_SIZE_FA[s.shotSize]+"»"+(s.subject?"، سوژه: "+SUBJECT_FA[s.subject]:"")+"، جای سوژه: "+placementFa(s.framing)+"؛ "+lights.join("؛ ");
+ return "صحنهٔ تنظیم‌شده: زاویهٔ دوربین «"+CAMERA_ANGLE_FA[s.cameraAngle]+"»"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+" درجه)":"")+"، کادر «"+SHOT_SIZE_FA[s.shotSize]+"»"+(s.shotScale!==undefined?" (زوم "+zoomFactor(s)+"×)":"")+(s.subject?"، سوژه: "+SUBJECT_FA[s.subject]:"")+"، جای سوژه: "+placementFa(s.framing)+(s.props?.length?"؛ "+describeLayoutFa(s.props):"")+"؛ "+lights.join("؛ ");
 }
 /** The arranged scene in English, appended to the provider-facing media prompt. */
 export function describeStagingEn(s:Staging):string{
- const lights=s.lights.map(l=>l.role+" light: "+l.quality+" "+l.source.replace("_"," ")+" from "+DIR_EN[l.direction]+", "+l.height+" height, "+l.colorTemperatureK+"K"+(l.colorHex?" "+l.colorHex+" gel":""));
- return "Staging: "+ANGLE_EN[s.cameraAngle]+" camera, "+SHOT_EN[s.shotSize]+", "+placementEn(s.framing)+"; "+lights.join("; ")+".";
+ const lights=s.lights.map(l=>l.role+" light: "+l.quality+" "+l.source.replace("_"," ")+" from "+DIR_EN[l.direction]+(l.angle!==undefined?" ("+Math.round(l.angle)+"° in top view)":"")+", "+l.height+" height, "+l.colorTemperatureK+"K"+(l.colorHex?" "+l.colorHex+" gel":""));
+ return "Staging: "+ANGLE_EN[s.cameraAngle]+" camera"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+"° from eye level)":"")+", "+SHOT_EN[s.shotSize]+(s.shotScale!==undefined?" ("+zoomFactor(s)+"x of a full shot)":"")+", "+placementEn(s.framing)+"; "+lights.join("; ")+"."+(s.props?.length?" "+describeLayoutEn(s.props):"");
 }
 /** The subject a brief is about, from its words: a person, an animal, a vehicle, a product or object, or an environment when there is no single main subject. */
 export function detectSubject(normalizedText:string,hasCharacter=false):NonNullable<Staging["subject"]>{
@@ -120,9 +120,18 @@ export const GEL_COLORS=["#ff5a5f","#ff9f1c","#ffd23f","#3ddc97","#4f8cff","#b07
 export function describeStagingChangesFa(before:Staging,after:Staging,aspectBefore?:string,aspectAfter?:string):string[]{
  const out:string[]=[],arrow=(a:string,b:string)=>a+" ← "+b;
  if((before.subject??"person")!==(after.subject??"person"))out.push("سوژه: "+arrow(SUBJECT_FA[before.subject??"person"],SUBJECT_FA[after.subject??"person"]));
- if(before.cameraAngle!==after.cameraAngle)out.push("زاویهٔ دوربین: "+arrow(CAMERA_ANGLE_FA[before.cameraAngle],CAMERA_ANGLE_FA[after.cameraAngle]));
- if(before.shotSize!==after.shotSize)out.push("کادر: "+arrow(SHOT_SIZE_FA[before.shotSize],SHOT_SIZE_FA[after.shotSize]));
+ const eb=elevationOf(before),ea=elevationOf(after);
+ if(before.cameraAngle!==after.cameraAngle||Math.abs(eb-ea)>=2)out.push("زاویهٔ دوربین: "+arrow(CAMERA_ANGLE_FA[before.cameraAngle]+" ("+Math.round(eb)+"°)",CAMERA_ANGLE_FA[after.cameraAngle]+" ("+Math.round(ea)+"°)"));
+ if(before.shotSize!==after.shotSize||Math.abs(Math.log(scaleOf(before)/scaleOf(after)))>0.03)out.push("کادر: "+arrow(SHOT_SIZE_FA[before.shotSize]+" (زوم "+zoomFactor(before)+"×)",SHOT_SIZE_FA[after.shotSize]+" (زوم "+zoomFactor(after)+"×)"));
  if(placementFa(before.framing)!==placementFa(after.framing))out.push("جای سوژه: "+arrow(placementFa(before.framing),placementFa(after.framing)));
+ // Props: matched by position in the list (the editor never reorders them); moved, added and removed ones are named.
+ const pb=before.props??[],pa=after.props??[];
+ for(let i=0;i<Math.max(pb.length,pa.length);i++){
+  const a=pb[i],b=pa[i];
+  if(!a&&b){out.push("اضافه: "+b.label+" ("+propPlaceFa(b)+")");continue;}
+  if(a&&!b){out.push("حذف: "+a.label);continue;}
+  if(propPlaceFa(a)!==propPlaceFa(b))out.push(b.label+": "+arrow(propPlaceFa(a),propPlaceFa(b)));
+ }
  if(aspectAfter&&aspectBefore!==aspectAfter)out.push("نسبت تصویر: "+arrow(aspectBefore??"—",aspectAfter));
  const n=Math.max(before.lights.length,after.lights.length);
  for(let i=0;i<n;i++){
@@ -132,7 +141,8 @@ export function describeStagingChangesFa(before:Staging,after:Staging,aspectBefo
   const d:string[]=[];
   if(a.role!==b.role)d.push("نقش "+arrow(LIGHT_ROLE_FA[a.role],LIGHT_ROLE_FA[b.role]));
   if(a.source!==b.source)d.push("منبع "+arrow(LIGHT_SOURCE_FA[a.source],LIGHT_SOURCE_FA[b.source]));
-  if(a.direction!==b.direction)d.push("جهت "+arrow(LIGHT_DIRECTION_FA[a.direction],LIGHT_DIRECTION_FA[b.direction]));
+  const aa=lightAngleOf(a),ba=lightAngleOf(b);
+  if(a.direction!==b.direction||(aa!==undefined&&ba!==undefined&&Math.abs(aa-ba)>=3))d.push("جهت "+arrow(LIGHT_DIRECTION_FA[a.direction]+(aa!==undefined&&b.angle!==undefined?" ("+Math.round(aa)+"°)":""),LIGHT_DIRECTION_FA[b.direction]+(ba!==undefined&&b.angle!==undefined?" ("+Math.round(ba)+"°)":"")));
   if(a.height!==b.height)d.push("ارتفاع "+arrow(LIGHT_HEIGHT_FA[a.height],LIGHT_HEIGHT_FA[b.height]));
   if(a.quality!==b.quality)d.push(arrow(LIGHT_QUALITY_FA[a.quality],LIGHT_QUALITY_FA[b.quality]));
   if(a.colorTemperatureK!==b.colorTemperatureK)d.push(arrow(String(a.colorTemperatureK),String(b.colorTemperatureK))+" کلوین");
@@ -143,3 +153,91 @@ export function describeStagingChangesFa(before:Staging,after:Staging,aspectBefo
 }
 /** The colour-temperature slider's track: the colour of light from 1500 K (left) to 12000 K (right). */
 export const TEMPERATURE_GRADIENT="linear-gradient(to right,"+[1500,2700,4000,5600,7500,12000].map(kelvinToHex).join(",")+")";
+
+// ---- props: the scene's movable things (the environment is the backdrop) ----
+export type SceneProp=NonNullable<Staging["props"]>[number];
+export const PROP_KIND_FA:Record<SceneProp["kind"],string>={person:"آدم",object:"شیء",animal:"حیوان",vehicle:"وسیله نقلیه",tree:"درخت",building:"ساختمان"};
+/** Which asset shows a prop from the side (camera view, front) and from above. */
+export const PROP_ASSETS:Record<SceneProp["kind"],{front:string;top:string}>={person:{front:"person-front",top:"person-top"},object:{front:"object-side",top:"object-top"},animal:{front:"animal-side",top:"animal-top"},vehicle:{front:"vehicle-side",top:"vehicle-top"},tree:{front:"env-tree",top:"tree-top"},building:{front:"env-building",top:"building-top"}};
+/** Real-world-ish heights (a person is 1), so props keep plausible proportions in the camera view. */
+export const PROP_HEIGHT:Record<SceneProp["kind"],number>={person:1,object:0.35,animal:0.45,vehicle:0.8,tree:2.2,building:3.2};
+/** Words that name a prop, with its Persian label: the first match of each group becomes a prop (in the order the groups are listed). */
+const PROP_WORDS:[SceneProp["kind"],[string,string][]][]=[
+ ["person",[["زن","زن"],["woman","زن"],["مرد","مرد"],["man","مرد"],["دختر","دختر"],["girl","دختر"],["پسر","پسر"],["boy","پسر"],["بچه","بچه"],["child","بچه"],["پیرمرد","پیرمرد"],["old man","پیرمرد"],["ماهیگیر","ماهیگیر"],["fisherman","ماهیگیر"],["آدم","آدم"],["person","آدم"],["portrait","آدم"],["پرتره","آدم"],["مدل","مدل"],["model","مدل"]]],
+ ["animal",[["گربه","گربه"],["cat","گربه"],["سگ","سگ"],["dog","سگ"],["اسب","اسب"],["horse","اسب"],["پرنده","پرنده"],["bird","پرنده"]]],
+ ["vehicle",[["ماشین","ماشین"],["car","ماشین"],["خودرو","خودرو"],["موتور","موتور"],["motorcycle","موتور"],["دوچرخه","دوچرخه"],["bike","دوچرخه"],["اتوبوس","اتوبوس"],["bus","اتوبوس"]]],
+ ["object",[["بطری","بطری"],["bottle","بطری"],["عطر","عطر"],["perfume","عطر"],["کفش","کفش"],["shoe","کفش"],["shoes","کفش"],["ساعت","ساعت"],["watch","ساعت"],["فنجان","فنجان"],["لیوان","لیوان"],["cup","فنجان"],["mug","لیوان"],["کیف","کیف"],["bag","کیف"],["محصول","محصول"],["product","محصول"]]],
+ ["tree",[["درخت","درخت"],["tree","درخت"],["trees","درخت"],["جنگل","درخت"],["forest","درخت"]]],
+ ["building",[["کافه","کافه"],["cafe","کافه"],["خونه","خونه"],["خانه","خانه"],["house","خونه"],["ساختمان","ساختمان"],["building","ساختمان"],["برج","برج"],["tower","برج"]]]
+];
+const SLOTS:[number,number][]=[[0,-0.25],[0.55,0.25],[-0.55,0.35],[0.75,0.7],[-0.75,0.7],[0,0.8]];
+/** The props a brief names, laid out for the camera: the main subject centre front, the others alternating right and left, further back. */
+export function detectProps(normalizedText:string,subject:NonNullable<Staging["subject"]>):SceneProp[]{
+ const t=" "+normalizedText+" ",found:{kind:SceneProp["kind"];label:string;at:number}[]=[];
+ for(const [kind,words] of PROP_WORDS){
+  let best:{label:string;at:number}|undefined;
+  for(const [w,label] of words){const at=t.indexOf(" "+w+" ");if(at>=0&&(!best||at<best.at))best={label,at};}
+  if(best)found.push({kind,...best});
+ }
+ // The main subject first (the scene's subject kind), then the rest in the order the brief names them.
+ const mainKind:SceneProp["kind"]|undefined=subject==="environment"?undefined:subject;
+ found.sort((a,b)=>Number(b.kind===mainKind)-Number(a.kind===mainKind)||a.at-b.at);
+ return found.slice(0,6).map((f,i)=>({kind:f.kind,label:f.label,x:SLOTS[i][0],z:SLOTS[i][1],y:0,...(i===0&&f.kind===mainKind?{main:true}:{})}));
+}
+const sideFa=(x:number)=>x<-0.33?"سمت چپ":x>0.33?"سمت راست":"وسط";
+const depthFa=(z:number)=>z<-0.33?"جلو":z>0.33?"عقب":"وسط عمق";
+const sideEn=(x:number)=>x<-0.33?"left":x>0.33?"right":"centre";
+const depthEn=(z:number)=>z<-0.33?"foreground":z>0.33?"background":"midground";
+/** Where a prop stands, in Persian: «سمت راست، عقب، بالاتر از زمین». */
+export const propPlaceFa=(p:SceneProp)=>sideFa(p.x)+"، "+depthFa(p.z)+(p.y>0.15?"، بالاتر از زمین":"");
+/** The scene layout in Persian («چیدمان: زن (اصلی) وسط، جلو؛ ماشین سمت راست، عقب»), empty without props. */
+export function describeLayoutFa(props?:readonly SceneProp[]):string{
+ return props?.length?"چیدمان: "+props.map(p=>p.label+(p.main?" (اصلی)":"")+" "+propPlaceFa(p)).join("؛ "):"";
+}
+/** The scene layout in English for the provider prompt, without the Persian labels (kinds only). */
+export function describeLayoutEn(props?:readonly SceneProp[]):string{
+ return props?.length?"Layout: "+props.map(p=>p.kind+(p.main?" (main subject)":"")+" "+sideEn(p.x)+" "+depthEn(p.z)+(p.y>0.15?", raised":"")).join("; ")+".":"";
+}
+/**
+ * Tidies a planner's props (never the user's own arrangement): props crowded onto one spot get the default layout (main subject centre front, the others
+ * alternating behind it), and when every prop is lifted, `y` was misread as height and is reset to the ground. Order: main subject first.
+ */
+export function tidyProps(props?:readonly SceneProp[]):SceneProp[]|undefined{
+ if(!props?.length)return props?[...props]:undefined;
+ const sorted=[...props].sort((a,b)=>Number(Boolean(b.main))-Number(Boolean(a.main)));
+ const crowded=sorted.some((a,i)=>sorted.some((b,j)=>j>i&&Math.hypot(a.x-b.x,a.z-b.z)<0.25));
+ const lifted=sorted.length>1&&sorted.every(p=>p.y>0.15);
+ return sorted.map((p,i)=>({...p,...(crowded?{x:SLOTS[i][0],z:SLOTS[i][1]}:{}),...(lifted?{y:0}:{})}));
+}
+/**
+ * The camera view's simple perspective for a frame W×H and a person height `unitH` (frame units): where a prop's base stands (x, groundY), where it is drawn
+ * (y, lifted by p.y) and how tall (h). The ground runs from the horizon (far, z = 1) to the bottom (near, z = -1); further back is smaller and closer to the
+ * centre line. `groundFromView` is the exact inverse on the ground plane, used when a prop is dragged.
+ */
+export function propInView(p:Pick<SceneProp,"kind"|"x"|"z"|"y">,W:number,H:number,unitH:number){
+ const horizon=H*0.5,near=H*0.96,t=(p.z+1)/2,s=1-t*0.55,spread=W*0.42*(1-t*0.4);
+ const groundY=near-t*(near-horizon);
+ return {x:W/2+p.x*spread,groundY,y:groundY-p.y*unitH*0.5*s,h:PROP_HEIGHT[p.kind]*unitH*s*0.5};
+}
+export function groundFromView(vx:number,vy:number,W:number,H:number):{x:number;z:number}{
+ const horizon=H*0.5,near=H*0.96,t=Math.max(0,Math.min(1,(near-vy)/(near-horizon))),spread=W*0.42*(1-t*0.4);
+ const c=(v:number)=>Math.max(-1,Math.min(1,Math.round(v*100)/100));
+ return {x:c((vx-W/2)/spread),z:c(t*2-1)};
+}
+
+// ---- continuous adjustment (smooth controls; the named values are the nearest description) ----
+const SHOT_ORDER=Object.entries(SHOT_BODY_FRACTION) as [Staging["shotSize"],number][];
+/** The shot size whose body share is nearest (on a log scale) to a continuous zoom. */
+export function nearestShot(scale:number):Staging["shotSize"]{
+ return SHOT_ORDER.reduce((b,c)=>Math.abs(Math.log(c[1]/scale))<Math.abs(Math.log(b[1]/scale))?c:b)[0];
+}
+/** The zoom bar runs on a log scale from the tightest close-up to the widest shot: position 0..1 ↔ body share. */
+export const ZOOM_RANGE=[0.09,5] as const;
+export const scaleFromSlider=(v:number)=>Math.round(Math.exp(Math.log(ZOOM_RANGE[0])+v*(Math.log(ZOOM_RANGE[1])-Math.log(ZOOM_RANGE[0])))*1000)/1000;
+export const sliderFromScale=(s:number)=>(Math.log(Math.min(ZOOM_RANGE[1],Math.max(ZOOM_RANGE[0],s)))-Math.log(ZOOM_RANGE[0]))/(Math.log(ZOOM_RANGE[1])-Math.log(ZOOM_RANGE[0]));
+/** The effective values of a staging: exact ones when set, otherwise the named ones. */
+export const elevationOf=(s:Staging)=>s.cameraElevation??CAMERA_ELEVATION[s.cameraAngle];
+export const scaleOf=(s:Staging)=>s.shotScale??SHOT_BODY_FRACTION[s.shotSize];
+export const lightAngleOf=(l:StagingLight)=>l.angle??(l.direction==="top"?undefined:LIGHT_ANGLE[l.direction]);
+/** Zoom relative to a full shot, for people: «۱٫۸×» closer, «۰٫۵×» wider. */
+export const zoomFactor=(s:Staging)=>Math.round(SHOT_BODY_FRACTION.full/scaleOf(s)*10)/10;
