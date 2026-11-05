@@ -90,7 +90,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  // Collapsed by default. A focused follow-up (one part, e.g. the camera's distance) shows just that part's controls in the collapsed card, live; expanding shows
  // every setting (frame, camera, lighting...), and collapsing goes back to just that part.
  const [open,setOpen]=useState(false),bodyId=useId(),focused=Boolean(focus?.length);
- const full=open,show=(sec:CanvasSection)=>full||Boolean(focus?.includes(sec));
+ const full=open,show=(sec:CanvasSection)=>full||!focused||Boolean(focus?.includes(sec));
  // A press anywhere outside the frame and its controls (elsewhere in the canvas, or outside it) deselects the prop: the frame is selected again. Not while
  // the selection is locked.
  const frameArea=useRef<HTMLDivElement>(null);
@@ -110,9 +110,8 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  // Collapsed: three live snapshots of the scene as it is now (frame, camera, lighting), read-only; opening it shows the canvas and its controls.
  const cap=viewCaptions(draft,aspect);
 
- return <div role="group" aria-label="بوم" className="@container flex min-w-0 flex-col gap-3">
-  {props.length>0&&mainIdx>=0&&show("frame")&&<Dominant tags={propTags(props)} props={props} main={mainIdx} detail={draft.focusDetail} mediaKind={mediaKind} confirmed={confirmed}
-   editable={editable} onConfirm={()=>setConfirmed(true)} onChoose={setDominant}/>}
+ return <>
+ <div role="group" aria-label="بوم" className="@container flex min-w-0 flex-col gap-3">
   {/* One card holds everything: the header, then (collapsed) the snapshots or a focused follow-up's part, or (expanded) every setting, so the layout never splits. */}
   <div className="flex min-w-0 flex-col gap-3 rounded-card border border-line-secondary bg-surface-subtle p-2">
   <button type="button" aria-expanded={open} aria-controls={bodyId} onClick={()=>setOpen(o=>!o)}
@@ -218,7 +217,11 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
    <p className="type-caption text-fg-secondary">با «بساز» همین صحنه ساخته می‌شه.</p>
   </div>}
   </div>
- </div>;
+ </div>
+ {/* Whoush's reading of the dominant subject is part of the conversation, not of the advanced settings: under «بوم», before the card and any question. */}
+ {props.length>0&&mainIdx>=0&&show("frame")&&<Dominant tags={propTags(props)} props={props} main={mainIdx} detail={draft.focusDetail} mediaKind={mediaKind} confirmed={confirmed}
+  editable={editable} onConfirm={()=>setConfirmed(true)} onChoose={setDominant}/>}
+ </>;
 }
 
 /**
