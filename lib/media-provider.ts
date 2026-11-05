@@ -1,7 +1,7 @@
 import "server-only";
 import {randomUUID} from "node:crypto";
 import {findMediaModel,type MediaConfiguration} from "./catalog";
-import {cancelHiggsfield,getHiggsfieldStatus,NotCancelableError,submitHiggsfieldVerifiedPath,type HiggsfieldStatus} from "./higgsfield";
+import {cancelHiggsfield,getHiggsfieldStatus,HiggsfieldHttpError,NotCancelableError,submitHiggsfieldVerifiedPath,type HiggsfieldStatus} from "./higgsfield";
 import {devGenerationGate,generationGate,type GenerationMode} from "./policy";
 import type {MediaModel} from "./types";
 /** Provider outputs are provider-hosted URLs that expire (>= 7 days); mirroring to owned storage is NOT implemented (docs/LAUNCH_GATES.md gate 8). */
@@ -12,6 +12,11 @@ export type ProviderStatus={state:ProviderState;outputs:ProviderOutput[];expires
 export type ProviderJob={modelId:string;prompt:string;configuration:MediaConfiguration;idempotencyKey:string};
 export interface MediaProvider{submit(job:ProviderJob):Promise<{providerRequestId:string}>;status(providerRequestId:string):Promise<ProviderStatus>;cancel(providerRequestId:string):Promise<void>}
 export {NotCancelableError};
+/**
+ * A submission whose outcome is unknown: the request may have reached the provider (a timeout, a dropped connection, a 5xx, an unreadable 2xx).
+ * It is never treated as "not sent": the job keeps its reservation and is reconciled by resending the same request with the same idempotency key.
+ */
+export class SubmissionUnknownError extends Error{constructor(readonly reason:string){super("Submission outcome unknown: "+reason);this.name="SubmissionUnknownError";}}
 /** Deterministic, offline: queued -> running -> completed_demo over polls. It never returns media URLs. */
 export class MockMediaProvider implements MediaProvider{
  private readonly polls=new Map<string,number>();
@@ -59,8 +64,16 @@ export class HiggsfieldMediaProvider implements MediaProvider{
  async submit(job:ProviderJob):Promise<{providerRequestId:string}>{
   const model=findMediaModel(job.modelId);
   if(!model||!model.verifiedApiPath||!(this.mode==="live"?generationGate(model).live:devGenerationGate(model).live))throw new Error("Live generation blocked");
-  const r=await submitHiggsfieldVerifiedPath(model.verifiedApiPath,buildHiggsfieldPayload(model,job.prompt,job.configuration),job.idempotencyKey);
-  if(!r||typeof r.request_id!=="string"||!r.request_id)throw new Error("Malformed provider submission");
+  const payload=buildHiggsfieldPayload(model,job.prompt,job.configuration); // a mapping error happens before anything is sent: definite
+  let r:Awaited<ReturnType<typeof submitHiggsfieldVerifiedPath>>;
+  try{r=await submitHiggsfieldVerifiedPath(model.verifiedApiPath,payload,job.idempotencyKey);}
+  catch(e){
+   // errors.md: a 4xx is a definite refusal (bad input, credentials, balance, validation, blocked model, queue full): nothing was created.
+   if(e instanceof HiggsfieldHttpError&&e.status<500)throw e;
+   throw new SubmissionUnknownError(e instanceof HiggsfieldHttpError?"http_"+e.status:e instanceof Error&&(e.name==="TimeoutError"||e.name==="AbortError")?"timeout":"network");
+  }
+  // A 2xx was accepted: without a readable request id the request may exist, so it is unknown, not failed.
+  if(!r||typeof r.request_id!=="string"||!r.request_id)throw new SubmissionUnknownError("malformed_response");
   return {providerRequestId:r.request_id};
  }
  async status(id:string):Promise<ProviderStatus>{

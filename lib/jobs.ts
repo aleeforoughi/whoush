@@ -2,22 +2,28 @@ import "server-only";
 import {createHash,randomUUID} from "node:crypto";
 import {findMediaModel,MEDIA_CATALOG_VERSION,type MediaConfiguration} from "./catalog";
 import {ReservationLedger} from "./ledger";
-import {NotCancelableError,providerForMode,type MediaProvider,type ProviderOutput,type ProviderStatus} from "./media-provider";
+import {NotCancelableError,providerForMode,SubmissionUnknownError,type MediaProvider,type ProviderOutput,type ProviderStatus} from "./media-provider";
 import {getPrivateMediaPrompt,privatePromptCompilerVersion} from "./orchestrator";
 import {evaluateOutputQA,type OutputQA} from "./output-qa";
 import {claimDevSubmit,devGenerationGate,generationGate,type GenerationMode} from "./policy";
 import {verifyQuote,verifyQuoteSignature,QuoteError,type CharacterRefDigest} from "./quotes";
 import {evaluatePlanTextSafety} from "./safety";
-export type JobState="quoted"|"approved"|"reserved"|"submitted"|"running"|"completed"|"completed_demo"|"failed"|"canceled"|"released";
+/**
+ * `submission_unknown`: the provider may have received the request (docs/CANVAS_TO_IMAGE.md section 8). The reservation stays, and the same request is
+ * resent with the same idempotency key until the provider answers; it is never released as "not sent" on a guess, and never becomes a new paid job.
+ */
+export type JobState="quoted"|"approved"|"reserved"|"submission_unknown"|"submitted"|"running"|"completed"|"completed_demo"|"failed"|"canceled"|"released";
 export const JOB_TRANSITIONS:Readonly<Record<JobState,readonly JobState[]>>={
- quoted:["approved"],approved:["reserved","released"],reserved:["submitted","released"],
+ quoted:["approved"],approved:["reserved","released"],reserved:["submitted","submission_unknown","released"],submission_unknown:["submitted","released"],
  submitted:["running","completed","completed_demo","failed","canceled"],running:["completed","completed_demo","failed","canceled"],
  completed:[],completed_demo:[],failed:[],canceled:[],released:[]
 };
 export const isTerminal=(s:JobState)=>JOB_TRANSITIONS[s].length===0;
 export type Job={id:string;ownerId:string;idempotencyKey:string;quoteId:string;turnId:string;modelId:string;mode:GenerationMode;configuration:MediaConfiguration;characterRef?:CharacterRefDigest;
  neurons:number;chargedNeurons:number;state:JobState;providerRequestId?:string;
- /** Private provenance (docs/CANVAS_TO_IMAGE.md section 8): what was asked for and sent, so every result can be traced. Never public. */provenance?:JobProvenance;outputs:ProviderOutput[];qa:OutputQA;createdAt:string;updatedAt:string};
+ /** Private provenance (docs/CANVAS_TO_IMAGE.md section 8): what was asked for and sent, so every result can be traced. Never public. */provenance?:JobProvenance;
+ /** Private, only while `submission_unknown`: the exact request to resend with the same key (the same key with other parameters is refused), and how the
+  reconciliation is going. Cleared once the provider answers. */unknownSubmission?:{prompt:string;attempts:number;lastAttemptAt:string;reason:string};outputs:ProviderOutput[];qa:OutputQA;createdAt:string;updatedAt:string};
 /**
  * What a job asked for and sent: the requested model, the endpoint called, the catalog and prompt-compiler versions, and the SHA-256 of the exact prompt
  * (so a result is traced to it without keeping the prompt on the job). `reportedModelId` is filled only when a provider reports which model ran; the
@@ -83,9 +89,11 @@ export async function executeApprovedQuote(i:{token:string;approved:boolean;idem
   job.providerRequestId=r.providerRequestId;transition(job,"submitted",deps.now?.()??new Date());
   if(job.mode==="dev_live")console.info("[whoush dev-live] media submit",job.modelId,r.providerRequestId); // never the prompt
  }catch(e){
-  // CONCERN: an ambiguous live submit failure may have created a provider request; needs reconciliation before launch.
   if(job.mode==="dev_live")console.warn("[whoush dev-live] media submit failed:",e instanceof Error?e.message:"unknown"); // message only: no key, no prompt
-  ledger.release(job.id);transition(job,"released",deps.now?.()??new Date());
+  const at=deps.now?.()??new Date();
+  // The provider may have it: keep the reservation and reconcile with the same key (pollJob). Only a definite failure releases.
+  if(e instanceof SubmissionUnknownError){job.unknownSubmission={prompt,attempts:1,lastAttemptAt:at.toISOString(),reason:e.reason};transition(job,"submission_unknown",at);}
+  else{ledger.release(job.id);transition(job,"released",at);}
  }
  store.save(job);return job;
 }
@@ -96,10 +104,34 @@ function finish(job:Job,ledger:ReservationLedger,to:"completed"|"completed_demo"
  else{ledger.release(job.id);job.chargedNeurons=0;}
 }
 const httpsUrl=(u:string)=>{try{return new URL(u).protocol==="https:";}catch{return false;}};
+/** How many times an unknown submission is resent, and the shortest wait between tries (doubling: 2 s, 4 s, 8 s…). Then it waits for the owner. */
+export const RECONCILE_MAX_ATTEMPTS=6;
+const RECONCILE_BASE_MS=2000;
+/**
+ * Resends an unknown submission exactly as it was, with the same idempotency key (errors.md: repeat the same request with the same key after an ambiguous
+ * timeout or 5xx; the provider returns the request it already has instead of making a second). An answer settles it: a request id means submitted, a
+ * definite refusal means nothing was made and the reservation is released. Another unknown outcome waits for the next try; after the last try the job stays
+ * unknown with its reservation, for the owner to reconcile. No gate re-claims the dev cap: this is the same request, not a new one.
+ */
+async function reconcile(job:Job,ledger:ReservationLedger,provider:MediaProvider,now:Date):Promise<void>{
+ const u=job.unknownSubmission;if(!u||u.attempts>=RECONCILE_MAX_ATTEMPTS)return;
+ if(now.getTime()-new Date(u.lastAttemptAt).getTime()<RECONCILE_BASE_MS*2**(u.attempts-1))return;
+ const model=findMediaModel(job.modelId);
+ if(!model||(job.mode==="live"&&!generationGate(model).live)||(job.mode==="dev_live"&&!devGenerationGate(model).live))return; // gate closed: keep waiting
+ job.unknownSubmission={...u,attempts:u.attempts+1,lastAttemptAt:now.toISOString()};
+ try{
+  const r=await provider.submit({modelId:job.modelId,prompt:u.prompt,configuration:job.configuration,idempotencyKey:job.id});
+  job.providerRequestId=r.providerRequestId;delete job.unknownSubmission;transition(job,"submitted",now);
+ }catch(e){
+  if(e instanceof SubmissionUnknownError){job.unknownSubmission={...job.unknownSubmission!,reason:e.reason};return;}
+  delete job.unknownSubmission;ledger.release(job.id);transition(job,"released",now);
+ }
+}
 /** Owner-scoped: another owner's job is indistinguishable from a missing one (returns undefined). */
 export async function pollJob(id:string,ownerId:string,deps:JobDeps={}):Promise<Job|undefined>{
  const store=deps.store??dStore(),ledger=deps.ledger??dLedger();
  const job=store.get(id);if(!job||job.ownerId!==ownerId)return undefined;
+ if(job.state==="submission_unknown"){await reconcile(job,ledger,deps.provider??providerForMode(job.mode),deps.now?.()??new Date());store.save(job);return job;}
  if(isTerminal(job.state)||!job.providerRequestId)return job;
  const provider=deps.provider??providerForMode(job.mode);
  let s:ProviderStatus;
@@ -134,6 +166,7 @@ export async function cancelJob(id:string,ownerId:string,deps:JobDeps={}):Promis
 }
 const MSG:Record<JobState,string>={
  quoted:"درخواست ثبت شد.",approved:"درخواست تأیید شد.",reserved:"نورون رزرو شد و درخواست در حال ارسال است.",
+ submission_unknown:"ارسال درخواست قطعی نشد؛ داریم با سرویس بررسی می‌کنیم که رسیده یا نه. دوباره نزن: هیچ نورونی دوبار کسر نمی‌شود.",
  submitted:"درخواست در صف پردازش است.",running:"در حال تولید…",completed:"تولید کامل شد. خروجی باید بازبینی شود.",
  completed_demo:"نسخه آزمایشی: هیچ رسانه واقعی تولید نشد و هیچ نورونی کسر نشد.",
  failed:"تولید ناموفق بود؛ نورونی کسر نشد.",canceled:"درخواست لغو شد؛ نورونی کسر نشد.",released:"درخواست ارسال نشد؛ نورون رزروشده آزاد شد و نورونی کسر نشد."

@@ -246,6 +246,18 @@ Transport failures, safety rejections and visual mismatches are mapped separatel
 - **The provider can't tell us which model ran.** The documented Higgsfield status response (`docs/HIGGSFIELD_EVIDENCE.md`, Transport) has no model field, so Whoush cannot learn the actual model from the API. `ProviderStatus.reportedModelId` is filled only by an adapter whose provider documents one. Until then `reportedModelId` stays empty, and nothing is assumed.
 - **Capability states never upgrade evidence.** `capabilityState(model, capability?)` returns `verified` only from the model's API reference. The agent catalogue gives `documented_unverified` at most, and a false flag on an unverified model is `unknown`, never `unsupported`. Eligibility still requires `verified` (`lib/policy.ts`).
 
+### Status: unknown submissions (2026-11-05)
+
+- **Ambiguous outcomes are unknown, not failed.** A timeout (30 s per request), a dropped connection, a 5xx or a 2xx without a request id throws `SubmissionUnknownError`. A 4xx is a definite refusal (errors.md), and a payload-mapping error happens before anything is sent.
+- **The job waits with its reservation.** It moves to `submission_unknown` and keeps its Neurons reserved, charging nothing. It also keeps the exact request privately, because the same key with other parameters is refused.
+- **Polling resends the same request with the same key.** Retries wait 2 s, 4 s, 8 s… and stop after 6 tries. A request id means `submitted`; a definite refusal releases the reservation; another unknown waits for the next try. Resends never re-claim the dev cap.
+- **After the last try, the job waits for the owner.** It stays `submission_unknown` with its reservation and is never released on a guess. It can't be canceled into a release either.
+- **The customer sees** «ارسال درخواست قطعی نشد؛ داریم با سرویس بررسی می‌کنیم… هیچ نورونی دوبار کسر نمی‌شود.»
+
+**Open:**
+- How long the provider keeps an idempotency key is not verified.
+- Nothing reconciles a job that nobody polls: the studio polls about 15 s. A server-side sweep, and an owner view of stuck jobs, belong with the durable job store (plan phase 02/03).
+
 ## 9. Relighting and camera edits
 
 **Relighting order:**
@@ -322,7 +334,7 @@ Approve release thresholds before reading the results.
 | P0 | Compiler, second slice | `lib/scene-compiler.ts`, `lib/staging.ts`, `lib/jobs.ts` | **Done 2026-11-05:** frame sides for lights; people count; back-view wording; prompt hash on the job. Offscreen props moved to P1 (needs the visibility test) |
 | P0 | Provenance and capability states | `lib/catalog.ts`, `lib/jobs.ts`, `lib/media-provider.ts` | **Done 2026-11-05:** each job keeps a private `provenance` (requested model, endpoint called, catalog version, prompt-compiler version, prompt SHA-256, and the reported model with `modelMismatch` when a provider reports one); `capabilityState()` gives the four states. Seeds are not recorded: no verified payload sends one, and the documented status returns none |
 | P0 | Operation and edit policy | `lib/scene-compiler.ts`, `lib/orchestrator.ts`, quote route | **Done 2026-11-05:** `create`, `camera_edit`, `relight_edit` and `content_edit`, read in room terms; each edit's lock opens the prompt; camera with light (or layout) on a photo edit is refused at «بساز» with a Persian reason, before any price |
-| P0 | `submission_unknown` | `lib/jobs.ts` | A timeout during submission never auto-submits another paid job |
+| P0 | `submission_unknown` | `lib/jobs.ts`, `lib/media-provider.ts`, `lib/higgsfield.ts` | **Done 2026-11-05:** a timeout, dropped connection, 5xx or unreadable 2xx keeps the reservation and resends the same request with the same idempotency key; only a definite answer submits or releases |
 | P1 | Occlusion preflight | `lib/scene3d.ts`, `lib/frame-css.ts` | The table blocking the face returns `COMPOSITION_OCCLUDED` before quoting |
 | P1 | Guide export | canvas renderer | Correct crop, coordinates, order and mask polarity; only supported fields |
 | P1 | QA states and judge | `lib/output-qa.ts` | Required failures and unverifiable checks never become `matched` |
