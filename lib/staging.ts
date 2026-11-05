@@ -444,6 +444,14 @@ export type LensChoice={focalLengthMm:number;aperture:string;apertureF:number;is
  * - A full or medium shot: 35 to 50mm; another subject that must stay sharp at a different depth stops it down (f/5.6).
  * - A steep worm's-eye or bird's-eye camera: a wider lens for the dramatic perspective.
  */
+/** Focal length by the shot's tightness (body share), interpolated on log scales between a photographer's usual choices: 85mm for a head and shoulders, 50mm
+ * for a medium shot, 35mm full length, 24mm wide, 16mm extremely wide. */
+const FOCAL_ANCHORS:[number,number][]=[[0.32,85],[0.5,50],[1.1,35],[2.4,24],[5,16]];
+function focalForScale(sc:number,fallback:number):number{
+ const a=FOCAL_ANCHORS;if(sc<=a[0][0])return Math.max(fallback,a[0][1]);if(sc>=a[a.length-1][0])return a[a.length-1][1];
+ for(let i=1;i<a.length;i++)if(sc<=a[i][0]){const [s0,f0]=a[i-1],[s1,f1]=a[i],t=Math.log(sc/s0)/Math.log(s1/s0);return Math.round(Math.exp(Math.log(f0)+t*(Math.log(f1)-Math.log(f0))));}
+ return fallback;
+}
 export function lensFor(s:Staging):LensChoice{
  const sc=scaleOf(s),subject=s.subject??"person",props=s.props??[],main=props.find(p=>p.main)??props[0];
  const kind=main?.kind??(subject==="environment"?undefined:subject);
@@ -463,6 +471,9 @@ export function lensFor(s:Staging):LensChoice{
  else if(sc<=0.6){f=50;ap=2.8;why="نمای متوسط";}
  else if(sc<=1.2){f=35;ap=4;why="نمای تمام‌قد";}
  else{f=28;ap=5.6;why="نمای نیمه‌باز";}
+ // The focal length follows the camera's distance smoothly (between the anchors above), so moving the camera always updates the lens; macro and detail work
+ // keep their 100mm.
+ if(!macro&&f!==100)f=focalForScale(sc,f);
  // Another subject that must also be sharp, at another depth: stop down.
  const together=others.length>0&&depthSpread>0.4&&!macro&&ap<5.6;
  if(together)ap=5.6;

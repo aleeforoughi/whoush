@@ -314,3 +314,14 @@ test("Dutch angle, shot types, and the user's own lens and aperture (bokeh) reac
  assert.ok(lines.some(l=>l.startsWith("زاویهٔ کج"))&&lines.some(l=>l.startsWith("نوع نما"))&&lines.some(l=>l.startsWith("لنز")));
  assert.ok(CreativeTurnInputSchema.shape.stagingOverride.safeParse({...tilted,lensMm:35,apertureF:1.8}).success);
 });
+
+test("the lens follows the camera's distance smoothly while it is Whoush's pick; a lens the user set stays",async()=>{
+ const {lensFor}=await import("../lib/staging");
+ const s:Staging={...base,props:[{kind:"person",label:"زن",x:0,z:-0.25,y:0,main:true}]};
+ const at=(shotScale:number,o:Partial<Staging>={})=>lensFor({...s,shotScale,...o}).focalLengthMm;
+ const steps=[0.32,0.4,0.5,0.7,0.9,1.1,1.6,2.4].map(x=>at(x));
+ for(let i=1;i<steps.length;i++)assert.ok(steps[i]<=steps[i-1],"farther, wider: "+steps.join(","));
+ assert.ok(new Set(steps).size>=6,"it moves with the distance, not in a few jumps: "+steps.join(","));
+ assert.deepEqual([at(0.32),at(0.5),at(1.1),at(2.4)],[85,50,35,24]);
+ assert.equal(at(0.7,{lensMm:135}),135);assert.equal(at(2,{lensMm:135}),135,"the user's lens stays at any distance");
+});
