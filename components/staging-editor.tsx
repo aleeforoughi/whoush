@@ -97,12 +97,13 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
     {editable&&propSel!==null&&props[propSel]&&<PropInspector prop={withFrameCuts(draft,anchor,aspect).props![propSel]} tag={propTags(props,true)[propSel]} reach={propReach(props[propSel],draft,anchor,aspect)}
      onChange={p=>setProp(propSel,p)} onClose={()=>{setPropSel(null);setLocked(false);}}/>}
     {editable&&(propSel===null||!props[propSel])&&<>
-     <input type="range" min={0} max={1} step={0.001} value={1-distanceOf(draft)} onChange={e=>setDistance(1-Number(e.target.value))}
+     <input type="range" dir="ltr" min={0} max={1} step={0.001} value={1-distanceOf(draft)} onChange={e=>setDistance(1-Number(e.target.value))}
       aria-label="زوم (اندازهٔ نما، همون فاصلهٔ دوربین)" aria-valuetext={SHOT_SIZE_FA[draft.shotSize]+"، زوم "+zoomFactor(draft)+"×"} className="h-8 w-full cursor-pointer accent-primary"/>
+     <span dir="ltr" className="-mt-2 flex justify-between type-caption text-fg-secondary" aria-hidden="true"><span>باز</span><span>نزدیک</span></span>
      <div className="flex flex-wrap justify-center gap-1">{["16:9","3:2","4:5","1:1","9:16"].map(r=><Chip key={r} on={aspect===r} onClick={()=>setAspect(r)}><bdi>{r}</bdi></Chip>)}</div>
-     <SliderRow label="جابه‌جایی کادر: چپ ↔ راست" valueText={pct(draft.framing?.x??0)} min={-1} max={1} step={0.01} value={draft.framing?.x??0}
+     <SliderRow label="جابه‌جایی کادر، افقی" ends={["چپ","راست"]} valueText={pct(draft.framing?.x??0)} min={-1} max={1} step={0.01} value={draft.framing?.x??0}
       onChange={x=>{const y=draft.framing?.y??0;set({framing:x===0&&y===0?undefined:{x,y}});}}/>
-     <SliderRow label="جابه‌جایی کادر: بالا ↔ پایین" valueText={pct(draft.framing?.y??0)} min={-1} max={1} step={0.01} value={draft.framing?.y??0}
+     <SliderRow label="جابه‌جایی کادر، عمودی" ends={["بالا","پایین"]} valueText={pct(draft.framing?.y??0)} min={-1} max={1} step={0.01} value={draft.framing?.y??0}
       onChange={y=>{const x=draft.framing?.x??0;set({framing:x===0&&y===0?undefined:{x,y}});}}/>
      <p className="text-center type-caption text-fg-secondary">{props.length?"روی یه وسیله بزن تا تنظیماتش بیاد و بکشیش (بالا عقب، پایین جلو، حتی تا بیرون کادر)؛ ":""}پس‌زمینه رو بکشی، کادر جابه‌جا می‌شه.</p>
     </>}
@@ -119,10 +120,10 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
       <OrbitView staging={draft} editable={editable} onOrbit={c=>{orbitTo(c.azimuth);setDistance(c.distance);}}/>
      </Tile>
     </div>
-    {editable&&<SliderRow label="ارتفاع دوربین" valueText={CAMERA_ANGLE_FA[draft.cameraAngle]+" · "+fa(Math.round(elevationOf(draft)))+"°"} min={-60} max={85} step={1} value={elevationOf(draft)}
+    {editable&&<SliderRow label="ارتفاع دوربین" ends={["پایین","بالا"]} valueText={CAMERA_ANGLE_FA[draft.cameraAngle]+" · "+fa(Math.round(elevationOf(draft)))+"°"} min={-60} max={85} step={1} value={elevationOf(draft)}
      onChange={setElevation}/>}
-    {editable&&<SliderRow label="چرخش دور سوژه (۳۶۰°)" valueText={orbitFa(draft.cameraAzimuth??0)} min={-180} max={180} step={1} value={draft.cameraAzimuth??0} onChange={orbitTo}/>}
-    {editable&&<SliderRow label="فاصلهٔ دوربین (همون زوم کادر)" valueText={"زوم "+fa(zoomFactor(draft))+"×"} min={0} max={1} step={0.001} value={distanceOf(draft)} onChange={setDistance}/>}
+    {editable&&<SliderRow label="چرخش دور سوژه (۳۶۰°)" ends={["چپ","راست"]} valueText={orbitFa(draft.cameraAzimuth??0)} min={-180} max={180} step={1} value={draft.cameraAzimuth??0} onChange={orbitTo}/>}
+    {editable&&<SliderRow label="فاصلهٔ دوربین (همون زوم کادر)" ends={["نزدیک","دور"]} valueText={"زوم "+fa(zoomFactor(draft))+"×"} min={0} max={1} step={0.001} value={distanceOf(draft)} onChange={setDistance}/>}
     {editable&&<div className="flex justify-center"><Chip on={draft.cameraAngle==="dutch"} onClick={()=>set({cameraAngle:draft.cameraAngle==="dutch"?snapElevation(elevationOf(draft)):"dutch"})}>زاویهٔ کج</Chip></div>}
    </Viewport></div>
    <div>
@@ -196,11 +197,11 @@ function Chip({on,onClick,children,role}:{on:boolean;onClick:()=>void;children:R
   className={"h-7 rounded-control border px-2 type-caption motion-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring "+(on?"border-primary bg-surface-selected text-fg-primary":"border-line-secondary text-fg-secondary hover:bg-surface-hover")}>{children}</button>;
 }
 /** An asset from the pack, placed by its bottom centre (x, y) at a given height, optionally mirrored or rotated about its centre. */
-function Asset({id,x,y,h,mirror,sx=1,rotate=0,opacity=1}:{id:string;x:number;y:number;h:number;mirror?:boolean;
+function Asset({id,x,y,h,mirror,sx=1,rotate=0,opacity=1,tint}:{id:string;x:number;y:number;h:number;mirror?:boolean;/** A tint filter's id (BlueTint): the camera is drawn blue. */tint?:string;
  /** Horizontal scale about its centre (a side view turned toward or away from the camera is narrower). */sx?:number;rotate?:number;opacity?:number}){
  const a=VISUALS[id];if(!a)return null;
  const w=h*a.width/a.height,cx=x,cy=y-h/2,f=(mirror?-1:1)*sx;
- return <image href={a.src} x={x-w/2} y={y-h} width={w} height={h} opacity={opacity} preserveAspectRatio="xMidYMid meet"
+ return <image href={a.src} x={x-w/2} y={y-h} width={w} height={h} opacity={opacity} preserveAspectRatio="xMidYMid meet" filter={tint?"url(#"+tint+")":undefined}
   transform={"rotate("+rotate+" "+cx+" "+cy+")"+(f!==1?" translate("+cx+" 0) scale("+f+" 1) translate("+(-cx)+" 0)":"")}/>;
 }
 /**
@@ -230,10 +231,10 @@ const radiusOf=(v:number,min:number,span:number)=>min+span*Math.max(0,Math.min(1
  * and the top view. Sized so the whole circle stays inside at any distance.
  */
 function CameraView({staging,editable,onCamera}:{staging:Staging;editable:boolean;onCamera:(c:{elevation:number;distance:number;flip?:boolean})=>void}){
- const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false);
+ const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false),tint=useId();
  // Which side of the subject the camera is drawn on (1: right). It changes when a drag carries the camera over the top, so nothing jumps.
  const [side,setSide]=useState<1|-1>(1);
- const VW=220,VH=190,RMIN=30,RSPAN=52,focus:[number,number]=[110,90];
+ const VW=220,VH=210,RMIN=30,RSPAN=48,focus:[number,number]=[110,104];
  const m=mainProp(staging),kind=m?.kind;
  const size=kind?Math.min(92,PROP_HEIGHT[kind]*92):58,ground=Math.min(VH-8,focus[1]+(kind==="person"?size*0.9:size*0.55));
  const elev=elevationOf(staging),dist=distanceOf(staging),R=radiusOf(dist,RMIN,RSPAN);
@@ -250,8 +251,9 @@ function CameraView({staging,editable,onCamera}:{staging:Staging;editable:boolea
  // Live while dragging, so the frame and the top view follow the camera as it moves.
  const move=(e:PointerEvent)=>{if(!dragging)return;const c=at(e);if(!Number.isFinite(c.elevation)||!Number.isFinite(c.distance))return;
   const flip=c.side!==side;if(flip)setSide(c.side);onCamera({elevation:c.elevation,distance:c.distance,...(flip?{flip}:{})});};
- return <svg ref={svg} viewBox={"0 0 "+VW+" "+VH} className="mx-auto block aspect-[22/19] w-full max-w-sm touch-pan-y select-none text-fg-primary" aria-hidden={!editable}
+ return <svg ref={svg} viewBox={"0 0 "+VW+" "+VH} className="mx-auto block aspect-[22/21] w-full max-w-sm touch-pan-y select-none text-fg-primary" aria-hidden={!editable}
   onPointerMove={move} onPointerUp={()=>setDragging(false)} onPointerCancel={()=>setDragging(false)}>
+  <BlueTint id={tint}/>
   <circle cx={focus[0]} cy={focus[1]} r={R} fill="none" stroke="currentColor" strokeOpacity=".4" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
   <line x1={6} x2={VW-6} y1={ground} y2={ground} stroke="currentColor" strokeOpacity=".3" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
   {kind&&sp?<Asset id={sp.id} x={focus[0]} y={ground} h={size} mirror={sp.mirror} sx={sp.sx}/>:<><Asset id="env-mountains" x={focus[0]} y={ground} h={52}/><Asset id="env-tree" x={focus[0]+44} y={ground} h={30}/></>}
@@ -266,8 +268,9 @@ function CameraView({staging,editable,onCamera}:{staging:Staging;editable:boolea
    aria-valuemin={-60} aria-valuemax={85} aria-valuenow={Math.round(elev)}
    onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);setDragging(true);}:undefined}
    className={editable?(dragging?"cursor-grabbing":"cursor-grab")+" touch-none outline-none focus-visible:[&>circle]:stroke-primary":""}>
-   <circle cx={cx} cy={cy} r={24} fill="transparent" strokeWidth={2}/>
-   <Asset id="camera-side" x={cx} y={cy+11} h={22} mirror={camLeft} rotate={(camLeft?aim:aim-180)+roll}/>
+   {/* A large, finger-sized grab area around the camera (about 50px on a phone), the camera itself drawn blue. */}
+   <circle cx={cx} cy={cy} r={36} fill="transparent" strokeWidth={2}/>
+   <Asset id="camera-side" x={cx} y={cy+camH("camera-side")/2} h={camH("camera-side")} mirror={camLeft} rotate={(camLeft?aim:aim-180)+roll} tint={tint}/>
   </g>
  </svg>;
 }
@@ -278,8 +281,8 @@ function CameraView({staging,editable,onCamera}:{staging:Staging;editable:boolea
  * and zooms to match, live.
  */
 function OrbitView({staging,editable,onOrbit}:{staging:Staging;editable:boolean;onOrbit:(c:{azimuth:number;distance:number})=>void}){
- const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false);
- const VW=220,VH=200,C:[number,number]=[110,100],RMIN=34,RSPAN=52,U=44;
+ const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false),tint=useId();
+ const VW=220,VH=210,C:[number,number]=[110,105],RMIN=34,RSPAN=48,U=44;
  const az=staging.cameraAzimuth??0,dist=distanceOf(staging),R=radiusOf(dist,RMIN,RSPAN),rad=az*Math.PI/180,c=Math.cos(rad),n=Math.sin(rad);
  const props=staging.props??[],m=mainProp(staging),px=m?.x??0,pz=m?.z??0;
  // The scene is kept as the camera sees it; turning it back by the orbit draws it as laid out, with the camera moving around it.
@@ -291,8 +294,9 @@ function OrbitView({staging,editable,onOrbit}:{staging:Staging;editable:boolean;
   const d={ArrowRight:[5,0],ArrowLeft:[-5,0],ArrowUp:[0,0.05],ArrowDown:[0,-0.05]}[e.key as "ArrowUp"];if(!d)return;e.preventDefault();
   onOrbit({azimuth:wrap180(az+d[0]),distance:Math.max(0,Math.min(1,dist+d[1]))});};
  const move=(e:PointerEvent)=>{if(!dragging)return;const v=at(e);if(Number.isFinite(v.azimuth)&&Number.isFinite(v.distance))onOrbit(v);};
- return <svg ref={svg} viewBox={"0 0 "+VW+" "+VH} className="mx-auto block aspect-[22/20] w-full max-w-sm touch-pan-y select-none text-fg-primary" aria-hidden={!editable}
+ return <svg ref={svg} viewBox={"0 0 "+VW+" "+VH} className="mx-auto block aspect-[22/21] w-full max-w-sm touch-pan-y select-none text-fg-primary" aria-hidden={!editable}
   onPointerMove={move} onPointerUp={()=>setDragging(false)} onPointerCancel={()=>setDragging(false)}>
+  <BlueTint id={tint}/>
   <circle cx={C[0]} cy={C[1]} r={R} fill="none" stroke="currentColor" strokeOpacity=".4" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
   {/* Whoush's original camera position, for reference */}
   <circle cx={C[0]} cy={C[1]+R} r={2} fill="currentColor" fillOpacity=".35"/>
@@ -311,12 +315,22 @@ function OrbitView({staging,editable,onOrbit}:{staging:Staging;editable:boolean;
    aria-valuemin={-180} aria-valuemax={180} aria-valuenow={Math.round(az)}
    onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);setDragging(true);}:undefined}
    className={editable?(dragging?"cursor-grabbing":"cursor-grab")+" touch-none outline-none focus-visible:[&>circle]:stroke-primary":""}>
-   <circle cx={cam[0]} cy={cam[1]} r={20} fill="transparent" strokeWidth={2}/>
-   <Asset id="camera-top" x={cam[0]} y={cam[1]+11} h={22} rotate={-az}/>
+   <circle cx={cam[0]} cy={cam[1]} r={36} fill="transparent" strokeWidth={2}/>
+   <Asset id="camera-top" x={cam[0]} y={cam[1]+camH("camera-top")/2} h={camH("camera-top")} rotate={-az} tint={tint}/>
   </g>
  </svg>;
 }
 
+/** The camera's drawn height so its longest side is the same in both camera views (large enough to see and grab with a finger). */
+const CAMERA_SIZE=44;
+const camH=(id:string)=>{const v=VISUALS[id];return v?CAMERA_SIZE*Math.min(1,v.height/v.width):CAMERA_SIZE;};
+/** A filter that tints a drawing with the brand blue, keeping its shading (the camera is blue in the camera views; the lighting view keeps it white). */
+function BlueTint({id}:{id:string}){
+ return <defs><filter id={id} colorInterpolationFilters="sRGB">
+  <feFlood style={{floodColor:"var(--color-primary)"}} result="blue"/><feComposite in="blue" in2="SourceAlpha" operator="in" result="tint"/>
+  <feBlend in="tint" in2="SourceGraphic" mode="multiply"/>
+ </filter></defs>;
+}
 /** One labelled view tile (the camera's side and top views): bordered, the label above the drawing. */
 function Tile({label,children}:{label:string;children:ReactNode}){
  return <div className="flex min-w-0 flex-col gap-1 rounded-card border border-line-secondary p-2">
@@ -501,11 +515,14 @@ function LightView({staging,editable,selected,onSelect,onLight}:{staging:Staging
 }
 
 /** One labelled smooth slider (the second way to adjust, synced with the canvas). The value text is spoken and shown; the bar has a 32px tall touch area. */
-function SliderRow({label,valueText,min,max,step,value,onChange,disabled}:{label:string;valueText:string;min:number;max:number;step:number;value:number;onChange:(v:number)=>void;disabled?:boolean}){
+function SliderRow({label,valueText,min,max,step,value,onChange,disabled,ends}:{label:string;valueText:string;min:number;max:number;step:number;value:number;onChange:(v:number)=>void;disabled?:boolean;
+ /** What the left and right ends mean («چپ», «راست»), shown under the bar. */ends?:[string,string]}){
  return <label className={"flex flex-col gap-1 type-caption text-fg-secondary "+(disabled?"opacity-disabled":"")}>
   <span className="flex items-center justify-between gap-2"><span>{label}</span><bdi className="text-fg-primary">{valueText}</bdi></span>
-  <input type="range" min={min} max={max} step={step} value={Number.isFinite(value)?value:min} disabled={disabled} onChange={e=>{const v=Number(e.target.value);if(Number.isFinite(v))onChange(v);}}
+  {/* Sliders work left to right even in the RTL page (the pattern people know): the minimum is on the left. */}
+  <input type="range" dir="ltr" min={min} max={max} step={step} value={Number.isFinite(value)?value:min} disabled={disabled} onChange={e=>{const v=Number(e.target.value);if(Number.isFinite(v))onChange(v);}}
    aria-valuetext={valueText} className="h-8 w-full cursor-pointer accent-primary disabled:cursor-not-allowed"/>
+  {ends&&<span dir="ltr" className="-mt-1 flex justify-between" aria-hidden="true"><span>{ends[0]}</span><span>{ends[1]}</span></span>}
  </label>;
 }
 const pct=(v:number)=>fa(Math.round(v*100));
@@ -516,10 +533,10 @@ function PropInspector({prop:p,tag,reach:r,onChange,onClose}:{prop:SceneProp;tag
  return <div className="flex flex-col gap-3">
   <div className="flex flex-wrap items-center gap-2"><SourceIcon id={PROP_ASSETS[p.kind].front}/><bdi className="type-label text-primary">{tag}</bdi><span className="type-caption text-fg-secondary">{propPlaceFa(p)}</span>
    <Button type="button" variant="ghost" size="sm" className="ms-auto" onClick={onClose} aria-label="برگشت به تنظیمات کادر"><Icon icon={X} aria-hidden="true" className="size-4"/>کادر</Button></div>
-  <SliderRow label="چپ ↔ راست (تا بیرون از کادر)" valueText={pct(p.x)} min={Math.min(r.xMin,p.x)} max={Math.max(r.xMax,p.x)} step={0.01} value={p.x} onChange={x=>onChange({x})}/>
-  <SliderRow label="جلو ↔ عقب (تا بریده از پایین)" valueText={pct(p.z)} min={Math.min(r.zMin,p.z)} max={r.zMax} step={0.01} value={p.z} onChange={z=>onChange({z})}/>
+  <SliderRow label="جای افقی (تا بیرون از کادر)" ends={["چپ","راست"]} valueText={pct(p.x)} min={Math.min(r.xMin,p.x)} max={Math.max(r.xMax,p.x)} step={0.01} value={p.x} onChange={x=>onChange({x})}/>
+  <SliderRow label="عمق (تا بریده از پایین)" ends={["جلو","عقب"]} valueText={pct(p.z)} min={Math.min(r.zMin,p.z)} max={r.zMax} step={0.01} value={p.z} onChange={z=>onChange({z})}/>
   <SliderRow label="چرخش رو به دوربین" valueText={facingFa(facingOf(p))+" · "+fa(Math.round(facingOf(p)))+"°"} min={-180} max={180} step={1} value={facingOf(p)} onChange={f=>onChange({facing:f})}/>
-  <SliderRow label="ارتفاع از زمین" valueText={p.y>0.01?pct(p.y):"روی زمین"} min={0} max={1} step={0.01} value={p.y} onChange={y=>onChange({y})}/>
+  <SliderRow label="ارتفاع از زمین" ends={["زمین","بالا"]} valueText={p.y>0.01?pct(p.y):"روی زمین"} min={0} max={1} step={0.01} value={p.y} onChange={y=>onChange({y})}/>
  </div>;
 }
 
@@ -538,13 +555,13 @@ function LightInspector({light:l,tag,canRemove,onChange,onRemove,onAdd}:{light:S
   </div>
   {/* The light's height, floor to ceiling, on its own line. A planner's light «from above» (direction top) shows as the ceiling. */}
   <div className="flex flex-wrap items-center gap-2"><span className="type-caption text-fg-secondary">زاویهٔ نور</span>
-   <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="زاویهٔ نور">{LIGHT_HEIGHTS.map(h=>{const on=l.direction==="top"?h==="ceiling":l.height===h;
+   <div dir="ltr" className="flex flex-wrap gap-1" role="radiogroup" aria-label="زاویهٔ نور">{LIGHT_HEIGHTS.map(h=>{const on=l.direction==="top"?h==="ceiling":l.height===h;
     return <Chip key={h} role="radio" on={on} onClick={()=>onChange({height:h,...(l.direction==="top"?{direction:snapDirection(90),angle:90}:{})})}>{LIGHT_HEIGHT_FA[h]}</Chip>;})}</div>
   </div>
-  <SliderRow label="شدت نور" valueText={intensityFa(intensityOf(l))} min={0} max={1} step={0.01} value={intensityOf(l)} onChange={v=>onChange({intensity:v})}/>
+  <SliderRow label="شدت نور" ends={["کم","زیاد"]} valueText={intensityFa(intensityOf(l))} min={0} max={1} step={0.01} value={intensityOf(l)} onChange={v=>onChange({intensity:v})}/>
   <label className="flex flex-col gap-1 type-caption text-fg-secondary">
    <span>دمای رنگ: <bdi>{fa(l.colorTemperatureK)}</bdi> کلوین</span>
-   <input type="range" min={1500} max={12000} step={100} value={l.colorTemperatureK} onChange={e=>onChange({colorTemperatureK:Number(e.target.value),colorHex:undefined})}
+   <input type="range" dir="ltr" min={1500} max={12000} step={100} value={l.colorTemperatureK} onChange={e=>onChange({colorTemperatureK:Number(e.target.value),colorHex:undefined})}
     className="h-3 w-full cursor-pointer appearance-none rounded-control" style={{background:TEMPERATURE_GRADIENT}}/>
   </label>
   <div className="flex flex-wrap items-center gap-1" role="radiogroup" aria-label="رنگ ژل">
