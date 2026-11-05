@@ -208,7 +208,8 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     </span>)}
   </button>
   <div id={bodyId} hidden={!open&&!focused} className="flex min-w-0 flex-col gap-3">
-  <div className="flex min-w-0 flex-col gap-3">
+  {/* The sections (frame, camera, lighting), each set apart by a divider and room above and below it. */}
+  <div className="flex min-w-0 flex-col divide-y divide-line-secondary [&>*]:py-5 [&>*:first-child]:pt-1 [&>*:last-child]:pb-1">
    {show("frame")&&frameShown&&<div ref={el=>{frameArea.current=el;setFrameEl(el);}}><Viewport {...cap.frame}>
     <FrameView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={i=>{setPropSel(i);setCenterSel(false);}} centerSel={centerSel} onSelectCenter={()=>{setCenterSel(true);setPropSel(null);}} onProp={(i,x,z)=>setProp(i,{x,z})} onZoom={setDistance} locked={locked} onLock={setLocked} onBack={()=>{setPropSel(null);setCenterSel(false);setLocked(false);}}
      onFocus={f=>{if(f)set(f);else resetFocus();}} onAngle={c=>{if(c.elevation!==undefined)setElevation(c.elevation);if(c.azimuth!==undefined)orbitTo(c.azimuth);}} three={(FRAME_RENDERER==="css"||webgl)&&onScreen&&(open||focused)&&!fullscreen} onFullscreen={FRAME_FULLSCREEN?()=>{setCenterSel(false);setFullscreen(true);}:undefined}/>
@@ -217,6 +218,8 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
      inspector={i=>props[i]?<PropInspector prop={withFrameCuts(draft,anchor,aspect).props![i]} tag={propTags(props,true)[i]} reach={reachOf(props[i],draft,anchor,aspect)} onChange={p=>setProp(i,p)}/>:null}/>}
     {/* The frame's zoom, always right under it: whatever is selected (a character can fill a close-up, with nothing else to tap). */}
     {editable&&<>
+     {/* The frame's ratio first, then its zoom. */}
+     <div className="flex flex-wrap justify-center gap-1">{["16:9","3:2","4:5","1:1","9:16"].map(r=><Chip key={r} on={aspect===r} onClick={()=>setAspect(r)}><bdi>{faText(r)}</bdi></Chip>)}</div>
      <input type="range" dir="ltr" min={0} max={1} step={0.001} value={1-distanceOf(draft)} onChange={e=>setDistance(1-Number(e.target.value))}
       aria-label="زوم (اندازهٔ نما، همون فاصلهٔ دوربین)" aria-valuetext={SHOT_SIZE_FA[draft.shotSize]+"، زوم "+fa(zoomFactor(draft))+"×"} className="h-8 w-full cursor-pointer accent-primary"/>
      <span dir="ltr" className="-mt-2 flex justify-between type-caption text-fg-secondary" aria-hidden="true"><span>باز</span><span>نزدیک</span></span>
@@ -229,7 +232,6 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     {editable&&propSel!==null&&props[propSel]&&<PropInspector prop={withFrameCuts(draft,anchor,aspect).props![propSel]} tag={propTags(props,true)[propSel]} reach={reachOf(props[propSel],draft,anchor,aspect)}
      onChange={p=>setProp(propSel,p)}/>}
     {editable&&(propSel===null||!props[propSel])&&!centerSel&&<>
-     <div className="flex flex-wrap justify-center gap-1">{["16:9","3:2","4:5","1:1","9:16"].map(r=><Chip key={r} on={aspect===r} onClick={()=>setAspect(r)}><bdi>{faText(r)}</bdi></Chip>)}</div>
      <SliderRow label="جابه‌جایی کادر، افقی" ends={["چپ","راست"]} valueText={pct(draft.framing?.x??0)} min={-1} max={1} step={0.01} value={draft.framing?.x??0}
       onChange={x=>{const y=draft.framing?.y??0;set({framing:x===0&&y===0?undefined:{x,y}});}}/>
      <SliderRow label="جابه‌جایی کادر، عمودی" ends={["بالا","پایین"]} valueText={pct(draft.framing?.y??0)} min={-1} max={1} step={0.01} value={draft.framing?.y??0}
@@ -263,6 +265,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
      {([[undefined,"معمولی"],["ots","روی شانه (OTS)"],["pov","دید سوژه (POV)"]] as const).map(([v,l])=><Chip key={l} role="radio" on={draft.shotStyle===v}
       onClick={()=>setDraft(d=>{const {shotStyle:_s,...rest}=d;void _s;return v?{...rest,shotStyle:v}:rest;})}>{l}</Chip>)}</div>}
     </>}
+    {show("angle")&&show("distance")&&<SectionRule/>}
     {show("distance")&&<>
     {/* The camera's distance on its own tile, after the angles: drag the camera nearer or farther (the frame's zoom follows), or use the slider. */}
     <Tile label="فاصله دوربین">
@@ -271,6 +274,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     {editable&&<SliderRow label="فاصلهٔ دوربین (همون زوم کادر)" ends={["نزدیک","دور"]} valueText={SHOT_SIZE_FA[draft.shotSize]+" · زوم "+fa(zoomFactor(draft))+"×"} min={0} max={1} step={0.001} value={distanceOf(draft)} onChange={setDistance}/>}
     </>}
     {/* Lens and aperture: Whoush's pick for the scene (lib/staging.ts, lensFor) until the user moves a slider; bokeh is the aperture opened wide. */}
+    {editable&&show("lens")&&(show("angle")||show("distance"))&&<SectionRule/>}
     {editable&&show("lens")&&(()=>{const l=lensFor(draft),auto=(on:boolean)=>on?" · خودکار":"";
      return <>
       {/* Right after the distance: Whoush Autopilot (on: Whoush keeps the lens and aperture right for the scene; off: fully manual). The bokeh toggle is
@@ -302,7 +306,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
   </div>
   </div>
   {!editable&&<ul className="flex flex-col gap-1">{draft.lights.map((l,i)=><LightRow key={i} l={l}/>)}</ul>}
-  {editable&&changed&&<div className="flex flex-wrap items-center gap-2">
+  {editable&&changed&&<div className="flex flex-wrap items-center gap-2 border-t border-line-secondary pt-3">
    <Button type="button" variant="ghost" size="sm" onClick={()=>{setDraft(initial);setAspect(aspectRatio??"16:9");setPropSel(null);setLightSel(0);setLocked(false);setFocusProps(initial.props);}}><Icon icon={RotateCcw} aria-hidden="true"/>برگرد به پیشنهاد هووش</Button>
    <p className="type-caption text-fg-secondary">با «بساز» همین صحنه ساخته می‌شه.</p>
   </div>}
@@ -368,7 +372,7 @@ function Snap({c,children}:{c:{title:string;value:string};children:ReactNode}){
 /** A dark viewport tile with a caption pill and the value, as in the design reference. */
 function Viewport({title,value,children}:{title:string;value:string;children:ReactNode}){
  return <figure className="dark flex min-w-0 flex-col gap-2 overflow-hidden rounded-card bg-background p-3 text-fg-primary">
-  <div className="flex flex-col gap-2">{children}</div>
+  <div className="flex flex-col gap-4">{children}</div>
   <figcaption className="flex flex-col items-center gap-1 pt-1">
    <span className="rounded-control bg-surface-hover px-3 py-0.5 type-caption text-fg-secondary">{title}</span>
    <span className="type-label text-fg-primary">{value}</span>
@@ -685,6 +689,8 @@ function Toggle({label,on,onChange}:{label:string;on:boolean;onChange:(on:boolea
   <span>{label}</span>
  </button>;
 }
+/** A thin divider between the parts of a section (the camera's angle, distance and lens), with room around it. */
+function SectionRule(){return <hr aria-hidden="true" className="my-1 border-0 border-t border-line-secondary"/>;}
 /** One labelled view tile (the camera's side and top views): bordered, the label above the drawing. */
 function Tile({label,children}:{label:string;children:ReactNode}){
  return <div className="flex min-w-0 flex-col gap-1 rounded-card border border-line-secondary p-2">
