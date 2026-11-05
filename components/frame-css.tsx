@@ -8,7 +8,7 @@
 import {useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type PointerEvent} from "react";
 import type {Scene3DProps} from "./scene-3d";
 import {SCENE_COLORS} from "@/lib/scene3d";
-import {cssView,toScreen,horizonY,billboard,plane,nearZ,blurPx,boxFaces,shade,propSprites,stageAt,gridBands,focusWorld,unfish,toCam,type CssView,type V3} from "@/lib/frame-css";
+import {cssView,toScreen,horizonY,crispPlane,nearZ,blurPx,boxFaces,shade,propSprites,stageAt,gridBands,focusWorld,unfish,toCam,type CssView,type V3} from "@/lib/frame-css";
 import {propTints} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 
@@ -42,10 +42,15 @@ function placeLayers(v:CssView,env:string,D:number):Layer[]{
  const out:Layer[]=[],K=10,z0=Math.min(nearZ(v,0),nearZ(v,3));
  // A wall or floor, blurred by the lens at the distance of its middle.
  const sheet=(key:string,o:V3,ex:V3,ey:V3,w:number,h:number,bg:string,depth:number,extra:CSSProperties={})=>{if(!(w>0&&h>0))return;
-  const mid:V3=[o[0]+ex[0]*w/2+ey[0]*h/2,o[1]+ex[1]*w/2+ey[1]*h/2,o[2]+ex[2]*w/2+ey[2]*h/2],dep=toCam(v,mid)[2],bl=dep>0.1?blurPx(v,dep)*dep/(Math.hypot(...ex)*v.D):0;
-  out.push({key,depth,style:{...at(v),width:w,height:h,background:bg,transform:plane(v,o,ex,ey),...extra,filter:[extra.filter,bl>0.4?"blur("+bl.toFixed(1)+"px)":""].filter(Boolean).join(" ")||undefined}});};
- const far=(key:string,src:string,iw:number,ih:number,centre:V3,mpp:number,haze=1,sx=1,mirror=false)=>{const b=billboard(v,centre,mpp,mirror,0.3,sx);if(!b)return;const bl=blurPx(v,b.depth)/b.px;
-  out.push({key,depth:b.depth,src,style:{...at(v),width:iw,height:ih,opacity:haze,transform:b.transform+" translate(-50%,-50%)",filter:bl>0.4?"blur("+bl.toFixed(1)+"px)":undefined}});};
+  const mid:V3=[o[0]+ex[0]*w/2+ey[0]*h/2,o[1]+ex[1]*w/2+ey[1]*h/2,o[2]+ex[2]*w/2+ey[2]*h/2],dep=toCam(v,mid)[2],bl=dep>0.1?blurPx(v,dep):0,c=crispPlane(v,o,ex,ey,w,h);
+  out.push({key,depth,style:{...at(v),width:c.w,height:c.h,background:bg,transform:c.transform,...extra,filter:[extra.filter,bl>0.4?"blur("+bl.toFixed(1)+"px)":""].filter(Boolean).join(" ")||undefined}});};
+ // A far picture square to the lens (the mountains), drawn at its size on screen so it stays sharp at any focal length.
+ const facing=(centre:V3,wm:number,hm:number,mirror=false)=>{if(toCam(v,centre)[2]<0.3)return undefined;
+  const o:V3=[centre[0]+v.r[0]*(mirror?wm/2:-wm/2)+v.u[0]*hm/2,centre[1]+v.r[1]*(mirror?wm/2:-wm/2)+v.u[1]*hm/2,centre[2]+v.r[2]*(mirror?wm/2:-wm/2)+v.u[2]*hm/2];
+  const ex:V3=[v.r[0]*(mirror?-1:1),v.r[1]*(mirror?-1:1),v.r[2]*(mirror?-1:1)],ey:V3=[-v.u[0],-v.u[1],-v.u[2]];
+  return {...crispPlane(v,o,[ex[0]*wm/100,ex[1]*wm/100,ex[2]*wm/100],[ey[0]*hm/100,ey[1]*hm/100,ey[2]*hm/100],100,100),depth:toCam(v,centre)[2]};};
+ const far=(key:string,src:string,iw:number,ih:number,centre:V3,mpp:number,haze=1,sx=1,mirror=false)=>{const b=facing(centre,iw*mpp*sx,ih*mpp,mirror);if(!b)return;const bl=blurPx(v,b.depth);
+  out.push({key,depth:b.depth,src,style:{...at(v),width:b.w,height:b.h,opacity:haze,transform:b.transform,filter:bl>0.4?"blur("+bl.toFixed(1)+"px)":undefined}});};
  const thing=(key:string,fam:"tree"|"building",x:number,z:number,h:number,haze:number)=>{const wd=fam==="tree"?h*0.5:6+h*0.3,b=boxFaces(v,[x,0,z],{w:wd,h,d:wd},0);
   if(b)for(const f of b.faces)out.push({key:key+f.key,depth:b.depth,style:{...at(v),width:f.w,height:f.h,opacity:haze,transform:f.transform,background:shade(C.clay,f.shade*0.8),filter:b.blur>0.4?"blur("+b.blur.toFixed(1)+"px)":undefined}});};
  if(env==="room"){
@@ -61,8 +66,8 @@ function placeLayers(v:CssView,env:string,D:number):Layer[]{
  if(env==="street")for(let i=0;i<18;i++)thing("b"+i,"building",(i-9)*11,-D-rnd(i)*8,10+rnd(i+3)*18,0.8);
  if(env==="forest")for(let i=0;i<40;i++)thing("t"+i,"tree",(rnd(i)-0.5)*120,-D-rnd(i+7)*25,5+rnd(i+11)*5,0.8);
  if(env==="beach"){const zs=-Math.max(30,D*0.1);sheet("sea",[-1500,0.01,-3000],[1,0,0],[0,0,1],3000,3000+zs,C.sea,1e6+1);}
- if(env==="desert")for(let i=0;i<14;i++){const h=10+rnd(i+2)*14,b=billboard(v,[(i-7)*90,0,-D-rnd(i)*80],1);
-  if(b)out.push({key:"d"+i,depth:b.depth,style:{...at(v),width:140,height:h,background:C.clay,opacity:0.22,borderRadius:"50% 50% 0 0 / 100% 100% 0 0",transform:b.transform+" translate(-50%,-100%)"}});}
+ if(env==="desert")for(let i=0;i<14;i++){const h=10+rnd(i+2)*14,b=facing([(i-7)*90,h/2,-D-rnd(i)*80],140,h);
+  if(b)out.push({key:"d"+i,depth:b.depth,style:{...at(v),width:b.w,height:b.h,background:C.clay,opacity:0.22,borderRadius:"50% 50% 0 0 / 100% 100% 0 0",transform:b.transform}});}
  if(env==="landscape"||env==="desert"||env==="beach"){const m=VISUALS["env-mountains"];
   // A wide range along the whole horizon: each massif stretched wide, a near row and a taller, hazier far row behind it, overlapping edge to edge, their
   // bases sunk a little into the ground so no gap ever shows between a mountain and the horizon.

@@ -87,7 +87,7 @@ export function billboard(v:CssView,p:V3,mpp:number,mirror=false,minDepth=0.3,/*
  * along that line; the camera's own up when it looks almost straight down at it). CSS perspective then draws it as a real rectilinear lens would:
  * stretched toward the frame's edges by a wide lens close up, leaning in when the camera tilts. `above` is the share of the picture above `at`.
  */
-export function standee(v:CssView,at:V3,wpx:number,hpx:number,mppX:number,mppY:number,mirror:boolean,above:number,/** The height the picture was drawn from, degrees. */drawnFrom:number):{transform:string;depth:number;quad:V3[]}|undefined{
+export function standee(v:CssView,at:V3,wpx:number,hpx:number,mppX:number,mppY:number,mirror:boolean,above:number,/** The height the picture was drawn from, degrees. */drawnFrom:number):{transform:string;w:number;h:number;depth:number;quad:V3[]}|undefined{
  // Square to the line of sight across the ground, tilted by the height the picture shows (not the exact line to the camera): an eye-level picture
  // stands straight up, so a level camera keeps verticals vertical; only a tilted camera makes them lean.
  const ray=sub(at,v.pos),flat=Math.hypot(ray[0],ray[2]),e=drawnFrom*Math.PI/180;
@@ -99,7 +99,22 @@ export function standee(v:CssView,at:V3,wpx:number,hpx:number,mppX:number,mppY:n
  const quad=[o,add(o,mul(ex,wpx)),add(add(o,mul(ex,wpx)),mul(ey,hpx)),add(o,mul(ey,hpx))];
  if(quad.some(q=>toCam(v,q)[2]<0.05))return undefined;
  const depth=toCam(v,at)[2];
- return depth>0.05?{transform:plane(v,o,ex,ey),depth,quad}:undefined;
+ if(!(depth>0.05))return undefined;
+ const c=crispPlane(v,o,ex,ey,wpx,hpx);return {transform:c.transform,w:c.w,h:c.h,depth,quad};
+}
+/**
+ * A plane drawn crisp: its element is sized to about its size on screen. A browser rasterizes a 3D-transformed element at its own pixel size and then
+ * stretches it, so a small element blown up by a long lens (or close to the camera) turns soft and blocky. `wpx`×`hpx` local px span the plane through
+ * `ex`, `ey` (metres per local px); the result spans the same plane with as many px as it covers on screen (never fewer than 2 or more than 4096 across).
+ * `scale` is the screen px per element px it ends up with (about 1), for blurs given in screen px.
+ */
+export function crispPlane(v:CssView,o:V3,ex:V3,ey:V3,wpx:number,hpx:number):{transform:string;w:number;h:number;scale:number}{
+ const corners=[o,add(o,mul(ex,wpx)),add(add(o,mul(ex,wpx)),mul(ey,hpx)),add(o,mul(ey,hpx))].map(c=>toScreenRaw(v,c));
+ let k=1;
+ if(corners.every(Boolean)){const [a,b,c,d]=corners as [number,number][],len=(p:[number,number],q:[number,number])=>Math.hypot(p[0]-q[0],p[1]-q[1]);
+  k=Math.max(len(a,b),len(d,c))/wpx;k=Math.max(k,Math.max(len(a,d),len(b,c))/hpx);}
+ k=Math.min(4096/Math.max(wpx,hpx),Math.max(2/Math.min(wpx,hpx),k));
+ return {transform:plane(v,o,mul(ex,1/k),mul(ey,1/k)),w:wpx*k,h:hpx*k,scale:1};
 }
 /** A CSS matrix3d for a flat plane: local px (x, y) maps to the world point o + x·ex + y·ey (metres). */
 export function plane(v:CssView,o:V3,ex:V3,ey:V3):string{
@@ -145,7 +160,8 @@ export function thingSprite(v:CssView,p:Pick<SceneProp,"kind"|"label">,ground:V3
  // Placed by its middle; a camera so close that its middle is beside or behind the lens (a worm's-eye close-up) places it by the point it looks at.
  const lookAt:V3=[ground[0],ground[1]+h*look,ground[2]],mppX=mpp*sx;
  const st=standee(v,centre,a.width,a.height,mppX,mpp,sp.mirror,0.5,stopDeg)??standee(v,lookAt,a.width,a.height,mppX,mpp,sp.mirror,1-look,stopDeg);if(!st)return undefined;
- return {id:sp.id,src:a.src,w:a.width,h:a.height,transform:st.transform,depth:st.depth,blur:blurPx(v,st.depth)*st.depth/(mpp*v.D),side:sp.side,stop:sp.height,quad:st.quad};
+ // The element is about as many px as it covers on screen, so the lens's blur (screen px) applies as it is.
+ return {id:sp.id,src:a.src,w:st.w,h:st.h,transform:st.transform,depth:st.depth,blur:blurPx(v,st.depth),side:sp.side,stop:sp.height,quad:st.quad};
 }
 /**
  * Each prop as the camera sees it (lib/scene3d.ts places and sizes it). The angle is measured where the camera aims (the face of a person by default), so
@@ -216,10 +232,11 @@ export function boxFaces(v:CssView,ground:V3,dims:{w:number;h:number;d:number},f
   if(dot(n,sub(v.pos,centre))<=1e-6)continue;
   const corners=[o,add(o,mul(ex,lw)),add(o,mul(ey,lh)),add(add(o,mul(ex,lw)),mul(ey,lh))];
   if(corners.some(p=>toCam(v,p)[2]<0.05))return undefined;
-  out.push({key,transform:plane(v,o,mul(ex,1/K),mul(ey,1/K)),w:lw*K,h:lh*K,shade:0.6+0.4*Math.max(0,dot(n,L)),quad:corners});
+  const c=crispPlane(v,o,mul(ex,1/K),mul(ey,1/K),lw*K,lh*K);
+  out.push({key,transform:c.transform,w:c.w,h:c.h,shade:0.6+0.4*Math.max(0,dot(n,L)),quad:corners});
  }
  const depth=toCam(v,c)[2];
- return depth>0.05?{faces:out,depth,blur:blurPx(v,depth)*K*depth/v.D}:undefined;
+ return depth>0.05?{faces:out,depth,blur:blurPx(v,depth)}:undefined;
 }
 /** A colour (#rrggbb) at a share of its brightness, as CSS rgb(): the clay box's faces, lit and in shade. */
 export function shade(hex:string,k:number):string{

@@ -166,3 +166,16 @@ test("aperture: the ground blurs band by band with distance, and the horizon as 
  const deep=cssView({...base,shotSize:"medium",lensMm:24,apertureF:16,autopilot:false},undefined,"16:9",800,450);
  assert.ok(blurPx(deep,1e5)<blurPx(v,1e5)/10,"stopped down on a wide lens, the background stays sharp");
 });
+
+test("sharp at any lens: every 3D element is sized to about its size on screen, so the browser never blows up a small texture",async()=>{
+ const {crispPlane}=await import("../lib/frame-css");
+ for(const lens of [12,35,85,200]){
+  const s={...base,shotSize:"medium_close_up" as const,lensMm:lens,autopilot:false},v=cssView(s,undefined,"16:9",800,450);
+  const sp=propSprites(v,s.props!,s)[0],p=sp.quad!.map(q=>toScreen(v,q)!);
+  const onScreen=Math.hypot(p[3][0]-p[0][0],p[3][1]-p[0][1]);
+  // Never magnified: the element has at least as many px as it covers (within the fisheye's bulge).
+  assert.ok(sp.h>=onScreen*0.85,lens+"mm: element "+sp.h.toFixed(0)+"px for "+onScreen.toFixed(0)+"px on screen");
+ }
+ const v=cssView(base,undefined,"16:9",800,450),c=crispPlane(v,[0,1,-1],[0.0001,0,0],[0,-0.0001,0],10,10);
+ assert.ok(c.w>=2&&c.w<=4096);
+});
