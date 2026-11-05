@@ -325,3 +325,13 @@ test("the lens follows the camera's distance smoothly while it is Whoush's pick;
  assert.deepEqual([at(0.32),at(0.5),at(1.1),at(2.4)],[85,50,35,24]);
  assert.equal(at(0.7,{lensMm:135}),135);assert.equal(at(2,{lensMm:135}),135,"the user's lens stays at any distance");
 });
+
+test("Whoush Autopilot: on by default (Whoush's lens and aperture); off keeps the user's values and is written out",async()=>{
+ const {lensFor,describeStagingChangesFa}=await import("../lib/staging");
+ const s:Staging={...base,props:[{kind:"person",label:"زن",x:0,z:-0.25,y:0,main:true}]};
+ assert.equal(s.autopilot,undefined);assert.deepEqual(lensFor(s).auto,{lens:true,aperture:true});
+ const manual:Staging={...s,autopilot:false,lensMm:50,apertureF:2.8};
+ assert.deepEqual([lensFor({...manual,shotScale:2}).focalLengthMm,lensFor({...manual,shotScale:2}).aperture],[50,"f/2.8"],"off: the values stay at any distance");
+ assert.ok(describeStagingChangesFa(s,manual).includes("اتوپایلوت هووش: روشن ← خاموش"));
+ assert.ok(CreativeTurnInputSchema.shape.stagingOverride.safeParse({...manual,subject:"person"}).success);
+});

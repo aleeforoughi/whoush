@@ -134,6 +134,7 @@ export function describeStagingChangesFa(before:Staging,after:Staging,aspectBefo
  const lb=lensFor(before),la=lensFor(after);
  if(before.lensMm!==after.lensMm&&lb.focalLengthMm!==la.focalLengthMm)out.push("لنز: "+arrow(lb.focalLengthMm+"mm",la.focalLengthMm+"mm"));
  if(before.apertureF!==after.apertureF&&lb.aperture!==la.aperture)out.push("دیافراگم: "+arrow(lb.aperture,la.aperture)+(la.deep?"":" (بوکه)"));
+ if((before.autopilot!==false)!==(after.autopilot!==false))out.push("اتوپایلوت هووش: "+arrow(before.autopilot===false?"خاموش":"روشن",after.autopilot===false?"خاموش":"روشن"));
  const dom=(s:Staging)=>{const m=(s.props??[]).find(p=>p.main);return m?(s.focusDetail&&m.kind==="person"?FOCUS_DETAIL_FA[s.focusDetail]+"ِ ":"")+m.label:"";};
  if(dom(before)!==dom(after))out.push("سوژهٔ اصلی: "+arrow(dom(before)||"—",dom(after)||"—"));
  if(placementFa(before.framing)!==placementFa(after.framing))out.push("جای سوژه: "+arrow(placementFa(before.framing),placementFa(after.framing)));

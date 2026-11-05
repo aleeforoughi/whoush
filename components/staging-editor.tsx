@@ -46,7 +46,16 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
  // props never moves it (so moving one prop moves only that prop); the next camera move re-centres on the dominant subject. The user's crop pan stays on top.
  const mainIdx=(draft.props??[]).findIndex(p=>p.main);
  const [focusProps,setFocusProps]=useState(initial.props);
- const aim=()=>setFocusProps(draft.props);
+ // Whoush Autopilot (on by default): Whoush keeps the camera's lens and aperture right for the scene and re-centres on the dominant subject when the
+ // camera moves. Off: fully manual, nothing changes by itself.
+ const autopilot=draft.autopilot!==false;
+ const aim=()=>{if(autopilot)setFocusProps(draft.props);};
+ /** Hand-setting the lens or aperture turns Autopilot off and freezes the other at its current value, so nothing changes behind the user's back. */
+ const setManual=(p:Partial<Staging>)=>setDraft(d=>{const l=lensFor(d);return {...d,autopilot:false,lensMm:d.lensMm??l.focalLengthMm,apertureF:d.apertureF??l.apertureF,...p};});
+ const setAutopilot=(on:boolean)=>{
+  if(on){setFocusProps(draft.props);setDraft(d=>{const {lensMm:_l,apertureF:_a,autopilot:_p,...rest}=d;void _l;void _a;void _p;return rest;});}
+  else setManual({});
+ };
  const anchor:Staging={...initial,focusDetail:draft.focusDetail,props:focusProps?.map((p,i)=>{const {main:_m,...q}=p;void _m;return i===mainIdx?{...q,main:true}:q;})};
  // All three views in one scroll, in this order: framing and layout, camera, lighting; each view's controls right under it.
  const editable=Boolean(onChange);
@@ -63,7 +72,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
  const props=draft.props??[];
  const [confirmed,setConfirmed]=useState(false);
  /** The dominant subject: one prop (the main one) and, for a person, the part the shot is about. */
- const setDominant=(i:number,detail?:Staging["focusDetail"])=>{setConfirmed(true);aim();
+ const setDominant=(i:number,detail?:Staging["focusDetail"])=>{setConfirmed(true);setFocusProps(draft.props);
   // A new dominant subject: the centre point goes back onto it.
   setDraft(d=>{const {focusDetail:_f,focusPoint:_p,...rest}=d;void _f;void _p;return {...rest,...(detail?{focusDetail:detail}:{}),props:(d.props??[]).map((p,j)=>{const {main:_m,...q}=p;void _m;return j===i?{...q,main:true}:q;})};});};
  // The camera: height, orbit around the main subject (everything in the frame turns to match) and distance (the same value as the frame's zoom).
@@ -107,6 +116,10 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
    </span>}
   </button>
   <div id={bodyId} hidden={!open} className="flex min-w-0 flex-col gap-3">
+  {editable&&<div className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-line-secondary px-3 py-2">
+   <span className="type-caption text-fg-secondary">{autopilot?"هووش بهترین تنظیمات دوربین رو خودش انتخاب می‌کنه.":"دستی: هر چی تنظیم کنی همون می‌مونه."}</span>
+   <Toggle label="اتوپایلوت هووش" on={autopilot} onChange={setAutopilot}/>
+  </div>}
   <div className="flex min-w-0 flex-col gap-3">
    <div ref={frameArea}><Viewport {...cap.frame}>
     <FrameView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={setPropSel} onProp={(i,x,z)=>setProp(i,{x,z})} onZoom={setDistance} locked={locked} onLock={setLocked}
@@ -159,17 +172,12 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
     {editable&&(()=>{const l=lensFor(draft),auto=(on:boolean)=>on?" · خودکار":"";
      return <>
       <SliderRow label="لنز (فاصلهٔ کانونی)" ends={["واید","تله"]} valueText={fa(l.focalLengthMm)+" میلی‌متر"+auto(l.auto.lens)} min={0} max={1} step={0.001} value={lensSlider(l.focalLengthMm)}
-       onChange={v=>set({lensMm:lensFromSlider(v)})}/>
+       onChange={v=>setManual({lensMm:lensFromSlider(v)})}/>
       <SliderRow label="دیافراگم" ends={["باز، محو","بسته، واضح"]} valueText={l.aperture+auto(l.auto.aperture)} min={0} max={1} step={0.001} value={apertureSlider(l.apertureF)}
-       onChange={v=>set({apertureF:apertureFromSlider(v)})}/>
+       onChange={v=>setManual({apertureF:apertureFromSlider(v)})}/>
       <div className="flex flex-wrap items-center justify-center gap-2">
-       {/* A plain toggle: «بوکه» and its switch (on: the aperture opens wide for a soft background; off: stopped down, everything sharp). */}
-       <button type="button" role="switch" aria-checked={!l.deep} aria-label="بوکه" onClick={()=>set({apertureF:l.deep?1.8:8})}
-        className="flex min-h-9 items-center gap-2 rounded-control px-1 type-label text-fg-primary outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
-        <span>بوکه</span>
-        <span dir="ltr" className={"relative inline-block h-5 w-9 shrink-0 rounded-full transition-colors motion-reduce:transition-none "+(!l.deep?"bg-primary":"bg-surface-hover")}><span className={"absolute top-0.5 size-4 rounded-full transition-[inset-inline-start] motion-reduce:transition-none "+(!l.deep?"start-4.5 bg-primary-foreground":"start-0.5 bg-fg-secondary")}/></span>
-       </button>
-       {(!l.auto.lens||!l.auto.aperture)&&<Button type="button" variant="ghost" size="sm" onClick={()=>setDraft(d=>{const {lensMm:_l,apertureF:_a,...rest}=d;void _l;void _a;return rest;})}>انتخاب خودکار هووش</Button>}
+       {/* A plain toggle: on opens the aperture wide for a soft background, off stops it down so everything is sharp (both are hand settings). */}
+       <Toggle label="بوکه" on={!l.deep} onChange={on=>setManual({apertureF:on?1.8:8})}/>
       </div>
      </>;})()}
    </Viewport></div>
@@ -445,6 +453,14 @@ function Tint({id,color}:{id:string;color:string}){
   <feFlood style={{floodColor:color}} result="blue"/><feComposite in="blue" in2="SourceAlpha" operator="in" result="tint"/>
   <feBlend in="tint" in2="SourceGraphic" mode="multiply"/>
  </filter></defs>;
+}
+/** A labelled on/off switch (Autopilot, bokeh): the label, then the switch, which runs left to right like every control here (on: knob on the right). */
+function Toggle({label,on,onChange}:{label:string;on:boolean;onChange:(on:boolean)=>void}){
+ return <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={()=>onChange(!on)}
+  className="flex min-h-9 items-center gap-2 rounded-control px-1 type-label text-fg-primary outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+  <span>{label}</span>
+  <span dir="ltr" className={"relative inline-block h-5 w-9 shrink-0 rounded-full transition-colors motion-reduce:transition-none "+(on?"bg-primary":"bg-surface-hover")}><span className={"absolute top-0.5 size-4 rounded-full transition-[inset-inline-start] motion-reduce:transition-none "+(on?"start-4.5 bg-primary-foreground":"start-0.5 bg-fg-secondary")}/></span>
+ </button>;
 }
 /** One labelled view tile (the camera's side and top views): bordered, the label above the drawing. */
 function Tile({label,children}:{label:string;children:ReactNode}){
