@@ -11,7 +11,7 @@ export const VISUALS:Record<string,VisualAsset>={
  "camera-side":{src:"/visuals/camera-side.png",width:640,height:360},
  "camera-top":{src:"/visuals/camera-top.png",width:373,height:640},
  "cube-3q":{src:"/visuals/cube-3q.png",width:584,height:610},
- "cube-top":{src:"/visuals/cube-top.png",width:538,height:578},
+ "cube-top":{src:"/visuals/cube-top.png",width:555,height:555},
  "env-mountains":{src:"/visuals/env-mountains.png",width:640,height:376},
  "env-top":{src:"/visuals/env-top.png",width:606,height:640},
  "human-3q-back":{src:"/visuals/human-3q-back.png",width:157,height:640,hd:"/visuals/hd/human-3q-back.webp",hdHeight:1143},

@@ -4,7 +4,7 @@ import {VISUALS} from "./visual-assets";
 import {displayTag,fileTagOf,normalizeMentionText} from "./attachments";
 
 export const CAMERA_ANGLE_FA:Record<Staging["cameraAngle"],string>={birds_eye:"از بالا (نمای پرنده)",high:"زاویهٔ بالا",eye_level:"هم‌سطح چشم",low:"زاویهٔ پایین",worms_eye:"از پایین (نمای کرم)",dutch:"زاویهٔ کج (داچ)"};
-export const SHOT_SIZE_FA:Record<Staging["shotSize"],string>={extreme_close_up:"خیلی نزدیک",close_up:"نمای نزدیک",medium_close_up:"نزدیک متوسط",medium:"نمای متوسط",medium_full:"تا زانو",full:"تمام‌قد",wide:"نمای باز",extreme_wide:"خیلی باز"};
+export const SHOT_SIZE_FA:Record<Staging["shotSize"],string>={extreme_close_up:"خیلی نزدیک",close_up:"نمای نزدیک",medium_close_up:"نزدیک متوسط",medium:"نمای متوسط",medium_full:"۳/۴",full:"تمام‌قد",wide:"نمای باز",extreme_wide:"خیلی باز"};
 export const LIGHT_ROLE_FA:Record<StagingLight["role"],string>={key:"نور اصلی",fill:"نور پرکننده",rim:"نور پشت",background:"نور پس‌زمینه",practical:"منبع داخل صحنه"};
 export const LIGHT_SOURCE_FA:Record<StagingLight["source"],string>={sun:"خورشید",sky:"نور آسمان",window:"پنجره",softbox:"سافت‌باکس",led_panel:"پنل LED",practical:"چراغ صحنه",neon:"نئون",fire:"آتش",moon:"ماه",flash:"فلاش"};
 export const LIGHT_QUALITY_FA:Record<StagingLight["quality"],string>={soft:"نرم",hard:"سخت"};

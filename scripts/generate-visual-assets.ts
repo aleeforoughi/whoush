@@ -19,7 +19,8 @@ const STYLE="Isolated single object, 3D render in a soft matte clay style with a
  * lighting and level of simplification match across the pack. The list is in dependency order.
  */
 export const ANCHOR="person-side";
-export const ASSETS:{id:string;ref?:string;prompt:string;size:"1024x1024"|"1024x1536"|"1536x1024"}[]=[
+export const ASSETS:{id:string;ref?:string;prompt:string;size:"1024x1024"|"1024x1536"|"1536x1024";
+ /** Cut to its solid shape (no soft shadow) and made exactly square: a face that must have equal sides. */square?:boolean}[]=[
  {id:"person-side",size:"1024x1536",prompt:"A stylized faceless mannequin person standing upright, seen exactly from the side (profile, facing right), full body from head to feet: a smooth sphere head, a rounded capsule torso with the arm resting along the side, two straight rounded legs together. Neutral pose."},
  {id:"person-front",ref:"person-side",size:"1024x1536",prompt:"A stylized faceless mannequin person standing upright, seen exactly from the front, full body from head to feet: a smooth sphere head, a rounded capsule torso with arms resting along the sides, two straight rounded legs slightly apart. Neutral pose, symmetrical."},
  {id:"person-3q",ref:"person-front",size:"1024x1536",prompt:"The same faceless mannequin person standing upright, full body from head to feet, seen in a THREE-QUARTER view: the body turned 45 degrees so its front faces toward the viewer's RIGHT (we see the front and the left side of the body), arms resting along the sides, legs together. Neutral pose."},
@@ -100,7 +101,7 @@ for(const [pet,looks] of [["dog","a stylized medium-sized DOG standing on all fo
  * Anything but a character (a product, a car, a tree, a place alone) in «بوم»'s camera and lighting diagrams: one smooth, minimal clay cube, in a
  * three-quarter view from the side and showing only its top from above (beta).
  */
-ASSETS.push({id:"cube-top",ref:"cube-3q",size:"1024x1024",prompt:"The same rounded clay CUBE as the second reference seen exactly from DIRECTLY ABOVE (top-down orthographic view): only its top face, a rounded square with softly rounded edges; no sides visible."},
+ASSETS.push({id:"cube-top",ref:"cube-3q",size:"1024x1024",square:true,prompt:"The exact same smooth clay CUBE as the second reference (the same material, the same softly rounded edges and corners, the same light clay colour and soft shading), seen exactly from DIRECTLY ABOVE in a top-down orthographic view, perfectly square to the viewer: only its top face is visible, a PERFECT SQUARE with all four sides exactly equal and all four corners equally rounded, centred, edges parallel to the image edges; no side faces visible, no perspective, no tilt."},
  {id:"cube-3q",ref:"human-3q",size:"1024x1024",prompt:"A single smooth minimal CUBE, all sides equal, with softly rounded edges and corners and plain smooth faces, no details, no text, no logo, in a classic THREE-QUARTER view from a little above: we see its top face and two of its side faces, the vertical edge between the sides toward the viewer, the sides lit differently (the left one lighter) so it reads clearly as a 3D cube. Simple and elegant."});
 /** The people's worm's-eye view in plainer words (the image model refused one with the generic wording): a toy-like figure seen from the ground. */
 const PEOPLE=new Set(["human","woman"]);
@@ -135,8 +136,16 @@ async function generate(a:(typeof ASSETS)[number]):Promise<Buffer>{
  return Buffer.from(body.data[0].b64_json,"base64");
 }
 /** Trims the transparent margin, fits the object in 640px on its long side and saves an optimized PNG; returns the final size for the manifest. */
-async function finish(id:string,raw:Buffer):Promise<{width:number;height:number}>{
- const trimmed=await sharp(raw).trim({threshold:1}).toBuffer();
+async function finish(id:string,raw:Buffer,square=false):Promise<{width:number;height:number}>{
+ let trimmed=await sharp(raw).trim({threshold:1}).toBuffer();
+ if(square){
+  // The solid shape only (its soft shadow left out), stretched to an exact square (it is drawn as a face with equal sides).
+  const {data,info}=await sharp(trimmed).ensureAlpha().raw().toBuffer({resolveWithObject:true});
+  let x0=info.width,y0=info.height,x1=-1,y1=-1;
+  for(let y=0;y<info.height;y++)for(let x=0;x<info.width;x++)if(data[(y*info.width+x)*4+3]>160){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;}
+  const side=Math.max(x1-x0+1,y1-y0+1);
+  trimmed=await sharp(trimmed).extract({left:x0,top:y0,width:x1-x0+1,height:y1-y0+1}).resize({width:side,height:side,fit:"fill"}).png().toBuffer();
+ }
  const out=await sharp(trimmed).resize({width:640,height:640,fit:"inside",withoutEnlargement:true}).png({compressionLevel:9,palette:false}).toBuffer();
  await writeFile(path.join(OUT,id+".png"),out);
  const m=await sharp(out).metadata();
@@ -150,10 +159,14 @@ async function main(){
  for(const a of list){
   const raw=await generate(a);
   await writeFile(path.join(RAW,a.id+".png"),raw);
-  sizes[a.id]=await finish(a.id,raw);
+  sizes[a.id]=await finish(a.id,raw,a.square);
   console.log(a.id,sizes[a.id]);
  }
  console.log(JSON.stringify(sizes));
 }
 // Run only as a script (importing it, to read ASSETS, generates nothing).
-if(process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href)main().catch(e=>{console.error(e instanceof Error?e.message:e);process.exit(1);});
+if(process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href&&process.argv[2]==="--refinish")refinish(process.argv.slice(3));
+else if(process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href)main().catch(e=>{console.error(e instanceof Error?e.message:e);process.exit(1);});
+
+/** Re-finishes saved raw images without generating (`--refinish id ...`): a change to how they are cut, for free. */
+export async function refinish(ids:string[]){for(const id of ids){const a=ASSETS.find(x=>x.id===id);if(!a)continue;console.log(id,await finish(id,await readFile(path.join(RAW,id+".png")),a.square));}}
