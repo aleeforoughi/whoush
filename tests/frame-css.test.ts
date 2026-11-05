@@ -215,17 +215,18 @@ test("the brief asks for a fisheye: the lens turns fisheye and the provider is t
 
 test("the focus stays locked on the dominant subject through moves, crops and angle changes; a placed point follows its prop; the camera never moves for it",async()=>{
  const {propWorld}=await import("../lib/scene3d");
- const tree={kind:"tree" as const,label:"درخت",x:0.6,z:1,y:0},s0:Staging={...base,props:[man,tree],lensMm:50,apertureF:1.8,autopilot:false};
+ const tree={kind:"person" as const,label:"زن",x:0.6,z:1,y:0},s0:Staging={...base,props:[man,tree],lensMm:50,apertureF:1.8,autopilot:false};
  const face=(s:Staging)=>{const w=propWorld(s.props![0],s,s0).pos;return [w[0],w[1]+1.75*0.88,w[2]];};
  const off=(s:Staging)=>{const f=focusWorld(cssView(s,s0,"16:9",1000,562.5)),c=face(s);return Math.hypot(f[0]-c[0],f[1]-c[1],f[2]-c[2]);};
  const moved={...s0,props:[{...man,x:0.4,z:0.3},tree]};
  for(const s of [s0,moved,{...s0,framing:{x:0.4,y:-0.2}},{...s0,cameraAngle:"high" as const,cameraElevation:35}])assert.ok(off(s)<1e-9);
  assert.deepEqual(cssView(moved,s0,"16:9",1000,562.5).pos,cssView(s0,s0,"16:9",1000,562.5).pos,"moving the dominant subject does not move the camera");
- const pivot=pickPivot(s0,s0,"16:9",0.75,0.3);assert.equal(pivot.on,1);
+ const tw=propWorld(tree,s0,s0).pos,tp=toScreen(cssView(s0,s0,"16:9",1000,562.5),[tw[0],1.1,tw[2]])!;
+ const pivot=pickPivot(s0,s0,"16:9",tp[0]/1000,tp[1]/562.5);assert.equal(pivot.on,1);
  const s1={...s0,pivot},s2={...s1,props:[man,{...tree,x:0.2,z:0.5}]},v1=cssView(s1,s0,"16:9",1000,562.5),v2=cssView(s2,s0,"16:9",1000,562.5);
  assert.deepEqual(v1.pos,v2.pos,"moving the prop under the placed point does not move the camera");
  const t=propWorld(s2.props![1],s2,s0).pos,f=focusWorld(v2);
- assert.ok(Math.abs(f[0]-t[0]-pivot.rel![0])<1e-9&&Math.abs(f[2]-t[2]-pivot.rel![2])<1e-9,"the focus follows the tree");
+ assert.ok(Math.abs(f[0]-t[0]-pivot.rel![0])<1e-9&&Math.abs(f[2]-t[2]-pivot.rel![2])<1e-9,"the focus follows the woman");
  // A new angle: the placed point keeps the focus (its zoom anchor goes).
  const {a:_a,b:_b,k:_k,...focusOnly}=pivot;void _a;void _b;void _k;
  const v3=cssView({...s1,pivot:focusOnly,cameraAngle:"high",cameraElevation:35},s0,"16:9",1000,562.5);
@@ -257,4 +258,17 @@ test("limits: the zoom never takes the camera into the subject, and a prop drags
  const sx=(x:number)=>toScreen(v,[(x-man.x)*3,0.75,-(car.z-man.z)*4])![0];
  assert.ok(Math.abs((0-sx(r.xMin))-(sx(r.xMax)-1000))<40,"as far past the left edge as past the right");
  assert.ok(r.zMin<car.z&&r.zMax>car.z);
+});
+
+test("beta: the frame draws only characters (people and the pets); props but no character: no frame",async()=>{
+ const {isCharacter,showsFrame}=await import("../lib/staging");
+ const k=(kind:"person"|"animal"|"object"|"vehicle"|"tree",label:string)=>({kind,label,x:0,z:0,y:0});
+ assert.ok(isCharacter(k("person","زن"))&&isCharacter(k("animal","سگ"))&&isCharacter(k("animal","گربه")));
+ assert.ok(!isCharacter(k("animal","پرنده"))&&!isCharacter(k("object","میز"))&&!isCharacter(k("vehicle","ماشین")));
+ assert.equal(showsFrame([k("object","میز"),k("vehicle","ماشین")]),false,"props but no character: camera and lighting only");
+ assert.equal(showsFrame([k("object","میز"),k("person","مرد")]),true);
+ assert.equal(showsFrame([]),true,"a place alone still shows");
+ // A box is not something the focus can land on while it is hidden.
+ const desk={kind:"object" as const,label:"میز",x:0,z:-0.25,y:0,main:true},s:Staging={...base,shotSize:"medium",props:[desk]};
+ assert.notEqual(pickPivot(s,s,"16:9",0.5,0.6).on,0);
 });

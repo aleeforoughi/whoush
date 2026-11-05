@@ -10,7 +10,7 @@
 import type {Staging} from "./creative-plan";
 import {camera3D,propSize,propWorld,stageFromWorld,wideFrameRect,worldOrigin,type Camera3D,type FrameRect} from "./scene3d";
 import {PROP_X_RANGE,PROP_Z_RANGE} from "./creative-plan";
-import {METERS_PER_Z,VERTICAL_STOPS,cubeDims,facingOf,frameSize,isCube,nearestShot,scaleFromSlider,supportOf,verticalIndex,wrap180,type SceneProp,type VerticalStop} from "./staging";
+import {METERS_PER_Z,VERTICAL_STOPS,cubeDims,facingOf,frameSize,isCharacter,isCube,nearestShot,scaleFromSlider,supportOf,verticalIndex,wrap180,type SceneProp,type VerticalStop} from "./staging";
 import {sizeOf,spanM,spriteFor,widthM,familyOf,type SpriteSide} from "./sprites";
 import {VISUALS} from "./visual-assets";
 
@@ -287,7 +287,8 @@ export function pickPivot(s:Staging,anchor:Staging|undefined,aspect:string,fx:nu
  const {W,H}=frameSize(aspect),w=1000,h=1000*H/W,v=cssView(s,anchor,aspect,w,h),pt:[number,number]=[fx*w,fy*h];
  const [ux,uy]=unfish(v,pt[0],pt[1]),[x,y]=rot(v,ux,uy,-1),a=(x-v.pp[0])/v.D,b=-(y-v.pp[1])/v.D;
  const dir=add(v.f,add(mul(v.r,a),mul(v.u,b)));
- const sprites=propSprites(v,s.props??[],s,anchor);
+ // Only what the frame draws can be picked (in the beta, the characters).
+ const sprites=propSprites(v,s.props??[],s,anchor).filter(sp=>isCharacter((s.props??[])[sp.i]));
  const screen=(q:V3[])=>q.map(c=>toScreen(v,c)).filter((c):c is [number,number]=>Boolean(c));
  const hit=sprites.filter(sp=>(sp.quads??(sp.quad?[sp.quad]:[])).some(q=>{const poly=screen(q);return poly.length===4&&inside(pt,poly);})).sort((p,q)=>p.depth-q.depth)[0];
  const g=groundAt(v,pt[0],pt[1],0),gDepth=g?toCam(v,g)[2]:Infinity,far=v.cam.backdrop+toCam(v,v.cam.target as V3)[2];

@@ -6,7 +6,7 @@ import {Box,ChevronDown,ChevronLeft,ChevronRight,ChevronUp,Lock,LockOpen,Maximiz
 import {Button,Dialog,DialogBody,DialogContent,DialogHeader,DialogPortal,DialogTitle,Icon} from "@aleeforoughi/feather-react";
 import {FOCUS_DETAILS,LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
- SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,rollOf,lensSizeFactor,backdropFactor,wallDepth,blurAt,horizonShift,focusDepth,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,VERTICAL_STOPS,verticalIndex,snapVertical,SIDE_STEP,snapSide,sideStopFa,isCube,cubeDims,type SceneProp} from "@/lib/staging";
+ SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,rollOf,lensSizeFactor,backdropFactor,wallDepth,blurAt,horizonShift,focusDepth,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,VERTICAL_STOPS,verticalIndex,snapVertical,SIDE_STEP,snapSide,sideStopFa,isCube,cubeDims,isCharacter,showsFrame,type SceneProp} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 import {fa} from "@/lib/format";
 import type {FrameRect} from "./scene-3d";
@@ -154,6 +154,8 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  },[propSel,centerSel,locked,fullscreen]);
  // Collapsed: three live snapshots of the scene as it is now (frame, camera, lighting), read-only; opening it shows the canvas and its controls.
  const cap=viewCaptions(draft,aspect);
+ // Beta: the frame shows only characters; a scene with props but none of them a character has no frame (the camera and the lighting still show).
+ const frameShown=showsFrame(draft.props);
 
  return <>
  <div role="group" aria-label="بوم" className="@container flex min-w-0 flex-col gap-3">
@@ -169,14 +171,14 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     <Icon icon={ChevronDown} size={16} aria-hidden="true" className={"ms-auto size-4 shrink-0 text-fg-secondary transition-transform motion-reduce:transition-none "+(open?"rotate-180":"")}/>
    </span>
    {!open&&!focused&&<span className="grid grid-cols-1 gap-2">
-    {show("frame")&&<Snap c={cap.frame}><FrameView staging={draft} anchor={anchor} aspect={aspect}/></Snap>}
+    {show("frame")&&frameShown&&<Snap c={cap.frame}><FrameView staging={draft} anchor={anchor} aspect={aspect}/></Snap>}
     {(show("angle")||show("distance")||show("lens"))&&<Snap c={cap.camera}><CameraView staging={draft} anchor={anchor} aspect={aspect} editable={false} onCamera={()=>{}}/></Snap>}
     {show("light")&&<Snap c={cap.light}><LightView staging={draft} editable={false} selected={-1} onSelect={()=>{}} onLight={()=>{}}/></Snap>}
    </span>}
   </button>
   <div id={bodyId} hidden={!open&&!focused} className="flex min-w-0 flex-col gap-3">
   <div className="flex min-w-0 flex-col gap-3">
-   {show("frame")&&<div ref={el=>{frameArea.current=el;setFrameEl(el);}}><Viewport {...cap.frame}>
+   {show("frame")&&frameShown&&<div ref={el=>{frameArea.current=el;setFrameEl(el);}}><Viewport {...cap.frame}>
     <FrameView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={i=>{setPropSel(i);setCenterSel(false);}} centerSel={centerSel} onSelectCenter={()=>{setCenterSel(true);setPropSel(null);}} onProp={(i,x,z)=>setProp(i,{x,z})} onZoom={setDistance} locked={locked} onLock={setLocked} onBack={()=>{setPropSel(null);setCenterSel(false);setLocked(false);}}
      onFocus={f=>{if(f)set(f);else resetFocus();}} onAngle={c=>{if(c.elevation!==undefined)setElevation(c.elevation);if(c.azimuth!==undefined)orbitTo(c.azimuth);}} three={(FRAME_RENDERER==="css"||webgl)&&onScreen&&(open||focused)&&!fullscreen} onFullscreen={()=>{setCenterSel(false);setFullscreen(true);}}/>
     {fullscreen&&<FrameFullscreen staging={draft} anchor={anchor} aspect={aspect} sel={propSel} onSelect={i=>{setPropSel(i);setCenterSel(false);setLocked(false);}}
@@ -672,7 +674,8 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
  const pinchFrom=useRef(0);
  const pinch=usePinch(sp=>onZoom?.(Math.max(0,Math.min(1,pinchFrom.current-Math.log(sp)/Math.log(ZOOM_RANGE[1]/ZOOM_RANGE[0])))),()=>{pinchFrom.current=sliderFromScale(scaleOf(staging));setMove(null);setDrag(null);});
  const base=(staging.props??[]).map((p,i)=>move?.i===i?{...p,x:move.x,z:move.z}:p);
- const order=base.map((p,i)=>({p,i})).sort((a,b)=>b.p.z-a.p.z);
+ // In the beta the frame draws only the characters (people and the pets); the other props stay in the scene and the prompt.
+ const order=base.map((p,i)=>({p,i})).filter(({p})=>isCharacter(p)).sort((a,b)=>b.p.z-a.p.z);
  // Props of the same kind (several people...) each get their own tint so they read apart.
  const tints=propTints(base);
  // Each prop's place in words, with the frame's cuts as drawn (for screen readers; the same words Whoush and the provider get).
@@ -797,7 +800,7 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
    <FrameScene staging={{...staging,framing:fr}} anchor={anchor} aspect={aspect} editable sel={centerSel?null:sel} lockedTo={locked&&sel!=null?sel:undefined}
     onSelect={i=>{if(!locked)onSelect?.(i);}} onProp={onProp} onPropDown={()=>{propHit.current=true;}} onProject={setProj} within={within}/>
   </div>}
-  {three&&<div className="sr-only">{base.map((p,i)=><button key={i} type="button" aria-pressed={sel===i} onClick={()=>{if(!locked)onSelect?.(i);}} onKeyDown={propKey(i)}>{propTags(base)[i]+"، "+propPlaceFa(placed[i]??p)}</button>)}</div>}
+  {three&&<div className="sr-only">{base.map((p,i)=>isCharacter(p)&&<button key={i} type="button" aria-pressed={sel===i} onClick={()=>{if(!locked)onSelect?.(i);}} onKeyDown={propKey(i)}>{propTags(base)[i]+"، "+propPlaceFa(placed[i]??p)}</button>)}</div>}
   {svgEl}
   {onAngle&&<AngleJoystick staging={staging} onAngle={onAngle} inset={(2/(W+4)*100)+"%"} insetY={(2/(H+4)*100)+"%"}/>}
   {three&&onFullscreen&&<button type="button" onClick={onFullscreen} aria-label="نمایش تمام‌صفحهٔ کادر"

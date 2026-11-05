@@ -10,7 +10,7 @@ import {useEffect,useLayoutEffect,useRef,useState,type CSSProperties,type Pointe
 import type {Scene3DProps} from "./scene-3d";
 import {SCENE_COLORS} from "@/lib/scene3d";
 import {cssView,toScreen,nearZ,blurPx,boxFaces,shade,propSprites,stageAt,gridBands,focusWorld,horizonPaths,tilesFor,toCam,type CssView,type Tile,type V3} from "@/lib/frame-css";
-import {propTints} from "@/lib/staging";
+import {isCharacter,propTints} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 
 const C=SCENE_COLORS;
@@ -69,7 +69,8 @@ export default function FrameCSS({staging,anchor,aspect,editable,sel,onSelect,on
  const base=(staging.props??[]).map((p,i)=>moving?.i===i?{...p,x:moving.x,z:moving.z}:p);
  // The camera comes from the scene as it is (a prop being dragged moves only itself).
  const v=w>0&&h>0?cssView(staging,anchor,aspect,w,h,wide):undefined;
- const sprites=v?propSprites(v,base,staging,anchor):[];
+ // In the beta the frame draws only the characters (people and the pets); the other props stay in the scene and the prompt.
+ const sprites=v?propSprites(v,base,staging,anchor).filter(sp=>isCharacter(base[sp.i])):[];
  const tints=propTints(base);
  // Where the centre point and the top of the selected prop land, for the frame's overlays; where the frame lies in the wide view.
  const proj:Record<string,[number,number]>={};
