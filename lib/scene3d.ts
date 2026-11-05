@@ -44,6 +44,7 @@ export type Camera3D={
  /** Depth of field: where the focus is (metres from the camera), the lens and the aperture. */focusDistance:number;focalMm:number;aperture:number;
  /** The background's distance behind the subject, metres (a room's wall, mountains...). */backdrop:number;
  /** Where the camera focuses, in the world: the point the user placed, else the dominant subject (unset: the aim point). */focus?:[number,number,number];
+ /** The camera is as near as it can come (over a figure's head): zooming in further would change nothing. */atNearest?:boolean;
 };
 /**
  * The camera, as the 2D canvas and the prompt see it: the lens and aperture (Whoush's or the user's), the distance solved from the shot size (on the frame's
@@ -59,8 +60,8 @@ export function camera3D(s:Staging,anchor:Staging|undefined,aspect:string):Camer
  // farther. A close-up is about the face itself, so the correction fades in with how much of the body the shot shows.
  const aimShare=m?.kind==="person"?DETAIL_HEIGHT[s.focusDetail??"face"]:0.5,offset=(aimShare-0.5)*subjectH*Math.sin(eRad)*Math.min(1,scaleOf(s));
  // Looking down on a whole figure, the camera stays above its head (a full overhead shot cannot be framed tighter than that).
- const floor=m?.kind==="person"&&eRad>0.5&&scaleOf(s)>0.5?(subjectH*(1-aimShare)+0.15)/Math.sin(eRad):0.12;
- const d=Math.max(floor,scaleOf(s)*span*c.f/sensorV-offset);
+ const floor=m?.kind==="person"&&eRad>0.5?(subjectH*(1-aimShare)+0.15)/Math.sin(eRad):0.12,free=scaleOf(s)*span*c.f/sensorV-offset;
+ const d=Math.max(floor,free);
  // Aimed at the anchor (the dominant subject where the camera last framed it): its face for a person, or the detail the brief names; or at the centre
  // point the user placed, measured on the dominant subject where it stands now.
  const am=mainOf(anchor??s);
@@ -96,7 +97,7 @@ export function camera3D(s:Staging,anchor:Staging|undefined,aspect:string):Camer
  if(focus){
   const depth=(focus[0]-pos[0])*f[0]+(focus[1]-pos[1])*f[1]+(focus[2]-pos[2])*f[2];
   return {position:pos,target:aim,fov,roll:rollOf(s)*Math.PI/180,shift:[-fr.x/2,-fr.y/2],fisheye:fisheyeOf(s,c.f),
-   focusDistance:Math.max(0.05,depth),focalMm:c.f,aperture:c.N,backdrop:backdropM(s),focus};
+   focusDistance:Math.max(0.05,depth),focalMm:c.f,aperture:c.N,backdrop:backdropM(s),focus,atNearest:free<floor};
  }
  // The 2D canvas's own centre point (an older scene): focus on whatever it was moved onto (a prop, the ground, the far background).
  const fz=focusDepth(s,anchor,W,H),dist=(p:[number,number,number])=>Math.hypot(p[0]-position[0],p[1]-position[1],p[2]-position[2]);

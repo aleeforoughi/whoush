@@ -8,8 +8,9 @@
  * projected by the browser exactly where the camera sees that point, for any s; s = D / (the aim point's depth) keeps the aim point on the screen plane.
  */
 import type {Staging} from "./creative-plan";
-import {camera3D,propSize,propWorld,stageFromWorld,wideFrameRect,type Camera3D,type FrameRect} from "./scene3d";
-import {VERTICAL_STOPS,cubeDims,facingOf,frameSize,isCube,supportOf,verticalIndex,wrap180,type SceneProp,type VerticalStop} from "./staging";
+import {camera3D,propSize,propWorld,stageFromWorld,wideFrameRect,worldOrigin,type Camera3D,type FrameRect} from "./scene3d";
+import {PROP_X_RANGE,PROP_Z_RANGE} from "./creative-plan";
+import {METERS_PER_Z,VERTICAL_STOPS,cubeDims,facingOf,frameSize,isCube,nearestShot,scaleFromSlider,supportOf,verticalIndex,wrap180,type SceneProp,type VerticalStop} from "./staging";
 import {sizeOf,spanM,spriteFor,widthM,familyOf,type SpriteSide} from "./sprites";
 import {VISUALS} from "./visual-assets";
 
@@ -181,8 +182,9 @@ export function thingSprite(v:CssView,p:Pick<SceneProp,"kind"|"label">,ground:V3
  const seenDeg=VERTICAL_STOPS.find(x=>x.id===view.stop)!.deg;
  const st=standee(v,centre,a.width,a.height,mppX,mpp,sp.mirror,0.5,seenDeg)??standee(v,lookAt,a.width,a.height,mppX,mpp,sp.mirror,1-look,seenDeg);if(!st)return undefined;
  const tiles=tilesFor(v,st.o,st.ex,st.ey,a.width,a.height);if(!tiles)return undefined;
- // Drawn at the px it covers on screen, so the lens's blur (screen px) applies as it is.
- return {id:sp.id,src:a.src,tiles,depth:st.depth,blur:blurPx(v,st.depth),side:sp.side,stop:sp.height,quad:st.quad};
+ // Drawn at the px it covers on screen, so the lens's blur (screen px) applies as it is; drawn larger than its 640 px image (a close-up), from its HD version.
+ const big=Math.max(...tiles.map(t=>t.bh))>a.height*0.75;
+ return {id:sp.id,src:big&&a.hd?a.hd:a.src,tiles,depth:st.depth,blur:blurPx(v,st.depth),side:sp.side,stop:sp.height,quad:st.quad};
 }
 /**
  * Each prop as the camera sees it (lib/scene3d.ts places and sizes it). The angle is measured where the camera aims (the face of a person by default), so
@@ -315,4 +317,59 @@ export function horizonPaths(v:CssView):{ground:string;band:string;bandTop:[numb
   bandTop:corner(v.w/2,hz-v.h*0.35),bandBottom:corner(v.w/2,hz),
   hazeUp:[path([...hu,...hl.slice().reverse()]),corner(v.w/2,hz-v.h*0.07),corner(v.w/2,hz)],
   hazeDown:[path([...hl,...hd.slice().reverse()]),corner(v.w/2,hz),corner(v.w/2,hz+v.h*0.22)]};
+}
+
+// ---- limits: every control stays where the frame makes sense (never inside the subject, never lost off the edge or behind the lens) ----
+/** The view at a reference size: limits are about fractions of the frame, not its pixels. */
+const refView=(s:Staging,anchor:Staging|undefined,aspect:string)=>{const {W,H}=frameSize(aspect);return cssView(s,anchor,aspect,1000,1000*H/W);};
+/** How close the camera may come to the focus point, metres (a real lens has a near limit; nearer, the picture would be inside the subject). */
+export const NEAREST_M=0.3;
+/** How far a character's picture may be blown up (screen px per px of its sharpest image, on a frame 600 px tall): past this a close-up turns soft. */
+export const MAX_MAGNIFY=3;
+/**
+ * The zoom's range for this scene, as zoom-slider positions (0 tightest, 1 widest): the tightest keeps the camera at least NEAREST_M from the focus
+ * point and the dominant subject wholly in front of the lens, at this lens, angle and focus; the widest is the slider's own end.
+ */
+export function zoomLimits(s:Staging,anchor:Staging|undefined,aspect:string):[number,number]{
+ const props=s.props??[],main=props.findIndex(p=>p.main);
+ // Measured on a frame 600 px tall: about a phone's or a laptop's frame in device pixels.
+ const {W,H}=frameSize(aspect),fw=600*W/H,nearest=main<0?NEAREST_M:Math.min(NEAREST_M,Math.max(0.12,sizeOf(props[main]).h*0.6));
+ const ok=(sl:number)=>{const sc=scaleFromSlider(sl),t:Staging={...s,shotScale:sc,shotSize:nearestShot(sc)},v=cssView(t,anchor,aspect,fw,600);
+  // A small thing (a product) may be shot closer than a person: the near limit scales with the subject, down to 12 cm.
+  if(v.cam.atNearest||Math.hypot(...sub(focusWorld(v),v.pos))<nearest)return false;
+  if(main<0)return true;
+  const sp=propSprites(v,props,t,anchor).find(x=>x.i===main);if(!sp)return false;
+  if(sp.faces)return true;
+  if(!sp.quad!.every(q=>toCam(v,q)[2]>0.05))return false;
+  // Never blown up past what its sharpest image holds.
+  const a=VISUALS[sp.id],q=sp.quad!.map(c=>toScreen(v,c)),len=(i:number,j:number)=>q[i]&&q[j]?Math.hypot(q[i]![0]-q[j]![0],q[i]![1]-q[j]![1]):Infinity;
+  // Its height on screen along its own edges (a picture tilted toward a high camera is still that tall).
+  const onScreen=Math.max(len(0,3),len(1,2));
+  return !a||onScreen/(a.hdHeight??a.height)<=MAX_MAGNIFY;};
+ if(ok(0))return [0,1];
+ if(!ok(1))return [0,1];
+ let lo=0,hi=1;for(let i=0;i<24;i++){const mid=(lo+hi)/2;if(ok(mid))hi=mid;else lo=mid;}
+ return [Math.ceil(hi*1000)/1000,1];
+}
+/**
+ * Where a prop may be dragged, in stage units, as the frame shows it: sideways until its middle is a third of the frame past either edge (partly out
+ * of frame, never lost); toward the camera until it is about to reach the lens; back until just before the background (and the stage's end).
+ */
+export function propReach3D(p:SceneProp,s:Staging,anchor:Staging|undefined,aspect:string):{xMin:number;xMax:number;zMin:number;zMax:number}{
+ const v=refView(s,anchor,aspect),props=s.props??[],size=sizeOf(p);
+ const world=(x:number,z:number)=>propWorld({...p,x,z},{...s,props:props.map(q=>q===p?{...q,x,z}:q)},anchor).pos as V3;
+ const mid=(x:number,z:number):V3=>{const g=world(x,z);return [g[0],g[1]+size.h/2,g[2]];};
+ const solve=(f:(t:number)=>boolean,lo:number,hi:number)=>{for(let i=0;i<24;i++){const m=(lo+hi)/2;if(f(m))hi=m;else lo=m;}return hi;};
+ // Toward the camera: its nearest side stays NEAREST_M in front of the lens.
+ const inFront=(z:number)=>toCam(v,mid(p.x,z))[2]-size.len/2>=NEAREST_M;
+ const zMin=inFront(PROP_Z_RANGE[0])?PROP_Z_RANGE[0]:inFront(PROP_Z_RANGE[1])?solve(inFront,PROP_Z_RANGE[0],PROP_Z_RANGE[1]):p.z;
+ // Back: in front of the background (a room's wall, a studio's backdrop), within the stage.
+ const o=worldOrigin(s,anchor),zWall=o.z+(v.cam.backdrop-Math.max(0.5,size.len))/METERS_PER_Z,zMax=Math.max(zMin,Math.min(PROP_Z_RANGE[1],zWall));
+ // Sideways: its middle a third of the frame past either edge, at its depth.
+ const z=Math.min(zMax,Math.max(zMin,p.z)),sx=(x:number)=>toScreen(v,mid(x,z))?.[0]??NaN;
+ const left=(x:number)=>sx(x)>=-v.w/3,right=(x:number)=>!(sx(x)<=v.w*4/3);
+ const xMin=left(PROP_X_RANGE[0])?PROP_X_RANGE[0]:solve(left,PROP_X_RANGE[0],p.x);
+ const xMax=!right(PROP_X_RANGE[1])?PROP_X_RANGE[1]:solve(right,p.x,PROP_X_RANGE[1]);
+ const r2=(n:number)=>Math.round(n*100)/100;
+ return {xMin:r2(Math.min(xMin,p.x)),xMax:r2(Math.max(xMax,p.x)),zMin:r2(Math.min(zMin,p.z)),zMax:r2(Math.max(zMax,p.z))};
 }

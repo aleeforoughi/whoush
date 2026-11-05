@@ -13,7 +13,7 @@ import type {FrameRect} from "./scene-3d";
 import FrameCSS from "./frame-css";
 import {spriteFor} from "@/lib/sprites";
 import {SCENE_COLORS} from "@/lib/scene3d";
-import {shade,pickPivot} from "@/lib/frame-css";
+import {shade,pickPivot,zoomLimits,propReach3D} from "@/lib/frame-css";
 
 /** The frame in real 3D (three.js), loaded only in the browser and only when «بوم» is open; the 2D drawing stays as the collapsed snapshot and the fallback. */
 const Scene3D=dynamic(()=>import("./scene-3d"),{ssr:false,loading:()=>null});
@@ -86,7 +86,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  const autopilot=draft.autopilot!==false;
  const aim=()=>{if(autopilot&&focusProps!==draft.props)setFocusProps(draft.props);};
  /** Hand-setting the lens or aperture turns Autopilot off and freezes the other at its current value, so nothing changes behind the user's back. */
- const setManual=(p:Partial<Staging>)=>setDraft(d=>{const l=lensFor(d);return {...d,autopilot:false,lensMm:d.lensMm??l.focalLengthMm,apertureF:d.apertureF??l.apertureF,...p};});
+ const setManual=(p:Partial<Staging>)=>setDraft(d=>{const l=lensFor(d);return fitZoom({...d,autopilot:false,lensMm:d.lensMm??l.focalLengthMm,apertureF:d.apertureF??l.apertureF,...p});});
  const setAutopilot=(on:boolean)=>{
   if(on){setFocusProps(draft.props);setDraft(d=>{const {lensMm:_l,apertureF:_a,autopilot:_p,...rest}=d;void _l;void _a;void _p;return rest;});}
   else setManual({});
@@ -116,13 +116,17 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  // the old view, goes. Orbiting swings the ground around, so a point on the ground or the far background goes back to the dominant subject.
  const dropPivot=(d:Staging,orbit=false):Staging=>{if(!d.pivot)return d;const {pivot,...rest}=d;const {a:_a,b:_b,k:_k,...focus}=pivot;void _a;void _b;void _k;
   return orbit&&(typeof focus.on!=="number"||!focus.rel)?rest:{...rest,pivot:focus};};
- const setElevationOnly=(e:number)=>setDraft(d=>({...dropPivot(d),cameraElevation:e,cameraAngle:d.cameraAngle==="dutch"?"dutch":snapElevation(e)}));
+ const setElevationOnly=(e:number)=>setDraft(d=>fitZoom({...dropPivot(d),cameraElevation:e,cameraAngle:d.cameraAngle==="dutch"?"dutch":snapElevation(e)}));
  const orbitTo=(az:number)=>{aim();orbitOnly(az);};
  // A drag of the camera re-centres once, when it starts (not on every move).
  const orbitDrag=(az:number)=>orbitOnly(snapSide(az));
- const orbitOnly=(az:number)=>setDraft(d=>orbitCamera(dropPivot(d,true),wrap180(az-(d.cameraAzimuth??0))));
+ const orbitOnly=(az:number)=>setDraft(d=>fitZoom(orbitCamera(dropPivot(d,true),wrap180(az-(d.cameraAzimuth??0)))));
  const setDistance=(v:number)=>{aim();setDistanceOnly(v);};
- const setDistanceOnly=(v:number)=>setDraft(d=>{const sc=scaleFromSlider(v);return {...d,shotScale:sc,shotSize:nearestShot(sc)};});
+ // The zoom stays within what this scene allows (the camera never inside or past the subject: lib/frame-css.ts, zoomLimits); a new lens or angle that
+ // would put it there pulls the zoom back to the nearest allowed.
+ const zoomTo=(d:Staging,v:number):Staging=>{const [lo,hi]=zoomLimits(d,anchor,aspect),sc=scaleFromSlider(Math.max(lo,Math.min(hi,v)));return {...d,shotScale:sc,shotSize:nearestShot(sc)};};
+ const fitZoom=(d:Staging):Staging=>{const v=sliderFromScale(scaleOf(d)),[lo]=zoomLimits(d,anchor,aspect);return v<lo?zoomTo(d,lo):d;};
+ const setDistanceOnly=(v:number)=>setDraft(d=>zoomTo(d,v));
  const setProp=(i:number,p:Partial<SceneProp>)=>setDraft(d=>({...d,props:(d.props??[]).map((x,j)=>j===i?{...x,...p}:x)}));
  // Collapsed by default: «بوم» is advanced settings. The card shows the scene in one line; opening it shows the canvas and its controls.
  // Collapsed by default. A focused follow-up (one part, e.g. the camera's distance) shows just that part's controls in the collapsed card, live; expanding shows
@@ -177,13 +181,13 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
      onFocus={f=>{if(f)set(f);else resetFocus();}} onAngle={c=>{if(c.elevation!==undefined)setElevation(c.elevation);if(c.azimuth!==undefined)orbitTo(c.azimuth);}} three={(FRAME_RENDERER==="css"||webgl)&&onScreen&&(open||focused)&&!fullscreen} onFullscreen={()=>{setCenterSel(false);setFullscreen(true);}}/>
     {fullscreen&&<FrameFullscreen staging={draft} anchor={anchor} aspect={aspect} sel={propSel} onSelect={i=>{setPropSel(i);setCenterSel(false);setLocked(false);}}
      onProp={(i,x,z)=>setProp(i,{x,z})} onFraming={f=>set({framing:f})} distance={distanceOf(draft)} onZoom={setDistance} onClose={()=>setFullscreen(false)}
-     inspector={i=>props[i]?<PropInspector prop={withFrameCuts(draft,anchor,aspect).props![i]} tag={propTags(props,true)[i]} reach={propReach(props[i],draft,anchor,aspect)} onChange={p=>setProp(i,p)}/>:null}/>}
+     inspector={i=>props[i]?<PropInspector prop={withFrameCuts(draft,anchor,aspect).props![i]} tag={propTags(props,true)[i]} reach={reachOf(props[i],draft,anchor,aspect)} onChange={p=>setProp(i,p)}/>:null}/>}
     {/* The centre point's own settings, while its dot is selected. */}
     {editable&&centerSel&&<div className="flex flex-col items-center gap-2 py-1 text-center">
      <p className="type-body-sm text-fg-primary">{draft.focusPoint||draft.pivot?"نقطهٔ فوکوس جابه‌جا شده؛ فوکوس و زوم روی همین نقطه‌ست.":"مرکز کادر روی سوژهٔ اصلیه"+(props[mainIdx]?" ("+propTags(props)[mainIdx]+")":"")+"؛ زوم دور همین نقطه انجام می‌شه."}</p>
      <p className="type-caption text-fg-secondary">نقطه رو روی بوم بکش تا جابه‌جا بشه (تصویر تکون نمی‌خوره).</p>
     </div>}
-    {editable&&propSel!==null&&props[propSel]&&<PropInspector prop={withFrameCuts(draft,anchor,aspect).props![propSel]} tag={propTags(props,true)[propSel]} reach={propReach(props[propSel],draft,anchor,aspect)}
+    {editable&&propSel!==null&&props[propSel]&&<PropInspector prop={withFrameCuts(draft,anchor,aspect).props![propSel]} tag={propTags(props,true)[propSel]} reach={reachOf(props[propSel],draft,anchor,aspect)}
      onChange={p=>setProp(propSel,p)}/>}
     {editable&&(propSel===null||!props[propSel])&&!centerSel&&<>
      <input type="range" dir="ltr" min={0} max={1} step={0.001} value={1-distanceOf(draft)} onChange={e=>setDistance(1-Number(e.target.value))}
@@ -399,6 +403,8 @@ function DistanceView({staging,anchor,aspect,editable,onDistance}:{staging:Stagi
 
 /** The camera's distance on the diagrams: the zoom slider's position (0 closest), so moving the camera closer or further is the same as zooming the frame. */
 const distanceOf=(s:Staging)=>sliderFromScale(scaleOf(s));
+/** Where a prop may be dragged: measured in the frame as it is drawn (the CSS frame's real view), or in the 2D drawing. */
+const reachOf=(p:SceneProp,s:Staging,anchor:Staging|undefined,aspect:string)=>FRAME_RENDERER==="css"?propReach3D(p,s,anchor,aspect):propReach(p,s,anchor,aspect);
 const radiusOf=(v:number,min:number,span:number)=>min+span*Math.max(0,Math.min(1,v));
 /**
  * Side view, 360°: the main subject on the ground and the camera on a full circle around its focus point, in the camera's own vertical plane. Drag the camera
@@ -625,6 +631,8 @@ function capture(el:Element|null,id:number){try{el?.setPointerCapture(id);}catch
 /** "w:h" as a number, 16:9 when unreadable. */
 function ratioOf(aspect:string):number{const m=/^(\d+(?:\.\d+)?)[:x×/](\d+(?:\.\d+)?)$/.exec(aspect.trim());const r=m?Number(m[1])/Number(m[2]):16/9;return r>0.2&&r<5?r:16/9;}
 const THIRD=1/3;
+/** A share of the frame kept inside it (the focus dot never leaves the frame). */
+const inFrame=(t:number)=>Math.max(0.03,Math.min(0.97,t));
 /** A framing offset, clamped and rounded; smooth (no snapping), the thirds lines only light up when the subject is on one. */
 const snapAxis=(v:number)=>Math.max(-1,Math.min(1,Math.round(v*100)/100));
 /**
@@ -690,7 +698,7 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
  const unit=()=>{const b=svg.current!.getBoundingClientRect();return {sx:(W+4)/b.width,sy:(H+4)/b.height};};
  const commit=(v:{x:number;y:number})=>onFraming?.(v.x===0&&v.y===0?undefined:v);
  /** A ground point limited to where the prop may go at this zoom and crop: as far out of the frame on the left as on the right, and into the bottom edge. */
- const within=(p:SceneProp,g:{x:number;z:number})=>{const r=propReach(p,staging,anchor,aspect);const c=(v:number,lo:number,hi:number)=>Math.round(Math.max(lo,Math.min(hi,v))*100)/100;return {x:c(g.x,r.xMin,r.xMax),z:c(g.z,r.zMin,r.zMax)};};
+ const within=(p:SceneProp,g:{x:number;z:number})=>{const r=reachOf(p,staging,anchor,aspect);const c=(v:number,lo:number,hi:number)=>Math.round(Math.max(lo,Math.min(hi,v))*100)/100;return {x:c(g.x,r.xMin,r.xMax),z:c(g.z,r.zMin,r.zMax)};};
  const cropDrag=(e:PointerEvent)=>setDrag({px:e.clientX,py:e.clientY,x:fr.x,y:fr.y,cur:fr});
  const moveLocked=(e:PointerEvent)=>{const q=base[sel!];setMove({i:sel!,px:e.clientX,py:e.clientY,x0:q.x,z0:q.z,x:q.x,z:q.z});};
  /** The ground point (x, z) under a world point: the inverse of `at` on the ground plane. */
@@ -708,7 +716,7 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   :{x:W-3,y:3,above:false,text:"#کادر"};
  const svgEl=<svg ref={svg} viewBox={"-2 -2 "+(W+4)+" "+(H+4)} {...(editable&&onZoom&&!three?pinch:{})} className={"mx-auto block w-full touch-none select-none text-fg-primary"+(three?" pointer-events-none relative z-[1]":"")} style={{aspectRatio:String((W+4)/(H+4)),maxWidth:Math.round(320*(W+4)/(H+4))+"px"}} aria-hidden={!editable}
   onPointerMove={e=>{
-   if(pivot){const [sx,sy]=svgPt(e);if(Number.isFinite(sx)&&Number.isFinite(sy))onFocus?.(three?{pivot:pickPivot({...staging,framing:fr},anchor,aspect,sx/W,sy/H)}:moveFocusPoint({...staging,framing:fr},anchor,W,H,sx,sy));return;}
+   if(pivot){const [sx,sy]=svgPt(e);if(Number.isFinite(sx)&&Number.isFinite(sy))onFocus?.(three?{pivot:pickPivot({...staging,framing:fr},anchor,aspect,inFrame(sx/W),inFrame(sy/H))}:moveFocusPoint({...staging,framing:fr},anchor,W,H,sx,sy));return;}
    const u=unit();
    if(move){const p0=propInView({...base[move.i],x:move.x0,z:move.z0,y:0},W,H,unitH),[ddx,ddy]=cam.unroll((e.clientX-move.px)*u.sx,(e.clientY-move.py)*u.sy);const g=ground(p0.x+ddx/k,p0.groundY+ddy/k);if(Number.isFinite(g.x)&&Number.isFinite(g.z))setMove({...move,...within({...base[move.i],z:g.z},g)});return;}
    if(drag){const [ddx,ddy]=cam.unroll((e.clientX-drag.px)*u.sx,(e.clientY-drag.py)*u.sy);const c={x:snapAxis(drag.x+ddx/(W/2)),y:snapAxis(drag.y+ddy/(H/2))};if(Number.isFinite(c.x)&&Number.isFinite(c.y))setDrag({...drag,cur:c});}}}
@@ -761,7 +769,7 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
     aria-valuetext={staging.focusPoint||staging.pivot?"جابه‌جا شده":"روی سوژهٔ اصلی"} className={"pointer-events-auto touch-none outline-none "+(pivot?"cursor-grabbing":"cursor-move")}
     onPointerDown={pivotDown} onDoubleClick={e=>{e.stopPropagation();onFocus(null);}}
     onKeyDown={e=>{const d={ArrowLeft:[-2,0],ArrowRight:[2,0],ArrowUp:[0,-2],ArrowDown:[0,2]}[e.key as "ArrowLeft"];if(e.key==="Enter"){e.preventDefault();onFocus(null);return;}if(!d)return;e.preventDefault();e.stopPropagation();
-     onFocus(three?{pivot:pickPivot({...staging,framing:fr},anchor,aspect,(dx+d[0])/W,(dy+d[1])/H)}:moveFocusPoint({...staging,framing:fr},anchor,W,H,dx+d[0],dy+d[1]));}}>
+     onFocus(three?{pivot:pickPivot({...staging,framing:fr},anchor,aspect,inFrame((dx+d[0])/W),inFrame((dy+d[1])/H))}:moveFocusPoint({...staging,framing:fr},anchor,W,H,dx+d[0],dy+d[1]));}}>
     <circle cx={dx} cy={dy} r={10} fill="transparent"/>
     {centerSel&&<circle cx={dx} cy={dy} r={7} fill="none" className="stroke-primary" strokeWidth={1} strokeDasharray="2 2" vectorEffect="non-scaling-stroke"/>}
     <circle cx={dx} cy={dy} r={4.2} fill="none" className="stroke-primary" strokeWidth={centerSel?1.8:1.2} vectorEffect="non-scaling-stroke"/>
@@ -869,7 +877,7 @@ function FrameFullscreen({staging,anchor,aspect,sel,onSelect,onProp,onFraming,di
  const box=useRef<HTMLDivElement>(null),propHit=useRef(false),pinchFrom=useRef(0);
  const fr=drag?.cur??staging.framing??{x:0,y:0};
  const props=staging.props??[];
- const within=(p:SceneProp,g:{x:number;z:number})=>{const r=propReach(p,staging,anchor,aspect);const c=(v:number,lo:number,hi:number)=>Math.round(Math.max(lo,Math.min(hi,v))*100)/100;return {x:c(g.x,r.xMin,r.xMax),z:c(g.z,r.zMin,r.zMax)};};
+ const within=(p:SceneProp,g:{x:number;z:number})=>{const r=reachOf(p,staging,anchor,aspect);const c=(v:number,lo:number,hi:number)=>Math.round(Math.max(lo,Math.min(hi,v))*100)/100;return {x:c(g.x,r.xMin,r.xMax),z:c(g.z,r.zMin,r.zMax)};};
  const pinch=usePinch(sp=>onZoom(Math.max(0,Math.min(1,pinchFrom.current-Math.log(sp)/Math.log(ZOOM_RANGE[1]/ZOOM_RANGE[0])))),()=>{pinchFrom.current=distance;setDrag(null);});
  const pct=(v:number)=>(v*100)+"%";
  return <Dialog open onOpenChange={o=>{if(!o)onClose();}}>

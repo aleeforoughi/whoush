@@ -42,6 +42,11 @@
   - **The place:** open places show a wide mountain range edge to edge along the horizon, with its base on it; the mountains show the lens and the aperture best. The background's distance is Whoush's estimate from the brief (`environmentDistance`), else cues in its words (against a wall, in the distance), else the place's usual distance. It isn't user-adjustable.
   - **Fisheye:** an ordinary lens keeps straight lines straight at every focal length, as the photo will. A fisheye is opt-in: the «لنز چشم‌ماهی» toggle under the lens, or a brief that asks for one ("fisheye", «فیش‌آی», «چشم ماهی»). The picture then bulges from the centre, more on a wider lens, and the provider prompt says so.
   - **Sharp at any lens:** every 3D element (image planes, box faces, walls, mountains) is sized to about its size on screen (`crispPlane`), because the browser rasterizes a 3D-transformed element at its own pixel size and then stretches it. Extreme close-ups are limited only by the images' own 640 px.
+  - **Limits (every control stays in control):**
+    - **Zoom:** the tightest zoom keeps the camera at least 30 cm from the focus (12 cm for a small product), outside the dominant subject and over a figure's head from above. It also never blows a character up past 3× its sharpest image (`zoomLimits`). A new lens or angle that breaks this pulls the zoom back.
+    - **Props:** drag as far past either edge as the other (a third of the frame), never behind the lens, and stop before the background (`propReach3D`). Their sliders use the same range.
+    - **Focus dot:** stays inside the frame.
+  - **HD characters:** `scripts/visual-hd.ts` exports each character image as a WebP of up to 1536 px from its raw generation, trimmed exactly like the 640 px PNG. The frame uses it when a character is drawn larger than its PNG. Re-run it, then `scripts/visual-manifest.ts`, after generating.
 - **WebGL (Plan B, parked):** the three.js models are kept in `components/scene-3d.tsx` and on the `archive/plan-b-3d` branch. Switch with `FRAME_RENDERER` in `components/staging-editor.tsx`.
 - **Angle controls:** the height and orbit sliders, the camera drags and each prop's turn snap to the stops. The joystick in the frame's bottom-left steps them: up and down change the height, left and right orbit 45°. Its centre shows the angle and resets to eye level, from the front.
 

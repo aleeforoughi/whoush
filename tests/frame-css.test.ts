@@ -240,3 +240,21 @@ test("the shot size frames the subject the same at every height: the camera come
   // Overhead, the camera stays above the head: as full as it can be, never a speck.
   assert.ok(height("birds_eye",label)>eye*0.4,label+" overhead");}
 });
+
+test("limits: the zoom never takes the camera into the subject, and a prop drags as far past one edge as the other, never behind the lens",async()=>{
+ const {zoomLimits,propReach3D,NEAREST_M}=await import("../lib/frame-css");
+ const {scaleFromSlider,nearestShot}=await import("../lib/staging");
+ for(const lens of [12,24,50,85])for(const a of ["eye_level","high","birds_eye","worms_eye"] as const){
+  const s:Staging={...base,cameraAngle:a,lensMm:lens,autopilot:false},[lo]=zoomLimits(s,s,"16:9"),sc=scaleFromSlider(lo);
+  const v=cssView({...s,shotScale:sc,shotSize:nearestShot(sc)},s,"16:9",1000,562.5);
+  assert.ok(Math.hypot(...focusWorld(v).map((n,i)=>n-v.pos[i]))>=NEAREST_M-0.02,lens+"mm "+a);
+  // And never blown up past its sharpest image (about a close-up of a person; an extreme close-up of a featureless figure is out).
+  assert.ok(sc>=0.1,lens+"mm "+a+": "+sc);
+  assert.ok(propSprites(v,s.props!,{...s,shotScale:sc},s).length===1,lens+"mm "+a+": the subject is still drawn");
+ }
+ const car={kind:"vehicle" as const,label:"ماشین",x:0.5,z:0.25,y:0},s:Staging={...base,shotSize:"full",props:[man,car]};
+ const r=propReach3D(car,s,s,"16:9"),v=cssView(s,s,"16:9",1000,562.5);
+ const sx=(x:number)=>toScreen(v,[(x-man.x)*3,0.75,-(car.z-man.z)*4])![0];
+ assert.ok(Math.abs((0-sx(r.xMin))-(sx(r.xMax)-1000))<40,"as far past the left edge as past the right");
+ assert.ok(r.zMin<car.z&&r.zMax>car.z);
+});
