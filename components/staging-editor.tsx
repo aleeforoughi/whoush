@@ -87,8 +87,10 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  const setDistanceOnly=(v:number)=>setDraft(d=>{const sc=scaleFromSlider(v);return {...d,shotScale:sc,shotSize:nearestShot(sc)};});
  const setProp=(i:number,p:Partial<SceneProp>)=>setDraft(d=>({...d,props:(d.props??[]).map((x,j)=>j===i?{...x,...p}:x)}));
  // Collapsed by default: «بوم» is advanced settings. The card shows the scene in one line; opening it shows the canvas and its controls.
- const [open,setOpen]=useState(Boolean(focus?.length)),bodyId=useId();
- const [full,setFull]=useState(!focus?.length),show=(sec:CanvasSection)=>full||Boolean(focus?.includes(sec));
+ // Collapsed by default. A focused follow-up (one part, e.g. the camera's distance) shows just that part's controls in the collapsed card, live; expanding shows
+ // every setting (frame, camera, lighting...), and collapsing goes back to just that part.
+ const [open,setOpen]=useState(false),bodyId=useId(),focused=Boolean(focus?.length);
+ const full=open,show=(sec:CanvasSection)=>full||Boolean(focus?.includes(sec));
  // A press anywhere outside the frame and its controls (elsewhere in the canvas, or outside it) deselects the prop: the frame is selected again. Not while
  // the selection is locked.
  const frameArea=useRef<HTMLDivElement>(null);
@@ -116,17 +118,17 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
    className="flex w-full flex-col gap-2 rounded-card border border-line-secondary bg-surface-subtle p-2 text-start motion-hover hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
    <span className="flex items-center gap-2 px-1">
     <Icon icon={Box} size={16} aria-hidden="true" className="size-4 shrink-0 text-fg-secondary"/>
-    <span className="type-label text-fg-primary">بوم</span><span className="type-caption text-fg-secondary">{full?"تنظیمات پیشرفته":"تنظیم "+focus!.map(f=>CANVAS_SECTION_FA[f]).join(" و ")}</span>
+    <span className="type-label text-fg-primary">بوم</span><span className="type-caption text-fg-secondary">{full||!focused?"تنظیمات پیشرفته":"تنظیم "+focus!.map(f=>CANVAS_SECTION_FA[f]).join(" و ")}</span>
     {changed&&<span className="rounded-control bg-surface-selected px-2 py-0.5 type-caption text-fg-primary">تغییر کرده</span>}
     <Icon icon={ChevronDown} size={16} aria-hidden="true" className={"ms-auto size-4 shrink-0 text-fg-secondary transition-transform motion-reduce:transition-none "+(open?"rotate-180":"")}/>
    </span>
-   {!open&&<span className="grid grid-cols-1 gap-2">
+   {!open&&!focused&&<span className="grid grid-cols-1 gap-2">
     {show("frame")&&<Snap c={cap.frame}><FrameView staging={draft} anchor={anchor} aspect={aspect}/></Snap>}
     {(show("angle")||show("distance")||show("lens"))&&<Snap c={cap.camera}><CameraView staging={draft} anchor={anchor} aspect={aspect} editable={false} onCamera={()=>{}}/></Snap>}
     {show("light")&&<Snap c={cap.light}><LightView staging={draft} editable={false} selected={-1} onSelect={()=>{}} onLight={()=>{}}/></Snap>}
    </span>}
   </button>
-  <div id={bodyId} hidden={!open} className="flex min-w-0 flex-col gap-3">
+  <div id={bodyId} hidden={!open&&!focused} className="flex min-w-0 flex-col gap-3">
   <div className="flex min-w-0 flex-col gap-3">
    {show("frame")&&<div ref={frameArea}><Viewport {...cap.frame}>
     <FrameView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={i=>{setPropSel(i);setCenterSel(false);}} centerSel={centerSel} onSelectCenter={()=>{setCenterSel(true);setPropSel(null);}} onProp={(i,x,z)=>setProp(i,{x,z})} onZoom={setDistance} locked={locked} onLock={setLocked} onBack={()=>{setPropSel(null);setCenterSel(false);setLocked(false);}}
@@ -205,7 +207,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
      onRemove={()=>{const i=lightSel;setDraft(d=>({...d,lights:d.lights.filter((_,j)=>j!==i)}));setLightSel(0);}}
      onAdd={draft.lights.length<4?()=>{setDraft(d=>({...d,lights:[...d.lights,{role:"fill",direction:"front_right",height:"eye",quality:"soft",source:"softbox",colorTemperatureK:5600}]}));setLightSel(draft.lights.length);}:undefined}/></div>}
    </div>}
-   {!full&&<Button type="button" variant="ghost" size="sm" className="self-center" onClick={()=>setFull(true)}>همهٔ تنظیمات بوم</Button>}
+   {!full&&<Button type="button" variant="ghost" size="sm" className="self-center" onClick={()=>setOpen(true)}><Icon icon={ChevronDown} aria-hidden="true"/>همهٔ تنظیمات بوم</Button>}
   </div>
   {!editable&&<ul className="flex flex-col gap-1">{draft.lights.map((l,i)=><LightRow key={i} l={l}/>)}</ul>}
   {editable&&changed&&<div className="flex flex-wrap items-center gap-2">
