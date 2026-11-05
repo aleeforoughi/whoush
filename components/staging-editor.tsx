@@ -4,7 +4,7 @@ import {Box,ChevronDown,Plus,RotateCcw,Trash2,X} from "lucide-react";
 import {Button,Icon} from "@aleeforoughi/feather-react";
 import {LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
- SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
+ SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,facingFa,propTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 import {fa} from "@/lib/format";
 
@@ -25,7 +25,7 @@ function viewCaptions(s:Staging,aspect:string){
  const n=(s.props??[]).length;
  return {
   frame:{title:"کادر و چیدمان",value:SHOT_SIZE_FA[s.shotSize]+" · "+aspect+(n?" · "+fa(n)+" وسیله":"")},
-  camera:{title:"زاویهٔ دوربین",value:CAMERA_ANGLE_FA[s.cameraAngle]+" · "+fa(Math.round(elevationOf(s)))+"°"},
+  camera:{title:"دوربین",value:CAMERA_ANGLE_FA[s.cameraAngle]+" · "+fa(Math.round(elevationOf(s)))+"°"+(Math.abs(s.cameraAzimuth??0)>=1?" · "+orbitFa(s.cameraAzimuth!):"")+" · زوم "+fa(zoomFactor(s))+"×"},
   light:{title:"نورپردازی",value:s.lights.length===1?"یک منبع نور":fa(s.lights.length)+" منبع نور"}
  };
 }
@@ -55,6 +55,10 @@ export function StagingEditor({staging,aspectRatio,onChange}:{staging:Staging;as
  const set=(p:Partial<Staging>)=>setDraft(d=>({...d,...p}));
  const setLight=(i:number,p:Partial<StagingLight>)=>setDraft(d=>({...d,lights:d.lights.map((l,j)=>j===i?{...l,...p}:l)}));
  const props=draft.props??[];
+ // The camera: height, orbit around the main subject (everything in the frame turns to match) and distance (the same value as the frame's zoom).
+ const setElevation=(e:number)=>setDraft(d=>({...d,cameraElevation:e,cameraAngle:d.cameraAngle==="dutch"?"dutch":snapElevation(e)}));
+ const orbitTo=(az:number)=>setDraft(d=>orbitCamera(d,wrap180(az-(d.cameraAzimuth??0))));
+ const setDistance=(v:number)=>setDraft(d=>{const sc=scaleFromSlider(v);return {...d,shotScale:sc,shotSize:nearestShot(sc)};});
  const setProp=(i:number,p:Partial<SceneProp>)=>setDraft(d=>({...d,props:(d.props??[]).map((x,j)=>j===i?{...x,...p}:x)}));
  // Collapsed by default: «بوم» is advanced settings. The card shows the scene in one line; opening it shows the canvas and its controls.
  const [open,setOpen]=useState(false),bodyId=useId();
@@ -73,7 +77,7 @@ export function StagingEditor({staging,aspectRatio,onChange}:{staging:Staging;as
    </span>
    {!open&&<span className="grid grid-cols-1 gap-2">
     <Snap c={cap.frame}><FrameView staging={draft} anchor={initial} aspect={aspect}/></Snap>
-    <Snap c={cap.camera}><CameraView staging={draft} editable={false} onElevation={()=>{}}/></Snap>
+    <Snap c={cap.camera}><CameraView staging={draft} editable={false} onCamera={()=>{}}/></Snap>
     <Snap c={cap.light}><LightView staging={draft} editable={false} selected={-1} onSelect={()=>{}} onLight={()=>{}}/></Snap>
    </span>}
   </button>
@@ -81,11 +85,11 @@ export function StagingEditor({staging,aspectRatio,onChange}:{staging:Staging;as
   <div className="flex min-w-0 flex-col gap-3">
    <div><Viewport {...cap.frame}>
     <FrameView staging={draft} anchor={initial} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={setPropSel} onProp={(i,x,z)=>setProp(i,{x,z})}/>
-    {editable&&propSel!==null&&props[propSel]&&<PropInspector prop={withFrameCuts(draft,initial,aspect).props![propSel]} reach={propReach(props[propSel],draft,initial,aspect)}
+    {editable&&propSel!==null&&props[propSel]&&<PropInspector prop={withFrameCuts(draft,initial,aspect).props![propSel]} tag={propTags(props,true)[propSel]} reach={propReach(props[propSel],draft,initial,aspect)}
      onChange={p=>setProp(propSel,p)} onClose={()=>setPropSel(null)}/>}
     {editable&&(propSel===null||!props[propSel])&&<>
-     <input type="range" min={0} max={1} step={0.001} value={1-sliderFromScale(scaleOf(draft))} onChange={e=>{const sc=scaleFromSlider(1-Number(e.target.value));set({shotScale:sc,shotSize:nearestShot(sc)});}}
-      aria-label="زوم (اندازهٔ نما)" aria-valuetext={SHOT_SIZE_FA[draft.shotSize]+"، زوم "+zoomFactor(draft)+"×"} className="h-8 w-full cursor-pointer accent-primary"/>
+     <input type="range" min={0} max={1} step={0.001} value={1-distanceOf(draft)} onChange={e=>setDistance(1-Number(e.target.value))}
+      aria-label="زوم (اندازهٔ نما، همون فاصلهٔ دوربین)" aria-valuetext={SHOT_SIZE_FA[draft.shotSize]+"، زوم "+zoomFactor(draft)+"×"} className="h-8 w-full cursor-pointer accent-primary"/>
      <div className="flex flex-wrap justify-center gap-1">{["16:9","3:2","4:5","1:1","9:16"].map(r=><Chip key={r} on={aspect===r} onClick={()=>setAspect(r)}><bdi>{r}</bdi></Chip>)}</div>
      <SliderRow label="جابه‌جایی کادر: چپ ↔ راست" valueText={pct(draft.framing?.x??0)} min={-1} max={1} step={0.01} value={draft.framing?.x??0}
       onChange={x=>{const y=draft.framing?.y??0;set({framing:x===0&&y===0?undefined:{x,y}});}}/>
@@ -96,9 +100,14 @@ export function StagingEditor({staging,aspectRatio,onChange}:{staging:Staging;as
    </Viewport>
    </div>
    <div><Viewport {...cap.camera}>
-    <CameraView staging={draft} editable={editable} onElevation={e=>set({cameraElevation:e,cameraAngle:draft.cameraAngle==="dutch"?"dutch":snapElevation(e)})}/>
+    <div className="grid grid-cols-1 gap-2 @md:grid-cols-2">
+     <CameraView staging={draft} editable={editable} onCamera={c=>{setElevation(c.elevation);setDistance(c.distance);}}/>
+     <OrbitView staging={draft} editable={editable} onOrbit={c=>{orbitTo(c.azimuth);setDistance(c.distance);}}/>
+    </div>
     {editable&&<SliderRow label="ارتفاع دوربین" valueText={CAMERA_ANGLE_FA[draft.cameraAngle]+" · "+fa(Math.round(elevationOf(draft)))+"°"} min={-60} max={85} step={1} value={elevationOf(draft)}
-     onChange={e=>set({cameraElevation:e,cameraAngle:draft.cameraAngle==="dutch"?"dutch":snapElevation(e)})}/>}
+     onChange={setElevation}/>}
+    {editable&&<SliderRow label="چرخش دور سوژه (۳۶۰°)" valueText={orbitFa(draft.cameraAzimuth??0)} min={-180} max={180} step={1} value={draft.cameraAzimuth??0} onChange={orbitTo}/>}
+    {editable&&<SliderRow label="فاصلهٔ دوربین (همون زوم کادر)" valueText={"زوم "+fa(zoomFactor(draft))+"×"} min={0} max={1} step={0.001} value={distanceOf(draft)} onChange={setDistance}/>}
     {editable&&<div className="flex justify-center"><Chip on={draft.cameraAngle==="dutch"} onClick={()=>set({cameraAngle:draft.cameraAngle==="dutch"?snapElevation(elevationOf(draft)):"dutch"})}>زاویهٔ کج</Chip></div>}
    </Viewport></div>
    <div>
@@ -148,40 +157,101 @@ function Chip({on,onClick,children,role}:{on:boolean;onClick:()=>void;children:R
   className={"h-7 rounded-control border px-2 type-caption motion-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring "+(on?"border-primary bg-surface-selected text-fg-primary":"border-line-secondary text-fg-secondary hover:bg-surface-hover")}>{children}</button>;
 }
 /** An asset from the pack, placed by its bottom centre (x, y) at a given height, optionally mirrored or rotated about its centre. */
-function Asset({id,x,y,h,mirror,rotate=0,opacity=1}:{id:string;x:number;y:number;h:number;mirror?:boolean;rotate?:number;opacity?:number}){
+function Asset({id,x,y,h,mirror,sx=1,rotate=0,opacity=1}:{id:string;x:number;y:number;h:number;mirror?:boolean;
+ /** Horizontal scale about its centre (a side view turned toward or away from the camera is narrower). */sx?:number;rotate?:number;opacity?:number}){
  const a=VISUALS[id];if(!a)return null;
- const w=h*a.width/a.height,cx=x,cy=y-h/2;
+ const w=h*a.width/a.height,cx=x,cy=y-h/2,f=(mirror?-1:1)*sx;
  return <image href={a.src} x={x-w/2} y={y-h} width={w} height={h} opacity={opacity} preserveAspectRatio="xMidYMid meet"
-  transform={"rotate("+rotate+" "+cx+" "+cy+")"+(mirror?" translate("+2*cx+" 0) scale(-1 1)":"")}/>;
+  transform={"rotate("+rotate+" "+cx+" "+cy+")"+(f!==1?" translate("+cx+" 0) scale("+f+" 1) translate("+(-cx)+" 0)":"")}/>;
+}
+/**
+ * How a prop looks from the camera, by which way it faces (lib/staging.ts, facingOf): a person from the front (or back) or in profile; a vehicle or animal
+ * side on, narrower as it turns toward or away from the camera; mirrored when it faces frame left. Trees, buildings and objects look the same all round.
+ */
+/** A sprite's width on screen at height h. */
+const spriteW=(sp:{id:string;sx:number},h:number)=>{const v=VISUALS[sp.id];return v?h*sp.sx*v.width/v.height:h;};
+function sprite(p:SceneProp):{id:string;mirror:boolean;sx:number}{
+ const f=wrap180(facingOf(p)),a=Math.abs(f),mirror=f<0;
+ if(p.kind==="person")return a<45||a>135?{id:"person-front",mirror:false,sx:1}:{id:"person-side",mirror,sx:1};
+ if(p.kind==="vehicle"||p.kind==="animal")return {id:SIDE[p.kind],mirror,sx:Math.max(0.42,Math.abs(Math.sin(f*Math.PI/180)))};
+ return {id:PROP_ASSETS[p.kind].front,mirror:false,sx:1};
 }
 
 /** The main prop (or the first), whose side view the camera view shows; an environment-only scene shows the landscape. */
 const mainProp=(s:Staging)=>(s.props??[]).find(p=>p.main)??(s.props??[])[0];
 const SIDE:Record<SceneProp["kind"],string>={person:"person-side",object:"object-side",animal:"animal-side",vehicle:"vehicle-side",tree:"env-tree",building:"env-building"};
 
-/** Side view: the main subject on the ground, the camera on an arc around its focus point. Sized so the whole arc (bird's-eye to worm's-eye) stays inside. */
-function CameraView({staging,editable,onElevation}:{staging:Staging;editable:boolean;onElevation:(deg:number)=>void}){
- const svg=useRef<SVGSVGElement>(null),[drag,setDrag]=useState<number|null>(null);
- const VW=220,VH=190,R=72,focus:[number,number]=[72,92];
+/** The camera's distance on the diagrams: the zoom slider's position (0 closest), so moving the camera closer or further is the same as zooming the frame. */
+const distanceOf=(s:Staging)=>sliderFromScale(scaleOf(s));
+const radiusOf=(v:number,min:number,span:number)=>min+span*Math.max(0,Math.min(1,v));
+/**
+ * Side view: the main subject on the ground and the camera around its focus point. Drag the camera around the arc for its height (bird's-eye to worm's-eye)
+ * and toward or away from the subject for its distance (the frame's zoom follows). Sized so the whole arc stays inside at any distance.
+ */
+function CameraView({staging,editable,onCamera}:{staging:Staging;editable:boolean;onCamera:(c:{elevation:number;distance:number})=>void}){
+ const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false);
+ const VW=220,VH=190,RMIN=30,RSPAN=56,focus:[number,number]=[72,92];
  const m=mainProp(staging),kind=m?.kind;
  const size=kind?Math.min(92,PROP_HEIGHT[kind]*92):58,ground=Math.min(VH-8,focus[1]+(kind==="person"?size*0.9:size*0.55));
- const elev=drag??elevationOf(staging),[cx,cy]=polar(focus[0],focus[1],R,-elev);
+ const elev=elevationOf(staging),dist=distanceOf(staging),R=radiusOf(dist,RMIN,RSPAN),[cx,cy]=polar(focus[0],focus[1],R,-elev);
  const aim=Math.atan2(focus[1]-cy,focus[0]-cx)*180/Math.PI,roll=staging.cameraAngle==="dutch"?14:0;
- const elevAt=(e:PointerEvent)=>{const r=svg.current!.getBoundingClientRect();const x=(e.clientX-r.left)*VW/r.width,y=(e.clientY-r.top)*VH/r.height;
-  return Math.max(-60,Math.min(85,-Math.atan2(y-focus[1],x-focus[0])*180/Math.PI));};
- const key=(e:KeyboardEvent)=>{const step=e.key==="ArrowUp"||e.key==="ArrowRight"?5:e.key==="ArrowDown"||e.key==="ArrowLeft"?-5:0;if(!step)return;e.preventDefault();onElevation(Math.max(-60,Math.min(85,Math.round(elev+step))));};
+ const at=(e:PointerEvent)=>{const r=svg.current!.getBoundingClientRect();const x=(e.clientX-r.left)*VW/r.width-focus[0],y=(e.clientY-r.top)*VH/r.height-focus[1];
+  return {elevation:Math.round(Math.max(-60,Math.min(85,-Math.atan2(y,x)*180/Math.PI))),distance:Math.max(0,Math.min(1,(Math.hypot(x,y)-RMIN)/RSPAN))};};
+ const key=(e:KeyboardEvent)=>{
+  const d={ArrowUp:[5,0],ArrowDown:[-5,0],ArrowRight:[0,0.05],ArrowLeft:[0,-0.05]}[e.key as "ArrowUp"];if(!d)return;e.preventDefault();
+  onCamera({elevation:Math.max(-60,Math.min(85,Math.round(elev+d[0]))),distance:Math.max(0,Math.min(1,dist+d[1]))});};
+ // A light (unwatched) camera: live while dragging, so the frame above follows the camera as it moves.
+ const move=(e:PointerEvent)=>{if(!dragging)return;const c=at(e);if(Number.isFinite(c.elevation)&&Number.isFinite(c.distance))onCamera(c);};
  return <svg ref={svg} viewBox={"0 0 "+VW+" "+VH} className="mx-auto block aspect-[22/19] w-full max-w-sm touch-none select-none text-fg-primary" aria-hidden={!editable}
-  onPointerMove={e=>{if(drag!==null){const v=elevAt(e);if(Number.isFinite(v))setDrag(v);}}} onPointerUp={()=>{if(drag!==null){if(Number.isFinite(drag))onElevation(Math.round(drag));setDrag(null);}}} onPointerCancel={()=>setDrag(null)}>
+  onPointerMove={move} onPointerUp={()=>setDragging(false)} onPointerCancel={()=>setDragging(false)}>
   <path d={"M"+polar(focus[0],focus[1],R,-85).join(" ")+" A"+R+" "+R+" 0 0 1 "+polar(focus[0],focus[1],R,60).join(" ")} fill="none" stroke="currentColor" strokeOpacity=".4" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
   <line x1={6} x2={VW-6} y1={ground} y2={ground} stroke="currentColor" strokeOpacity=".3" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
   {kind?<Asset id={SIDE[kind]} x={focus[0]} y={ground} h={size}/>:<><Asset id="env-mountains" x={focus[0]} y={ground} h={52}/><Asset id="env-tree" x={focus[0]+44} y={ground} h={30}/></>}
   <line x1={cx} y1={cy} x2={focus[0]} y2={focus[1]} className="stroke-primary" strokeWidth={1.2} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
-  <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="زاویهٔ دوربین" aria-valuetext={CAMERA_ANGLE_FA[staging.cameraAngle]+"، "+Math.round(elev)+" درجه"}
+  <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="ارتفاع و فاصلهٔ دوربین" aria-valuetext={CAMERA_ANGLE_FA[staging.cameraAngle]+"، "+Math.round(elev)+" درجه، زوم "+zoomFactor(staging)+"×"}
    aria-valuemin={-60} aria-valuemax={85} aria-valuenow={Math.round(elev)}
-   onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);setDrag(elevAt(e));}:undefined}
-   className={editable?"cursor-grab outline-none focus-visible:[&>circle]:stroke-primary":""}>
+   onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);setDragging(true);}:undefined}
+   className={editable?(dragging?"cursor-grabbing":"cursor-grab")+" outline-none focus-visible:[&>circle]:stroke-primary":""}>
    <circle cx={cx} cy={cy} r={24} fill="transparent" strokeWidth={2}/>
    <Asset id="camera-side" x={cx+6} y={cy+11} h={22} rotate={aim-180+roll}/>
+  </g>
+ </svg>;
+}
+
+/**
+ * Top view (the camera's orbit, 360°): the scene as Whoush laid it out, the main subject in the middle turned the way it faces, the other props around it,
+ * and the camera on a circle around it. Drag the camera around for its orbit (front, sides, behind) and in or out for its distance; the frame above turns
+ * and zooms to match, live.
+ */
+function OrbitView({staging,editable,onOrbit}:{staging:Staging;editable:boolean;onOrbit:(c:{azimuth:number;distance:number})=>void}){
+ const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false);
+ const VW=220,VH=200,C:[number,number]=[110,100],RMIN=34,RSPAN=52,U=44;
+ const az=staging.cameraAzimuth??0,dist=distanceOf(staging),R=radiusOf(dist,RMIN,RSPAN),rad=az*Math.PI/180,c=Math.cos(rad),n=Math.sin(rad);
+ const props=staging.props??[],m=mainProp(staging),px=m?.x??0,pz=m?.z??0;
+ // The scene is kept as the camera sees it; turning it back by the orbit draws it as laid out, with the camera moving around it.
+ const place=(p:SceneProp):[number,number]=>{const vx=p.x-px,vz=p.z-pz;return [C[0]+(vx*c-vz*n)*U,C[1]-(vx*n+vz*c)*U];};
+ const cam:[number,number]=[C[0]+R*n,C[1]+R*c];
+ const at=(e:PointerEvent)=>{const r=svg.current!.getBoundingClientRect();const x=(e.clientX-r.left)*VW/r.width-C[0],y=(e.clientY-r.top)*VH/r.height-C[1];
+  return {azimuth:Math.round(Math.atan2(x,y)*180/Math.PI),distance:Math.max(0,Math.min(1,(Math.hypot(x,y)-RMIN)/RSPAN))};};
+ const key=(e:KeyboardEvent)=>{
+  const d={ArrowRight:[5,0],ArrowLeft:[-5,0],ArrowUp:[0,0.05],ArrowDown:[0,-0.05]}[e.key as "ArrowUp"];if(!d)return;e.preventDefault();
+  onOrbit({azimuth:wrap180(az+d[0]),distance:Math.max(0,Math.min(1,dist+d[1]))});};
+ const move=(e:PointerEvent)=>{if(!dragging)return;const v=at(e);if(Number.isFinite(v.azimuth)&&Number.isFinite(v.distance))onOrbit(v);};
+ return <svg ref={svg} viewBox={"0 0 "+VW+" "+VH} className="mx-auto block aspect-[22/20] w-full max-w-sm touch-none select-none text-fg-primary" aria-hidden={!editable}
+  onPointerMove={move} onPointerUp={()=>setDragging(false)} onPointerCancel={()=>setDragging(false)}>
+  <circle cx={C[0]} cy={C[1]} r={R} fill="none" stroke="currentColor" strokeOpacity=".4" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
+  {/* Whoush's original camera position, for reference */}
+  <circle cx={C[0]} cy={C[1]+R} r={2} fill="currentColor" fillOpacity=".35"/>
+  {props.map((p,i)=>{const [x,y]=place(p),h=p.main?28:Math.min(22,PROP_HEIGHT[p.kind]*14),wf=facingOf(p)+az;
+   return <Asset key={i} id={PROP_ASSETS[p.kind].top} x={x} y={y+h/2} h={h} rotate={-wf} opacity={p.main?1:0.75}/>;})}
+  {!props.length&&<Asset id="env-top" x={C[0]} y={C[1]+22} h={44}/>}
+  <line x1={cam[0]} y1={cam[1]} x2={C[0]} y2={C[1]} className="stroke-primary" strokeWidth={1.2} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
+  <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="چرخش و فاصلهٔ دوربین دور سوژه" aria-valuetext={orbitFa(az)+"، زوم "+zoomFactor(staging)+"×"}
+   aria-valuemin={-180} aria-valuemax={180} aria-valuenow={Math.round(az)}
+   onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);setDragging(true);}:undefined}
+   className={editable?(dragging?"cursor-grabbing":"cursor-grab")+" outline-none focus-visible:[&>circle]:stroke-primary":""}>
+   <circle cx={cam[0]} cy={cam[1]} r={20} fill="transparent" strokeWidth={2}/>
+   <Asset id="camera-top" x={cam[0]} y={cam[1]+11} h={22} rotate={-az}/>
   </g>
  </svg>;
 }
@@ -210,6 +280,8 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
  const fr=drag?.cur??staging.framing??{x:0,y:0};
  const base=(staging.props??[]).map((p,i)=>move?.i===i?{...p,x:move.x,z:move.z}:p);
  const order=base.map((p,i)=>({p,i})).sort((a,b)=>b.p.z-a.p.z);
+ // Each prop's place in words, with the frame's cuts as drawn (for screen readers; the same words Whoush and the provider get).
+ const placed=withFrameCuts({...staging,props:base,framing:drag?.cur??staging.framing},anchor,aspect).props??[];
  // The scene is laid out once, in fixed world positions; the shot size is a pure zoom of that world about the original main subject, which the frame
  // centres (lib/staging.ts, frameCamera): zooming never moves anything relative to anything else, and moving any prop (the main subject too) moves only it.
  const cam=frameCamera({...staging,framing:fr},anchor,W,H),{unitH,k}=cam,horizon=H*0.5;
@@ -244,19 +316,20 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
     <rect x={-W*4} y={horizon} width={W*9} height={H*4} fill={"url(#"+clip+"g)"}/>
     <line x1={-W*4} x2={W*5} y1={horizon} y2={horizon} stroke="currentColor" strokeOpacity=".3" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
     {/* The environment is the fixed backdrop behind every prop, in the same world: it zooms with the scene and never moves on its own. */}
-    <Asset id="env-mountains" x={W*0.5} y={horizon+1} h={H*0.32} opacity={0.7}/>
+    {/* Orbiting the camera turns the backdrop: it slides past, wrapping around once per full turn. */}
+    {[-1,0,1].map(n=><Asset key={n} id="env-mountains" x={W*0.5-wrap180(staging.cameraAzimuth??0)/180*W*1.2+n*W*2.4} y={horizon+1} h={H*0.32} opacity={0.7}/>)}
    </g>
    <g transform={world}>
-    {order.map(({p,i})=>{const a=at(p),w=propWidth(p.kind,a.h),on=sel===i;
+    {order.map(({p,i})=>{const a=at(p),sp=sprite(p),w=spriteW(sp,a.h),on=sel===i;
      const pkey=(e:KeyboardEvent)=>{if(e.key==="Escape"&&on){e.preventDefault();e.stopPropagation();onSelect?.(null);return;}
       const d={ArrowLeft:[-0.1,0],ArrowRight:[0.1,0],ArrowUp:[0,0.1],ArrowDown:[0,-0.1]}[e.key as "ArrowLeft"];if(!d)return;e.preventDefault();e.stopPropagation();onSelect?.(i);const g=within(p,{x:p.x+d[0],z:p.z+d[1]});onProp?.(i,g.x,g.z);};
-     return <g key={i} role={editable?"button":undefined} tabIndex={editable?0:undefined} aria-label={p.label+"، "+propPlaceFa(p)} aria-pressed={editable?on:undefined}
+     return <g key={i} role={editable?"button":undefined} tabIndex={editable?0:undefined} aria-label={propTags(base)[i]+"، "+propPlaceFa(placed[i]??p)} aria-pressed={editable?on:undefined}
       onKeyDown={editable?pkey:undefined} onClick={editable?()=>onSelect?.(i):undefined}
       onPointerDown={editable?e=>{e.stopPropagation();onSelect?.(i);capture(svg.current,e.pointerId);setMove({i,px:e.clientX,py:e.clientY,x0:p.x,z0:p.z,x:p.x,z:p.z});}:undefined}
       className={editable?(move?.i===i?"cursor-grabbing outline-none":"cursor-grab outline-none"):""}>
       {p.y>0.05&&<ellipse cx={a.x} cy={a.ground} rx={w*0.35} ry={Math.max(1,a.h*0.04)} fill="currentColor" fillOpacity=".18"/>}
       <rect x={a.x-Math.max(w,12/k)/2} y={a.y-Math.max(a.h,12/k)} width={Math.max(w,12/k)} height={Math.max(a.h,12/k)} fill="transparent"/>
-      <Asset id={PROP_ASSETS[p.kind].front} x={a.x} y={a.y} h={a.h}/>
+      {(()=>{const sp=sprite(p);return <Asset id={sp.id} x={a.x} y={a.y} h={a.h} mirror={sp.mirror} sx={sp.sx}/>;})()}
       {on&&<rect x={a.x-w/2-1} y={a.y-a.h-1} width={w+2} height={a.h+2} rx={2} fill="none" className="stroke-primary" strokeWidth={1} vectorEffect="non-scaling-stroke" strokeDasharray="3 2"/>}
      </g>;})}
    </g>
@@ -265,11 +338,10 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
     <line vectorEffect="non-scaling-stroke" x1={0} x2={W} y1={H*i/3} y2={H*i/3} className={third(onY,fr.y<0,i)?"stroke-primary":""} stroke={third(onY,fr.y<0,i)?undefined:"currentColor"} strokeOpacity={third(onY,fr.y<0,i)?1:.3}/>
    </g>)}
   </g>
-  {/* The selected prop's name in a blue tag above it, at a constant size on screen (outside the zoom), kept inside the frame. */}
-  {editable&&sel!=null&&base[sel]&&(()=>{const p=base[sel],a=at(p),[tx,ty0]=cam.toScreen(a.x,a.y-a.h),tw=Math.min(W-4,p.label.length*3.6+10);
-   const x=Math.max(2,Math.min(W-2-tw,tx-tw/2)),y=Math.max(2,Math.min(H-12,ty0-13));
-   return <g className="pointer-events-none" aria-hidden="true"><rect x={x} y={y} width={tw} height={10} rx={3} className="fill-primary"/>
-    <text x={x+tw/2} y={y+7.2} textAnchor="middle" fontSize={6.5} className="fill-primary-foreground font-medium">{p.label}</text></g>;})()}
+  {/* The selected prop's tag, Figma-like: small blue text on the top-left corner of its selection box, constant size on screen, kept inside the frame. */}
+  {editable&&sel!=null&&base[sel]&&(()=>{const p=base[sel],a=at(p),wf=spriteW(sprite(p),a.h);
+   const [lx,ty]=cam.toScreen(a.x-wf/2-1,a.y-a.h-1),x=Math.max(1,Math.min(W-30,lx)),y=Math.max(5.5,Math.min(H-1,ty-1.5));
+   return <text x={x} y={y} direction="rtl" textAnchor="end" fontSize={4.6} className="pointer-events-none fill-primary font-medium" aria-hidden="true">{propTags(base,true)[sel]}</text>;})()}
   <rect width={W} height={H} rx={6} fill="none" stroke="currentColor" strokeOpacity=".75" strokeWidth={1.2} vectorEffect="non-scaling-stroke" className="pointer-events-none"/>
  </svg>;
 }
@@ -326,14 +398,15 @@ function SliderRow({label,valueText,min,max,step,value,onChange,disabled}:{label
 }
 const pct=(v:number)=>fa(Math.round(v*100));
 /** The selected prop: its place on the ground (left–right, front–back) and its lift, as sliders synced with dragging it in the frame. */
-function PropInspector({prop:p,reach:r,onChange,onClose}:{prop:SceneProp;
+function PropInspector({prop:p,tag,reach:r,onChange,onClose}:{prop:SceneProp;tag:string;
  /** How far it may go at this zoom and crop (lib/staging.ts, propReach): the same as dragging it, partly out of the frame on either side. */reach:{xMin:number;xMax:number;zMin:number;zMax:number};
  onChange:(x:Partial<SceneProp>)=>void;onClose:()=>void}){
  return <div className="flex flex-col gap-3">
-  <div className="flex flex-wrap items-center gap-2"><SourceIcon id={PROP_ASSETS[p.kind].front}/><span className="type-label text-fg-primary">{p.label}</span><span className="type-caption text-fg-secondary">{propPlaceFa(p)}</span>
+  <div className="flex flex-wrap items-center gap-2"><SourceIcon id={PROP_ASSETS[p.kind].front}/><bdi className="type-label text-primary">{tag}</bdi><span className="type-caption text-fg-secondary">{propPlaceFa(p)}</span>
    <Button type="button" variant="ghost" size="sm" className="ms-auto" onClick={onClose} aria-label="برگشت به تنظیمات کادر"><Icon icon={X} aria-hidden="true" className="size-4"/>کادر</Button></div>
   <SliderRow label="چپ ↔ راست (تا بیرون از کادر)" valueText={pct(p.x)} min={Math.min(r.xMin,p.x)} max={Math.max(r.xMax,p.x)} step={0.01} value={p.x} onChange={x=>onChange({x})}/>
   <SliderRow label="جلو ↔ عقب (تا بریده از پایین)" valueText={pct(p.z)} min={Math.min(r.zMin,p.z)} max={r.zMax} step={0.01} value={p.z} onChange={z=>onChange({z})}/>
+  <SliderRow label="چرخش رو به دوربین" valueText={facingFa(facingOf(p))+" · "+fa(Math.round(facingOf(p)))+"°"} min={-180} max={180} step={1} value={facingOf(p)} onChange={f=>onChange({facing:f})}/>
   <SliderRow label="ارتفاع از زمین" valueText={p.y>0.01?pct(p.y):"روی زمین"} min={0} max={1} step={0.01} value={p.y} onChange={y=>onChange({y})}/>
  </div>;
 }

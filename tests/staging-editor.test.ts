@@ -172,3 +172,35 @@ test("the frame: centred on the main subject by default; any prop (the main one 
  const wide={...s,shotSize:"full" as const};assert.equal(withFrameCuts(wide,wide,"16:9").props![1].cut,undefined,"inside the frame: no cut");
  assert.ok(CreativeTurnInputSchema.shape.stagingOverride.safeParse(cut).success,"a cut scene is a valid override");
 });
+
+test("the camera orbits 360° around the main subject: props swing around it and show another side, lights stay put in the world, and back again is exact",async()=>{
+ const {orbitCamera,facingOf,lightAngleOf,describeStagingEn,describeStagingChangesFa,applyStagingCues}=await import("../lib/staging");
+ const person={kind:"person" as const,label:"زن",x:0,z:-0.25,y:0,main:true},tree={kind:"tree" as const,label:"درخت",x:0,z:0.75,y:0};
+ const s:Staging={...base,props:[person,tree],lights:[{...base.lights[0],direction:"right",angle:0}]};
+ const side=orbitCamera(s,90);
+ assert.equal(side.cameraAzimuth,90);
+ assert.deepEqual([side.props![0].x,side.props![0].z],[0,-0.25],"the main subject is the pivot");
+ assert.ok(Math.abs(side.props![1].x-1)<1e-9&&Math.abs(side.props![1].z+0.25)<1e-9,"the tree behind it swings to frame right");
+ assert.equal(side.props![0].facing,-90,"the subject now shows its side");
+ assert.equal(lightAngleOf(side.lights[0]),90,"a light on the right is now between the camera and the subject");assert.equal(side.lights[0].direction,"front");
+ const back=orbitCamera(side,-90);
+ assert.ok(Math.abs(back.props![1].x)<1e-9&&Math.abs(back.props![1].z-0.75)<1e-9&&Math.abs(back.props![0].facing!)<1e-9,"orbiting back is exact");
+ assert.equal(orbitCamera(s,180).cameraAzimuth,180);assert.equal(orbitCamera(orbitCamera(s,170),20).cameraAzimuth,-170,"wraps around");
+ assert.match(describeStagingEn(orbitCamera(s,180)),/camera orbited behind the main subject/);
+ assert.match(describeStagingEn(orbitCamera(s,180)),/person \(main subject\) .*back to the camera/);
+ assert.ok(describeStagingChangesFa(s,side).some(l=>l.startsWith("چرخش دوربین")));
+ assert.equal(facingOf({kind:"vehicle",label:"ماشین",x:0,z:0,y:0}),90,"vehicles are seen side on by default");
+ assert.equal(applyStagingCues(s,normalizePersian("عکس زن از پشت سر")).props![0].facing,180);
+ assert.equal(applyStagingCues(s,normalizePersian("پرتره ضدنور با نور از پشت")).props![0].facing,undefined,"a light from behind is not the subject's back");
+});
+
+test("references map to the props they show and name them on the canvas: #زن:تصویر-۱",async()=>{
+ const {mapReferences,propTags,describeLayoutFa,describeLayoutEn}=await import("../lib/staging");
+ const props=[{kind:"person" as const,label:"زن",x:0,z:-0.25,y:0,main:true},{kind:"vehicle" as const,label:"ماشین قرمز",x:0.55,z:0.25,y:0},{kind:"tree" as const,label:"درخت",x:-0.5,z:0.5,y:0},{kind:"tree" as const,label:"درخت",x:0.7,z:0.7,y:0}];
+ const mapped=mapReferences(props,[{tag:"image1",kind:"image",role:"character"},{tag:"image2",kind:"image",role:"object"},{tag:"image3",kind:"image",role:"environment"}])!;
+ assert.deepEqual(mapped.map(p=>p.refs),[["image1"],["image2"],undefined,undefined]);
+ assert.deepEqual(propTags(mapped,true),["#زن:تصویر-۱","#ماشین-قرمز:تصویر-۲","#درخت","#درخت-۲"]);
+ assert.deepEqual(propTags(mapped),["#زن","#ماشین-قرمز","#درخت","#درخت-۲"]);
+ assert.match(describeLayoutFa(mapped),/زن \(مثل #تصویر-۱\)/);assert.match(describeLayoutEn(mapped),/person \(looks like the attached reference\)/);
+ assert.equal((props[0] as {refs?:string[]}).refs,undefined,"the planner's props are not changed in place");
+});

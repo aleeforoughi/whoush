@@ -1,6 +1,7 @@
 /** Labels and geometry for the plan diagrams (camera angle, framing, lighting). Pure: no React, safe on the server and in tests. */
 import {PROP_X_RANGE,PROP_Z_RANGE,type Staging,type StagingLight} from "./creative-plan";
 import {VISUALS} from "./visual-assets";
+import {displayTag} from "./attachments";
 
 export const CAMERA_ANGLE_FA:Record<Staging["cameraAngle"],string>={birds_eye:"از بالا (نمای پرنده)",high:"زاویهٔ بالا",eye_level:"هم‌سطح چشم",low:"زاویهٔ پایین",worms_eye:"از پایین (نمای کرم)",dutch:"زاویهٔ کج (داچ)"};
 export const SHOT_SIZE_FA:Record<Staging["shotSize"],string>={extreme_close_up:"خیلی نزدیک",close_up:"نمای نزدیک",medium_close_up:"نزدیک متوسط",medium:"نمای متوسط",medium_full:"تا زانو",full:"تمام‌قد",wide:"نمای باز",extreme_wide:"خیلی باز"};
@@ -63,12 +64,12 @@ export function placementEn(f?:{x:number;y:number}):string{
 /** The arranged scene in Persian, for the plan's hard constraints (what the user set in the diagrams). */
 export function describeStagingFa(s:Staging):string{
  const lights=s.lights.map(l=>LIGHT_ROLE_FA[l.role]+": "+LIGHT_SOURCE_FA[l.source]+"، "+LIGHT_QUALITY_FA[l.quality]+"، "+LIGHT_DIRECTION_FA[l.direction]+"، ارتفاع "+LIGHT_HEIGHT_FA[l.height]+"، "+l.colorTemperatureK+" کلوین"+(l.colorHex?"، رنگ "+l.colorHex:""));
- return "صحنهٔ تنظیم‌شده: زاویهٔ دوربین «"+CAMERA_ANGLE_FA[s.cameraAngle]+"»"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+" درجه)":"")+"، کادر «"+SHOT_SIZE_FA[s.shotSize]+"»"+(s.shotScale!==undefined?" (زوم "+zoomFactor(s)+"×)":"")+(s.subject?"، سوژه: "+SUBJECT_FA[s.subject]:"")+"، جای سوژه: "+placementFa(s.framing)+(s.props?.length?"؛ "+describeLayoutFa(s.props):"")+"؛ "+lights.join("؛ ");
+ return "صحنهٔ تنظیم‌شده: زاویهٔ دوربین «"+CAMERA_ANGLE_FA[s.cameraAngle]+"»"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+" درجه)":"")+(Math.abs(s.cameraAzimuth??0)>=1?"، دوربین "+orbitFa(s.cameraAzimuth!):"")+"، کادر «"+SHOT_SIZE_FA[s.shotSize]+"»"+(s.shotScale!==undefined?" (زوم "+zoomFactor(s)+"×)":"")+(s.subject?"، سوژه: "+SUBJECT_FA[s.subject]:"")+"، جای سوژه: "+placementFa(s.framing)+(s.props?.length?"؛ "+describeLayoutFa(s.props):"")+"؛ "+lights.join("؛ ");
 }
 /** The arranged scene in English, appended to the provider-facing media prompt. */
 export function describeStagingEn(s:Staging):string{
  const lights=s.lights.map(l=>l.role+" light: "+l.quality+" "+l.source.replace("_"," ")+" from "+DIR_EN[l.direction]+(l.angle!==undefined?" ("+Math.round(l.angle)+"° in top view)":"")+", "+l.height+" height, "+l.colorTemperatureK+"K"+(l.colorHex?" "+l.colorHex+" gel":""));
- return "Staging: "+ANGLE_EN[s.cameraAngle]+" camera"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+"° from eye level)":"")+", "+SHOT_EN[s.shotSize]+(s.shotScale!==undefined?" ("+zoomFactor(s)+"x of a full shot)":"")+", "+placementEn(s.framing)+"; "+lights.join("; ")+"."+(s.props?.length?" "+describeLayoutEn(s.props):"");
+ return "Staging: "+ANGLE_EN[s.cameraAngle]+" camera"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+"° from eye level)":"")+(orbitEn(s.cameraAzimuth??0)?", "+orbitEn(s.cameraAzimuth??0):"")+", "+SHOT_EN[s.shotSize]+(s.shotScale!==undefined?" ("+zoomFactor(s)+"x of a full shot)":"")+", "+placementEn(s.framing)+"; "+lights.join("; ")+"."+(s.props?.length?" "+describeLayoutEn(s.props):"");
 }
 /** The subject a brief is about, from its words: a person, an animal, a vehicle, a product or object, or an environment when there is no single main subject. */
 export function detectSubject(normalizedText:string,hasCharacter=false):NonNullable<Staging["subject"]>{
@@ -124,6 +125,7 @@ export function describeStagingChangesFa(before:Staging,after:Staging,aspectBefo
  const eb=elevationOf(before),ea=elevationOf(after);
  if(before.cameraAngle!==after.cameraAngle||Math.abs(eb-ea)>=2)out.push("زاویهٔ دوربین: "+arrow(CAMERA_ANGLE_FA[before.cameraAngle]+" ("+Math.round(eb)+"°)",CAMERA_ANGLE_FA[after.cameraAngle]+" ("+Math.round(ea)+"°)"));
  if(before.shotSize!==after.shotSize||Math.abs(Math.log(scaleOf(before)/scaleOf(after)))>0.03)out.push("کادر: "+arrow(SHOT_SIZE_FA[before.shotSize]+" (زوم "+zoomFactor(before)+"×)",SHOT_SIZE_FA[after.shotSize]+" (زوم "+zoomFactor(after)+"×)"));
+ if(Math.abs(wrap180((after.cameraAzimuth??0)-(before.cameraAzimuth??0)))>=2)out.push("چرخش دوربین: "+arrow(orbitFa(before.cameraAzimuth??0),orbitFa(after.cameraAzimuth??0)));
  if(placementFa(before.framing)!==placementFa(after.framing))out.push("جای سوژه: "+arrow(placementFa(before.framing),placementFa(after.framing)));
  // Props: matched by position in the list (the editor never reorders them); moved, added and removed ones are named.
  const pb=before.props??[],pa=after.props??[];
@@ -192,14 +194,14 @@ const depthFa=(p:SceneProp)=>isCut(p,"bottom")?"خیلی نزدیک، بریده
 const sideEn=(p:SceneProp)=>isCut(p,"left")?"partly out of frame on the left":isCut(p,"right")?"partly out of frame on the right":p.x<-0.33?"left":p.x>0.33?"right":"centre";
 const depthEn=(p:SceneProp)=>isCut(p,"bottom")?"very close, cut by the bottom of the frame":p.z<-0.33?"foreground":p.z>0.33?"background":"midground";
 /** Where a prop stands, in Persian: «سمت راست، عقب، بالاتر از زمین». */
-export const propPlaceFa=(p:SceneProp)=>sideFa(p)+"، "+depthFa(p)+(p.y>0.15?"، بالاتر از زمین":"");
+export const propPlaceFa=(p:SceneProp)=>sideFa(p)+"، "+depthFa(p)+(p.y>0.15?"، بالاتر از زمین":"")+(p.facing!==undefined?"، "+facingFa(p.facing):"");
 /** The scene layout in Persian («چیدمان: زن (اصلی) وسط، جلو؛ ماشین سمت راست، عقب»), empty without props. */
 export function describeLayoutFa(props?:readonly SceneProp[]):string{
- return props?.length?"چیدمان: "+props.map(p=>p.label+(p.main?" (اصلی)":"")+" "+propPlaceFa(p)).join("؛ "):"";
+ return props?.length?"چیدمان: "+props.map(p=>p.label+(p.refs?.length?" (مثل "+p.refs.map(displayTag).join("، ")+")":"")+(p.main?" (اصلی)":"")+" "+propPlaceFa(p)).join("؛ "):"";
 }
 /** The scene layout in English for the provider prompt, without the Persian labels (kinds only). */
 export function describeLayoutEn(props?:readonly SceneProp[]):string{
- return props?.length?"Layout: "+props.map(p=>p.kind+(p.main?" (main subject)":"")+" "+sideEn(p)+" "+depthEn(p)+(p.y>0.15?", raised":"")).join("; ")+".":"";
+ return props?.length?"Layout: "+props.map(p=>p.kind+(p.refs?.length?" (looks like the attached "+(p.refs.length>1?"references":"reference")+")":"")+(p.main?" (main subject)":"")+" "+sideEn(p)+" "+depthEn(p)+(p.y>0.15?", raised":"")+(p.facing!==undefined?", "+facingEn(p.facing):"")).join("; ")+".":"";
 }
 /**
  * Tidies a planner's props (never the user's own arrangement): props crowded onto one spot get the default layout (main subject centre front, the others
@@ -218,10 +220,15 @@ export function tidyProps(props?:readonly SceneProp[]):SceneProp[]|undefined{
  * centre line. `groundFromView` is the exact inverse on the ground plane, used when a prop is dragged.
  */
 export function propInView(p:Pick<SceneProp,"kind"|"x"|"z"|"y">,W:number,H:number,unitH:number){
- const horizon=H*0.5,near=H*0.96,t=(p.z+1)/2,s=1-t*0.55,spread=W*0.42*(1-t*0.4);
+ const horizon=H*0.5,near=H*0.96,t=depthT(p.z),s=1-t*0.55,spread=W*0.42*(1-t*0.4);
  const groundY=near-t*(near-horizon);
  return {x:W/2+p.x*spread,groundY,y:groundY-p.y*unitH*0.5*s,h:PROP_HEIGHT[p.kind]*unitH*s*0.5};
 }
+/**
+ * Depth on screen for a ground depth z: linear up to the stage's back (z = 1 at t = 1); beyond it (a prop the camera's orbit swung far back) it approaches
+ * the horizon without reaching it, so it never floats in the sky.
+ */
+export function depthT(z:number):number{const t=(z+1)/2;return t<=1?t:1+0.1*(1-Math.exp(-(t-1)*3));}
 export function groundFromView(vx:number,vy:number,W:number,H:number):{x:number;z:number}{
  const horizon=H*0.5,near=H*0.96,t=Math.max((PROP_Z_RANGE[0]+1)/2,Math.min(1,(near-vy)/(near-horizon))),spread=W*0.42*(1-t*0.4);
  const r=(v:number)=>Math.round(v*100)/100;
@@ -283,6 +290,74 @@ export function withFrameCuts(s:Staging,anchor:Staging|undefined,aspect:string):
  return {...s,props:s.props.map(p=>{const {cut:_,...rest}=p;void _;const c=propCuts(rest,s,anchor,aspect);return c.length?{...rest,cut:c}:rest;})};
 }
 
+// ---- props by name: «#ماشین-قرمز», to point at them in the chat ----
+/**
+ * Each prop's tag, from its label (spaces become dashes); a repeated label gets its number: «#درخت», «#درخت-۲». The tag alone names the prop in the chat;
+ * `withRefs` adds the references it is mapped to, as shown on the canvas: «#زن:تصویر-۱».
+ */
+export function propTags(props:readonly SceneProp[],withRefs=false):string[]{
+ const seen=new Map<string,number>();
+ return props.map(p=>{const b="#"+p.label.trim().replace(/[\s\u200c]+/g,"-");const n=(seen.get(b)??0)+1;seen.set(b,n);const t=n===1?b:b+"-"+fa2(n);
+  return withRefs&&p.refs?.length?t+":"+p.refs.map(r=>displayTag(r).slice(1)).join("،"):t;});
+}
+/** Roles of a reference that describe a person (or an animal character); an object reference describes a product (or a vehicle). */
+const LOOK_ROLES=["character","outfit","hairstyle","makeup"];
+/**
+ * Maps the user's image references to the props they show: a character, outfit, hairstyle or makeup reference to the person (the main one first, else an
+ * animal), an object reference to the object (else a vehicle). Others (environment, frames, motion, sound) describe no prop. Existing mappings are kept.
+ */
+export function mapReferences(props:readonly SceneProp[]|undefined,refs:readonly {tag:string;kind:string;role:string}[]):SceneProp[]|undefined{
+ if(!props?.length||!refs.length)return props?[...props]:props;
+ const out=props.map(p=>({...p}));
+ const pick=(ok:(p:SceneProp)=>boolean)=>out.find(p=>p.main&&ok(p))??out.find(ok);
+ for(const r of refs){
+  if(r.kind!=="image")continue;
+  const t=LOOK_ROLES.includes(r.role)?pick(p=>p.kind==="person")??pick(p=>p.kind==="animal"):r.role==="object"?pick(p=>p.kind==="object")??pick(p=>p.kind==="vehicle"):undefined;
+  if(t&&!(t.refs??[]).includes(r.tag)&&(t.refs?.length??0)<4)t.refs=[...(t.refs??[]),r.tag];
+ }
+ return out;
+}
+
+// ---- the camera's orbit and each prop's facing ----
+/** An angle in (-180, 180]. */
+export const wrap180=(d:number)=>{const v=((d%360)+540)%360-180;return v===-180?180:v;};
+/** The way a prop faces the camera (degrees, 0 faces it): set, or its kind's natural view (vehicles and animals are seen side on, facing frame right). */
+export const facingOf=(p:SceneProp)=>p.facing??(p.kind==="vehicle"||p.kind==="animal"?90:0);
+/**
+ * Orbits the camera by `delta` degrees around the main subject (positive: the camera moves to the viewer's right). The scene is kept as the camera sees it,
+ * so everything turns the other way: props swing around the main subject on the ground, each prop shows another side (its facing turns by −delta) and
+ * the lights keep their place in the world (their angle around the subject, as the camera sees it, turns by +delta). Exact (unrounded), so orbiting there
+ * and back returns the same scene.
+ */
+export function orbitCamera(s:Staging,delta:number):Staging{
+ if(!Number.isFinite(delta)||delta===0)return s;
+ const a=delta*Math.PI/180,c=Math.cos(a),n=Math.sin(a),props=s.props??[],m=props.find(p=>p.main)??props[0],px=m?.x??0,pz=m?.z??0;
+ const lim=(v:number,[lo,hi]:readonly [number,number])=>Math.max(lo,Math.min(hi,v));
+ return {...s,cameraAzimuth:wrap180((s.cameraAzimuth??0)+delta),
+  ...(s.props?{props:props.map(p=>{const dx=p.x-px,dz=p.z-pz;const {cut:_,...q}=p;void _;
+   return {...q,x:lim(px+dx*c+dz*n,PROP_X_RANGE),z:lim(pz-dx*n+dz*c,PROP_Z_RANGE),facing:wrap180(facingOf(p)-delta)};})}:{}),
+  lights:s.lights.map(l=>{const g=lightAngleOf(l);if(g===undefined)return l;const deg=((g+delta)%360+360)%360;return {...l,angle:deg,direction:snapDirection(deg)};})};
+}
+/** Which way a prop faces, in words (only when it has been set): toward the camera, its back, in profile or three-quarter, toward frame left or right. */
+export function facingFa(f:number):string{
+ const a=Math.abs(wrap180(f)),side=f>0?"رو به راست کادر":"رو به چپ کادر";
+ return a<25?"رو به دوربین":a>155?"پشت به دوربین":a<65?"سه‌رخ، "+side:a<=115?"نیم‌رخ، "+side:"سه‌رخ از پشت، "+side;
+}
+export function facingEn(f:number):string{
+ const a=Math.abs(wrap180(f)),side=f>0?"turned toward frame right":"turned toward frame left";
+ return a<25?"facing the camera":a>155?"back to the camera":a<65?"three-quarter view, "+side:a<=115?"in profile, "+side:"three-quarter from behind, "+side;
+}
+/** The camera's orbit in words, from Whoush's view: «۹۰° دور سوژه، از سمت راستش». */
+export function orbitFa(az:number):string{
+ const a=Math.round(wrap180(az));if(Math.abs(a)<1)return "روبه‌رو";
+ return Math.abs(a)>=170?"از پشت سوژه":fa2(Math.abs(a))+"° دور سوژه، "+(a>0?"به راست":"به چپ");
+}
+const fa2=(n:number)=>String(n).replace(/\d/g,d=>"۰۱۲۳۴۵۶۷۸۹"[Number(d)]);
+export function orbitEn(az:number):string{
+ const a=Math.round(wrap180(az));if(Math.abs(a)<1)return "";
+ return Math.abs(a)>=170?"camera orbited behind the main subject ("+a+"°)":"camera orbited "+Math.abs(a)+"° around the main subject to the viewer's "+(a>0?"right":"left");
+}
+
 // ---- continuous adjustment (smooth controls; the named values are the nearest description) ----
 const SHOT_ORDER=Object.entries(SHOT_BODY_FRACTION) as [Staging["shotSize"],number][];
 /** The shot size whose body share is nearest (on a log scale) to a continuous zoom. */
@@ -326,6 +401,10 @@ export function applyStagingCues(s:Staging,normalizedText:string):Staging{
  const ki=Math.max(0,s.lights.findIndex(l=>l.role==="key"));
  let key=s.lights[ki];for(const c of LIGHT_CUES)if(c.words.some(has))key=c.apply(key);
  const {framing:_planned,...rest}=s;void _planned;
+ // Which way the main subject faces: «از پشت» / "from behind" shows its back, «نیم‌رخ» / "profile" its side (a light «از پشت» is a light cue, not this).
+ const back=["from behind","back view","rear view","از پشت سر","نمای پشت"].some(has)||(has("از پشت")&&!t.includes(" نور از پشت")),profile=["profile","side view","نیم رخ","نیمرخ","نیم‌رخ","از بغل"].some(has);
+ const facing=back?180:profile?90:undefined,mi=(s.props??[]).findIndex(p=>p.main);
+ if(facing!==undefined&&mi>=0)rest.props=s.props!.map((p,i)=>i===mi?{...p,facing}:p);
  return {...rest,...(angle?{cameraAngle:angle,cameraElevation:undefined}:{}),...(shot?{shotSize:shot,shotScale:undefined}:{}),
   // The frame is centred by default: only the user's own words (or the canvas) move the subject off centre.
   ...(side?{framing:{x:side,y:0}}:{}),lights:s.lights.map((l,i)=>i===ki?key:l)};

@@ -9,7 +9,7 @@ import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./
 import {displayTag,inferAttachmentRoles,isGenerationTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
 import {providerForModelId} from "./llm-routing";
 import {replyScriptFor} from "./finglish";
-import {applyStagingCues,describeStagingEn,describeStagingFa,detectProps,detectSubject,tidyProps} from "./staging";
+import {applyStagingCues,describeStagingEn,describeStagingFa,detectProps,detectSubject,mapReferences,tidyProps} from "./staging";
 import {findGif,type ChatGif} from "./giphy";
 import {detectMediaKind,suggestModel} from "./router";
 import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
@@ -426,7 +426,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // misread), what the brief says explicitly (angle, shot size, side, lighting words) wins over the planner's choice, and the resulting scene is written into
  // the provider prompt as the deciding direction, so the output follows what the canvas shows.
  if(plan.staging&&!parsed.stagingOverride){
-  plan.staging=applyStagingCues({...plan.staging,props:tidyProps(plan.staging.props)},normalizePersian(parsed.text));
+  plan.staging=applyStagingCues({...plan.staging,props:mapReferences(tidyProps(plan.staging.props),refs)},normalizePersian(parsed.text));
   const en=" Scene (must match): "+describeStagingEn(plan.staging);
   plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
  }

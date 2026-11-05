@@ -114,18 +114,22 @@ export const MAX_PROPS=6;
  * Ground ranges for props. ±1 sideways and -1..1 in depth is the stage a full shot shows; the wider range lets a prop stand partly out of the frame at any
  * zoom (the canvas limits each drag to the visible frame plus a little beyond it). `cut` records which frame edges cut the prop, as the canvas shows it.
  */
-export const PROP_X_RANGE=[-6,6] as const,PROP_Z_RANGE=[-3,1] as const,PROP_CUTS=["left","right","bottom"] as const;
+export const PROP_X_RANGE=[-6,6] as const,PROP_Z_RANGE=[-3,3] as const,PROP_CUTS=["left","right","bottom"] as const;
 /**
  * One movable prop on the ground plane, seen from above: x from -1 (frame left) to 1 (right), z from -1 (nearest the camera) to 1 (farthest back), y from 0
  * (on the ground) to 1 (raised). `label` is a short Persian name from the brief («زن», «ماشین قرمز»); `main` marks the main subject.
  */
-const PropSchema=z.object({kind:z.enum(PROP_KINDS),label:z.string().trim().min(1).max(40),x:z.number().min(PROP_X_RANGE[0]).max(PROP_X_RANGE[1]),z:z.number().min(PROP_Z_RANGE[0]).max(PROP_Z_RANGE[1]),y:z.number().min(0).max(1),main:z.boolean().optional(),cut:z.array(z.enum(PROP_CUTS)).max(3).optional()});
+const PropSchema=z.object({kind:z.enum(PROP_KINDS),label:z.string().trim().min(1).max(40),x:z.number().min(PROP_X_RANGE[0]).max(PROP_X_RANGE[1]),z:z.number().min(PROP_Z_RANGE[0]).max(PROP_Z_RANGE[1]),y:z.number().min(0).max(1),main:z.boolean().optional(),cut:z.array(z.enum(PROP_CUTS)).max(3).optional(),
+ /** Which way it faces the camera, in degrees: 0 faces the camera, 90 faces frame right, -90 frame left, ±180 its back to the camera. */facing:z.number().min(-180).max(180).optional(),
+ /** The attachments it looks like (their tags: «image1»): Whoush maps a character reference to the person, a product reference to the object. */refs:z.array(z.string().regex(/^[a-z]+\d{1,3}$/)).max(4).optional()});
 export type ScenePropInput=z.infer<typeof PropSchema>;
 /** Where the subject sits in the frame (the crop): x from -1 (left edge) to 1 (right), y from -1 (top) to 1 (bottom); 0, 0 is centred. */
 const FramingSchema=z.object({x:z.number().min(-1).max(1),y:z.number().min(-1).max(1)});
 export const StagingSchema=z.object({subject:z.enum(SUBJECTS).optional(),cameraAngle:z.enum(CAMERA_ANGLES),
  /** The exact camera elevation in degrees above the subject's eye line, set by dragging; `cameraAngle` is its nearest name. */
  cameraElevation:z.number().min(-60).max(85).optional(),
+ /** How far the camera has orbited around the main subject from Whoush's view, in degrees: positive to the subject's left (the viewer's right), ±180 behind it. */
+ cameraAzimuth:z.number().min(-180).max(180).optional(),
  shotSize:z.enum(SHOT_SIZES),
  /** The exact zoom as the share of a standing person the frame shows (0.05 to 5), set with the zoom bar; `shotSize` is its nearest name. */
  shotScale:z.number().min(0.05).max(5).optional(),
