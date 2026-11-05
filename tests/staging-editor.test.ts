@@ -126,6 +126,7 @@ test("the user's own words win: angle, shot size, side and lighting cues overrid
  const back=t("پرتره ضدنور با نور طلایی غروب");assert.equal(back.lights[0].direction,"back");assert.equal(back.lights[0].source,"sun");assert.equal(back.lights[0].colorTemperatureK,3500);
  assert.equal(t("نور پنجره و حس آرام").lights[0].source,"window");
  assert.deepEqual(t("یه گربه"),{...base},"no cue, no change");
+ assert.equal(applyStagingCues({...base,framing:{x:0.33,y:-0.2}},normalizePersian("یه گربه")).framing,undefined,"the frame is centred unless the user asks");
  // A planner that ignored «از بالا» is corrected, and the provider prompt carries the scene.
  const ignoring:import("../lib/creative-plan").PrivatePlanner=r=>{const {deterministicPlanner:d}=require("../lib/orchestrator") as typeof import("../lib/orchestrator");const p=structuredClone(d(r).plan);p.staging={...p.staging!,cameraAngle:"eye_level"};return {plan:p};};
  const r=planned(await orchestrateCreativeTurn({text:"یه عکس از بالا از یه دریاچه"},{planner:ignoring}));
@@ -145,4 +146,29 @@ test("«بساز» with an arranged scene: a new private turn with that scene, q
  assert.equal(res.status,200);const q=await res.json() as {token:string};assert.ok(q.token&&!("turnId" in q),"the derived turn stays inside the signed token");
  const bad=await quote(new Request("http://x/api/generation/quote",{method:"POST",body:JSON.stringify({modelId:r.proposal.selectedModelId,turnId:"no-such-turn",stagingOverride:base})}));
  assert.equal(bad.status,410);
+});
+
+test("the frame: centred on the main subject by default; any prop (the main one too) moves alone; out of frame equally on both sides; cuts are written out",async()=>{
+ const {frameCamera,frameSize,propInView,propReach,propCuts,withFrameCuts,describeLayoutEn,propPlaceFa}=await import("../lib/staging");
+ const person={kind:"person" as const,label:"زن",x:-0.4,z:-0.25,y:0,main:true},car={kind:"vehicle" as const,label:"ماشین",x:0.55,z:0.25,y:0};
+ const s:Staging={...base,shotSize:"medium_close_up",props:[person,car]};
+ const {W,H}=frameSize("16:9"),cam=frameCamera(s,s,W,H),v=propInView(person,W,H,cam.unitH);
+ assert.ok(Math.abs(cam.toScreen(v.x,0)[0]-W/2)<0.01,"the main subject sits on the frame's centre line");
+ const moved={...s,props:[{...person,x:0.3},car]},cam2=frameCamera(moved,s,W,H),vc=propInView(car,W,H,cam.unitH);
+ assert.deepEqual(cam2.toScreen(vc.x,vc.groundY),cam.toScreen(vc.x,vc.groundY),"moving the main subject leaves the car where it is");
+ for(const p of [person,car]){
+  const r=propReach(p,s,s,"16:9"),pv=propInView(p,W,H,cam.unitH);
+  const edge=(x:number)=>{const q=propInView({...p,x},W,H,cam.unitH);return cam.toScreen(q.x,q.groundY)[0];};
+  assert.ok(Math.abs((0-edge(r.xMin))-(edge(r.xMax)-W))<0.6,"as far past the left edge as past the right ("+p.kind+")");
+  assert.ok(edge(r.xMin)<0&&edge(r.xMax)>W&&pv.h>0);
+ }
+ const full={...s,shotSize:"full" as const};
+ assert.ok(propReach(car,full,full,"16:9").zMin<-1,"in a full shot a prop can come closer than the stage, into the bottom edge");
+ const out={...s,props:[person,{...car,x:propReach(car,s,s,"16:9").xMax}]};
+ assert.deepEqual(propCuts(out.props[1],out,s,"16:9"),["right"]);
+ const cut=withFrameCuts(out,s,"16:9");
+ assert.match(describeLayoutEn(cut.props),/vehicle partly out of frame on the right/);
+ assert.match(propPlaceFa(cut.props![1]),/نیمه بیرون از کادر، سمت راست/);
+ const wide={...s,shotSize:"full" as const};assert.equal(withFrameCuts(wide,wide,"16:9").props![1].cut,undefined,"inside the frame: no cut");
+ assert.ok(CreativeTurnInputSchema.shape.stagingOverride.safeParse(cut).success,"a cut scene is a valid override");
 });

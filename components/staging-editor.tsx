@@ -1,10 +1,10 @@
 "use client";
 import {useEffect,useId,useRef,useState,type KeyboardEvent,type PointerEvent,type ReactNode} from "react";
-import {Box,ChevronDown,Plus,RotateCcw,Trash2} from "lucide-react";
+import {Box,ChevronDown,Plus,RotateCcw,Trash2,X} from "lucide-react";
 import {Button,Icon} from "@aleeforoughi/feather-react";
 import {LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
- SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
+ SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 import {fa} from "@/lib/format";
 
@@ -20,7 +20,6 @@ import {fa} from "@/lib/format";
  * backdrop and never moves; props do. Everything works with touch, mouse and keyboard. All content stays inside each viewport.
  * With `onChange`, every adjustment flows to the generation card below, which builds exactly this scene; without it, read-only. The viewports are always dark, like a 3D app.
  */
-type Sel={type:"prop"|"light";i:number};
 /** The three views' captions (title pill and value), shared by the open canvas and the collapsed snapshots so both always say the same thing. */
 function viewCaptions(s:Staging,aspect:string){
  const n=(s.props??[]).length;
@@ -40,7 +39,9 @@ export function StagingEditor({staging,aspectRatio,onChange}:{staging:Staging;as
  /** Live: every adjustment is reported (with whether it differs from Whoush's scene), so the generation card below uses it directly; without it, read-only. */
  onChange?:(s:Staging,aspect:string,changed:boolean)=>void}){
  const initial=withProps(staging);
- const [draft,setDraft]=useState<Staging>(initial),[aspect,setAspect]=useState(aspectRatio??"16:9"),[sel,setSel]=useState<Sel>({type:initial.props?.length?"prop":"light",i:0});
+ const [draft,setDraft]=useState<Staging>(initial),[aspect,setAspect]=useState(aspectRatio??"16:9");
+ // The frame shows its own settings (zoom, aspect, crop) until a prop is selected; then only that prop's settings, until it is deselected. Lights select apart.
+ const [propSel,setPropSel]=useState<number|null>(null),[lightSel,setLightSel]=useState(0);
  // All three views in one scroll, in this order: framing and layout, camera, lighting; each view's controls right under it.
  const editable=Boolean(onChange);
  const changed=JSON.stringify(draft)!==JSON.stringify(initial)||aspect!==(aspectRatio??"16:9");
@@ -48,7 +49,7 @@ export function StagingEditor({staging,aspectRatio,onChange}:{staging:Staging;as
  const report=useRef(onChange);
  useEffect(()=>{report.current=onChange;});
  const key=JSON.stringify(draft)+"|"+aspect;
- useEffect(()=>{report.current?.(draft,aspect,changed);
+ useEffect(()=>{report.current?.(withFrameCuts(draft,initial,aspect),aspect,changed);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- report when the draft or aspect actually changes
  },[key]);
  const set=(p:Partial<Staging>)=>setDraft(d=>({...d,...p}));
@@ -71,7 +72,7 @@ export function StagingEditor({staging,aspectRatio,onChange}:{staging:Staging;as
     <Icon icon={ChevronDown} size={16} aria-hidden="true" className={"ms-auto size-4 shrink-0 text-fg-secondary transition-transform motion-reduce:transition-none "+(open?"rotate-180":"")}/>
    </span>
    {!open&&<span className="grid grid-cols-1 gap-2">
-    <Snap c={cap.frame}><FrameView staging={draft} aspect={aspect}/></Snap>
+    <Snap c={cap.frame}><FrameView staging={draft} anchor={initial} aspect={aspect}/></Snap>
     <Snap c={cap.camera}><CameraView staging={draft} editable={false} onElevation={()=>{}}/></Snap>
     <Snap c={cap.light}><LightView staging={draft} editable={false} selected={-1} onSelect={()=>{}} onLight={()=>{}}/></Snap>
    </span>}
@@ -79,8 +80,10 @@ export function StagingEditor({staging,aspectRatio,onChange}:{staging:Staging;as
   <div id={bodyId} hidden={!open} className="flex min-w-0 flex-col gap-3">
   <div className="flex min-w-0 flex-col gap-3">
    <div><Viewport {...cap.frame}>
-    <FrameView staging={draft} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={sel} onSelect={setSel} onProp={(i,x,z)=>setProp(i,{x,z})}/>
-    {editable&&<>
+    <FrameView staging={draft} anchor={initial} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={setPropSel} onProp={(i,x,z)=>setProp(i,{x,z})}/>
+    {editable&&propSel!==null&&props[propSel]&&<PropInspector prop={withFrameCuts(draft,initial,aspect).props![propSel]} reach={propReach(props[propSel],draft,initial,aspect)}
+     onChange={p=>setProp(propSel,p)} onClose={()=>setPropSel(null)}/>}
+    {editable&&(propSel===null||!props[propSel])&&<>
      <input type="range" min={0} max={1} step={0.001} value={1-sliderFromScale(scaleOf(draft))} onChange={e=>{const sc=scaleFromSlider(1-Number(e.target.value));set({shotScale:sc,shotSize:nearestShot(sc)});}}
       aria-label="زوم (اندازهٔ نما)" aria-valuetext={SHOT_SIZE_FA[draft.shotSize]+"، زوم "+zoomFactor(draft)+"×"} className="h-8 w-full cursor-pointer accent-primary"/>
      <div className="flex flex-wrap justify-center gap-1">{["16:9","3:2","4:5","1:1","9:16"].map(r=><Chip key={r} on={aspect===r} onClick={()=>setAspect(r)}><bdi>{r}</bdi></Chip>)}</div>
@@ -88,12 +91,9 @@ export function StagingEditor({staging,aspectRatio,onChange}:{staging:Staging;as
       onChange={x=>{const y=draft.framing?.y??0;set({framing:x===0&&y===0?undefined:{x,y}});}}/>
      <SliderRow label="جابه‌جایی کادر: بالا ↔ پایین" valueText={pct(draft.framing?.y??0)} min={-1} max={1} step={0.01} value={draft.framing?.y??0}
       onChange={y=>{const x=draft.framing?.x??0;set({framing:x===0&&y===0?undefined:{x,y}});}}/>
-     <p className="text-center type-caption text-fg-secondary">روی بوم هم می‌تونی بکشی: وسیله‌ها رو چپ و راست، بالا برای عقب و پایین برای جلو؛ پس‌زمینه رو بکشی، کادر جابه‌جا می‌شه.</p>
+     <p className="text-center type-caption text-fg-secondary">{props.length?"روی یه وسیله بزن تا تنظیماتش بیاد و بکشیش (بالا عقب، پایین جلو، حتی تا بیرون کادر)؛ ":""}پس‌زمینه رو بکشی، کادر جابه‌جا می‌شه.</p>
     </>}
    </Viewport>
-   {editable&&<div className="mt-2 flex flex-col gap-2">
-    {sel.type==="prop"&&props[sel.i]&&<PropInspector prop={props[sel.i]} onChange={p=>setProp(sel.i,p)}/>}
-   </div>}
    </div>
    <div><Viewport {...cap.camera}>
     <CameraView staging={draft} editable={editable} onElevation={e=>set({cameraElevation:e,cameraAngle:draft.cameraAngle==="dutch"?"dutch":snapElevation(e)})}/>
@@ -103,17 +103,17 @@ export function StagingEditor({staging,aspectRatio,onChange}:{staging:Staging;as
    </Viewport></div>
    <div>
     <Viewport {...cap.light}>
-     <LightView staging={draft} editable={editable} selected={sel.type==="light"?sel.i:-1} onSelect={i=>setSel({type:"light",i})} onLight={(i,deg)=>setLight(i,{angle:deg,direction:snapDirection(deg)})}/>
+     <LightView staging={draft} editable={editable} selected={lightSel} onSelect={setLightSel} onLight={(i,deg)=>setLight(i,{angle:deg,direction:snapDirection(deg)})}/>
     </Viewport>
-    {editable&&draft.lights[sel.type==="light"?sel.i:0]&&<div className="mt-2"><LightInspector light={draft.lights[sel.type==="light"?sel.i:0]} canRemove={draft.lights.length>1}
-     onChange={p=>setLight(sel.type==="light"?sel.i:0,p)}
-     onRemove={()=>{const i=sel.type==="light"?sel.i:0;setDraft(d=>({...d,lights:d.lights.filter((_,j)=>j!==i)}));setSel({type:"light",i:0});}}
-     onAdd={draft.lights.length<4?()=>{setDraft(d=>({...d,lights:[...d.lights,{role:"fill",direction:"front_right",height:"eye",quality:"soft",source:"softbox",colorTemperatureK:5600}]}));setSel({type:"light",i:draft.lights.length});}:undefined}/></div>}
+    {editable&&draft.lights[lightSel]&&<div className="mt-2"><LightInspector light={draft.lights[lightSel]} canRemove={draft.lights.length>1}
+     onChange={p=>setLight(lightSel,p)}
+     onRemove={()=>{const i=lightSel;setDraft(d=>({...d,lights:d.lights.filter((_,j)=>j!==i)}));setLightSel(0);}}
+     onAdd={draft.lights.length<4?()=>{setDraft(d=>({...d,lights:[...d.lights,{role:"fill",direction:"front_right",height:"eye",quality:"soft",source:"softbox",colorTemperatureK:5600}]}));setLightSel(draft.lights.length);}:undefined}/></div>}
    </div>
   </div>
   {!editable&&<ul className="flex flex-col gap-1">{draft.lights.map((l,i)=><LightRow key={i} l={l}/>)}</ul>}
   {editable&&changed&&<div className="flex flex-wrap items-center gap-2">
-   <Button type="button" variant="ghost" size="sm" onClick={()=>{setDraft(initial);setAspect(aspectRatio??"16:9");setSel({type:initial.props?.length?"prop":"light",i:0});}}><Icon icon={RotateCcw} aria-hidden="true"/>برگرد به پیشنهاد هووش</Button>
+   <Button type="button" variant="ghost" size="sm" onClick={()=>{setDraft(initial);setAspect(aspectRatio??"16:9");setPropSel(null);setLightSel(0);}}><Icon icon={RotateCcw} aria-hidden="true"/>برگرد به پیشنهاد هووش</Button>
    <p className="type-caption text-fg-secondary">با «بساز» همین صحنه ساخته می‌شه.</p>
   </div>}
   </div>
@@ -200,27 +200,26 @@ const snapAxis=(v:number)=>Math.max(-1,Math.min(1,Math.round(v*100)/100));
  * - Drag the empty background: slides the crop like a crop tool, snapping to the thirds and the centre.
  * - Keyboard: arrow keys move the selected prop (or the crop when the frame itself has focus).
  */
-function FrameView({staging,aspect,editable,onFraming,sel,onSelect,onProp}:{staging:Staging;aspect:string;editable?:boolean;onFraming?:(f:{x:number;y:number}|undefined)=>void;
- sel?:Sel;onSelect?:(s:Sel)=>void;onProp?:(i:number,x:number,z:number)=>void}){
- const clip=useId(),svg=useRef<SVGSVGElement>(null),r=ratioOf(aspect),W=r>=1?150:Math.round(110*r),H=r>=1?Math.round(150/r):110;
+function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp}:{staging:Staging;
+ /** The scene whose main subject anchors the zoom (Whoush's original layout): fixed while props move, so moving the main subject moves only it. */anchor?:Staging;
+ aspect:string;editable?:boolean;onFraming?:(f:{x:number;y:number}|undefined)=>void;
+ /** The selected prop (null: none, the frame's own settings show). */sel?:number|null;onSelect?:(i:number|null)=>void;onProp?:(i:number,x:number,z:number)=>void}){
+ const clip=useId(),svg=useRef<SVGSVGElement>(null),{W,H}=frameSize(aspect);
  const [drag,setDrag]=useState<{px:number;py:number;x:number;y:number;cur:{x:number;y:number}}|null>(null);
  const [move,setMove]=useState<{i:number;px:number;py:number;x0:number;z0:number;x:number;z:number}|null>(null);
- const f=scaleOf(staging),fr=drag?.cur??staging.framing??{x:0,y:0};
+ const fr=drag?.cur??staging.framing??{x:0,y:0};
  const base=(staging.props??[]).map((p,i)=>move?.i===i?{...p,x:move.x,z:move.z}:p);
- const order=base.map((p,i)=>({p,i})).sort((a,b)=>b.p.z-a.p.z),m=base.find(p=>p.main)??base[0];
- // The scene is laid out once, in fixed world positions (as a full shot frames it). The shot size is a pure zoom of that world around the main subject's
- // focus (its head, or the centre of an object; the horizon for an environment), so nothing moves relative to anything else when zooming in or out.
- const WORLD=SHOT_BODY_FRACTION.full,unitH=H*0.92/WORLD,horizon=H*0.5,k=WORLD/Math.max(f,0.05);
+ const order=base.map((p,i)=>({p,i})).sort((a,b)=>b.p.z-a.p.z);
+ // The scene is laid out once, in fixed world positions; the shot size is a pure zoom of that world about the original main subject, which the frame
+ // centres (lib/staging.ts, frameCamera): zooming never moves anything relative to anything else, and moving any prop (the main subject too) moves only it.
+ const cam=frameCamera({...staging,framing:fr},anchor,W,H),{unitH,k}=cam,horizon=H*0.5;
  const at=(p:SceneProp)=>{const v=propInView(p,W,H,unitH);return {x:v.x,ground:v.groundY,y:v.y,h:v.h};};
- const mp=m?at(m):undefined;
- const F:[number,number]=mp?[mp.x,mp.y-mp.h*(m!.kind==="person"?0.88:0.5)]:[W/2,horizon];
- // Screen = crop pan + zoom about F. Its inverse turns a drag on screen into a move on the world's ground.
- const dx=fr.x*W/2,dy=fr.y*H/2;
- const world="translate("+(dx+F[0])+" "+(dy+F[1])+") scale("+k+") translate("+(-F[0])+" "+(-F[1])+")";
+ const world="matrix("+k+" 0 0 "+k+" "+cam.toScreen(0,0).join(" ")+")";
  const onX=Math.abs(Math.abs(fr.x)-THIRD)<0.03,onY=Math.abs(Math.abs(fr.y)-THIRD)<0.03;
  const unit=()=>{const b=svg.current!.getBoundingClientRect();return {sx:(W+4)/b.width,sy:(H+4)/b.height};};
  const commit=(v:{x:number;y:number})=>onFraming?.(v.x===0&&v.y===0?undefined:v);
- const clamp=(v:number)=>Math.max(-1,Math.min(1,Math.round(v*100)/100));
+ /** A ground point limited to where the prop may go at this zoom and crop: as far out of the frame on the left as on the right, and into the bottom edge. */
+ const within=(p:SceneProp,g:{x:number;z:number})=>{const r=propReach(p,staging,anchor,aspect);const c=(v:number,lo:number,hi:number)=>Math.round(Math.max(lo,Math.min(hi,v))*100)/100;return {x:c(g.x,r.xMin,r.xMax),z:c(g.z,r.zMin,r.zMax)};};
  /** The ground point (x, z) under a world point: the inverse of `at` on the ground plane. */
  const ground=(gx:number,gy:number)=>groundFromView(gx,gy,W,H);
  const key=(e:KeyboardEvent)=>{
@@ -231,7 +230,7 @@ function FrameView({staging,aspect,editable,onFraming,sel,onSelect,onProp}:{stag
  return <svg ref={svg} viewBox={"-2 -2 "+(W+4)+" "+(H+4)} className="mx-auto block w-full touch-none select-none text-fg-primary" style={{aspectRatio:String((W+4)/(H+4)),maxWidth:Math.round(320*(W+4)/(H+4))+"px"}} aria-hidden={!editable}
   onPointerMove={e=>{
    const u=unit();
-   if(move){const p0=at({...base[move.i],x:move.x0,z:move.z0,y:0});const g=ground(p0.x+(e.clientX-move.px)*u.sx/k,p0.ground+(e.clientY-move.py)*u.sy/k);if(Number.isFinite(g.x)&&Number.isFinite(g.z))setMove({...move,...g});return;}
+   if(move){const p0=at({...base[move.i],x:move.x0,z:move.z0,y:0});const g=ground(p0.x+(e.clientX-move.px)*u.sx/k,p0.ground+(e.clientY-move.py)*u.sy/k);if(Number.isFinite(g.x)&&Number.isFinite(g.z))setMove({...move,...within({...base[move.i],z:g.z},g)});return;}
    if(drag){const c={x:snapAxis(drag.x+(e.clientX-drag.px)*u.sx/(W/2)),y:snapAxis(drag.y+(e.clientY-drag.py)*u.sy/(H/2))};if(Number.isFinite(c.x)&&Number.isFinite(c.y))setDrag({...drag,cur:c});}}}
   onPointerUp={()=>{if(move){onProp?.(move.i,move.x,move.z);setMove(null);}if(drag){commit(drag.cur);setDrag(null);}}} onPointerCancel={()=>{setDrag(null);setMove(null);}}>
   <defs><clipPath id={clip}><rect width={W} height={H} rx={6}/></clipPath>
@@ -240,7 +239,7 @@ function FrameView({staging,aspect,editable,onFraming,sel,onSelect,onProp}:{stag
    <rect width={W} height={H} className="fill-background"/>
    {editable&&<rect width={W} height={H} fill="transparent" role="slider" tabIndex={0} aria-label={"جای سوژه در کادر: "+placementFa(staging.framing)} aria-valuetext={placementFa(staging.framing)}
     aria-valuenow={Math.round(fr.x*100)} aria-valuemin={-100} aria-valuemax={100} onKeyDown={key} className={"outline-none "+(drag?"cursor-grabbing":"cursor-grab")}
-    onPointerDown={e=>{capture(svg.current,e.pointerId);setDrag({px:e.clientX,py:e.clientY,x:fr.x,y:fr.y,cur:fr});}}/>}
+    onPointerDown={e=>{onSelect?.(null);capture(svg.current,e.pointerId);setDrag({px:e.clientX,py:e.clientY,x:fr.x,y:fr.y,cur:fr});}}/>}
    <g transform={world} className="pointer-events-none">
     <rect x={-W*4} y={horizon} width={W*9} height={H*4} fill={"url(#"+clip+"g)"}/>
     <line x1={-W*4} x2={W*5} y1={horizon} y2={horizon} stroke="currentColor" strokeOpacity=".3" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
@@ -248,11 +247,12 @@ function FrameView({staging,aspect,editable,onFraming,sel,onSelect,onProp}:{stag
     <Asset id="env-mountains" x={W*0.5} y={horizon+1} h={H*0.32} opacity={0.7}/>
    </g>
    <g transform={world}>
-    {order.map(({p,i})=>{const a=at(p),asset=VISUALS[PROP_ASSETS[p.kind].front],w=asset?a.h*asset.width/asset.height:a.h,on=sel?.type==="prop"&&sel.i===i;
-     const pkey=(e:KeyboardEvent)=>{const d={ArrowLeft:[-0.1,0],ArrowRight:[0.1,0],ArrowUp:[0,0.1],ArrowDown:[0,-0.1]}[e.key as "ArrowLeft"];if(!d)return;e.preventDefault();e.stopPropagation();onSelect?.({type:"prop",i});onProp?.(i,clamp(p.x+d[0]),clamp(p.z+d[1]));};
+    {order.map(({p,i})=>{const a=at(p),w=propWidth(p.kind,a.h),on=sel===i;
+     const pkey=(e:KeyboardEvent)=>{if(e.key==="Escape"&&on){e.preventDefault();e.stopPropagation();onSelect?.(null);return;}
+      const d={ArrowLeft:[-0.1,0],ArrowRight:[0.1,0],ArrowUp:[0,0.1],ArrowDown:[0,-0.1]}[e.key as "ArrowLeft"];if(!d)return;e.preventDefault();e.stopPropagation();onSelect?.(i);const g=within(p,{x:p.x+d[0],z:p.z+d[1]});onProp?.(i,g.x,g.z);};
      return <g key={i} role={editable?"button":undefined} tabIndex={editable?0:undefined} aria-label={p.label+"، "+propPlaceFa(p)} aria-pressed={editable?on:undefined}
-      onKeyDown={editable?pkey:undefined} onClick={editable?()=>onSelect?.({type:"prop",i}):undefined}
-      onPointerDown={editable?e=>{e.stopPropagation();onSelect?.({type:"prop",i});capture(svg.current,e.pointerId);setMove({i,px:e.clientX,py:e.clientY,x0:p.x,z0:p.z,x:p.x,z:p.z});}:undefined}
+      onKeyDown={editable?pkey:undefined} onClick={editable?()=>onSelect?.(i):undefined}
+      onPointerDown={editable?e=>{e.stopPropagation();onSelect?.(i);capture(svg.current,e.pointerId);setMove({i,px:e.clientX,py:e.clientY,x0:p.x,z0:p.z,x:p.x,z:p.z});}:undefined}
       className={editable?(move?.i===i?"cursor-grabbing outline-none":"cursor-grab outline-none"):""}>
       {p.y>0.05&&<ellipse cx={a.x} cy={a.ground} rx={w*0.35} ry={Math.max(1,a.h*0.04)} fill="currentColor" fillOpacity=".18"/>}
       <rect x={a.x-Math.max(w,12/k)/2} y={a.y-Math.max(a.h,12/k)} width={Math.max(w,12/k)} height={Math.max(a.h,12/k)} fill="transparent"/>
@@ -265,6 +265,11 @@ function FrameView({staging,aspect,editable,onFraming,sel,onSelect,onProp}:{stag
     <line vectorEffect="non-scaling-stroke" x1={0} x2={W} y1={H*i/3} y2={H*i/3} className={third(onY,fr.y<0,i)?"stroke-primary":""} stroke={third(onY,fr.y<0,i)?undefined:"currentColor"} strokeOpacity={third(onY,fr.y<0,i)?1:.3}/>
    </g>)}
   </g>
+  {/* The selected prop's name in a blue tag above it, at a constant size on screen (outside the zoom), kept inside the frame. */}
+  {editable&&sel!=null&&base[sel]&&(()=>{const p=base[sel],a=at(p),[tx,ty0]=cam.toScreen(a.x,a.y-a.h),tw=Math.min(W-4,p.label.length*3.6+10);
+   const x=Math.max(2,Math.min(W-2-tw,tx-tw/2)),y=Math.max(2,Math.min(H-12,ty0-13));
+   return <g className="pointer-events-none" aria-hidden="true"><rect x={x} y={y} width={tw} height={10} rx={3} className="fill-primary"/>
+    <text x={x+tw/2} y={y+7.2} textAnchor="middle" fontSize={6.5} className="fill-primary-foreground font-medium">{p.label}</text></g>;})()}
   <rect width={W} height={H} rx={6} fill="none" stroke="currentColor" strokeOpacity=".75" strokeWidth={1.2} vectorEffect="non-scaling-stroke" className="pointer-events-none"/>
  </svg>;
 }
@@ -321,11 +326,14 @@ function SliderRow({label,valueText,min,max,step,value,onChange,disabled}:{label
 }
 const pct=(v:number)=>fa(Math.round(v*100));
 /** The selected prop: its place on the ground (left–right, front–back) and its lift, as sliders synced with dragging it in the frame. */
-function PropInspector({prop:p,onChange}:{prop:SceneProp;onChange:(x:Partial<SceneProp>)=>void}){
- return <div className="flex flex-col gap-3 rounded-card border border-line-secondary bg-surface-subtle p-3">
-  <div className="flex flex-wrap items-center gap-2"><SourceIcon id={PROP_ASSETS[p.kind].front}/><span className="type-label text-fg-primary">{p.label}</span><span className="type-caption text-fg-secondary">{propPlaceFa(p)}</span></div>
-  <SliderRow label="چپ ↔ راست" valueText={pct(p.x)} min={-1} max={1} step={0.01} value={p.x} onChange={x=>onChange({x})}/>
-  <SliderRow label="جلو ↔ عقب" valueText={pct(p.z)} min={-1} max={1} step={0.01} value={p.z} onChange={z=>onChange({z})}/>
+function PropInspector({prop:p,reach:r,onChange,onClose}:{prop:SceneProp;
+ /** How far it may go at this zoom and crop (lib/staging.ts, propReach): the same as dragging it, partly out of the frame on either side. */reach:{xMin:number;xMax:number;zMin:number;zMax:number};
+ onChange:(x:Partial<SceneProp>)=>void;onClose:()=>void}){
+ return <div className="flex flex-col gap-3">
+  <div className="flex flex-wrap items-center gap-2"><SourceIcon id={PROP_ASSETS[p.kind].front}/><span className="type-label text-fg-primary">{p.label}</span><span className="type-caption text-fg-secondary">{propPlaceFa(p)}</span>
+   <Button type="button" variant="ghost" size="sm" className="ms-auto" onClick={onClose} aria-label="برگشت به تنظیمات کادر"><Icon icon={X} aria-hidden="true" className="size-4"/>کادر</Button></div>
+  <SliderRow label="چپ ↔ راست (تا بیرون از کادر)" valueText={pct(p.x)} min={Math.min(r.xMin,p.x)} max={Math.max(r.xMax,p.x)} step={0.01} value={p.x} onChange={x=>onChange({x})}/>
+  <SliderRow label="جلو ↔ عقب (تا بریده از پایین)" valueText={pct(p.z)} min={Math.min(r.zMin,p.z)} max={r.zMax} step={0.01} value={p.z} onChange={z=>onChange({z})}/>
   <SliderRow label="ارتفاع از زمین" valueText={p.y>0.01?pct(p.y):"روی زمین"} min={0} max={1} step={0.01} value={p.y} onChange={y=>onChange({y})}/>
  </div>;
 }

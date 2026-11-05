@@ -62,9 +62,8 @@ function Line({icon,label,children}:{icon:LucideIcon;label:string;children:React
 }
 
 /**
- * A generation plan as part of the conversation (not inside the card): the intent, the references, the camera, framing and lighting
- * diagrams, the camera or shot settings as icon chips and lines, and the hard constraints; preferences, identity lock, continuity, speech and the QA checklist
- * fold under «جزئیات بیشتر». All of it is Whoush's proposal, not verified model settings.
+ * A generation plan as part of the conversation (not inside the card): the intent, the references, the camera or shot settings as icon chips and lines, and the hard constraints; preferences, identity lock, continuity, speech and the QA checklist
+ * fold under «جزئیات بیشتر»; «بوم» (the adjustable scene) comes last. All of it is Whoush's proposal, not verified model settings.
  */
 export function PlanStory({plan,onStagingChange}:{plan:PublicCreativePlan;
  /** When set (the live generation), «بوم» is adjustable and every change flows to the generation card. */onStagingChange?:(s:Staging,aspect:string,changed:boolean)=>void}){
@@ -82,7 +81,6 @@ export function PlanStory({plan,onStagingChange}:{plan:PublicCreativePlan;
    <ul className="flex flex-wrap gap-2">{references.map(r=><li key={r.tag} className="inline-flex h-7 items-center gap-1.5 rounded-control bg-surface-subtle px-2 type-caption text-fg-primary">
     <bdi className="type-label">{displayTag(r.tag)}</bdi><span className="text-fg-secondary">{r.labelFa}{r.roleSource==="inferred"&&" (انتخاب هووش)"}</span></li>)}</ul>
   </Section>}
-  {staging&&<StagingEditor staging={staging} aspectRatio={camera?.aspectRatio} onChange={onStagingChange}/>}
   {camera&&<Section icon={Camera} title="دوربین">
    <ul className="flex flex-wrap gap-2">
     <Spec icon={Ruler} label="لنز">{fa(camera.focalLengthMm)} میلی‌متر</Spec>
@@ -133,6 +131,8 @@ export function PlanStory({plan,onStagingChange}:{plan:PublicCreativePlan;
     </AccordionContent>
    </AccordionItem>
   </Accordion>}
+  {/* «بوم» closes the plan, right above the generation card (and before any question), so the scene sits next to what builds it. */}
+  {staging&&<StagingEditor staging={staging} aspectRatio={camera?.aspectRatio} onChange={onStagingChange}/>}
  </div>;
 }
 

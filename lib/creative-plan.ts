@@ -111,10 +111,15 @@ const LightSchema=z.object({role:z.enum(LIGHT_ROLES),direction:z.enum(LIGHT_DIRE
 export const PROP_KINDS=["person","object","animal","vehicle","tree","building"] as const;
 export const MAX_PROPS=6;
 /**
+ * Ground ranges for props. ±1 sideways and -1..1 in depth is the stage a full shot shows; the wider range lets a prop stand partly out of the frame at any
+ * zoom (the canvas limits each drag to the visible frame plus a little beyond it). `cut` records which frame edges cut the prop, as the canvas shows it.
+ */
+export const PROP_X_RANGE=[-6,6] as const,PROP_Z_RANGE=[-3,1] as const,PROP_CUTS=["left","right","bottom"] as const;
+/**
  * One movable prop on the ground plane, seen from above: x from -1 (frame left) to 1 (right), z from -1 (nearest the camera) to 1 (farthest back), y from 0
  * (on the ground) to 1 (raised). `label` is a short Persian name from the brief («زن», «ماشین قرمز»); `main` marks the main subject.
  */
-const PropSchema=z.object({kind:z.enum(PROP_KINDS),label:z.string().trim().min(1).max(40),x:z.number().min(-1).max(1),z:z.number().min(-1).max(1),y:z.number().min(0).max(1),main:z.boolean().optional()});
+const PropSchema=z.object({kind:z.enum(PROP_KINDS),label:z.string().trim().min(1).max(40),x:z.number().min(PROP_X_RANGE[0]).max(PROP_X_RANGE[1]),z:z.number().min(PROP_Z_RANGE[0]).max(PROP_Z_RANGE[1]),y:z.number().min(0).max(1),main:z.boolean().optional(),cut:z.array(z.enum(PROP_CUTS)).max(3).optional()});
 export type ScenePropInput=z.infer<typeof PropSchema>;
 /** Where the subject sits in the frame (the crop): x from -1 (left edge) to 1 (right), y from -1 (top) to 1 (bottom); 0, 0 is centred. */
 const FramingSchema=z.object({x:z.number().min(-1).max(1),y:z.number().min(-1).max(1)});
@@ -151,7 +156,7 @@ const ws=z.string(),wl=z.array(ws);
 const WireCameraSchema=z.object({look:ws,focalLengthMm:z.number().int().min(8).max(600),aperture:ws,shutter:ws,iso:z.number().int().min(50).max(25600),whiteBalanceK:z.number().int().min(2000).max(12000),framing:ws,lighting:ws,focus:ws,aspectRatio:ws}).strict();
 const WireShotSchema=z.object({shotSize:ws,cameraMovement:ws,lens:ws,targetFps:z.number().int().min(8).max(120),shutterAngle:z.number().int().min(1).max(360),durationSeconds:z.number().min(1).max(60),blocking:ws,continuityNotes:wl}).strict();
 const WireStagingSchema=z.object({subject:z.enum(SUBJECTS),cameraAngle:z.enum(CAMERA_ANGLES),shotSize:z.enum(SHOT_SIZES),framing:z.object({x:z.number().min(-1).max(1),y:z.number().min(-1).max(1)}).strict().nullable(),
- props:z.array(z.object({kind:z.enum(PROP_KINDS),label:ws,x:z.number().min(-1).max(1),z:z.number().min(-1).max(1),y:z.number().min(0).max(1),main:z.boolean()}).strict()).max(MAX_PROPS),lights:z.array(z.object({role:z.enum(LIGHT_ROLES),direction:z.enum(LIGHT_DIRECTIONS),
+ props:z.array(z.object({kind:z.enum(PROP_KINDS),label:ws,x:z.number().min(PROP_X_RANGE[0]).max(PROP_X_RANGE[1]),z:z.number().min(PROP_Z_RANGE[0]).max(PROP_Z_RANGE[1]),y:z.number().min(0).max(1),main:z.boolean()}).strict()).max(MAX_PROPS),lights:z.array(z.object({role:z.enum(LIGHT_ROLES),direction:z.enum(LIGHT_DIRECTIONS),
  height:z.enum(["low","eye","high"]),quality:z.enum(["soft","hard"]),source:z.enum(LIGHT_SOURCES),colorTemperatureK:z.number().int().min(1500).max(12000),colorHex:ws.nullable()}).strict()).min(1).max(4)}).strict();
 export const CreativePlanWireSchema=z.object({
  intentSummaryFa:ws,mediaKind:z.enum(["image","video"]),mediaPrompt:ws,
@@ -178,7 +183,7 @@ export const CreativePlanAnthropicSchema=z.object({...anthropicBase,clarifyingQu
 /** The `extras` instruction for Anthropic, generated from the same enums the full schema enforces. */
 export const ANTHROPIC_EXTRAS_NOTE="Output format note: put reply and staging in the `extras` string field as compact JSON: "+
  '{"reply":{"text":string,"gif":one of '+JSON.stringify(GIF_MOODS)+' or null,"react":one of '+JSON.stringify(REACTION_EMOJIS)+' or null},'+
- '"staging":{"subject":one of '+JSON.stringify(SUBJECTS)+',"cameraAngle":one of '+JSON.stringify(CAMERA_ANGLES)+',"shotSize":one of '+JSON.stringify(SHOT_SIZES)+',"framing":{"x":-1 to 1,"y":-1 to 1} (where the subject sits in the frame; 0,0 centred; omit when centred),"props":[0 to 6 of {"kind":one of '+JSON.stringify(PROP_KINDS)+',"label":short Persian name,"x":-1 to 1,"z":-1 to 1 (-1 nearest the camera),"y":0 to 1,"main":true for the main subject}],"lights":[1 to 4 of {"role":one of '+JSON.stringify(LIGHT_ROLES)+
+ '"staging":{"subject":one of '+JSON.stringify(SUBJECTS)+',"cameraAngle":one of '+JSON.stringify(CAMERA_ANGLES)+',"shotSize":one of '+JSON.stringify(SHOT_SIZES)+',"framing":{"x":-1 to 1,"y":-1 to 1} (where the subject sits in the frame; 0,0 centred; omit when centred),"props":[0 to 6 of {"kind":one of '+JSON.stringify(PROP_KINDS)+',"label":short Persian name,"x":-1 to 1 (beyond ±1 only when the brief wants it partly out of frame),"z":-1 to 1 (-1 nearest the camera; lower only when the frame should cut it),"y":0 to 1,"main":true for the main subject}],"lights":[1 to 4 of {"role":one of '+JSON.stringify(LIGHT_ROLES)+
  ',"direction":one of '+JSON.stringify(LIGHT_DIRECTIONS)+',"height":one of ["low","eye","high"],"quality":one of ["soft","hard"],"source":one of '+JSON.stringify(LIGHT_SOURCES)+
  ',"colorTemperatureK":integer 1500 to 12000,"colorHex":"#rrggbb" only for coloured light, otherwise omit}]}}. Use exactly these values.';
 export function fromAnthropicPlan(raw:unknown):unknown{

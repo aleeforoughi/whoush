@@ -1,5 +1,6 @@
 /** Labels and geometry for the plan diagrams (camera angle, framing, lighting). Pure: no React, safe on the server and in tests. */
-import type {Staging,StagingLight} from "./creative-plan";
+import {PROP_X_RANGE,PROP_Z_RANGE,type Staging,type StagingLight} from "./creative-plan";
+import {VISUALS} from "./visual-assets";
 
 export const CAMERA_ANGLE_FA:Record<Staging["cameraAngle"],string>={birds_eye:"از بالا (نمای پرنده)",high:"زاویهٔ بالا",eye_level:"هم‌سطح چشم",low:"زاویهٔ پایین",worms_eye:"از پایین (نمای کرم)",dutch:"زاویهٔ کج (داچ)"};
 export const SHOT_SIZE_FA:Record<Staging["shotSize"],string>={extreme_close_up:"خیلی نزدیک",close_up:"نمای نزدیک",medium_close_up:"نزدیک متوسط",medium:"نمای متوسط",medium_full:"تا زانو",full:"تمام‌قد",wide:"نمای باز",extreme_wide:"خیلی باز"};
@@ -184,19 +185,21 @@ export function detectProps(normalizedText:string,subject:NonNullable<Staging["s
  found.sort((a,b)=>Number(b.kind===mainKind)-Number(a.kind===mainKind)||a.at-b.at);
  return found.slice(0,6).map((f,i)=>({kind:f.kind,label:f.label,x:SLOTS[i][0],z:SLOTS[i][1],y:0,...(i===0&&f.kind===mainKind?{main:true}:{})}));
 }
-const sideFa=(x:number)=>x<-0.33?"سمت چپ":x>0.33?"سمت راست":"وسط";
-const depthFa=(z:number)=>z<-0.33?"جلو":z>0.33?"عقب":"وسط عمق";
-const sideEn=(x:number)=>x<-0.33?"left":x>0.33?"right":"centre";
-const depthEn=(z:number)=>z<-0.33?"foreground":z>0.33?"background":"midground";
+// A prop's side and depth in words. `cut` (what the canvas frame actually cuts) wins; without it, the stage coordinates (beyond ±1 is outside a full shot's stage).
+const isCut=(p:SceneProp,e:"left"|"right"|"bottom")=>p.cut?p.cut.includes(e):e==="left"?p.x<-1:e==="right"?p.x>1:p.z<-1;
+const sideFa=(p:SceneProp)=>isCut(p,"left")?"نیمه بیرون از کادر، سمت چپ":isCut(p,"right")?"نیمه بیرون از کادر، سمت راست":p.x<-0.33?"سمت چپ":p.x>0.33?"سمت راست":"وسط";
+const depthFa=(p:SceneProp)=>isCut(p,"bottom")?"خیلی نزدیک، بریده از پایین کادر":p.z<-0.33?"جلو":p.z>0.33?"عقب":"وسط عمق";
+const sideEn=(p:SceneProp)=>isCut(p,"left")?"partly out of frame on the left":isCut(p,"right")?"partly out of frame on the right":p.x<-0.33?"left":p.x>0.33?"right":"centre";
+const depthEn=(p:SceneProp)=>isCut(p,"bottom")?"very close, cut by the bottom of the frame":p.z<-0.33?"foreground":p.z>0.33?"background":"midground";
 /** Where a prop stands, in Persian: «سمت راست، عقب، بالاتر از زمین». */
-export const propPlaceFa=(p:SceneProp)=>sideFa(p.x)+"، "+depthFa(p.z)+(p.y>0.15?"، بالاتر از زمین":"");
+export const propPlaceFa=(p:SceneProp)=>sideFa(p)+"، "+depthFa(p)+(p.y>0.15?"، بالاتر از زمین":"");
 /** The scene layout in Persian («چیدمان: زن (اصلی) وسط، جلو؛ ماشین سمت راست، عقب»), empty without props. */
 export function describeLayoutFa(props?:readonly SceneProp[]):string{
  return props?.length?"چیدمان: "+props.map(p=>p.label+(p.main?" (اصلی)":"")+" "+propPlaceFa(p)).join("؛ "):"";
 }
 /** The scene layout in English for the provider prompt, without the Persian labels (kinds only). */
 export function describeLayoutEn(props?:readonly SceneProp[]):string{
- return props?.length?"Layout: "+props.map(p=>p.kind+(p.main?" (main subject)":"")+" "+sideEn(p.x)+" "+depthEn(p.z)+(p.y>0.15?", raised":"")).join("; ")+".":"";
+ return props?.length?"Layout: "+props.map(p=>p.kind+(p.main?" (main subject)":"")+" "+sideEn(p)+" "+depthEn(p)+(p.y>0.15?", raised":"")).join("; ")+".":"";
 }
 /**
  * Tidies a planner's props (never the user's own arrangement): props crowded onto one spot get the default layout (main subject centre front, the others
@@ -220,9 +223,64 @@ export function propInView(p:Pick<SceneProp,"kind"|"x"|"z"|"y">,W:number,H:numbe
  return {x:W/2+p.x*spread,groundY,y:groundY-p.y*unitH*0.5*s,h:PROP_HEIGHT[p.kind]*unitH*s*0.5};
 }
 export function groundFromView(vx:number,vy:number,W:number,H:number):{x:number;z:number}{
- const horizon=H*0.5,near=H*0.96,t=Math.max(0,Math.min(1,(near-vy)/(near-horizon))),spread=W*0.42*(1-t*0.4);
- const c=(v:number)=>Math.max(-1,Math.min(1,Math.round(v*100)/100));
- return {x:c((vx-W/2)/spread),z:c(t*2-1)};
+ const horizon=H*0.5,near=H*0.96,t=Math.max((PROP_Z_RANGE[0]+1)/2,Math.min(1,(near-vy)/(near-horizon))),spread=W*0.42*(1-t*0.4);
+ const r=(v:number)=>Math.round(v*100)/100;
+ return {x:r(Math.max(PROP_X_RANGE[0],Math.min(PROP_X_RANGE[1],(vx-W/2)/spread))),z:r(Math.max(PROP_Z_RANGE[0],Math.min(PROP_Z_RANGE[1],t*2-1)))};
+}
+
+// ---- the frame's camera (shared by the canvas drawing, its drag limits, its sliders and the cut annotation) ----
+/** The frame view's size for an aspect ratio («16:9», «4:5»...): 150 wide when landscape, 110 tall when portrait. */
+export function frameSize(aspect:string):{W:number;H:number}{
+ const m=/^(\d+(?:\.\d+)?)[:x×/](\d+(?:\.\d+)?)$/.exec(aspect.trim());let r=m?Number(m[1])/Number(m[2]):16/9;if(!(r>0.2&&r<5))r=16/9;
+ return r>=1?{W:150,H:Math.round(150/r)}:{W:Math.round(110*r),H:110};
+}
+/** A prop's width in the frame, from its asset's proportions. */
+export function propWidth(kind:SceneProp["kind"],h:number):number{const a=VISUALS[PROP_ASSETS[kind].front];return a?h*a.width/a.height:h;}
+/**
+ * The frame's camera: the scene is laid out once in fixed world positions (as a full shot frames it) and the shot size is a pure zoom `k` of that world
+ * around `F`, the main subject's focus in the anchor scene (Whoush's original layout, so moving any prop never moves the zoom), plus the crop pan.
+ * The frame is centred on that subject by default: `F` sits on the frame's vertical centre line, and, as the shot tightens, on its horizontal one too
+ * (a full or wider shot keeps the ground where it is). screen = pan + C + k·(world − F). `visible` is the world rectangle on screen.
+ */
+export function frameCamera(s:Staging,anchor:Staging|undefined,W:number,H:number){
+ const WORLD=SHOT_BODY_FRACTION.full,unitH=H*0.92/WORLD,k=WORLD/Math.max(scaleOf(s),0.05),fr=s.framing??{x:0,y:0};
+ const ap=(anchor??s).props??[],am=ap.find(p=>p.main)??ap[0];
+ let F:[number,number]=[W/2,H*0.5];
+ if(am){const v=propInView(am,W,H,unitH);F=[v.x,v.y-v.h*(am.kind==="person"?0.88:0.5)];}
+ const pan:[number,number]=[fr.x*W/2,fr.y*H/2],C:[number,number]=[W/2,F[1]+(H/2-F[1])*Math.max(0,Math.min(1,(k-1)/k))];
+ const toWorld=(sx:number,sy:number):[number,number]=>[F[0]+(sx-pan[0]-C[0])/k,F[1]+(sy-pan[1]-C[1])/k];
+ const [l,t]=toWorld(0,0),[r,b]=toWorld(W,H);
+ return {unitH,k,F,pan,visible:{left:l,top:t,right:r,bottom:b},toScreen:(wx:number,wy:number):[number,number]=>[pan[0]+C[0]+k*(wx-F[0]),pan[1]+C[1]+k*(wy-F[1])]};
+}
+/** How far a prop may go out of the frame: its centre up to this share of its width past a side edge, its ground up to this share of its height below the bottom. */
+const OUT_X=0.4,OUT_Z=0.6;
+/**
+ * Where a prop may be dragged at the current zoom and crop: the same reach on the left and on the right of the visible frame (and into the bottom edge),
+ * so it can stand partly out of frame on any side; never further than the stage ranges.
+ */
+export function propReach(p:SceneProp,s:Staging,anchor:Staging|undefined,aspect:string):{xMin:number;xMax:number;zMin:number;zMax:number}{
+ const {W,H}=frameSize(aspect),cam=frameCamera(s,anchor,W,H),v=propInView(p,W,H,cam.unitH),w=propWidth(p.kind,v.h);
+ const horizon=H*0.5,near=H*0.96,t=(p.z+1)/2,spread=W*0.42*(1-t*0.4);
+ const gx=(vx:number)=>(vx-W/2)/spread;
+ const tB=(near-(cam.visible.bottom+v.h*OUT_Z))/(near-horizon);
+ const c=(v:number,[lo,hi]:readonly [number,number])=>Math.round(Math.max(lo,Math.min(hi,v))*100)/100;
+ return {xMin:c(gx(cam.visible.left-w*OUT_X),PROP_X_RANGE),xMax:c(gx(cam.visible.right+w*OUT_X),PROP_X_RANGE),zMin:c(Math.min(-1,tB*2-1),PROP_Z_RANGE),zMax:PROP_Z_RANGE[1]};
+}
+/**
+ * Which frame edges cut a prop as the canvas draws it (left, right, bottom). A bottom cut is listed only for a prop pulled closer than the stage: a tight shot
+ * crops everything at ground level anyway, and the shot size already says so.
+ */
+export function propCuts(p:SceneProp,s:Staging,anchor:Staging|undefined,aspect:string):NonNullable<SceneProp["cut"]>{
+ const {W,H}=frameSize(aspect),cam=frameCamera(s,anchor,W,H),v=propInView(p,W,H,cam.unitH),w=propWidth(p.kind,v.h);
+ const [x0]=cam.toScreen(v.x-w/2,0),[x1]=cam.toScreen(v.x+w/2,0),[,gy]=cam.toScreen(0,v.groundY);
+ const out:NonNullable<SceneProp["cut"]>=[];
+ if(x0<0)out.push("left");if(x1>W)out.push("right");if(!p.main&&p.z<-1&&gy>H+1)out.push("bottom");
+ return out;
+}
+/** The scene with each prop's `cut` set from the frame as drawn, so the words for Whoush and the provider say exactly what the canvas shows. */
+export function withFrameCuts(s:Staging,anchor:Staging|undefined,aspect:string):Staging{
+ if(!s.props?.length)return s;
+ return {...s,props:s.props.map(p=>{const {cut:_,...rest}=p;void _;const c=propCuts(rest,s,anchor,aspect);return c.length?{...rest,cut:c}:rest;})};
 }
 
 // ---- continuous adjustment (smooth controls; the named values are the nearest description) ----
@@ -267,6 +325,8 @@ export function applyStagingCues(s:Staging,normalizedText:string):Staging{
  const angle=CUES.angle.find(([,ws])=>ws.some(has))?.[0],shot=CUES.shot.find(([,ws])=>ws.some(has))?.[0],side=CUES.side.find(([,ws])=>ws.some(has))?.[0];
  const ki=Math.max(0,s.lights.findIndex(l=>l.role==="key"));
  let key=s.lights[ki];for(const c of LIGHT_CUES)if(c.words.some(has))key=c.apply(key);
- return {...s,...(angle?{cameraAngle:angle,cameraElevation:undefined}:{}),...(shot?{shotSize:shot,shotScale:undefined}:{}),
-  ...(side!==undefined?{framing:side===0?undefined:{x:side,y:s.framing?.y??0}}:{}),lights:s.lights.map((l,i)=>i===ki?key:l)};
+ const {framing:_planned,...rest}=s;void _planned;
+ return {...rest,...(angle?{cameraAngle:angle,cameraElevation:undefined}:{}),...(shot?{shotSize:shot,shotScale:undefined}:{}),
+  // The frame is centred by default: only the user's own words (or the canvas) move the subject off centre.
+  ...(side?{framing:{x:side,y:0}}:{}),lights:s.lights.map((l,i)=>i===ki?key:l)};
 }
