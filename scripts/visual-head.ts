@@ -22,3 +22,15 @@ export async function headOf(file:string):Promise<Head|undefined>{
  let sx=0,sn=0;for(let y=top;y<neck;y++)for(let x=0;x<W;x++)if(on(x,y)){sx+=x;sn++;}
  return {top:(top)/H,neck:neck/H,x:sn?sx/sn/W:0.5};
 }
+/**
+ * Where the head is in a person's overhead plan view (the pack's `*-top`), as shares of the picture's width and height: the middle of its hair, picked out
+ * by the hair's blue-grey clay (the body's clay is neutral). The frame turns the plan view about this point, so the head stays where the camera aims.
+ */
+export async function planHeadOf(file:string):Promise<{x:number;y:number}|undefined>{
+ const {data,info}=await sharp(file).ensureAlpha().raw().toBuffer({resolveWithObject:true});
+ const W=info.width,H=info.height,xs:number[]=[],ys:number[]=[];
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=(y*W+x)*4;if(data[i+3]<250)continue;const r=data[i],b=data[i+2];if(r<185&&b-r>=6){xs.push(x);ys.push(y);}}
+ if(xs.length<100)return undefined;
+ xs.sort((a,b)=>a-b);ys.sort((a,b)=>a-b);const q=(a:number[],p:number)=>a[Math.floor(a.length*p)];
+ return {x:(q(xs,0.01)+q(xs,0.99))/2/W,y:(q(ys,0.01)+q(ys,0.99))/2/H};
+}

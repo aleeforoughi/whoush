@@ -299,9 +299,13 @@ test("no jump between angles: up to a ۳/۴ shot a person's face stays where the
   for(const x of seen){assert.ok(Math.hypot(x.f[0]-150,x.f[1]-200)<2,label+" "+shotScale+": the face at the frame's centre ("+x.f.map(Math.round)+")");
    assert.ok(Math.abs(x.head/seen[2].head-1)<0.05,label+" "+shotScale+": head "+x.head.toFixed(0)+" vs "+seen[2].head.toFixed(0));}
  }
- // From overhead, the plan view is placed at the head: the head is still at the centre.
- const s:Staging={...base,cameraElevation:80,shotScale:0.2},v=cssView(s,s,"3:4",300,400),q=propSprites(v,[man],s,s)[0].quad!;
- const c=toScreen(v,q[0].map((x,i)=>(x+q[2][i])/2) as V3)!;assert.ok(Math.hypot(c[0]-150,c[1]-200)<2);
+ // From overhead, the plan view is placed and turned about its head: the head stays at the centre and the picture keeps its size as the person turns.
+ for(const shotScale of [0.2,1.1]){const seen=[0,45,90,135,180].map(facing=>{const p={...man,facing},s:Staging={...base,cameraElevation:80,shotScale,props:[p]},v=cssView(s,s,"3:4",300,400);
+  const sp=propSprites(v,[p],s,s)[0],a=VISUALS[sp.id],q=sp.quad!,at=(u:number,w:number)=>toScreen(v,q[0].map((c,i)=>c+(q[1][i]-c)*u+(q[3][i]-c)*w) as V3)!;
+  const h=at(a.pivot!.x,a.pivot!.y),l=at(0,0.5),r=at(1,0.5);return {h,w:Math.hypot(l[0]-r[0],l[1]-r[1])};});
+  for(const x of seen){assert.ok(Math.hypot(x.h[0]-150,x.h[1]-200)<3,shotScale+": head at "+x.h.map(Math.round));assert.ok(Math.abs(x.w/seen[0].w-1)<0.01);}}
+ // The main subject shows the height chosen even where the camera cannot reach it (a worm's-eye full shot rests on the ground).
+ const low:Staging={...base,cameraElevation:-55,shotScale:1.1};assert.equal(propSprites(cssView(low,low,"3:4",300,400),[man],low,low)[0].stop,"bottom");
 });
 
 test("the overhead plan view turns with the way the person faces; pets face as drawn",()=>{

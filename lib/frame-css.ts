@@ -10,7 +10,7 @@
 import type {Staging} from "./creative-plan";
 import {camera3D,closeShare,propSize,propWorld,stageFromWorld,wideFrameRect,worldOrigin,type Camera3D,type FrameRect} from "./scene3d";
 import {PROP_X_RANGE,PROP_Z_RANGE} from "./creative-plan";
-import {DETAIL_HEIGHT,METERS_PER_Z,VERTICAL_STOPS,cubeDims,facingOf,frameSize,isCharacter,isCube,nearestShot,scaleFromSlider,scaleOf,sliderFromScale,supportOf,verticalIndex,wrap180,type SceneProp,type VerticalStop} from "./staging";
+import {DETAIL_HEIGHT,METERS_PER_Z,elevationOf,VERTICAL_STOPS,cubeDims,facingOf,frameSize,isCharacter,isCube,nearestShot,scaleFromSlider,scaleOf,sliderFromScale,supportOf,verticalIndex,wrap180,type SceneProp,type VerticalStop} from "./staging";
 import {sizeOf,spanM,spriteFor,widthM,familyOf,type SpriteSide} from "./sprites";
 import {VISUALS} from "./visual-assets";
 
@@ -173,15 +173,16 @@ export type PropSprite={i:number;id:string;src:string;
  * from, centred on its middle at its real size, blurred by the lens.
  */
 export function thingSprite(v:CssView,p:Pick<SceneProp,"kind"|"label">,ground:V3,size:{h:number;len:number;wid:number},facing:number,/** Where on it the angle is measured, as a share of its height. */look=0.5,
- /** How close the shot is, 0 (full length and wider) to 1 (a ۳/۴ shot and closer, lib/scene3d.ts closeShare): a close shot places a person by the face. */close=0){
+ /** How close the shot is, 0 (full length and wider) to 1 (a ۳/۴ shot and closer, lib/scene3d.ts closeShare): a close shot places a person by the face. */close=0,
+ /** The height stop to draw it at, when not the one measured (the main subject is drawn at the angle the user chose). */stop?:VerticalStop){
  const h=size.h,centre:V3=[ground[0],ground[1]+h/2,ground[2]];
- const view=viewOf(v,[ground[0],ground[1]+h*look,ground[2]],facing),sp=spriteFor(p,view.stop,view.apparent),a=VISUALS[sp.id];if(!a)return undefined;
+ const measured=viewOf(v,[ground[0],ground[1]+h*look,ground[2]],facing),view=stop?{...measured,stop}:measured,sp=spriteFor(p,view.stop,view.apparent),a=VISUALS[sp.id];if(!a)return undefined;
  const stopDeg=VERTICAL_STOPS.find(x=>x.id===sp.height)!.deg;
  // The image's height in metres: the thing's height foreshortened plus its depth seen from above or below, at its real size. A cube also takes the
  // object's width (a desk is wide and low, a phone thin and tall), so it is stretched sideways to it.
  // Sized to how tall the thing really looks from where the camera is (not from the height its picture was drawn at), so crossing from one angle's
- // picture to the next never changes its size; an overhead plan view is the thing's footprint, at its own size.
- const mpp=spanM(size,sp.height==="top"?stopDeg:view.elevation,sp.side)/a.height,sx=familyOf(p)==="cube"?(widthM(size,sp.side)/a.width)/mpp:1;
+ // picture to the next never changes its size; an overhead plan view is the thing's footprint, the same size whichever way it faces.
+ const mpp=(sp.height==="top"?spanM(size,stopDeg,"front"):spanM(size,view.elevation,sp.side))/a.height,sx=familyOf(p)==="cube"?(widthM(size,sp.side)/a.width)/mpp:1;
  // Placed by its middle; a camera so close that its middle is beside or behind the lens (a worm's-eye close-up) places it by the point it looks at.
  const lookAt:V3=[ground[0],ground[1]+h*look,ground[2]],mppX=mpp*sx;
  // Tilted toward the height the camera sees it from: an image from another height (the pack lacks this one yet) still faces the camera instead of
@@ -193,13 +194,16 @@ export function thingSprite(v:CssView,p:Pick<SceneProp,"kind"|"label">,ground:V3
  // An overhead plan view (no head to measure) is placed at the head's height up close, where the camera looks down onto the head, not the waist.
  const head=a.head,ref=VISUALS[familyOf(p)+"-front"]?.head,person=Boolean(ref)&&(Boolean(head)||sp.height==="top"),k=person?Math.max(0,Math.min(1,close)):0;
  const faceAt:V3=[ground[0],ground[1]+h*DETAIL_HEIGHT.face,ground[2]],mppHead=head&&ref?(ref.neck-ref.top)*h/((head.neck-head.top)*a.height):mpp;
- const m2=mpp+(mppHead-mpp)*k,at:V3=k?add(centre,mul(sub(faceAt,centre),k)):centre;
+ // An overhead plan view lies at the head's height at any zoom (from above, the camera looks down onto the head).
+ const m2=mpp+(mppHead-mpp)*k,at:V3=person&&sp.height==="top"?faceAt:k?add(centre,mul(sub(faceAt,centre),k)):centre;
  // The picture faces the camera squarely, tilted to the camera's real height (it is drawn as seen from about there): nothing of it is foreshortened or
  // reaches toward the lens, and as the camera rises or sinks it turns smoothly with it, so crossing from one angle's picture to the next never jumps.
  // An overhead plan view lies flat.
  const toCamDir=sub(v.pos,at),realDeg=Math.asin(Math.max(-1,Math.min(1,toCamDir[1]/(Math.hypot(...toCamDir)||1))))*180/Math.PI;
  const tilt=sp.height==="top"?seenDeg:realDeg;
- const st=standee(v,at,a.width,a.height,mppX*m2/mpp,m2,sp.mirror,0.5+((head?(head.top+head.neck)/2:0.5)-0.5)*k,tilt,sp.spin,0.5+((head?.x??0.5)-0.5)*k)
+ // An overhead plan view is placed and turned about its head (`pivot`), so the head stays where the camera aims whichever way the person faces.
+ const pv=a.pivot;
+ const st=standee(v,at,a.width,a.height,mppX*m2/mpp,m2,sp.mirror,pv?pv.y:0.5+((head?(head.top+head.neck)/2:0.5)-0.5)*k,tilt,sp.spin,pv?pv.x:0.5+((head?.x??0.5)-0.5)*k)
   ??standee(v,lookAt,a.width,a.height,mppX,mpp,sp.mirror,1-look,seenDeg,sp.spin);if(!st)return undefined;
  const tiles=tilesFor(v,st.o,st.ex,st.ey,a.width,a.height);if(!tiles)return undefined;
  // Drawn at the px it covers on screen, so the lens's blur (screen px) applies as it is; drawn larger than its 640 px image (a close-up), from its HD version.
@@ -216,12 +220,15 @@ export function propSprites(v:CssView,props:readonly SceneProp[],s:Staging,ancho
  const aim=m?Math.max(0,Math.min(1,(v.cam.target[1]-propWorld(m,s,anchor).pos[1])/propSize(m).h)):0.5;
  // How close the shot is: a ۳/۴ shot and closer places a person by the face, a full-length one by the body (thingSprite).
  const close=closeShare(s);
+ // The dominant subject is drawn at the height the user chose: a camera that cannot go lower (a worm's-eye view of a whole figure rests on the ground
+ // and looks up less steeply) still shows the worm's-eye picture, so every stop looks different.
+ const chosen=VERTICAL_STOPS[verticalIndex(elevationOf(s))].id;
  return props.flatMap((p,i):PropSprite[]=>{
   const g=propWorld(p,s,anchor,props).pos as V3,size=sizeOf(p);
   if(isCube(p)){const b=boxFaces(v,g,cubeDims(p),facingOf(p));if(!b)return [];
    return [{i,id:"box",src:"",tiles:[],depth:supportOf(p,props)?b.depth-0.01:b.depth,blur:(s.pivot?s.pivot.on===i:Boolean(p.main))?0:b.blur,side:"front" as SpriteSide,stop:"eye" as VerticalStop,faces:b.faces,
     quads:b.faces.map(f=>f.quad),ground:g,top:[g[0],g[1]+size.h*1.05,g[2]] as V3}];}
-  const t=thingSprite(v,p,g,size,facingOf(p),m&&p.kind===m.kind?aim:0.5,close);
+  const t=thingSprite(v,p,g,size,facingOf(p),m&&p.kind===m.kind?aim:0.5,close,p.main?chosen:undefined);
   // Something resting on another (a phone on a desk) is drawn after it.
   const under=supportOf(p,props);
   // The prop the camera focuses on is sharp: its picture is one flat plane through its middle, but the focus sits on it (its face, or where the user

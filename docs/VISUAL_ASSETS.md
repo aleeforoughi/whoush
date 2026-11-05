@@ -30,9 +30,10 @@
   - **Colours:** several cubes each get their own tint.
 - **Generated** by `scripts/generate-visual-assets.ts` from the same side's eye-level image (plus the style anchor), so design, facing and style match the pack. The dog and the horse start from the cat's style.
   - A generated image faces the way its eye-level reference does unless `NATIVE` in `lib/sprites.ts` says otherwise; check new ones by eye.
-  - **Done:** the man's and the woman's full matrices (the man's side column regenerated as true profiles), except the woman's bottom-back. The dog's and the horse's eye-level sides and plan views. The cat's high side. Dog and horse side pictures face right (`NATIVE`).
-  - **Still to generate (OpenAI credits ran out):** the woman's bottom-back, and the cat's, dog's and horse's high, low and bottom rows. Run `scripts/generate-visual-assets.ts` for the missing ids, then `scripts/visual-hd.ts` and `scripts/visual-manifest.ts`.
-  - **The head in each person picture** is measured by `scripts/visual-head.ts` (its top, its neck, its middle across) and recorded in the manifest (`head`).
+  - **Done:** the man's and the woman's full matrices (the man's side column regenerated as true profiles). The cat's and the dog's high and low rows and most of their bottom rows. The horse's high row. Every family's plan view. Dog and horse side pictures face right (`NATIVE`).
+  - **Still to generate:** the horse's low and bottom rows (OpenAI credits ran out). The dog's bottom-front was refused by the image model's safety filter; reword its prompt before retrying. The cat's and the dog's bottom-side and bottom-3q came out wrong (a front view, a distorted or wrongly facing one) and were removed. Run `scripts/generate-visual-assets.ts` for the missing ids, check them by eye, then run `scripts/visual-hd.ts` and `scripts/visual-manifest.ts`.
+  - **The head in each person picture** is measured by `scripts/visual-head.ts` (its top, its neck, its middle across) and recorded in the manifest (`head`). In a person's plan view it's the middle of the hair (`pivot`): the plan view is placed at the head's height and turned about it, so the head stays where the camera aims whichever way the person faces.
+  - **The dominant subject is drawn at the height chosen,** even where the camera can't reach it (a worm's-eye full shot rests the camera on the ground), so each stop looks different.
   - **Missing images** fall back to the same side at the next height toward eye level (`spriteFor`).
 - **Removed:** the bottle, car, building and tree images (they're cubes now).
 
@@ -55,7 +56,7 @@
     - **Extreme close-up of a character:** the zoom goes on past that, down to the eyes or the mouth (the «لب‌ها» focus detail). The frame stops at the whole head (its height × `HEAD_ROOM`). Tighter, it stays there and a green border on the face shows the real crop, growing and shrinking with the zoom (`closeUp`). No extra images are needed.
     - **Props:** drag as far past either edge as the other (a third of the frame), never behind the lens, and stop before the background (`propReach3D`). Their sliders use the same range.
     - **Focus dot:** stays inside the frame.
-  - **HD characters:** `scripts/visual-hd.ts` exports each character image as a WebP of up to 1536 px from its raw generation, trimmed exactly like the 640 px PNG. The frame uses it when a character is drawn larger than its PNG. Re-run it, then `scripts/visual-manifest.ts`, after generating.
+  - **HD characters:** `scripts/visual-hd.ts` exports each character image as a WebP of up to 1536 px from its raw generation, trimmed exactly like the 640 px PNG. The frame uses it when a character is drawn larger than its PNG. A raw that no longer trims to the PNG's shape (regenerated or refinished since) gets no HD version, so a close-up is never stretched; HD files without a PNG are removed. Re-run it, then `scripts/visual-manifest.ts`, after generating.
 - **WebGL (Plan B, parked):** the three.js models are kept in `components/scene-3d.tsx` and on the `archive/plan-b-3d` branch. Switch with `FRAME_RENDERER` in `components/staging-editor.tsx`.
 - **Angle controls:** the height and orbit sliders, the camera drags and each prop's turn snap to the stops. The joystick in the frame's bottom-left steps them: up and down change the height, left and right orbit 45°. Its centre shows the angle and resets to eye level, from the front.
 
