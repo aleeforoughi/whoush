@@ -151,7 +151,11 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  // Collapsed by default. A focused follow-up (one part, e.g. the camera's distance) shows just that part's controls in the collapsed card, live; expanding shows
  // every setting (frame, camera, lighting...), and collapsing goes back to just that part.
  const [open,setOpen]=useState(false),bodyId=useId(),focused=Boolean(focus?.length);
+ // Expanded, the frame is always open; the camera and the lighting are sub-sections, closed until opened (a follow-up about one part opens it).
+ const [subOpen,setSubOpen]=useState({camera:false,light:false});
  const full=open,show=(sec:CanvasSection)=>full||!focused||Boolean(focus?.includes(sec));
+ // A follow-up about one part (the card not fully open) shows that part open.
+ const camOpen=subOpen.camera||(!full&&focused),lightOpen=subOpen.light||(!full&&focused);
  // A press anywhere outside the frame and its controls (elsewhere in the canvas, or outside it) deselects the prop: the frame is selected again. Not while
  // the selection is locked.
  // The centre point can be selected too (its dot): its own settings show, and the badge reads «تنظیم مرکز».
@@ -241,7 +245,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     </>}
    </Viewport>
    </div>}
-   {(show("angle")||show("distance")||show("lens"))&&<div><Viewport {...cap.camera}>
+   {(show("angle")||show("distance")||show("lens"))&&<div><SubSection c={cap.camera} open={camOpen} onToggle={()=>setSubOpen(o=>({...o,camera:!camOpen}))}><Viewport {...cap.camera}>
     {show("angle")&&<>
     {/* The two camera views, each its own tile: from the side (height and distance) and from above (the orbit), synced through one scene. Stacked on a
         phone, so each is big enough to drag with a finger; side by side where the card is wide. */}
@@ -296,8 +300,8 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
       <SliderRow label="دیافراگم" ends={["باز، محو","بسته، واضح"]} valueText={l.aperture+auto(l.auto.aperture)} min={0} max={1} step={0.001} value={apertureSlider(l.apertureF)}
        onChange={v=>setManual({apertureF:apertureFromSlider(v)})}/>
      </>;})()}
-   </Viewport></div>}
-   {show("light")&&<div>
+   </Viewport></SubSection></div>}
+   {show("light")&&<div><SubSection c={cap.light} open={lightOpen} onToggle={()=>setSubOpen(o=>({...o,light:!lightOpen}))}>
     <Viewport {...cap.light}>
      <LightView staging={draft} editable={editable} selected={lightSel} onSelect={setLightSel} onLight={(i,deg)=>setLight(i,{angle:deg,direction:snapDirection(deg)})}/>
     </Viewport>
@@ -305,7 +309,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
      onChange={p=>setLight(lightSel,p)}
      onRemove={()=>{const i=lightSel;setDraft(d=>({...d,lights:d.lights.filter((_,j)=>j!==i)}));setLightSel(0);}}
      onAdd={draft.lights.length<4?()=>{setDraft(d=>({...d,lights:[...d.lights,{role:"fill",direction:"front_right",height:"eye",quality:"soft",source:"softbox",colorTemperatureK:5600}]}));setLightSel(draft.lights.length);}:undefined}/></div>}
-   </div>}
+   </SubSection></div>}
    {!full&&<Button type="button" variant="ghost" size="sm" className="self-center" onClick={()=>setOpen(true)}><Icon icon={ChevronDown} aria-hidden="true"/>همهٔ تنظیمات بوم</Button>}
   </div>
   </div>
@@ -694,6 +698,22 @@ function Toggle({label,on,onChange}:{label:string;on:boolean;onChange:(on:boolea
   <span dir="ltr" className={"relative inline-block h-5 w-9 shrink-0 rounded-full transition-colors motion-reduce:transition-none "+(on?"bg-primary":"bg-surface-hover")}><span className={"absolute top-0.5 size-4 rounded-full transition-[inset-inline-start] motion-reduce:transition-none "+(on?"start-4.5 bg-primary-foreground":"start-0.5 bg-fg-secondary")}/></span>
   <span>{label}</span>
  </button>;
+}
+/**
+ * A sub-section of the expanded card (the camera, the lighting): a header row with its title and current value that opens or closes it, closed by
+ * default so the card stays short; the frame above it is always open.
+ */
+function SubSection({c,open,onToggle,children}:{c:{title:string;value:string};open:boolean;onToggle:()=>void;children:ReactNode}){
+ const id=useId();
+ return <div className="flex flex-col gap-3">
+  <button type="button" aria-expanded={open} aria-controls={id} onClick={onToggle}
+   className="flex w-full items-center gap-3 rounded-card px-3 py-2.5 text-start motion-hover hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+   <span className="rounded-control bg-surface-hover px-2 py-0.5 type-caption text-fg-secondary">{c.title}</span>
+   <span className="min-w-0 truncate type-label text-fg-primary">{c.value}</span>
+   <Icon icon={ChevronDown} size={16} aria-hidden="true" className={"ms-auto size-4 shrink-0 text-fg-secondary transition-transform motion-reduce:transition-none "+(open?"rotate-180":"")}/>
+  </button>
+  {open&&<div id={id} className="flex flex-col">{children}</div>}
+ </div>;
 }
 /** A thin divider between the parts of a section (the camera's angle, distance and lens), with room around it. */
 function SectionRule(){return <hr aria-hidden="true" className="my-1 border-0 border-t border-line-secondary/40"/>;}
