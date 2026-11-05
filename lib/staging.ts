@@ -426,6 +426,9 @@ export function blurAt(s:Staging,z:number|"backdrop",focusZ?:number|"backdrop"):
 }
 /** Where the user put the focus (the centre point moved off the main subject), in words for the provider and for Whoush; empty on the main subject. */
 function focusTarget(s:Staging){
+ // A focus point placed in the frame says what it sits on.
+ if(s.pivot){const on=s.pivot.on;if(on==="backdrop")return {en:"the far background",fa:"پس‌زمینهٔ دور"};if(on==="ground")return {en:"that spot on the ground",fa:"همان نقطه روی زمین"};
+  const p=(s.props??[])[on];return p&&!p.main?{en:"the "+p.kind,fa:p.label}:undefined;}
  if(!s.focusPoint)return undefined;
  const {W,H}=frameSize("16:9"),z=focusDepth(s,undefined,W,H);
  if(z===undefined)return undefined;
@@ -746,7 +749,7 @@ export function sectionsFromWords(normalizedText:string):CanvasSection[]{
 /** The parts of «بوم» that differ between two scenes (a revision's plan against the generation it revises). */
 export function stagingSections(a:Staging,b:Staging):CanvasSection[]{
  const keys:Record<Exclude<CanvasSection,"light">,(keyof Staging)[]>={
-  frame:["framing","focusPoint","focusDetail","props","environmentDistance"],angle:["cameraAngle","cameraElevation","cameraAzimuth","cameraRoll","shotStyle"],
+  frame:["framing","focusPoint","pivot","focusDetail","props","environmentDistance"],angle:["cameraAngle","cameraElevation","cameraAzimuth","cameraRoll","shotStyle"],
   distance:["shotSize","shotScale"],lens:["lensMm","apertureF","autopilot"]};
  const pick=(s:Staging,k:(keyof Staging)[])=>JSON.stringify(k.map(x=>s[x]??null));
  return CANVAS_SECTIONS.filter(sec=>sec==="light"?JSON.stringify(a.lights)!==JSON.stringify(b.lights):pick(a,keys[sec])!==pick(b,keys[sec]));

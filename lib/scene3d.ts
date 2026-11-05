@@ -38,6 +38,7 @@ export type Camera3D={
  /** Barrel distortion for ultra-wide and fisheye lenses (0 none, 1 strong), from about 15 mm down. */fisheye:number;
  /** Depth of field: where the focus is (metres from the camera), the lens and the aperture. */focusDistance:number;focalMm:number;aperture:number;
  /** The background's distance behind the subject, metres (a room's wall, mountains...). */backdrop:number;
+ /** The focus point the user placed, in the world (unset: the aim point is the focus). */pivot?:[number,number,number];
 };
 /**
  * The camera, as the 2D canvas and the prompt see it: the lens and aperture (Whoush's or the user's), the distance solved from the shot size (on the frame's
@@ -57,6 +58,18 @@ export function camera3D(s:Staging,anchor:Staging|undefined,aspect:string):Camer
  const position:[number,number,number]=[target[0],target[1]+d*Math.sin(e),target[2]+d*Math.cos(e)];
  const fov=2*Math.atan((sensorV/2)/c.f)*180/Math.PI;
  const fr=s.framing??{x:0,y:0};
+ // A focus point the user placed: the camera keeps its direction and stands on the line through that point, its distance scaled with the shot's, so
+ // placing it changes nothing and a zoom dollies toward it (it stays where it is in the frame). It focuses there.
+ if(s.pivot){
+  const pv=s.pivot,o=worldOrigin(s,anchor),P:[number,number,number]=[(pv.x-o.x)*X_M,pv.y,-(pv.z-o.z)*METERS_PER_Z];
+  const f:[number,number,number]=[0,-Math.sin(e),-Math.cos(e)],r:[number,number,number]=[1,0,0],u:[number,number,number]=[0,Math.cos(e),-Math.sin(e)];
+  const ray=[f[0]+r[0]*pv.a+u[0]*pv.b,f[1]+r[1]*pv.a+u[1]*pv.b,f[2]+r[2]*pv.a+u[2]*pv.b],len=Math.hypot(...ray),t=pv.k*d;
+  const pos:[number,number,number]=[P[0]-ray[0]/len*t,P[1]-ray[1]/len*t,P[2]-ray[2]/len*t];
+  const aimAt:[number,number,number]=[pos[0]+f[0]*d,pos[1]+f[1]*d,pos[2]+f[2]*d];
+  const depth=(P[0]-pos[0])*f[0]+(P[1]-pos[1])*f[1]+(P[2]-pos[2])*f[2];
+  return {position:pos,target:aimAt,fov,roll:rollOf(s)*Math.PI/180,shift:[-fr.x/2,-fr.y/2],fisheye:Math.max(0,Math.min(1,(15-c.f)/7)),
+   focusDistance:Math.max(0.05,depth),focalMm:c.f,aperture:c.N,backdrop:backdropM(s),pivot:P};
+ }
  // Focus: on the centre point, or on whatever the user moved it onto (a prop, the ground, the far background).
  const fz=focusDepth(s,anchor,W,H),dist=(p:[number,number,number])=>Math.hypot(p[0]-position[0],p[1]-position[1],p[2]-position[2]);
  const focusOn=fz===undefined?dist(target):fz==="backdrop"?d+backdropM(s):(()=>{const p=(s.props??[]).find(x=>x.z===fz);

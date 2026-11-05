@@ -4,7 +4,7 @@ import type {Staging} from "../lib/creative-plan";
 import {VERTICAL_STOPS,snapSide,snapVertical,verticalIndex} from "../lib/staging";
 import {sideOf,spriteFor} from "../lib/sprites";
 import {VISUALS} from "../lib/visual-assets";
-import {blurPx,cssView,groundAt,propSprites,toScreen,type V3} from "../lib/frame-css";
+import {blurPx,cssView,fish,focusWorld,gridBands,groundAt,pickPivot,propSprites,standee,toScreen,unfish,type V3} from "../lib/frame-css";
 
 const man={kind:"person" as const,label:"مرد",x:0,z:-0.25,y:0,main:true};
 const base:Staging={subject:"person",cameraAngle:"eye_level",shotSize:"full",props:[man],lights:[]};
@@ -116,4 +116,53 @@ test("the background's distance: Whoush's estimate, words in the brief, or the p
  // A far background blurs more through a wide-open lens.
  const v=(d:number)=>cssView({...base,shotSize:"medium",lensMm:85,apertureF:1.8,autopilot:false,environmentDistance:d},undefined,"16:9",800,450);
  assert.ok(blurPx(v(500),v(500).cam.focusDistance+500)>blurPx(v(2),v(2).cam.focusDistance+2));
+});
+
+test("focus point: placing it never moves the picture; it sits where it was placed, focuses there, and a zoom dollies toward it",()=>{
+ const far={kind:"person" as const,label:"مرد",x:0.6,z:1,y:0};
+ const s:Staging={...base,props:[man,far],lensMm:50,apertureF:1.8,autopilot:false};
+ const v0=cssView(s,s,"16:9",1000,562.5),feet0=toScreen(v0,[0,0,0])!,target=toScreen(v0,[0.6*3,1.2,-5])!;
+ const pivot=pickPivot(s,s,"16:9",target[0]/1000,target[1]/562.5);
+ assert.equal(pivot.on,1,"it sits on the man behind");
+ const s1={...s,pivot},v1=cssView(s1,s,"16:9",1000,562.5),feet1=toScreen(v1,[0,0,0])!,dot=toScreen(v1,focusWorld(v1))!;
+ assert.ok(Math.hypot(feet1[0]-feet0[0],feet1[1]-feet0[1])<1,"the picture stays still");
+ assert.ok(Math.hypot(dot[0]-target[0],dot[1]-target[1])<2,"the dot is where it was placed");
+ const sp=propSprites(v1,s1.props!,s1,s);
+ assert.ok(blurPx(v1,sp[1].depth)<0.01&&blurPx(v1,sp[0].depth)>2,"the man behind is sharp, the main subject in front is soft");
+ const v2=cssView({...s1,shotSize:"medium"},s,"16:9",1000,562.5),dot2=toScreen(v2,focusWorld(v2))!;
+ assert.ok(Math.hypot(dot2[0]-dot[0],dot2[1]-dot[1])<1,"zooming keeps the focus point where it is");
+});
+
+test("lens: a level camera keeps verticals vertical; a tilted one makes them lean; a wide lens stretches toward the edges",()=>{
+ const shape=(lens:number,angle:Staging["cameraAngle"],dx:number)=>{
+  const v=cssView({...base,cameraAngle:angle,lensMm:lens,autopilot:false},undefined,"16:9",1000,562.5);
+  const t=v.cam.target as V3,depth=Math.hypot(t[0]-v.pos[0],t[1]-v.pos[1],t[2]-v.pos[2]);
+  // The same 1 m × 1 m picture beside the aim point, `dx` of the frame's half width to the side.
+  const half=depth*Math.tan(v.cam.fov*Math.PI/360)*16/9,st=standee(v,[t[0]+dx*half,t[1],t[2]],100,100,0.01,0.01,false,0.5,angle==="eye_level"?0:35)!;
+  const p=st.quad.map(q=>toScreen(v,q)!),w=Math.hypot(p[1][0]-p[0][0],p[1][1]-p[0][1]),h=Math.hypot(p[3][0]-p[0][0],p[3][1]-p[0][1]);
+  return {stretch:w/h,lean:Math.atan2(p[3][0]-p[0][0],p[3][1]-p[0][1])*180/Math.PI};};
+ assert.ok(Math.abs(shape(15,"eye_level",0.8).lean)<0.01,"level: upright at the edge");
+ assert.ok(Math.abs(shape(15,"high",0.8).lean)>5,"tilted down: verticals lean toward the centre");
+ assert.ok(shape(15,"eye_level",0.8).stretch>shape(15,"eye_level",0).stretch*1.3,"15 mm stretches things at the edge");
+ assert.ok(shape(85,"eye_level",0.8).stretch<shape(85,"eye_level",0).stretch*1.05,"85 mm barely does");
+});
+
+test("fisheye under 15 mm: the picture bulges from the centre, the corners stay; none above 15 mm",()=>{
+ const v=cssView({...base,lensMm:12,autopilot:false},undefined,"16:9",800,450);
+ assert.ok(v.fish>0);
+ const [x,y]=fish(v,...unfish(v,600,120));assert.ok(Math.hypot(x-600,y-120)<1e-6,"the two mappings invert each other");
+ const c=unfish(v,800,450);assert.ok(Math.hypot(c[0]-800,c[1]-450)<1e-6,"a corner stays a corner");
+ const m=unfish(v,500,225);assert.ok(m[0]<500,"near the centre, the picture comes from closer to the centre (it is magnified)");
+ assert.equal(cssView({...base,lensMm:24,autopilot:false},undefined,"16:9",800,450).fish,0);
+});
+
+test("aperture: the ground blurs band by band with distance, and the horizon as much as infinity",()=>{
+ const v=cssView({...base,shotSize:"medium",lensMm:85,apertureF:1.4,autopilot:false},undefined,"16:9",800,450),bands=gridBands(v);
+ // Sharpest around the focus (3 m here), blurrier both nearer the lens and farther away, the far bands approaching the horizon's blur.
+ const blurs=bands.map(b=>b.blur),sharpest=Math.min(...blurs),at=blurs.indexOf(sharpest);
+ assert.ok(at>0&&at<blurs.length-1,"the sharpest band is in between: "+blurs.map(b=>b.toFixed(1)));
+ assert.ok(blurs.slice(at).every((b,i,a)=>i===0||b>=a[i-1]),"behind the focus, blur grows with distance");
+ assert.ok(Math.abs(blurs[blurs.length-1]-blurPx(v,1e5))<blurPx(v,1e5)*0.1,"the farthest band is nearly as soft as the horizon");
+ const deep=cssView({...base,shotSize:"medium",lensMm:24,apertureF:16,autopilot:false},undefined,"16:9",800,450);
+ assert.ok(blurPx(deep,1e5)<blurPx(v,1e5)/10,"stopped down on a wide lens, the background stays sharp");
 });

@@ -5,14 +5,33 @@
  * stop and side the camera sees it from, and the aperture blurs each thing by its distance from the focus. Same props as the 3D view, so the frame and its
  * full-screen view use either.
  */
-import {useEffect,useLayoutEffect,useRef,useState,type CSSProperties,type PointerEvent} from "react";
+import {useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type PointerEvent} from "react";
 import type {Scene3DProps} from "./scene-3d";
 import {SCENE_COLORS} from "@/lib/scene3d";
-import {cssView,toScreen,horizonY,billboard,plane,nearZ,blurPx,boxFaces,shade,propSprites,stageAt,gridLines,type CssView,type V3} from "@/lib/frame-css";
+import {cssView,toScreen,horizonY,billboard,plane,nearZ,blurPx,boxFaces,shade,propSprites,stageAt,gridBands,focusWorld,unfish,toCam,type CssView,type V3} from "@/lib/frame-css";
 import {propTints} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 
 const C=SCENE_COLORS;
+/** The fisheye displacement's range, as a share of the frame's long side (the map stores ± half of it). */
+const FISH_SCALE=0.5;
+/**
+ * The fisheye as an SVG displacement map: each pixel of the distorted picture says where in the straight picture it comes from (red across, green down,
+ * 0.5 for none), built once per strength and frame shape. Browser only.
+ */
+function fisheyeMap(v:CssView):string|undefined{
+ if(typeof document==="undefined")return undefined;
+ const N=160,c=document.createElement("canvas");c.width=N;c.height=N;const g=c.getContext("2d");if(!g)return undefined;
+ const img=g.createImageData(N,N);
+ for(let j=0;j<N;j++)for(let i=0;i<N;i++){
+  const x=(i+0.5)/N*v.w,y=(j+0.5)/N*v.h,[sx,sy]=unfish(v,x,y),k=(j*N+i)*4;
+  // Both channels share one scale (the frame's long side), as feDisplacementMap applies one scale to both.
+  const L=Math.max(v.w,v.h)*FISH_SCALE;
+  img.data[k]=Math.round(255*Math.min(1,Math.max(0,0.5+(sx-x)/L)));img.data[k+1]=Math.round(255*Math.min(1,Math.max(0,0.5+(sy-y)/L)));
+  img.data[k+2]=128;img.data[k+3]=255;
+ }
+ g.putImageData(img,0,0);return c.toDataURL("image/png");
+}
 /** A thing placed by its CSS transform about the perspective origin (its local origin), drawn back to front. */
 type Layer={key:string;depth:number;style:CSSProperties;src?:string;prop?:number};
 const rnd=(i:number)=>((Math.sin(i*12.9898)*43758.5453)%1+1)%1;
@@ -21,7 +40,10 @@ const at=(v:CssView):CSSProperties=>({position:"absolute",left:v.pp[0],top:v.pp[
 /** The place behind the props, at its real distance: floors and walls as planes, far things as the pack's images (hazed, blurred by the lens). */
 function placeLayers(v:CssView,env:string,D:number):Layer[]{
  const out:Layer[]=[],K=10,z0=Math.min(nearZ(v,0),nearZ(v,3));
- const sheet=(key:string,o:V3,ex:V3,ey:V3,w:number,h:number,bg:string,depth:number,extra:CSSProperties={})=>{if(w>0&&h>0)out.push({key,depth,style:{...at(v),width:w,height:h,background:bg,transform:plane(v,o,ex,ey),...extra}});};
+ // A wall or floor, blurred by the lens at the distance of its middle.
+ const sheet=(key:string,o:V3,ex:V3,ey:V3,w:number,h:number,bg:string,depth:number,extra:CSSProperties={})=>{if(!(w>0&&h>0))return;
+  const mid:V3=[o[0]+ex[0]*w/2+ey[0]*h/2,o[1]+ex[1]*w/2+ey[1]*h/2,o[2]+ex[2]*w/2+ey[2]*h/2],dep=toCam(v,mid)[2],bl=dep>0.1?blurPx(v,dep)*dep/(Math.hypot(...ex)*v.D):0;
+  out.push({key,depth,style:{...at(v),width:w,height:h,background:bg,transform:plane(v,o,ex,ey),...extra,filter:[extra.filter,bl>0.4?"blur("+bl.toFixed(1)+"px)":""].filter(Boolean).join(" ")||undefined}});};
  const far=(key:string,src:string,iw:number,ih:number,centre:V3,mpp:number,haze=1,sx=1,mirror=false)=>{const b=billboard(v,centre,mpp,mirror,0.3,sx);if(!b)return;const bl=blurPx(v,b.depth)/b.px;
   out.push({key,depth:b.depth,src,style:{...at(v),width:iw,height:ih,opacity:haze,transform:b.transform+" translate(-50%,-50%)",filter:bl>0.4?"blur("+bl.toFixed(1)+"px)":undefined}});};
  const thing=(key:string,fam:"tree"|"building",x:number,z:number,h:number,haze:number)=>{const wd=fam==="tree"?h*0.5:6+h*0.3,b=boxFaces(v,[x,0,z],{w:wd,h,d:wd},0);
@@ -57,11 +79,14 @@ export default function FrameCSS({staging,anchor,aspect,editable,sel,onSelect,on
  const base=(staging.props??[]).map((p,i)=>moving?.i===i?{...p,x:moving.x,z:moving.z}:p);
  // The camera comes from the scene as it is (a prop being dragged moves only itself).
  const v=w>0&&h>0?cssView(staging,anchor,aspect,w,h,wide):undefined;
+ const fishK=v?Math.round(v.fish*100)/100:0,ratio=w>0&&h>0?Math.round(w/h*100)/100:1;
+ // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the strength and the frame's shape only
+ const fishMap=useMemo(()=>v&&fishK>0?fisheyeMap(v):undefined,[fishK,ratio]);
  const sprites=v?propSprites(v,base,staging,anchor):[];
  const tints=propTints(base);
  // Where the centre point and the top of the selected prop land, for the frame's overlays; where the frame lies in the wide view.
  const proj:Record<string,[number,number]>={};
- if(v){const c=toScreen(v,v.cam.target as V3);if(c)proj.center=[c[0]/w,c[1]/h];
+ if(v){const c=toScreen(v,focusWorld(v));if(c)proj.center=[c[0]/w,c[1]/h];
   const sp=sel!=null?sprites.find(s=>s.i===sel):undefined;const t=sp&&toScreen(v,sp.top);if(t)proj.sel=[t[0]/w,t[1]/h];}
  const projKey=JSON.stringify(proj),rectKey=JSON.stringify(v?.frame??null);
  useEffect(()=>{if(v)onProject?.(JSON.parse(projKey));
@@ -81,8 +106,9 @@ export default function FrameCSS({staging,anchor,aspect,editable,sel,onSelect,on
    filter:[tints[s.i]||sel===s.i?"url(#fc-t"+s.i+")":"",s.blur>0.4?"blur("+s.blur.toFixed(1)+"px)":""].filter(Boolean).join(" ")||undefined} as CSSProperties}))]
   .sort((a,b)=>b.depth-a.depth);
  const hz=Math.max(-h*3,Math.min(h*4,horizonY(v)));
- // The ground's grid, in front of the camera only: it shows the lens's perspective (a wide lens close up runs it steeply to the horizon).
- const grid=gridLines(v);
+ // The ground's grid, in front of the camera only: it shows the lens's perspective (a wide lens close up runs it steeply to the horizon), each band of it
+ // blurred by the lens at its distance. The sky and the far ground are at the horizon's distance (as blurred as the lens makes infinity).
+ const bands=gridBands(v),inf=blurPx(v,1e5),infBlur=inf>0.4?"blur("+inf.toFixed(1)+"px)":undefined;
  const down=(i:number)=>(e:PointerEvent<HTMLElement>)=>{
   if(!editable||e.button>0||(lockedTo!==undefined&&lockedTo!==i))return;e.stopPropagation();onPropDown?.();onSelect?.(i);
   const s=sprites.find(x=>x.i===i);if(!s)return;const f=toScreen(v,s.ground);if(!f)return;
@@ -100,12 +126,20 @@ export default function FrameCSS({staging,anchor,aspect,editable,sel,onSelect,on
    <defs>{base.map((_,i)=>(tints[i]||sel===i)&&<filter key={i} id={"fc-t"+i} colorInterpolationFilters="sRGB">
     <feFlood style={{floodColor:sel===i?"var(--color-primary)":tints[i]}}/><feComposite in2="SourceAlpha" operator="in"/><feBlend in2="SourceGraphic" mode="multiply"/></filter>)}</defs>
   </svg>
+  {fishMap&&<svg aria-hidden="true" width={0} height={0} className="absolute"><defs>
+   <filter id="fc-fish" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse" x={0} y={0} width={w} height={h} colorInterpolationFilters="sRGB">
+    <feImage href={fishMap} x={0} y={0} width={w} height={h} preserveAspectRatio="none" result="map"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale={FISH_SCALE*Math.max(w,h)} xChannelSelector="R" yChannelSelector="G"/>
+   </filter></defs></svg>}
+  <div className="absolute inset-0" style={{filter:fishMap?"url(#fc-fish)":undefined}}>
   <div className="absolute inset-0" style={{transform:"rotate("+v.roll+"deg)",transformOrigin:"50% 50%"}}>
    {/* The sky down to the horizon (lighter toward it), the ground below it; the planes and images in perspective on top. */}
-   <div className="absolute" style={{left:-w,width:w*3,top:-h*3,height:hz+h*3,background:"linear-gradient(to bottom,"+C.sky+" 70%,"+C.horizon+")"}}/>
-   <div className="absolute" style={{left:-w,width:w*3,top:hz,height:h*5,background:C.ground}}/>
+   <div className="absolute" style={{left:-w,width:w*3,top:-h*3,height:hz+h*3,background:"linear-gradient(to bottom,"+C.sky+" 70%,"+C.horizon+")",filter:infBlur}}/>
+   <div className="absolute" style={{left:-w,width:w*3,top:hz,height:h*5,background:C.ground,filter:infBlur}}/>
    <svg aria-hidden="true" className="pointer-events-none absolute overflow-visible" style={{left:0,top:0}} width={w} height={h}>
-    {grid.map((g,k)=><line key={k} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke={C.grid} strokeWidth={1} strokeOpacity={1-g.far*0.8}/>)}
+    <defs>{bands.map((b,k)=>b.blur>0.4&&<filter key={k} id={"fc-g"+k} x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation={b.blur.toFixed(2)}/></filter>)}</defs>
+    {bands.map((b,k)=><g key={k} filter={b.blur>0.4?"url(#fc-g"+k+")":undefined} stroke={C.grid} strokeWidth={1} strokeOpacity={1-b.fade*0.8}>
+     {b.lines.map((l,j)=><line key={j} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2}/>)}</g>)}
    </svg>
    <div className="absolute inset-0" style={{perspective:v.D+"px",perspectiveOrigin:v.pp[0]+"px "+v.pp[1]+"px"}}>
     {layers.map(l=>l.src
@@ -115,6 +149,7 @@ export default function FrameCSS({staging,anchor,aspect,editable,sel,onSelect,on
      :<div key={l.key} aria-hidden="true" style={l.style}
       {...(l.prop!==undefined&&editable?{onPointerDown:down(l.prop),onPointerMove:move(l.prop),onPointerUp:up(l.prop),onPointerCancel:()=>{grab.current=null;setMoving(null);}}:{})}/>)}
    </div>
+  </div>
   </div>
  </div>;
 }
