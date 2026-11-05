@@ -18,7 +18,10 @@ export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;no
 export type OrchestratorResult=
  |{status:"planned";turnId:string;proposal:GenerationProposal;plan:PublicCreativePlan}
  |{status:"unsupported";turnId:string;plan:PublicCreativePlan;message:string;suggestedModel?:SuggestedModel}
- |{status:"restricted";decision:"block"|"review";category:SafetyCategory;message:string};
+ |{status:"restricted";decision:"block"|"review";category:SafetyCategory;message:string}
+ /** Whoush needs one critical answer before it can offer a generation: no plan card, no price, only the question. */
+ |{status:"needs_input";turnId:string;message:string;question:string};
+const FA_NEEDS_INPUT="برای ساختنش یک چیز مهم را باید بدانم.";
 const FA_REFUSED="این درخواست در حال حاضر قابل پردازش نیست. لطفاً آن را با توضیح غیرحساس‌تر دوباره بنویس.";
 const FA_NO_REFS="برنامه تولید با کاراکتر انتخاب‌شده آماده است، اما هنوز هیچ مدل تأییدشده‌ای عکس مرجع کاراکتر را نمی‌پذیرد؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 const FA_TEXT_BLOCKED="یکی از فایل‌های متنیِ پیوست‌شده مسدود شد. ";
@@ -48,7 +51,8 @@ const MOVES:ReadonlyArray<readonly [RegExp,Pair]>=[
 const DOLLY=P("slow dolly-in at walking pace","دالی‌این آرام با سرعت قدم زدن");
 const viewTitles=(ids:readonly string[])=>ids.map(id=>CHARACTER_VIEWS.find(v=>v.id===id)?.title??id).join("، ");
 const missingViews=(angles:readonly string[])=>REQUIRED_CHARACTER_VIEWS.filter(v=>!angles.includes(v));
-const missingQuestion=(angles:readonly string[])=>{const m=missingViews(angles);return m.length?"زاویه‌های «"+viewTitles(m)+"» هنوز اضافه نشده‌اند و ساخته نمی‌شوند؛ ادامه بدهیم یا اول آن‌ها را اضافه می‌کنی؟":undefined;};
+/** Missing character angles are Whoush's call, not a question: it continues with the provided angles and says so in the plan. */
+const missingAnglesNote=(angles:readonly string[])=>{const m=missingViews(angles);return m.length?"زاویه‌های «"+viewTitles(m)+"» هنوز اضافه نشده‌اند؛ هووش فقط از زاویه‌های موجود استفاده می‌کند و آن‌ها را از خودش نمی‌سازد":undefined;};
 const fas=(l:readonly Pair[])=>l.map(x=>x.fa);
 const ens=(l:readonly Pair[])=>l.map(x=>x.en);
 // ---- the style chosen in the + menu ----
@@ -151,7 +155,8 @@ export function deterministicPlanner(req:PlannerRequest):{plan:CreativePlan}{
  const directives=fas(directivesP);
  const hard=fas(hardP);
  const docs=(req.attachments??[]).filter(a=>a.textExcerpt).length,pdfs=(req.attachments??[]).filter(a=>a.kind==="pdf").length;
- const soft=[...fas(sd.soft),kind==="image"?"نسبت تصویر "+faDigits(camera.aspectRatio):"کادر مناسب پلتفرم با جذابیت واضح در ثانیهٔ اول",...fas(rd.soft),...(night?["حال‌وهوای کم‌نور با منابع نور واقعی صحنه"]:[]),
+ const anglesNote=ref?missingAnglesNote(ref.angles):undefined;
+ const soft=[...(anglesNote?[anglesNote]:[]),...fas(sd.soft),kind==="image"?"نسبت تصویر "+faDigits(camera.aspectRatio):"کادر مناسب پلتفرم با جذابیت واضح در ثانیهٔ اول",...fas(rd.soft),...(night?["حال‌وهوای کم‌نور با منابع نور واقعی صحنه"]:[]),
   ...(docs?[faDigits(String(docs))+" سند متنی به‌عنوان زمینه همراه درخواست ثبت شد؛ برنامهٔ آزمایشی هنوز محتوای آن‌ها را اعمال نمی‌کند"]:[]),...(pdfs?[FA_PDF_NOTE]:[])];
  const direction=kind==="image"?[camera.focalLengthMm+"mm",camera.aperture,camera.shutter,"ISO "+camera.iso,camera.whiteBalanceK+"K",d.framing.en,d.lighting.en]:[size.en,mv.en,shot.targetFps+"fps",shot.shutterAngle+" degree shutter",shot.durationSeconds+"s"];
  // The user's text gets whatever budget the direction, hard constraints and role lines leave, so the constraints at the end are never cut off.
@@ -171,8 +176,7 @@ export function deterministicPlanner(req:PlannerRequest):{plan:CreativePlan}{
    antiTeleport:kind==="video"?["هر فرد و شیء پایدار می‌ماند: بدون ظاهر یا ناپدید شدن ناگهانی","تماس دست با اشیا و مسیر حرکت‌ها از نظر فیزیکی قابل‌باور می‌ماند","میان فریم‌های پیاپی پرش ناگهانی در موقعیت وجود ندارد"]:[]},
   realism:{mode:photoreal?"photoreal":"stylized",directives},
   speech:kind==="video"?{lipSync:lips?{status:speech?"planned_from_audio":"needs_audio",notes:speech?["زمان‌بندی دهان از روی صدای ارائه‌شده استخراج می‌شود، نه از زمان‌بندی حدسیِ متن","صدا، کلمات و لهجهٔ فایل اصلی بدون تغییر می‌ماند",...(ids.includes("tehrani_accent")?["لهجهٔ تهرانی فقط هدف خلاقانه برای دیالوگ تازه‌نوشته‌شده است؛ صدای ارائه‌شده هرگز تغییر نمی‌کند"]:[])]:["برای هم‌زمان‌سازی لب، فایل صوتی گفتار را ارائه کن؛ زمان‌بندی هرگز فقط از روی متن حدس زده نمی‌شود"]}:{status:"not_requested",notes:[]},accent:ids.includes("tehrani_accent")?"tehrani":input.audio?.accent==="original"?"original":"unspecified"}:undefined,
-  qaChecklist:["سوژه، تعداد و ترکیب‌بندی با توضیح تو می‌خواند","آناتومی، دست‌ها و هندسه قابل‌باورند","متن فارسی یا انگلیسی داخل تصویر درست نوشته شده و حروف فارسی به‌هم‌پیوسته‌اند",kind==="video"?"فریم اول، میانی و آخر هویت و نور را حفظ می‌کنند؛ شیئی ناگهان جابه‌جا نمی‌شود؛ مدت و فریم‌ریت با برنامه می‌خواند":"نور، نوردهی و پرسپکتیو یکدست است",...(photoreal?["پوست و مواد طبیعی دیده می‌شوند، نه مومی یا بیش‌ازحد فیلترشده"]:[])],
-  clarifyingQuestionFa:ref?missingQuestion(ref.angles):undefined
+  qaChecklist:["سوژه، تعداد و ترکیب‌بندی با توضیح تو می‌خواند","آناتومی، دست‌ها و هندسه قابل‌باورند","متن فارسی یا انگلیسی داخل تصویر درست نوشته شده و حروف فارسی به‌هم‌پیوسته‌اند",kind==="video"?"فریم اول، میانی و آخر هویت و نور را حفظ می‌کنند؛ شیئی ناگهان جابه‌جا نمی‌شود؛ مدت و فریم‌ریت با برنامه می‌خواند":"نور، نوردهی و پرسپکتیو یکدست است",...(photoreal?["پوست و مواد طبیعی دیده می‌شوند، نه مومی یا بیش‌ازحد فیلترشده"]:[])]
  };
  return {plan};
 }
@@ -191,7 +195,9 @@ function enforce(raw:CreativePlan,req:PlannerRequest):{plan:CreativePlan;correct
   const il=p.identityLock??det.identityLock!;
   note("identity_overwritten",!p.identityLock||il.characterId!==ref.id||il.version!==ref.version||il.providedAngles.join()!==ref.angles.join());
   p.identityLock={...il,characterId:ref.id,version:ref.version,providedAngles:[...ref.angles],lockedAttributes:il.lockedAttributes.length?il.lockedAttributes:det.identityLock!.lockedAttributes};
-  if(!p.clarifyingQuestionFa)p.clarifyingQuestionFa=missingQuestion(ref.angles);
+  // Missing angles are a note in the plan, never a question (Whoush continues with what it has); added silently, not counted as a correction.
+  const anglesNote=missingAnglesNote(ref.angles);
+  if(anglesNote&&!p.softPreferences.includes(anglesNote))p.softPreferences=[anglesNote,...p.softPreferences];
  }
  const photoreal=ids.includes("hyper_realism");
  if(note("realism_mode",p.realism.mode!==(photoreal?"photoreal":"stylized")||!p.realism.directives.length))p.realism=det.realism;
@@ -368,11 +374,22 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const {plan,corrections}=fin.e;
  // Provider-facing text names attachments by description; the public Persian text keeps what the user typed. A missing tag is a question, never a block.
  plan.mediaPrompt=rewriteMentions(plan.mediaPrompt,byTag,genTags).slice(0,3000);
- if(missing.length||missingGenerations.length)plan.clarifyingQuestionFa=[missing.length?faMissing(missing):"",missingGenerations.length?faMissingGenerations(missingGenerations):"",plan.clarifyingQuestionFa].filter(Boolean).join(" ").slice(0,400);
  // plan inspection: LLM output never bypasses the safety layer
  for(const t of [plan.mediaPrompt,...plan.hardConstraints]){
   const r=evaluatePlanTextSafety(t); // planner text: negated generic categories ("no political banners") are compliance, not violations
   if(r.decision!=="allow"){rec({planner:label,fallbackReason:"plan_restricted",corrections,usage:result?.usage});return {status:"restricted",decision:r.decision,category:r.category,message:r.message};}
+ }
+ // One critical question stops the turn before any model or price is offered: a mentioned file or generation that is not in the chat, or the planner's own question.
+ // A message that answers an earlier question is never asked again: Whoush decides, and a reference that is still missing is left out with a note in the plan.
+ const missingNote=[missing.length?faMissing(missing):"",missingGenerations.length?faMissingGenerations(missingGenerations):""].filter(Boolean);
+ const question=input.answersQuestion?"":[...missingNote,plan.clarifyingQuestionFa??""].filter(Boolean).join(" ").slice(0,400);
+ if(input.answersQuestion&&(missing.length||missingGenerations.length))plan.softPreferences=[[...missing,...missingGenerations].map(displayTag).join("، ")+" در این گفت‌وگو نیست؛ هووش بدون آن می‌سازد",...plan.softPreferences];
+ delete plan.clarifyingQuestionFa;
+ if(question){
+  const r=evaluatePlanTextSafety(question);
+  if(r.decision!=="allow"){rec({planner:label,fallbackReason:"plan_restricted",corrections,usage:result?.usage});return {status:"restricted",decision:r.decision,category:r.category,message:r.message};}
+  rec({planner:label,fallbackReason:"needs_input",corrections:corrections.length?corrections:undefined,usage:label==="live"?result?.usage:undefined});
+  return {status:"needs_input",turnId,message:FA_NEEDS_INPUT,question};
  }
  // Hard capability requirements: a character reference needs reference-image input, lip sync needs a lip-sync model.
  const requirements=mediaRequirements({characterRef:ref,attachments:files},kind==="video"&&prep.activeSkillIds.includes("persian_lip_sync_phonetics"));

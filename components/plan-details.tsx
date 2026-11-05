@@ -61,7 +61,7 @@ function Line({icon,label,children}:{icon:LucideIcon;label:string;children:React
 }
 
 /**
- * A generation plan as part of the conversation (not inside the card): the clarifying question, the intent, the references, the camera, framing and lighting
+ * A generation plan as part of the conversation (not inside the card): the intent, the references, the camera, framing and lighting
  * diagrams, the camera or shot settings as icon chips and lines, and the hard constraints; preferences, identity lock, continuity, speech and the QA checklist
  * fold under «جزئیات بیشتر». All of it is Whoush's proposal, not verified model settings.
  */
@@ -69,10 +69,6 @@ export function PlanStory({plan}:{plan:PublicCreativePlan}){
  const {camera,shot,identityLock,speech,references,staging}=plan;
  const more=plan.softPreferences.length+plan.continuity.locks.length+plan.continuity.antiTeleport.length+plan.qaChecklist.length>0||identityLock||speech;
  return <div className="flex flex-col gap-5">
-  {plan.clarifyingQuestionFa&&<p role="status" className="flex items-start gap-2 type-body-sm text-fg-primary">
-   <Icon icon={CircleHelp} size={16} aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary"/>
-   <span><span className="type-label">یک سؤال: </span>{text(plan.clarifyingQuestionFa)}</span>
-  </p>}
   <Section icon={Sparkles} title="هدف">
    <p className="type-body-sm text-fg-primary">{text(plan.intentSummaryFa)}</p>
    <ul className="flex flex-wrap gap-2">
@@ -137,5 +133,24 @@ export function PlanStory({plan}:{plan:PublicCreativePlan}){
     </AccordionContent>
    </AccordionItem>
   </Accordion>}
+ </div>;
+}
+
+export const NEEDS_INPUT_FA="نیاز به پاسخ تو";
+/**
+ * The agent's question, always the last item of its message (after the plan and the card) so it is not missed. While it waits for an answer (`waiting`: nothing
+ * has been sent since), it is highlighted with a flashing «نیاز به پاسخ تو» badge (a gentle pulse; still under reduced motion) and «پاسخ بده» moves focus to the
+ * prompt. Once answered it stays as a quiet record.
+ */
+export function AgentQuestion({question,waiting,onAnswer}:{question:string;waiting:boolean;onAnswer:()=>void}){
+ return <div role={waiting?"status":undefined} className={"flex items-start gap-3 rounded-card p-3 "+(waiting?"border border-primary bg-surface-subtle":"bg-surface-subtle")}>
+  <Icon icon={CircleHelp} size={20} aria-hidden="true" className={"mt-0.5 shrink-0 "+(waiting?"text-primary":"text-fg-secondary")}/>
+  <div className="flex min-w-0 flex-1 flex-col gap-2">
+   {waiting&&<span className="inline-flex w-fit items-center gap-1.5 rounded-control bg-primary px-2.5 py-0.5 type-caption font-medium text-primary-foreground animate-pulse motion-reduce:animate-none">
+    <span aria-hidden="true" className="size-1.5 rounded-full bg-current"/>{NEEDS_INPUT_FA}
+   </span>}
+   <p className="type-body-sm text-fg-primary">{text(question)}</p>
+   {waiting&&<button type="button" onClick={onAnswer} className="w-fit rounded-control type-label text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">پاسخ بده</button>}
+  </div>
  </div>;
 }

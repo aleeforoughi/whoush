@@ -65,6 +65,8 @@ export const CreativeTurnInputSchema=z.object({
  }).strict().optional(),
  audio:z.object({hasAudioReference:z.boolean(),hasSpeech:z.boolean(),language:z.enum(["fa","other","unknown"]),accent}).strict().optional(),
  attachments:AttachmentsSchema.optional(),
+ /** The message answers Whoush's question: the brief is the original request plus the answer, and Whoush decides instead of asking again. */
+ answersQuestion:z.boolean().optional(),
  generations:z.array(GenerationRefSchema).min(1).max(MAX_GENERATION_REFS).refine(l=>new Set(l.map(g=>g.tag)).size===l.length,"generation tags must be unique").optional()
 }).strict();
 export type CreativeTurnInput=z.infer<typeof CreativeTurnInputSchema>;

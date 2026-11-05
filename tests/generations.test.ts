@@ -81,8 +81,8 @@ test("a change request revises the generation: same kind unless asked, a keep-th
  const asked=planned(await orchestrateCreativeTurn({text:"از #تولید-۱ یک ویدیو بساز",generations:[ref("image")]}));
  assert.equal(asked.plan.mediaKind,"video","the brief can ask for the other kind");
  assert.equal(asked.plan.clarifyingQuestionFa,undefined,"a supplied generation is not missing");
- const missing=planned(await orchestrateCreativeTurn({text:"#تولید-۲ رو روشن‌تر کن"}));
- assert.match(missing.plan.clarifyingQuestionFa??"",/#تولید-۲ در این گفت‌وگو پیدا نشد/);
+ const missing=await orchestrateCreativeTurn({text:"#تولید-۲ رو روشن‌تر کن"});
+ assert.ok(missing.status==="needs_input"&&/#تولید-۲ در این گفت‌وگو پیدا نشد/.test(missing.question),"an unknown generation is a critical question, with no card");
 });
 test("generation summaries get the same safety preflight as the brief",async()=>{
  const r=await orchestrateCreativeTurn({text:"رنگش رو عوض کن",generations:[{tag:"generation1",mediaKind:"image",summaryFa:"هدف: تصویر برهنه از یک زن"}]});
@@ -106,4 +106,15 @@ test("diagram maths: light colour from kelvin, tones, polar points and shot frac
  assert.equal(lightToneFa({role:"rim",direction:"back",height:"high",quality:"hard",source:"neon",colorTemperatureK:6500,colorHex:"#4f8cff"}),"رنگی");
  assert.deepEqual(polar(0,0,10,90),[0,10]);assert.deepEqual(polar(0,0,10,0),[10,0]);
  const sizes=Object.values(SHOT_BODY_FRACTION);assert.deepEqual([...sizes].sort((a,b)=>a-b),sizes,"wider shots show more of the body");
+});
+
+test("a question stops the turn: no plan card or price; an answer is never asked again, Whoush decides",async()=>{
+ const asking:import("../lib/creative-plan").PrivatePlanner=r=>{const plan=structuredClone(deterministicPlanner(r).plan);plan.clarifyingQuestionFa="چه چیزی را می‌خواهی ببینی؟";return {plan};};
+ const first=await orchestrateCreativeTurn({text:"یه چیز قشنگ"},{planner:asking});
+ assert.equal(first.status,"needs_input");assert.ok(first.status==="needs_input"&&first.question.includes("چه چیزی"));
+ const answered=planned(await orchestrateCreativeTurn({text:"یه چیز قشنگ\nیک گربه روی پشت‌بام",answersQuestion:true},{planner:asking}));
+ assert.equal(answered.plan.clarifyingQuestionFa,undefined,"the planner's second question is dropped");assert.equal(answered.status,"planned");
+ // an answer is never asked about again: a reference that is still missing is left out, with a note in the plan
+ const still=planned(await orchestrateCreativeTurn({text:"مثل #تولید-۹ کن\nفقط حال‌وهوای شب",answersQuestion:true}));
+ assert.ok(still.plan.softPreferences.some(x=>x.startsWith("#تولید-۹")&&x.includes("بدون آن")));
 });

@@ -15,19 +15,25 @@ export const UNTITLED_FA="پروژهٔ بی‌نام";
 export const LOCAL_ONLY_FA="پروژه‌ها و فایل‌ها فقط در همین مرورگر ذخیره می‌شوند";
 export const PAST_PROPOSAL_FA="این پیشنهاد مربوط به قبل است؛ برای تولید دوباره بفرست";
 
-export type MessageKind="text"|"proposal"|"no_model"|"restricted"|"job";
+export type MessageKind="text"|"proposal"|"no_model"|"restricted"|"job"|"question";
 /** What a past proposal needs to be shown read-only: the recommended model and its fixed Neurons, and the public plan. Never approvable after a reload (quotes expire). */
 /** `tag` is the generation's tag in this chat (`generation1`, shown as #تولید-۱); proposals saved before tags existed get one when the project opens. */
 export type ProposalSnapshot={operation:"generate_image"|"generate_video";modelName:string;neurons:number;intentSummaryFa:string;plan:PublicCreativePlan;tag?:string};
 export type NoModelSnapshot={message:string;plan?:PublicCreativePlan};
 export type JobSnapshot={state:string;messageFa:string;tag?:string};
-/** `generationTags`: the earlier generations a user message referred to («اصلاح» cards), shown with it and sent again on a rerun. */
-type MessageBase={id:string;role:"user"|"agent";text:string;at:string;attachmentIds?:string[];generationTags?:string[]};
+/**
+ * `generationTags`: generations a user message referred to with a card (older projects), shown with it and sent again on a rerun. `brief`: what was actually sent
+ * when the message answered Whoush's question (the original request plus the answer); a rerun sends it again.
+ */
+type MessageBase={id:string;role:"user"|"agent";text:string;at:string;attachmentIds?:string[];generationTags?:string[];brief?:string};
+/** Whoush's one critical question: no plan card or price until the user answers. */
+export type QuestionSnapshot={question:string};
 export type StoredMessage=MessageBase&(
  |{kind?:"text"|"restricted";snapshot?:undefined}
  |{kind:"proposal";snapshot:ProposalSnapshot}
  |{kind:"no_model";snapshot:NoModelSnapshot}
- |{kind:"job";snapshot:JobSnapshot});
+ |{kind:"job";snapshot:JobSnapshot}
+ |{kind:"question";snapshot:QuestionSnapshot});
 export type CharacterRef={id:string;name:string;angles:string[];version:number};
 export type Project={
  id:string;title:string;titleSource:"auto"|"user";createdAt:string;updatedAt:string;version:1;
@@ -102,6 +108,7 @@ function checkMessage(m:unknown,i:number){
  if(typeof m.text!=="string"||m.text.length>MAX_MESSAGE_TEXT)bad("متن پیام");
  if(!isTime(m.at))bad("زمان پیام");
  if(m.attachmentIds!==undefined&&!(Array.isArray(m.attachmentIds)&&m.attachmentIds.length<=MAX_ATTACHMENTS&&m.attachmentIds.every(x=>typeof x==="string"&&ID.test(x))))bad("پیوست‌های پیام");
+ if(m.brief!==undefined&&!(typeof m.brief==="string"&&m.brief.length<=4000))bad("متن ارسال‌شده");
  if(m.generationTags!==undefined&&!(Array.isArray(m.generationTags)&&m.generationTags.length<=MAX_GENERATION_REFS&&m.generationTags.every(x=>typeof x==="string"&&isGenerationTag(x))))bad("تولیدهای پیام");
  const s=m.snapshot;
  switch(m.kind){
@@ -110,6 +117,7 @@ function checkMessage(m:unknown,i:number){
    if(!isObject(s)||(s.operation!=="generate_image"&&s.operation!=="generate_video")||typeof s.modelName!=="string"||!Number.isSafeInteger(s.neurons)||typeof s.intentSummaryFa!=="string"||!isPlan(s.plan)||(s.tag!==undefined&&!(typeof s.tag==="string"&&isGenerationTag(s.tag))))bad("پیشنهاد");
    break;
   case "no_model":if(!isObject(s)||typeof s.message!=="string"||(s.plan!==undefined&&!isPlan(s.plan)))bad("نبود مدل سازگار");break;
+  case "question":if(!isObject(s)||typeof s.question!=="string"||s.question.length<1||s.question.length>1000)bad("سؤال");break;
   case "job":if(!isObject(s)||typeof s.state!=="string"||typeof s.messageFa!=="string"||(s.tag!==undefined&&!(typeof s.tag==="string"&&isGenerationTag(s.tag))))bad("وضعیت تولید");break;
   default:bad("نوع پیام");
  }
@@ -225,4 +233,12 @@ export const toGenerationRef=(s:ProposalSnapshot&{tag:string}):GenerationRef=>({
 /** The generations a message refers to: the «اصلاح» cards first, then those it mentions (#تولید-۱), each once, only ones of this chat, at most MAX_GENERATION_REFS. */
 export function referencedGenerations(cards:readonly string[],mentioned:readonly string[],known:ReadonlySet<string>):string[]{
  return [...new Set([...cards,...mentioned.filter(isGenerationTag)])].filter(t=>known.has(t)).slice(0,MAX_GENERATION_REFS);
+}
+/**
+ * The text sent for a message that answers Whoush's question: the original request (or the brief it was sent with) and the answer on a new line, cut to the
+ * 4000-character limit by shortening the original, never the answer.
+ */
+export function answerBrief(original:string,answer:string,max=4000):string{
+ const room=Math.max(0,max-answer.length-1);
+ return (original.slice(0,room)+"\n"+answer).slice(0,max);
 }
