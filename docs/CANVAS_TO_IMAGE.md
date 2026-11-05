@@ -58,6 +58,15 @@ A connector catalog read on 2026-11-05 also listed `nano_banana_2_1` with a mask
 
 Two local operations need no generation: **crop or reframe** (no new perspective) and **colour adjustment**, which must be labelled as such and cannot simulate a new light.
 
+### Status: operations (2026-11-05)
+
+- **Operation is decided server-side.** No source photo means `create`. With a source photo (an `edit_reference` image), it is `camera_edit`, `relight_edit` or `content_edit`, depending on what the canvas changed.
+- **Changes are read in room terms.** The canvas turns lights and props with a camera orbit, so they are turned back before comparing; a pure orbit is a camera change only (`sceneChangeGroups`).
+- **Each edit's lock opens the prompt** (`camera_edit`: keep the person, pose, head orientation, place and lights in the room, and do not turn the person; `relight_edit`: keep camera, crop, pose, face, clothing and layout, update shadows, and no colour wash). It replaces the generic "preserve framing and lighting" rule it would contradict.
+- **Mixed edits are refused at «بساز».** A photo edit whose canvas changes the camera together with the light or layout throws `SceneEditConflict`. The quote route answers 409 `edit_scope_mixed` with a Persian reason, and the studio shows it.
+- **When a photo is attached in chat,** the canvas the user arranged came from an earlier turn's plan, so a mixed change cannot be told apart from a different plan there. It stays a generic edit with no lock.
+- **Not yet reachable:** no verified image model accepts a source photo, so an edit turn is not quotable yet. The edit path is exercised in tests through `keepEditTurnForTests`.
+
 ## 4. One scene specification
 
 **Precedence, highest first:**
@@ -307,7 +316,7 @@ Approve release thresholds before reading the results.
 | P0 | **Compiler, first slice** | `lib/scene-compiler.ts`, `lib/orchestrator.ts` | **Done 2026-11-05:** one scene per prompt; the planner's camera and light removed; a canvas change replaces the scene |
 | P0 | Compiler, second slice | `lib/scene-compiler.ts`, `lib/staging.ts`, `lib/jobs.ts` | **Done 2026-11-05:** frame sides for lights; people count; back-view wording; prompt hash on the job. Offscreen props moved to P1 (needs the visibility test) |
 | P0 | Provenance and capability states | `lib/catalog.ts`, `lib/jobs.ts`, `lib/media-provider.ts` | Requested and reported model id, compiler version, prompt hash and seed recorded; four capability states; a mismatched id is flagged |
-| P0 | Operation and edit policy | `lib/creative-plan.ts` (`Staging`), quote route | `create`, `camera_edit` and `relight_edit` with locks; disallowed edits fail before submission |
+| P0 | Operation and edit policy | `lib/scene-compiler.ts`, `lib/orchestrator.ts`, quote route | **Done 2026-11-05:** `create`, `camera_edit`, `relight_edit` and `content_edit`, read in room terms; each edit's lock opens the prompt; camera with light (or layout) on a photo edit is refused at «بساز» with a Persian reason, before any price |
 | P0 | `submission_unknown` | `lib/jobs.ts` | A timeout during submission never auto-submits another paid job |
 | P1 | Occlusion preflight | `lib/scene3d.ts`, `lib/frame-css.ts` | The table blocking the face returns `COMPOSITION_OCCLUDED` before quoting |
 | P1 | Guide export | canvas renderer | Correct crop, coordinates, order and mask polarity; only supported fields |

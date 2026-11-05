@@ -9,7 +9,7 @@ import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./
 import {displayTag,inferAttachmentRoles,isGenerationTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
 import {providerForModelId} from "./llm-routing";
 import {replyScriptFor} from "./finglish";
-import {compileImagePrompt} from "./scene-compiler";
+import {compileImagePrompt,FA_EDIT_SCOPE_MIXED,GENERIC_EDIT_RULE_EN,resolveOperation,sceneChangeGroups} from "./scene-compiler";
 import {applyStagingCues,applyTypedMappings,lensFor,describeStagingEn,describeStagingFa,sceneLeadEn,detectProps,detectSubject,expandMappings,mapReferences,tidyProps,typedMappings} from "./staging";
 import {findGif,type ChatGif} from "./giphy";
 import {describeFocus} from "./frame-css";
@@ -178,7 +178,7 @@ export function deterministicPlanner(req:PlannerRequest):{plan:CreativePlan}{
  const rd=roleDirectives(req.attachments),byTag=tagMap(req.attachments),sd=styleDirectives(input.style,hasCharacterRef(req));
  const hardP:Pair[]=[P("Follow the brief exactly; do not add unrequested subjects, text or logos","دقیقاً مطابق توضیح تو؛ سوژه، متن یا لوگوی اضافه‌ای وارد نمی‌شود"),
   ...gens.map(g=>P("Revise "+"[earlier generation "+g.tag.replace(/\D/g,"")+"]"+": apply only the requested changes and keep its subject, composition, camera, lighting and style otherwise","در "+displayTag(g.tag)+" فقط تغییرهای خواسته‌شده اعمال می‌شود؛ سوژه، ترکیب‌بندی، دوربین، نور و سبک آن بقیه‌اش همان می‌ماند")),
-  ...(input.task==="edit"?[P("Preserve all unedited source regions: identity, framing, lighting, color and pixels","همهٔ بخش‌های ویرایش‌نشدهٔ تصویر مبدأ حفظ می‌شود: هویت، کادر، نور، رنگ و پیکسل‌ها")]:[]),
+  ...(input.task==="edit"?[P(GENERIC_EDIT_RULE_EN,"همهٔ بخش‌های ویرایش‌نشدهٔ تصویر مبدأ حفظ می‌شود: هویت، کادر، نور، رنگ و پیکسل‌ها")]:[]),
   ...(kind==="video"?[P("Keep people and objects continuous; no teleporting, sudden appearance or unintended cuts","افراد و اشیا پیوسته می‌مانند؛ بدون جابه‌جایی ناگهانی، ظاهر یا ناپدید شدن ناگهانی و برش ناخواسته")]:[]),
   ...(ref?[P("Use only the provided reference angles; never invent missing views","فقط از زاویه‌های مرجع ارائه‌شده استفاده می‌شود؛ نمای ناموجود ساخته نمی‌شود")]:[]),
   ...sd.hard,...rd.hard];
@@ -270,7 +270,9 @@ const leaks=(pub:PublicCreativePlan,userText:string)=>{const j=JSON.stringify(pu
 const MAX_PROMPTS=200;
 const store=()=>((globalThis as {__whoushPrompts?:Map<string,string>}).__whoushPrompts??=new Map());
 /** What an image turn's prompt was compiled from (the planner's text and the aspect ratio), so a canvas change recompiles it. Private, like the prompt. */
-type SceneContent={content:string;aspect:string};
+type SceneContent={content:string;aspect:string;
+ /** The scene the turn was planned with (the canvas before the user's changes), and whether a source photo is edited: a later canvas change is checked against it. */
+ staging:Staging;sourceImage:boolean};
 const contents=()=>((globalThis as {__whoushPromptContent?:Map<string,SceneContent>}).__whoushPromptContent??=new Map());
 export const getPrivateMediaPrompt=(turnId:string):string|undefined=>store().get(turnId);
 /**
@@ -278,11 +280,19 @@ export const getPrivateMediaPrompt=(turnId:string):string|undefined=>store().get
  * only, never free text) appended to the provider-facing prompt as the deciding direction. The original turn is untouched; quotes bind to the new one.
  * Undefined when the original turn is unknown or expired.
  */
+/** A photo edit whose canvas changes the camera and the light (or the layout) together: refused before any quote (docs/CANVAS_TO_IMAGE.md section 3). */
+export class SceneEditConflict extends Error{readonly code="edit_scope_mixed";readonly messageFa=FA_EDIT_SCOPE_MIXED;constructor(){super("edit_scope_mixed");this.name="SceneEditConflict";}}
 export function deriveTurnWithStaging(turnId:string,staging:Staging,aspect?:string):string|undefined{
  const base=store().get(turnId);if(base===undefined)return undefined;
  // An image turn is compiled again from its content and the new scene: the old scene never stays next to the new one.
  const kept=contents().get(turnId);
- if(kept){const c={content:kept.content,aspect:aspect??kept.aspect},id=randomUUID();keepPrompt(id,compileImagePrompt({...c,staging}).prompt,c);return id;}
+ if(kept){
+  const op=resolveOperation({sourceImage:kept.sourceImage,change:sceneChangeGroups(kept.staging,staging)});
+  if("conflict" in op)throw new SceneEditConflict();
+  const c={...kept,aspect:aspect??kept.aspect},id=randomUUID();
+  // The new turn keeps the original scene as its reference, so a second change is checked against the photo's scene, not the first change.
+  keepPrompt(id,compileImagePrompt({content:c.content,staging,aspect:c.aspect,operation:op.operation}).prompt,c);return id;
+ }
  // The lens follows the adjusted scene (Whoush's choice for what it now shows), so the camera direction never contradicts it.
  // The user's camera and light open the prompt in plain words (the model weighs the start; a long description before them outweighed them), and the
  // full scene follows at the end; the planner's own text sits between, cut to fit.
@@ -291,6 +301,8 @@ export function deriveTurnWithStaging(turnId:string,staging:Staging,aspect?:stri
  const id=randomUUID();keepPrompt(id,(lead+base.slice(0,Math.max(0,3000-extra.length-lead.length))+extra).slice(0,3000));
  return id;
 }
+/** Tests only: a quotable image-edit turn (no image-edit model is verified yet, so none can be planned as one). */
+export function keepEditTurnForTests(turnId:string,prompt:string,c:{content:string;aspect:string;staging:Staging}){keepPrompt(turnId,prompt,{...c,sourceImage:true});}
 function keepPrompt(turnId:string,prompt:string,content?:SceneContent){
  const m=store(),c=contents();m.set(turnId,prompt);if(content)c.set(turnId,content);
  while(m.size>MAX_PROMPTS){const k=m.keys().next().value as string;m.delete(k);c.delete(k);}
@@ -481,6 +493,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   plan.camera={...plan.camera,aspectRatio:parsed.aspectOverride};
   if(plan.mediaKind!=="image"){const en=" Aspect ratio "+parsed.aspectOverride+".";plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;}
  }
+ const plannedStaging=plan.staging;
  if(parsed.stagingOverride){
   const o=parsed.stagingOverride,lens=lensFor(o),asp=parsed.aspectOverride??plan.camera?.aspectRatio??"16:9",focus=describeFocus(o,undefined,asp);
   const fa=describeStagingFa(o)+(focus.fa?"؛ "+focus.fa:""),en=" "+describeStagingEn(o)+focus.en+" "+lens.en;
@@ -495,8 +508,12 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // An image prompt is compiled once from the final scene: the planner's text without its own camera and light words, then the canvas (lib/scene-compiler.ts).
  let content:SceneContent|undefined;
  if(plan.mediaKind==="image"&&plan.staging){
-  const aspect=plan.camera?.aspectRatio??"16:9";
-  content={content:plan.mediaPrompt,aspect};plan.mediaPrompt=compileImagePrompt({content:plan.mediaPrompt,staging:plan.staging,aspect}).prompt;
+  const aspect=plan.camera?.aspectRatio??"16:9",sourceImage=files.some(f=>f.kind==="image"&&f.role==="edit_reference");
+  // Here the canvas the user arranged started from an earlier turn's plan, not from this turn's, so a change in both camera and light cannot be told
+  // apart from a different plan: it stays a generic edit (no lock). The canvas change at «بساز» is checked against this turn's scene, which the canvas showed.
+  const before=plannedStaging??plan.staging,op=resolveOperation({sourceImage,change:sceneChangeGroups(before,plan.staging)});
+  const operation="conflict" in op?"content_edit":op.operation;
+  content={content:plan.mediaPrompt,aspect,staging:plan.staging,sourceImage};plan.mediaPrompt=compileImagePrompt({content:plan.mediaPrompt,staging:plan.staging,aspect,operation}).prompt;
  }
  stage("checking");
  // plan inspection: LLM output never bypasses the safety layer
