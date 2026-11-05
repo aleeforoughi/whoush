@@ -4,7 +4,7 @@ import {Box,ChevronDown,Lock,LockOpen,Plus,RotateCcw,Trash2,Undo2,X} from "lucid
 import {Button,Icon} from "@aleeforoughi/feather-react";
 import {FOCUS_DETAILS,LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
- SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
+ SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 import {fa} from "@/lib/format";
 
@@ -35,7 +35,8 @@ function withProps(s:Staging):Staging{
  if(s.props||subject==="environment")return {...s,subject,props:tidyProps(s.props)??[]};
  return {...s,subject,props:[{kind:subject,label:SUBJECT_FA[subject],x:0,z:-0.25,y:0,main:true}]};
 }
-export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:Staging;aspectRatio?:string;/** For the wording («این عکس», «این ویدیو»). */mediaKind?:"image"|"video";
+export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{staging:Staging;aspectRatio?:string;
+ /** A follow-up about one or two parts: «بوم» opens on just those parts (less is more), with «همهٔ تنظیمات بوم» to show everything. */focus?:readonly CanvasSection[];/** For the wording («این عکس», «این ویدیو»). */mediaKind?:"image"|"video";
  /** Live: every adjustment is reported (with whether it differs from Whoush's scene), so the generation card below uses it directly; without it, read-only. */
  onChange?:(s:Staging,aspect:string,changed:boolean)=>void}){
  const initial=withProps(staging);
@@ -86,7 +87,8 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
  const setDistanceOnly=(v:number)=>setDraft(d=>{const sc=scaleFromSlider(v);return {...d,shotScale:sc,shotSize:nearestShot(sc)};});
  const setProp=(i:number,p:Partial<SceneProp>)=>setDraft(d=>({...d,props:(d.props??[]).map((x,j)=>j===i?{...x,...p}:x)}));
  // Collapsed by default: «بوم» is advanced settings. The card shows the scene in one line; opening it shows the canvas and its controls.
- const [open,setOpen]=useState(false),bodyId=useId();
+ const [open,setOpen]=useState(Boolean(focus?.length)),bodyId=useId();
+ const [full,setFull]=useState(!focus?.length),show=(sec:CanvasSection)=>full||Boolean(focus?.includes(sec));
  // A press anywhere outside the frame and its controls (elsewhere in the canvas, or outside it) deselects the prop: the frame is selected again. Not while
  // the selection is locked.
  const frameArea=useRef<HTMLDivElement>(null);
@@ -107,26 +109,26 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
  const cap=viewCaptions(draft,aspect);
 
  return <div role="group" aria-label="بوم" className="@container flex min-w-0 flex-col gap-3">
-  {props.length>0&&mainIdx>=0&&<Dominant tags={propTags(props)} props={props} main={mainIdx} detail={draft.focusDetail} mediaKind={mediaKind} confirmed={confirmed}
+  {props.length>0&&mainIdx>=0&&show("frame")&&<Dominant tags={propTags(props)} props={props} main={mainIdx} detail={draft.focusDetail} mediaKind={mediaKind} confirmed={confirmed}
    editable={editable} onConfirm={()=>setConfirmed(true)} onChoose={setDominant}/>}
   <button type="button" aria-expanded={open} aria-controls={bodyId} onClick={()=>setOpen(o=>!o)}
    aria-label={"بوم، تنظیمات پیشرفته: "+CAMERA_ANGLE_FA[draft.cameraAngle]+"، "+SHOT_SIZE_FA[draft.shotSize]+"، "+(draft.lights.length===1?"یک نور":fa(draft.lights.length)+" نور")+(changed?"، تغییر کرده":"")}
    className="flex w-full flex-col gap-2 rounded-card border border-line-secondary bg-surface-subtle p-2 text-start motion-hover hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
    <span className="flex items-center gap-2 px-1">
     <Icon icon={Box} size={16} aria-hidden="true" className="size-4 shrink-0 text-fg-secondary"/>
-    <span className="type-label text-fg-primary">بوم</span><span className="type-caption text-fg-secondary">تنظیمات پیشرفته</span>
+    <span className="type-label text-fg-primary">بوم</span><span className="type-caption text-fg-secondary">{full?"تنظیمات پیشرفته":"تنظیم "+focus!.map(f=>CANVAS_SECTION_FA[f]).join(" و ")}</span>
     {changed&&<span className="rounded-control bg-surface-selected px-2 py-0.5 type-caption text-fg-primary">تغییر کرده</span>}
     <Icon icon={ChevronDown} size={16} aria-hidden="true" className={"ms-auto size-4 shrink-0 text-fg-secondary transition-transform motion-reduce:transition-none "+(open?"rotate-180":"")}/>
    </span>
    {!open&&<span className="grid grid-cols-1 gap-2">
-    <Snap c={cap.frame}><FrameView staging={draft} anchor={anchor} aspect={aspect}/></Snap>
-    <Snap c={cap.camera}><CameraView staging={draft} anchor={anchor} aspect={aspect} editable={false} onCamera={()=>{}}/></Snap>
-    <Snap c={cap.light}><LightView staging={draft} editable={false} selected={-1} onSelect={()=>{}} onLight={()=>{}}/></Snap>
+    {show("frame")&&<Snap c={cap.frame}><FrameView staging={draft} anchor={anchor} aspect={aspect}/></Snap>}
+    {show("camera")&&<Snap c={cap.camera}><CameraView staging={draft} anchor={anchor} aspect={aspect} editable={false} onCamera={()=>{}}/></Snap>}
+    {show("light")&&<Snap c={cap.light}><LightView staging={draft} editable={false} selected={-1} onSelect={()=>{}} onLight={()=>{}}/></Snap>}
    </span>}
   </button>
   <div id={bodyId} hidden={!open} className="flex min-w-0 flex-col gap-3">
   <div className="flex min-w-0 flex-col gap-3">
-   <div ref={frameArea}><Viewport {...cap.frame}>
+   {show("frame")&&<div ref={frameArea}><Viewport {...cap.frame}>
     <FrameView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={i=>{setPropSel(i);setCenterSel(false);}} centerSel={centerSel} onSelectCenter={()=>{setCenterSel(true);setPropSel(null);}} onProp={(i,x,z)=>setProp(i,{x,z})} onZoom={setDistance} locked={locked} onLock={setLocked} onBack={()=>{setPropSel(null);setCenterSel(false);setLocked(false);}}
      onFocus={f=>{if(f)set(f);else resetFocus();}}/>
     {/* The centre point's own settings, while its dot is selected. */}
@@ -148,8 +150,8 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
      <p className="text-center type-caption text-fg-secondary">{props.length?"روی یه پراپ بزن تا تنظیماتش بیاد و بکشیش (بالا عقب، پایین جلو، حتی تا بیرون کادر)؛ ":""}پس‌زمینه رو بکشی، کادر جابه‌جا می‌شه.</p>
     </>}
    </Viewport>
-   </div>
-   <div><Viewport {...cap.camera}>
+   </div>}
+   {show("camera")&&<div><Viewport {...cap.camera}>
     {/* The two camera views side by side, each its own tile: from the side (height and distance) and from above (the orbit), synced through one scene. */}
     <div className="grid grid-cols-2 gap-2">
      <Tile label="زاویه دوربین / عمودی">
@@ -189,8 +191,8 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
       <SliderRow label="دیافراگم" ends={["باز، محو","بسته، واضح"]} valueText={l.aperture+auto(l.auto.aperture)} min={0} max={1} step={0.001} value={apertureSlider(l.apertureF)}
        onChange={v=>setManual({apertureF:apertureFromSlider(v)})}/>
      </>;})()}
-   </Viewport></div>
-   <div>
+   </Viewport></div>}
+   {show("light")&&<div>
     <Viewport {...cap.light}>
      <LightView staging={draft} editable={editable} selected={lightSel} onSelect={setLightSel} onLight={(i,deg)=>setLight(i,{angle:deg,direction:snapDirection(deg)})}/>
     </Viewport>
@@ -198,7 +200,8 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
      onChange={p=>setLight(lightSel,p)}
      onRemove={()=>{const i=lightSel;setDraft(d=>({...d,lights:d.lights.filter((_,j)=>j!==i)}));setLightSel(0);}}
      onAdd={draft.lights.length<4?()=>{setDraft(d=>({...d,lights:[...d.lights,{role:"fill",direction:"front_right",height:"eye",quality:"soft",source:"softbox",colorTemperatureK:5600}]}));setLightSel(draft.lights.length);}:undefined}/></div>}
-   </div>
+   </div>}
+   {!full&&<Button type="button" variant="ghost" size="sm" className="self-center" onClick={()=>setFull(true)}>همهٔ تنظیمات بوم</Button>}
   </div>
   {!editable&&<ul className="flex flex-col gap-1">{draft.lights.map((l,i)=><LightRow key={i} l={l}/>)}</ul>}
   {editable&&changed&&<div className="flex flex-wrap items-center gap-2">

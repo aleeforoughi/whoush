@@ -31,7 +31,8 @@ import {fa} from "@/lib/format";
 import {STORAGE_FULL_FA,getProject,listAssets,saveAsset,saveProject} from "@/lib/project-store";
 import {MAX_MESSAGES,assetToAttachment,attachmentToAsset,autoTitle,rerunSource,uniqueById,answerBrief,historyFor,toggleReaction,generationTagsIn,referencedGenerations,toGenerationRef,withGenerationTags,type GifSnapshot,type ProposalSnapshot,type Project,type StoredMessage} from "@/lib/projects";
 import {MAX_GENERATION_REFS,type ReactionEmoji,type Staging} from "@/lib/creative-plan";
-import {LIGHT_SOURCE_FA,describeStagingChangesFa,lightTags,propTags} from "@/lib/staging";
+import {LIGHT_SOURCE_FA,describeStagingChangesFa,followUpFocus,lightTags,propTags} from "@/lib/staging";
+import {normalizePersian} from "@/lib/safety";
 import {STAGE_TEXT,postAgentTurn} from "@/lib/agent-stream";
 import type {TurnStage} from "@/lib/orchestrator-stages";
 import {replyScriptFor} from "@/lib/finglish";
@@ -520,7 +521,11 @@ export function Studio(){
    const data=await r.json() as AgentProposal&{message:string;gif?:GifSnapshot;reaction?:ReactionEmoji};
    const picked=data.suggestions.find(s=>s.modelId===data.recommendedModelId)??data.suggestions[0];
    const tag=nextGenerationTag(generationTagsIn(messages));
-   const reply=agentItem({role:"agent",text:data.message,kind:"proposal",snapshot:{...(tag?{tag}:{}),operation:data.operation,modelName:picked?.name??"",neurons:picked?.neurons??data.fixedNeurons,intentSummaryFa:data.plan.intentSummaryFa,plan:data.plan}});
+   // A follow-up about one part of the scene (the camera angle, the light...): «بوم» opens on just that part. The previous scene is the generation the
+   // message names, else the latest one in this chat.
+   const named=mentioned.find(t=>generationSet.has(t)),prevSnap=named?generationMap.get(named):[...messages].reverse().find(m=>m.kind==="proposal")?.snapshot as ProposalSnapshot|undefined;
+   const focus=followUpFocus(normalizePersian(sentText),prevSnap?.plan.staging,data.plan.staging);
+   const reply=agentItem({role:"agent",text:data.message,kind:"proposal",snapshot:{...(tag?{tag}:{}),...(focus?{focus}:{}),operation:data.operation,modelName:picked?.name??"",neurons:picked?.neurons??data.fixedNeurons,intentSummaryFa:data.plan.intentSummaryFa,plan:data.plan}});
    setProposal(data);setLiveId(reply.id);setSelected(data.selectedModelId);setAspectChoice(null);setPreview("در انتظار تأیید تولید");setJob(null);
    // Like a friend: the reply, then (sometimes) a GIF as its own message.
    setMessages(m=>[...m,reply,...(data.gif?[agentItem({role:"agent",text:"",kind:"gif",snapshot:data.gif})]:[])]);whoushReacts(data.reaction);
@@ -670,7 +675,7 @@ export function Studio(){
         {m.kind==="job"&&<PreviewCard tag={m.snapshot.tag} state={m.snapshot.state} messageFa={m.snapshot.messageFa}
          output={m.snapshot.messageFa===job?.messageFa?job?.outputs?.find(o=>isOwnedOutputUrl(o.url,window.location.origin)):undefined} video={m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false} onOpen={()=>openPreview(m.snapshot)}/>}
         {/* «بوم» is adjustable on every generation: on the live one it feeds «بساز» directly; on an older one its card offers a revision with that scene. */}
-        {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan&&<PlanStory plan={m.snapshot.plan}
+        {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan&&<PlanStory plan={m.snapshot.plan} focus={m.kind==="proposal"?m.snapshot.focus:undefined}
          onStagingChange={m.kind==="proposal"?(s,aspect,changed)=>{
           if(proposal&&m.id===liveId)setSceneEdit(changed?{id:m.id,staging:s,aspect}:null);
           else setPastEdits(p=>{const n={...p};if(changed)n[m.id]={staging:s,aspect};else delete n[m.id];return n;});

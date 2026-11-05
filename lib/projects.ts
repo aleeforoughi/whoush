@@ -18,7 +18,8 @@ export const PAST_PROPOSAL_FA="این پیشنهاد مربوط به قبل اس
 export type MessageKind="text"|"proposal"|"no_model"|"restricted"|"job"|"question"|"gif";
 /** What a past proposal needs to be shown read-only: the recommended model and its fixed Neurons, and the public plan. Never approvable after a reload (quotes expire). */
 /** `tag` is the generation's tag in this chat (`generation1`, shown as #تولید-۱); proposals saved before tags existed get one when the project opens. */
-export type ProposalSnapshot={operation:"generate_image"|"generate_video";modelName:string;neurons:number;intentSummaryFa:string;plan:PublicCreativePlan;tag?:string};
+export type ProposalSnapshot={operation:"generate_image"|"generate_video";modelName:string;neurons:number;intentSummaryFa:string;plan:PublicCreativePlan;tag?:string;
+ /** A follow-up about one or two parts of the scene: «بوم» opens on just those parts (lib/staging.ts, followUpFocus). */focus?:("frame"|"camera"|"light")[]};
 export type NoModelSnapshot={message:string;plan?:PublicCreativePlan};
 export type JobSnapshot={state:string;messageFa:string;tag?:string};
 /**
@@ -120,7 +121,8 @@ function checkMessage(m:unknown,i:number){
  switch(m.kind){
   case undefined:case "text":case "restricted":if(s!==undefined)bad("پیام ساده عکس لحظه‌ای ندارد");break;
   case "proposal":
-   if(!isObject(s)||(s.operation!=="generate_image"&&s.operation!=="generate_video")||typeof s.modelName!=="string"||!Number.isSafeInteger(s.neurons)||typeof s.intentSummaryFa!=="string"||!isPlan(s.plan)||(s.tag!==undefined&&!(typeof s.tag==="string"&&isGenerationTag(s.tag))))bad("پیشنهاد");
+   if(!isObject(s)||(s.operation!=="generate_image"&&s.operation!=="generate_video")||typeof s.modelName!=="string"||!Number.isSafeInteger(s.neurons)||typeof s.intentSummaryFa!=="string"||!isPlan(s.plan)||(s.tag!==undefined&&!(typeof s.tag==="string"&&isGenerationTag(s.tag)))
+    ||(s.focus!==undefined&&!(Array.isArray(s.focus)&&s.focus.length<=3&&s.focus.every(f=>f==="frame"||f==="camera"||f==="light"))))bad("پیشنهاد");
    break;
   case "no_model":if(!isObject(s)||typeof s.message!=="string"||(s.plan!==undefined&&!isPlan(s.plan)))bad("نبود مدل سازگار");break;
   case "gif":if(!isObject(s)||typeof s.id!=="string"||typeof s.title!=="string"||!isGiphyMedia(s.url)||!isGiphyMedia(s.stillUrl)||!(Number(s.width)>0&&Number(s.height)>0))bad("گیف");break;

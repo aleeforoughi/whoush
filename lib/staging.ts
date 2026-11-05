@@ -531,9 +531,45 @@ export const lightAngleOf=(l:StagingLight)=>l.angle??(l.direction==="top"?undefi
 /** Zoom relative to a full shot, for people: «۱٫۸×» closer, «۰٫۵×» wider. */
 export const zoomFactor=(s:Staging)=>Math.round(SHOT_BODY_FRACTION.full/scaleOf(s)*10)/10;
 
+// ---- which part of «بوم» a message is about (a follow-up that changes one thing shows only that part) ----
+export const CANVAS_SECTIONS=["frame","camera","light"] as const;
+export type CanvasSection=typeof CANVAS_SECTIONS[number];
+export const CANVAS_SECTION_FA:Record<CanvasSection,string>={frame:"کادر و چیدمان",camera:"دوربین",light:"نورپردازی"};
+const SECTION_CUES:Record<CanvasSection,string[]>={
+ camera:["camera","angle","camera angle","hero view","hero shot","low angle","high angle","from above","from below","overhead","birds eye","worms eye","dutch","pov","over the shoulder","orbit","behind","lens","aperture","bokeh","دوربین","زاویه","زاویهٔ","زاویه‌ی","قهرمانی","از بالا","از پایین","از پشت","نیم رخ","لنز","دیافراگم","داچ","بوکه","دید سوژه","روی شانه"],
+ frame:["frame","framing","crop","zoom","zoom in","zoom out","close up","closeup","wide shot","full body","composition","کادر","کراپ","زوم","کلوزآپ","کلوز آپ","نمای باز","نمای بسته","ترکیب بندی","چیدمان","جابه جا","جابجا","نزدیکتر","دورتر","تمام قد"],
+ light:["light","lighting","lights","shadow","shadows","sunset","golden hour","backlit","backlight","rim light","neon","brighter","darker","نور","نورپردازی","سایه","غروب","ضدنور","نئون","روشن تر","تاریک تر","روشنتر","تاریکتر"]
+};
+/** The parts of «بوم» a message talks about, from its words (normalized text, ZWNJ as a space). */
+export function sectionsFromWords(normalizedText:string):CanvasSection[]{
+ const t=" "+normalizedText.toLowerCase().replace(/[\u200c،,.!?؟:;«»"()]/g," ").replace(/\s+/g," ")+" ";
+ return CANVAS_SECTIONS.filter(sec=>SECTION_CUES[sec].some(w=>t.includes(" "+w.replace(/\u200c/g," ")+" ")));
+}
+/** The parts of «بوم» that differ between two scenes (a revision's plan against the generation it revises). */
+export function stagingSections(a:Staging,b:Staging):CanvasSection[]{
+ const pick=(s:Staging,keys:(keyof Staging)[])=>JSON.stringify(keys.map(k=>s[k]??null));
+ const cam:(keyof Staging)[]=["cameraAngle","cameraElevation","cameraAzimuth","cameraRoll","shotStyle","lensMm","apertureF","autopilot"];
+ const frame:(keyof Staging)[]=["shotSize","shotScale","framing","focusPoint","focusDetail","props"];
+ const out:CanvasSection[]=[];
+ if(pick(a,frame)!==pick(b,frame))out.push("frame");
+ if(pick(a,cam)!==pick(b,cam))out.push("camera");
+ if(JSON.stringify(a.lights)!==JSON.stringify(b.lights))out.push("light");
+ return out;
+}
+/**
+ * The focus of a follow-up's «بوم» widget: the parts its words name, else the parts that changed from the previous scene, when that is one or two parts.
+ * Undefined (the whole canvas) for a first generation or a change to everything.
+ */
+export function followUpFocus(normalizedText:string,previous:Staging|undefined,next:Staging|undefined):CanvasSection[]|undefined{
+ if(!previous||!next)return undefined;
+ const words=sectionsFromWords(normalizedText);
+ const f=words.length?words:stagingSections(previous,next);
+ return f.length>0&&f.length<CANVAS_SECTIONS.length?f:undefined;
+}
+
 // ---- reading the brief: what the user said explicitly always wins over a planner's choice ----
 const CUES={
- angle:[["birds_eye",["from above","top down","top-down","overhead","birds eye","bird's eye","drone shot","aerial view","از بالا","نمای بالا","نمای هوایی","هوایی","پهپاد"]],["worms_eye",["worms eye","worm's eye","from the ground","از روی زمین","از کف زمین"]],["low",["low angle","from below","زاویه پایین","زاویهٔ پایین","از پایین"]],["high",["high angle","زاویه بالا","زاویهٔ بالا"]],["dutch",["dutch angle","tilted angle","زاویه کج","زاویهٔ کج","کج"]],["eye_level",["eye level","هم سطح چشم","همسطح چشم"]]] as [Staging["cameraAngle"],string[]][],
+ angle:[["birds_eye",["from above","top down","top-down","overhead","birds eye","bird's eye","drone shot","aerial view","از بالا","نمای بالا","نمای هوایی","هوایی","پهپاد"]],["worms_eye",["worms eye","worm's eye","from the ground","از روی زمین","از کف زمین"]],["low",["low angle","from below","hero view","hero shot","hero angle","heroic angle","نمای قهرمانی","زاویهٔ قهرمانی","زاویه قهرمانی","زاویه پایین","زاویهٔ پایین","از پایین"]],["high",["high angle","زاویه بالا","زاویهٔ بالا"]],["dutch",["dutch angle","tilted angle","زاویه کج","زاویهٔ کج","کج"]],["eye_level",["eye level","هم سطح چشم","همسطح چشم"]]] as [Staging["cameraAngle"],string[]][],
  shot:[["extreme_close_up",["extreme close up","extreme closeup","macro","ماکرو","خیلی نزدیک"]],["close_up",["close up","closeup","close-up","کلوزآپ","کلوز آپ","نمای نزدیک"]],["medium_close_up",["medium close up","head and shoulders","سر و شانه"]],["medium",["medium shot","waist up","نمای متوسط","تا کمر"]],["medium_full",["knees up","تا زانو"]],["full",["full body","full length","full shot","تمام قد","تمام‌قد","کل بدن"]],["extreme_wide",["extreme wide","خیلی باز"]],["wide",["wide shot","wide angle","نمای باز","نمای عریض"]]] as [Staging["shotSize"],string[]][],
  side:[[-1/3,["on the left","left side","سمت چپ","طرف چپ"]],[1/3,["on the right","right side","سمت راست","طرف راست"]],[0,["centered","in the center","in the middle","وسط کادر","وسط قاب"]]] as [number,string[]][]
 };

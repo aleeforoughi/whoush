@@ -66,7 +66,9 @@ function Line({icon,label,children}:{icon:LucideIcon;label:string;children:React
  * A generation plan as part of the conversation (not inside the card): the intent, the references, the camera or shot settings as icon chips and lines, and the hard constraints; preferences, identity lock, continuity, speech and the QA checklist
  * fold under «جزئیات بیشتر»; «بوم» (the adjustable scene) comes last. All of it is Whoush's proposal, not verified model settings.
  */
-export function PlanStory({plan,onStagingChange}:{plan:PublicCreativePlan;
+export function PlanStory({plan,onStagingChange,focus}:{plan:PublicCreativePlan;
+ /** A follow-up about one or two parts of the scene: «بوم» shows just those parts (expandable to all), and the rest of the plan folds under «جزئیات برنامه». */
+ focus?:readonly ("frame"|"camera"|"light")[];
  /** When set (the live generation), «بوم» is adjustable and every change flows to the generation card. */onStagingChange?:(s:Staging,aspect:string,changed:boolean)=>void}){
  const {shot,identityLock,speech,references,staging}=plan;
  // When the user arranges «بوم», Whoush re-picks the lens for that scene (the same choice the build uses): shown here live.
@@ -75,7 +77,7 @@ export function PlanStory({plan,onStagingChange}:{plan:PublicCreativePlan;
  const camera=plan.camera&&lens?{...plan.camera,focalLengthMm:lens.focalLengthMm,aperture:lens.aperture,iso:lens.iso,focus:lens.fa}:plan.camera;
  const onArrange=onStagingChange?(s:Staging,aspect:string,changed:boolean)=>{setArranged(changed?s:null);onStagingChange(s,aspect,changed);}:undefined;
  const more=plan.softPreferences.length+plan.continuity.locks.length+plan.continuity.antiTeleport.length+plan.qaChecklist.length>0||identityLock||speech;
- return <div className="flex flex-col gap-5">
+ const details=<>
   <Section icon={Sparkles} title="هدف">
    <p className="type-body-sm text-fg-primary">{text(plan.intentSummaryFa)}</p>
    <ul className="flex flex-wrap gap-2">
@@ -138,9 +140,20 @@ export function PlanStory({plan,onStagingChange}:{plan:PublicCreativePlan;
     </AccordionContent>
    </AccordionItem>
   </Accordion>}
-  {/* «بوم» closes the plan, right above the generation card (and before any question), so the scene sits next to what builds it. */}
-  {staging&&<StagingEditor staging={staging} aspectRatio={plan.camera?.aspectRatio} mediaKind={plan.mediaKind} onChange={onArrange}/>}
+ </>;
+ const editor=staging&&<StagingEditor staging={staging} aspectRatio={plan.camera?.aspectRatio} mediaKind={plan.mediaKind} onChange={onArrange} focus={focus}/>;
+ // A focused follow-up: only the part of «بوم» it is about, with the rest of the plan folded away.
+ if(focus?.length)return <div className="flex flex-col gap-3">
+  {editor}
+  <Accordion>
+   <AccordionItem value="plan" className="border-b-0">
+    <AccordionTrigger className="py-0"><span className="flex items-center gap-2"><Icon icon={ListChecks} size={16} aria-hidden="true" className="size-4 text-fg-secondary"/>جزئیات برنامه</span></AccordionTrigger>
+    <AccordionContent><div className="flex flex-col gap-5 pt-3">{details}</div></AccordionContent>
+   </AccordionItem>
+  </Accordion>
  </div>;
+ // «بوم» closes the plan, right above the generation card (and before any question), so the scene sits next to what builds it.
+ return <div className="flex flex-col gap-5">{details}{editor}</div>;
 }
 
 export const NEEDS_INPUT_FA="نیاز به پاسخ تو";

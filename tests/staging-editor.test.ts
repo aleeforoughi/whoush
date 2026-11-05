@@ -345,3 +345,17 @@ test("the camera diagrams' sight line ends at the frame's centre point: the face
  const moved={...s,...moveFocusPoint(s,s,W,H,fx+20,fy+15)},o=centerOnSubject(moved,s,"16:9");
  assert.ok(o.height<0.88&&o.lateral>0,"moved down and right on the subject: "+JSON.stringify(o));
 });
+
+test("a follow-up about one part of the scene opens «بوم» on just that part: from its words, else from what changed",async()=>{
+ const {followUpFocus,sectionsFromWords,stagingSections,applyStagingCues}=await import("../lib/staging");
+ const s:Staging={...base,props:[{kind:"person",label:"زن",x:0,z:-0.25,y:0,main:true}]};
+ assert.deepEqual(sectionsFromWords(normalizePersian("can we move the camera angle to hero view?")),["camera"]);
+ assert.deepEqual(sectionsFromWords(normalizePersian("نور رو گرم‌تر کن و زاویه دوربین رو پایین‌تر")),["camera","light"]);
+ assert.deepEqual(sectionsFromWords(normalizePersian("یه کم کادر رو باز تر کن")),["frame"]);
+ assert.equal(applyStagingCues(s,normalizePersian("camera to hero view please")).cameraAngle,"low","a hero view is a low angle");
+ assert.deepEqual(followUpFocus(normalizePersian("hero view"),s,{...s,cameraAngle:"low"}),["camera"]);
+ assert.deepEqual(followUpFocus(normalizePersian("یه بار دیگه"),s,{...s,lights:[{...s.lights[0],colorTemperatureK:3000}]}),["light"],"no words: what changed");
+ assert.equal(followUpFocus(normalizePersian("hero view"),undefined,s),undefined,"a first generation shows the whole canvas");
+ assert.equal(followUpFocus(normalizePersian("change the camera, the framing and the lighting"),s,s),undefined,"everything: the whole canvas");
+ assert.deepEqual(stagingSections(s,{...s,shotSize:"wide"}),["frame"]);
+});
