@@ -37,6 +37,8 @@ const FRAME_FULLSCREEN=false;
 const SHOW_DOMINANT=false;
 /** Beta: the shot type buttons (normal, over the shoulder, point of view) are off; a brief can still ask for one. */
 const SHOW_SHOT_STYLES=false;
+/** Beta: lights can't be added or removed in «بوم» (each keeps its settings); Whoush's lights stay as planned. */
+const LIGHTS_EDITABLE=false;
 let webglOk:boolean|undefined;
 /** Whether this browser can draw WebGL (checked once; the test context is released at once). */
 function hasWebGL():boolean{
@@ -1185,10 +1187,10 @@ function LightInspector({light:l,tag,canRemove,onChange,onRemove,onAdd}:{light:S
    {GEL_COLORS.map(c=><button key={c} type="button" role="radio" aria-checked={l.colorHex===c} aria-label={"ژل "+c} onClick={()=>onChange({colorHex:c})}
     className={"size-7 rounded-control border-2 "+(l.colorHex===c?"border-fg-primary":"border-transparent")} style={{background:c}}/>)}
   </div>
-  <div className="flex flex-wrap gap-2">
+  {LIGHTS_EDITABLE&&<div className="flex flex-wrap gap-2">
    {onAdd&&<Button type="button" variant="outline" size="sm" onClick={onAdd}><Icon icon={Plus} aria-hidden="true"/>نور جدید</Button>}
    {canRemove&&<Button type="button" variant="ghost" size="sm" onClick={onRemove}><Icon icon={Trash2} aria-hidden="true"/>حذف این نور</Button>}
-  </div>
+  </div>}
  </div>;
 }
 /** A light source's small asset next to its name. */
