@@ -84,7 +84,7 @@ export function wideFrameRect(cam:Pick<Camera3D,"shift">,frameAspect:number,vw:n
  return {w:fw/vw,h:fh/vh,x:0.5+cam.shift[0]*fw/vw,y:0.5+cam.shift[1]*fh/vh};
 }
 /** The clay look of the asset pack, for the 3D figures, and the dark set they stand in (colours live here: TSX holds no hex values). */
-export const SCENE_COLORS={clay:"#d9dadd",hair:"#8a8d93",dark:"#2b2d31",glass:"#3c4048",tail:"#c4453f",ground:"#17181b",sky:"#0b0b0c",wall:"#25272b",window:"#6d7480",sea:"#2a3340",horizon:"#202227",foliage:"#9fa3a8",bark:"#7c7f84",selected:"#1d4ed8",black:"#000000"} as const;
+export const SCENE_COLORS={clay:"#d9dadd",hair:"#8a8d93",dark:"#2b2d31",glass:"#3c4048",tail:"#c4453f",ground:"#17181b",sky:"#0b0b0c",wall:"#25272b",window:"#6d7480",sea:"#2a3340",horizon:"#202227",foliage:"#9fa3a8",bark:"#7c7f84",selected:"#1d4ed8",black:"#000000",grid:"rgba(255,255,255,0.13)"} as const;
 /**
  * The frame's centre point from a point on the subject (the inverse of centerOnSubject): `lateral` stage units sideways, `height` as a share of its height.
  * Used when the user drags the centre point in the 3D view.

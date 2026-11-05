@@ -17,6 +17,21 @@
 - **To replace one asset:** run `node --import tsx scripts/generate-visual-assets.ts <id>` with `OPENAI_API_KEY` set, then `node --import tsx scripts/visual-manifest.ts`. Raw outputs go to `public/visuals/raw/` (git-ignored).
 - Using an image model for internal UI illustration is separate from customer media generation, which stays on Higgsfield only (CLAUDE.md).
 
+## The angle matrix (Plan A)
+- **Every family as a matrix:** five heights (top, high, eye level, low, bottom, the camera's stops in `VERTICAL_STOPS`) times five sides (front, 3/4, side, rear 3/4, back; the other side is the mirror). Eye level is the original pack. The other heights are `<family>-<height>-<side>` (`human-high-3q`), or `<family>-<height>-round` for things that look the same from every side (bottle, tree, building).
+- **Generated** by `scripts/generate-visual-assets.ts` from the same side's eye-level image (plus the style anchor), so design, facing and style match the pack. A generated image faces the way its eye-level reference does unless `NATIVE` in `lib/sprites.ts` says otherwise; check new ones by eye.
+- **Done:** the man (all except `human-top-side`, which came out frontal and was dropped, and `human-bottom-side`, which the image model refused), and the woman's top front and back.
+- **Still to generate:** the rest of the woman, the car, the cat and the round things. The OpenAI account ran out of credits; re-run the generator for the missing ids once it is topped up.
+- **Missing images** fall back to the same side at the next height toward eye level (`spriteFor`), so the frame always shows something sensible.
+
+## The frame renderer
+- **CSS 3D (Plan A, default):** `components/frame-css.tsx` with `lib/frame-css.ts`. It uses one pinhole camera, the same one the prompt uses (`camera3D`).
+  - The CSS perspective distance is the focal length in pixels, so a wide lens close up stretches depth and a long lens flattens it.
+  - The ground grid and the room and studio walls are drawn in perspective.
+  - Each prop is its pack image for the height stop and side the camera sees it from, measured where the camera aims. It's sized to its real height and blurred by its distance from the focus (thin-lens circle of confusion).
+- **WebGL (Plan B, parked):** the three.js models are kept in `components/scene-3d.tsx` and on the `archive/plan-b-3d` branch. Switch with `FRAME_RENDERER` in `components/staging-editor.tsx`.
+- **Angle controls:** the height and orbit sliders, the camera drags and each prop's turn snap to the stops. The joystick in the frame's bottom-left steps them: up and down change the height, left and right orbit 45°. Its centre shows the angle and resets to eye level, from the front.
+
 ## «بوم» (Canvas): the scene widget
 - **Scenes:** Whoush builds the scene from the brief before anything is generated. It sets the subject and the main props (person, object, animal, vehicle, tree, building) with Persian labels and a ground layout, plus camera, framing and lights. A planner's crowded or all-lifted layout is tidied; the user's own arrangement never is.
 - **Smooth controls:** every adjustment is continuous: camera elevation in degrees, zoom on a smooth log scale, any light angle, free crop and prop positions. The named values («زاویهٔ بالا», «نمای متوسط», «جلو، چپ») are the nearest description; the exact values (`cameraElevation`, `shotScale`, light `angle`) are applied and described to Whoush and the provider.

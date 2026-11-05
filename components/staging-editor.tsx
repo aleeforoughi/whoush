@@ -2,17 +2,25 @@
 import {useEffect,useId,useRef,useState,useSyncExternalStore,type KeyboardEvent,type PointerEvent,type ReactNode} from "react";
 import dynamic from "next/dynamic";
 import {Dialog as DialogPrimitive} from "@base-ui/react/dialog";
-import {Box,ChevronDown,Lock,LockOpen,Maximize2,Plus,RotateCcw,Trash2,Undo2,X} from "lucide-react";
+import {Box,ChevronDown,ChevronLeft,ChevronRight,ChevronUp,Lock,LockOpen,Maximize2,Plus,RotateCcw,Trash2,Undo2,X} from "lucide-react";
 import {Button,Dialog,DialogBody,DialogContent,DialogHeader,DialogPortal,DialogTitle,Icon} from "@aleeforoughi/feather-react";
 import {FOCUS_DETAILS,LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
- SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,rollOf,lensSizeFactor,backdropFactor,wallDepth,blurAt,horizonShift,focusDepth,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
+ SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,rollOf,lensSizeFactor,backdropFactor,wallDepth,blurAt,horizonShift,focusDepth,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,VERTICAL_STOPS,verticalIndex,snapVertical,SIDE_STEP,snapSide,sideStopFa,type SceneProp} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 import {fa} from "@/lib/format";
 import type {FrameRect} from "./scene-3d";
+import FrameCSS from "./frame-css";
+import {spriteFor} from "@/lib/sprites";
 
 /** The frame in real 3D (three.js), loaded only in the browser and only when «بوم» is open; the 2D drawing stays as the collapsed snapshot and the fallback. */
 const Scene3D=dynamic(()=>import("./scene-3d"),{ssr:false,loading:()=>null});
+/**
+ * Which renderer draws the open frame: "css" (Plan A: the pack's images at the camera's height and side stops, CSS 3D perspective for the lens, blur for
+ * the aperture; components/frame-css.tsx) or "webgl" (Plan B, parked: three.js models; archive/plan-b-3d). Both take the same props.
+ */
+const FRAME_RENDERER:"css"|"webgl"="css";
+const FrameScene=FRAME_RENDERER==="css"?FrameCSS:Scene3D;
 let webglOk:boolean|undefined;
 /** Whether this browser can draw WebGL (checked once; the test context is released at once). */
 function hasWebGL():boolean{
@@ -105,7 +113,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  const setElevationOnly=(e:number)=>setDraft(d=>({...d,cameraElevation:e,cameraAngle:d.cameraAngle==="dutch"?"dutch":snapElevation(e)}));
  const orbitTo=(az:number)=>{aim();orbitOnly(az);};
  // A drag of the camera re-centres once, when it starts (not on every move).
- const orbitDrag=(az:number)=>orbitOnly(az);
+ const orbitDrag=(az:number)=>orbitOnly(snapSide(az));
  const orbitOnly=(az:number)=>setDraft(d=>orbitCamera(d,wrap180(az-(d.cameraAzimuth??0))));
  const setDistance=(v:number)=>{aim();setDistanceOnly(v);};
  const setDistanceOnly=(v:number)=>setDraft(d=>{const sc=scaleFromSlider(v);return {...d,shotScale:sc,shotSize:nearestShot(sc)};});
@@ -160,7 +168,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
   <div className="flex min-w-0 flex-col gap-3">
    {show("frame")&&<div ref={el=>{frameArea.current=el;setFrameEl(el);}}><Viewport {...cap.frame}>
     <FrameView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={i=>{setPropSel(i);setCenterSel(false);}} centerSel={centerSel} onSelectCenter={()=>{setCenterSel(true);setPropSel(null);}} onProp={(i,x,z)=>setProp(i,{x,z})} onZoom={setDistance} locked={locked} onLock={setLocked} onBack={()=>{setPropSel(null);setCenterSel(false);setLocked(false);}}
-     onFocus={f=>{if(f)set(f);else resetFocus();}} three={webgl&&onScreen&&(open||focused)&&!fullscreen} onFullscreen={()=>{setCenterSel(false);setFullscreen(true);}}/>
+     onFocus={f=>{if(f)set(f);else resetFocus();}} onAngle={c=>{if(c.elevation!==undefined)setElevation(c.elevation);if(c.azimuth!==undefined)orbitTo(c.azimuth);}} three={(FRAME_RENDERER==="css"||webgl)&&onScreen&&(open||focused)&&!fullscreen} onFullscreen={()=>{setCenterSel(false);setFullscreen(true);}}/>
     {fullscreen&&<FrameFullscreen staging={draft} anchor={anchor} aspect={aspect} sel={propSel} onSelect={i=>{setPropSel(i);setCenterSel(false);setLocked(false);}}
      onProp={(i,x,z)=>setProp(i,{x,z})} onFraming={f=>set({framing:f})} distance={distanceOf(draft)} onZoom={setDistance} onClose={()=>setFullscreen(false)}
      inspector={i=>props[i]?<PropInspector prop={withFrameCuts(draft,anchor,aspect).props![i]} tag={propTags(props,true)[i]} reach={propReach(props[i],draft,anchor,aspect)} onChange={p=>setProp(i,p)}/>:null}/>}
@@ -190,15 +198,16 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     <div className="grid grid-cols-2 gap-2">
      <Tile label="زاویه دوربین / عمودی">
       <CameraView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onStart={aim} onCamera={c=>{setDraft(d=>{const n=c.flip?orbitCamera(d,180):d;
-       return {...n,cameraElevation:c.elevation,cameraAngle:n.cameraAngle==="dutch"?"dutch":snapElevation(c.elevation)};});}}/>
+       const e=snapVertical(c.elevation);return {...n,cameraElevation:e,cameraAngle:n.cameraAngle==="dutch"?"dutch":snapElevation(e)};});}}/>
      </Tile>
      <Tile label="زاویه دوربین / افقی">
       <OrbitView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onStart={aim} onOrbit={c=>orbitDrag(c.azimuth)}/>
      </Tile>
     </div>
-    {editable&&<SliderRow label="ارتفاع دوربین" ends={["پایین","بالا"]} valueText={CAMERA_ANGLE_FA[draft.cameraAngle]+" · "+fa(Math.round(elevationOf(draft)))+"°"} min={-60} max={85} step={1} value={elevationOf(draft)}
-     onChange={setElevation}/>}
-    {editable&&<SliderRow label="چرخش دور سوژه (۳۶۰°)" ends={["چپ","راست"]} valueText={orbitFa(draft.cameraAzimuth??0)} min={-180} max={180} step={1} value={draft.cameraAzimuth??0} onChange={orbitTo}/>}
+    {/* The height and the orbit snap to the stops the pack is drawn at: five heights, eight sides (lib/staging.ts, VERTICAL_STOPS, SIDE_STEP). */}
+    {editable&&<SliderRow label="ارتفاع دوربین" ends={["پایین","بالا"]} valueText={VERTICAL_STOPS[verticalIndex(elevationOf(draft))].fa+" · "+fa(Math.round(elevationOf(draft)))+"°"} min={0} max={VERTICAL_STOPS.length-1} step={1} value={verticalIndex(elevationOf(draft))}
+     onChange={i=>setElevation(VERTICAL_STOPS[i].deg)}/>}
+    {editable&&<SliderRow label="چرخش دور سوژه (۳۶۰°)" ends={["چپ","راست"]} valueText={orbitFa(draft.cameraAzimuth??0)} min={-180} max={180} step={SIDE_STEP} value={snapSide(draft.cameraAzimuth??0)} onChange={v=>orbitTo(snapSide(v))}/>}
     {/* The Dutch (canted) angle as a smooth tilt, and the two shot types that change how the camera relates to the subject. */}
     {editable&&<SliderRow label="زاویهٔ کج (داچ)" ends={["به چپ","به راست"]} valueText={rollOf(draft)?fa(Math.abs(Math.round(rollOf(draft))))+"° "+(rollOf(draft)>0?"به راست":"به چپ"):"صاف"}
      min={-30} max={30} step={1} value={rollOf(draft)} onChange={v=>setDraft(d=>{const {cameraRoll:_r,...rest}=d;void _r;
@@ -319,29 +328,8 @@ function Asset({id,x,y,h,mirror,sx=1,rotate=0,opacity=1,tint}:{id:string;x:numbe
  */
 /** A sprite's width on screen at height h. */
 const spriteW=(sp:{id:string;sx:number},h:number)=>{const v=VISUALS[sp.id];return v?h*sp.sx*v.width/v.height:h;};
-/**
- * Which way each side or three-quarter image faces as drawn (1: right, -1: left), checked by eye on each generated image (the prompts asked for one way; the
- * model did not always follow). Front and back views are symmetric and never mirrored.
- */
-const NATIVE:Record<string,1|-1>={"person-side":-1,"vehicle-side":-1,"animal-side":1,"person-3q":-1,"animal-3q":1,"vehicle-3q":-1,"vehicle-3q-rear":1,
- "human-side":-1,"human-3q":-1,"human-3q-back":-1,"animal-3q-back":1,"woman-side":-1,"woman-3q":-1,"woman-3q-back":-1};
-/** Each kind's views by angle to the camera (front within 25°, three-quarter to 65°, side, rear three-quarter from 115°, back from 155°), in order of preference. */
-const VIEWS:Partial<Record<SceneProp["kind"]|"woman",{front:string[];q:string[];side:string[];qBack:string[];back:string[]}>>={
- person:{front:["human-front","person-front"],q:["human-3q","person-3q","person-front"],side:["human-side","person-side"],qBack:["human-3q-back","human-back","person-3q","person-front"],back:["human-back","person-front"]},
- woman:{front:["woman-front","human-front"],q:["woman-3q","human-3q"],side:["woman-side","human-side"],qBack:["woman-3q-back","human-3q-back"],back:["woman-back","human-back"]},
- vehicle:{front:["vehicle-front","vehicle-3q"],q:["vehicle-3q","vehicle-side"],side:["vehicle-side"],qBack:["vehicle-3q-rear","vehicle-side"],back:["vehicle-rear","vehicle-3q-rear"]},
- animal:{front:["animal-front","animal-3q"],q:["animal-3q","animal-side"],side:["animal-side"],qBack:["animal-3q-back","animal-3q","animal-side"],back:["animal-back","animal-3q-back","animal-side"]}
-};
-function sprite(p:SceneProp):{id:string;mirror:boolean;sx:number}{
- // A woman (from the prop's label: «زن», «دختر», "woman") has her own figure.
- const v=VIEWS[genderOf(p)==="female"?"woman":p.kind];if(!v)return {id:PROP_ASSETS[p.kind].front,mirror:false,sx:1};
- const f=wrap180(facingOf(p)),a=Math.abs(f),dir:1|-1=f<0?-1:1;
- const list=a<25?v.front:a<65?v.q:a<=115?v.side:a<=155?v.qBack:v.back;
- const id=list.find(x=>VISUALS[x])??v.side[0];
- // A side image standing in for a front or back view is narrowed (seen nearly head-on); a symmetric front or back view is never mirrored.
- const symmetric=!(id in NATIVE),stand=(a<25||a>155)&&!symmetric;
- return {id,mirror:symmetric?false:NATIVE[id]!==dir,sx:stand&&id.endsWith("-side")?Math.max(0.42,Math.abs(Math.sin(f*Math.PI/180))):stand?0.85:1};
-}
+/** The eye-level image for a prop, by which way it faces (lib/sprites.ts): the 2D drawings (the collapsed frame, the camera's side view). */
+function sprite(p:SceneProp):{id:string;mirror:boolean;sx:number}{const sp=spriteFor(p,"eye",facingOf(p));return {id:sp.id,mirror:sp.mirror,sx:1};}
 
 /** The main prop (or the first), whose side view the camera view shows; an environment-only scene shows the landscape. */
 const mainProp=(s:Staging)=>(s.props??[]).find(p=>p.main)??(s.props??[])[0];
@@ -421,8 +409,8 @@ function CameraView({staging,anchor,aspect,editable,onCamera,onStart}:{staging:S
   const psi=Math.atan2(-y,x)*180/Math.PI,s2:1|-1=x>=0?1:-1;
   return {side:s2,elevation:Math.round(Math.max(-60,Math.min(85,wrap180(s2===1?psi:180-psi))))};};
  const key=(e:KeyboardEvent)=>{
-  const d={ArrowUp:5,ArrowDown:-5,ArrowRight:5,ArrowLeft:-5}[e.key as "ArrowUp"];if(!d)return;e.preventDefault();
-  onCamera({elevation:Math.max(-60,Math.min(85,Math.round(elev+d)))});};
+  const d={ArrowUp:1,ArrowDown:-1,ArrowRight:1,ArrowLeft:-1}[e.key as "ArrowUp"];if(!d)return;e.preventDefault();
+  onCamera({elevation:VERTICAL_STOPS[Math.max(0,Math.min(VERTICAL_STOPS.length-1,verticalIndex(elev)+d))].deg});};
  // Live while dragging, so the frame and the top view follow the camera as it moves.
  const move=(e:PointerEvent)=>{if(!dragging)return;const c=at(e);if(!Number.isFinite(c.elevation))return;
   const flip=c.side!==side;if(flip)setSide(c.side);onCamera({elevation:c.elevation,...(flip?{flip}:{})});};
@@ -466,8 +454,8 @@ function OrbitView({staging,anchor,aspect,editable,onOrbit,onStart}:{staging:Sta
  const at=(e:PointerEvent)=>{const r=svg.current!.getBoundingClientRect();const x=(e.clientX-r.left)*VW/r.width-C[0],y=(e.clientY-r.top)*VH/r.height-C[1];
   return {azimuth:Math.round(Math.atan2(x,y)*180/Math.PI)};};
  const key=(e:KeyboardEvent)=>{
-  const d={ArrowRight:5,ArrowLeft:-5,ArrowUp:5,ArrowDown:-5}[e.key as "ArrowUp"];if(!d)return;e.preventDefault();
-  onOrbit({azimuth:wrap180(az+d)});};
+  const d={ArrowRight:SIDE_STEP,ArrowLeft:-SIDE_STEP,ArrowUp:SIDE_STEP,ArrowDown:-SIDE_STEP}[e.key as "ArrowUp"];if(!d)return;e.preventDefault();
+  onOrbit({azimuth:snapSide(az+d)});};
  const move=(e:PointerEvent)=>{if(!dragging)return;const v=at(e);if(Number.isFinite(v.azimuth))onOrbit(v);};
  return <svg ref={svg} viewBox={"0 0 "+VW+" "+VH} className="mx-auto block aspect-[22/21] w-full max-w-sm touch-pan-y select-none text-fg-primary" aria-hidden={!editable}
   onPointerMove={move} onPointerUp={()=>setDragging(false)} onPointerCancel={()=>setDragging(false)}>
@@ -618,7 +606,7 @@ const snapAxis=(v:number)=>Math.max(-1,Math.min(1,Math.round(v*100)/100));
  * - Drag the empty background: slides the crop like a crop tool, snapping to the thirds and the centre.
  * - Keyboard: arrow keys move the selected prop (or the crop when the frame itself has focus).
  */
-function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp,onZoom,locked=false,onLock,onFocus,onBack,centerSel=false,onSelectCenter,three=false,onFullscreen}:{staging:Staging;
+function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp,onZoom,locked=false,onLock,onFocus,onBack,centerSel=false,onSelectCenter,three=false,onFullscreen,onAngle}:{staging:Staging;
  /** The scene whose main subject anchors the zoom (Whoush's original layout): fixed while props move, so moving the main subject moves only it. */anchor?:Staging;
  aspect:string;editable?:boolean;onFraming?:(f:{x:number;y:number}|undefined)=>void;
  /** The selected prop (null: none, the frame's own settings show). */sel?:number|null;onSelect?:(i:number|null)=>void;onProp?:(i:number,x:number,z:number)=>void;
@@ -629,7 +617,8 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
  /** Back to the frame's own settings (the badge's ×). */onBack?:()=>void;
  /** The centre point's dot is selected (its settings show), and selecting it. */centerSel?:boolean;onSelectCenter?:()=>void;
  /** Draw the frame in real 3D (the lens's perspective, any height angle, fisheye, depth of field); the 2D drawing's overlays stay on top. */three?:boolean;
- /** Opens the frame full screen. */onFullscreen?:()=>void}){
+ /** Opens the frame full screen. */onFullscreen?:()=>void;
+ /** The angle joystick: a new camera height (a stop) or orbit (a side). */onAngle?:(c:{elevation?:number;azimuth?:number})=>void}){
  // In 3D: where the centre point and the selected prop land on screen (fractions of the frame), and whether a press just landed on a prop.
  const [proj,setProjRaw]=useState<Record<string,[number,number]>>({});
  const setProj=(p:Record<string,[number,number]>)=>setProjRaw(o=>sameJSON(o,p)?o:p);
@@ -768,11 +757,12 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
    onPointerDown={e=>{if(propHit.current){propHit.current=false;return;}if(e.button>0)return;capture(e.currentTarget,e.pointerId);if(!locked)onSelect?.(null);cropDrag(e);}}
    onPointerMove={e=>{if(!drag)return;const u=unit(),[ddx,ddy]=cam.unroll((e.clientX-drag.px)*u.sx,(e.clientY-drag.py)*u.sy);const c={x:snapAxis(drag.x+ddx/(W/2)),y:snapAxis(drag.y+ddy/(H/2))};if(Number.isFinite(c.x)&&Number.isFinite(c.y))setDrag({...drag,cur:c});}}
    onPointerUp={()=>{if(drag){commit(drag.cur);setDrag(null);}}} onPointerCancel={()=>setDrag(null)}>
-   <Scene3D staging={{...staging,framing:fr}} anchor={anchor} aspect={aspect} editable sel={centerSel?null:sel} lockedTo={locked&&sel!=null?sel:undefined}
+   <FrameScene staging={{...staging,framing:fr}} anchor={anchor} aspect={aspect} editable sel={centerSel?null:sel} lockedTo={locked&&sel!=null?sel:undefined}
     onSelect={i=>{if(!locked)onSelect?.(i);}} onProp={onProp} onPropDown={()=>{propHit.current=true;}} onProject={setProj} within={within}/>
   </div>}
   {three&&<div className="sr-only">{base.map((p,i)=><button key={i} type="button" aria-pressed={sel===i} onClick={()=>{if(!locked)onSelect?.(i);}} onKeyDown={propKey(i)}>{propTags(base)[i]+"، "+propPlaceFa(placed[i]??p)}</button>)}</div>}
   {svgEl}
+  {onAngle&&<AngleJoystick staging={staging} onAngle={onAngle} inset={(2/(W+4)*100)+"%"} insetY={(2/(H+4)*100)+"%"}/>}
   {three&&onFullscreen&&<button type="button" onClick={onFullscreen} aria-label="نمایش تمام‌صفحهٔ کادر"
    className="absolute top-3 end-3 z-10 flex size-8 items-center justify-center rounded-control bg-background/70 text-fg-primary shadow-1 backdrop-blur-sm motion-hover hover:bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
    <Icon icon={Maximize2} size={16} aria-hidden="true"/></button>}
@@ -798,6 +788,40 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
     <Icon icon={locked?Lock:LockOpen} size={16} aria-hidden="true" className={"size-3.5! "+(locked?"[&_rect]:fill-current":"")}/></button>}
    <bdi className="whitespace-nowrap text-xs font-medium leading-none text-primary pointer-coarse:text-[13px]">{tag.text}</bdi>
   </div>}
+ </div>;
+}
+
+/**
+ * The angle joystick, in the frame's bottom-left corner: up and down move the camera through the five height stops, left and right orbit it 45° around the
+ * subject (the sides the pack is drawn at). The centre shows the angle as a small gizmo (the camera on its ring around the subject, raised by its height);
+ * tapping it goes back to eye level, from the front.
+ */
+function AngleJoystick({staging,onAngle,inset,insetY}:{staging:Staging;onAngle:(c:{elevation?:number;azimuth?:number})=>void;inset:string;insetY:string}){
+ const vi=verticalIndex(elevationOf(staging)),az=snapSide(staging.cameraAzimuth??0),stop=VERTICAL_STOPS[vi];
+ const btn="absolute flex size-6 items-center justify-center rounded-full bg-background/80 text-fg-primary shadow-1 backdrop-blur-sm motion-hover hover:bg-background disabled:opacity-40 outline-none focus-visible:outline-2 focus-visible:outline-ring before:absolute before:-inset-2 before:content-[''] pointer-coarse:size-7";
+ const at=(x:string,y:string,t:string)=>({left:x,top:y,transform:t});
+ const now=stop.fa+"، "+sideStopFa(az)+(Math.abs(az)%180?(az>0?" از راست":" از چپ"):"");
+ // The gizmo: the subject in the middle, its ground ring seen from a little above, the camera on it at the orbit, raised by the height.
+ const e=stop.deg*Math.PI/180,a=az*Math.PI/180,R=8,cx=12,cy=13,cam:[number,number]=[cx+R*Math.sin(a)*Math.cos(e),cy+R*0.38*Math.cos(a)*Math.cos(e)-R*Math.sin(e)];
+ return <div dir="ltr" role="group" aria-label={"زاویهٔ دوربین: "+now} className="absolute z-10 size-[76px] pointer-coarse:size-[84px]" style={{left:"calc("+inset+" + 6px)",bottom:"calc("+insetY+" + 6px)"}}
+  onPointerDown={e=>e.stopPropagation()}>
+  <button type="button" className={btn} style={at("50%","0","translateX(-50%)")} disabled={vi>=VERTICAL_STOPS.length-1} aria-label={"دوربین بالاتر"+(VERTICAL_STOPS[vi+1]?": "+VERTICAL_STOPS[vi+1].fa:"")}
+   onClick={()=>onAngle({elevation:VERTICAL_STOPS[Math.min(VERTICAL_STOPS.length-1,vi+1)].deg})}><Icon icon={ChevronUp} size={16} aria-hidden="true" className="size-3.5!"/></button>
+  <button type="button" className={btn} style={at("50%","100%","translate(-50%,-100%)")} disabled={vi<=0} aria-label={"دوربین پایین‌تر"+(VERTICAL_STOPS[vi-1]?": "+VERTICAL_STOPS[vi-1].fa:"")}
+   onClick={()=>onAngle({elevation:VERTICAL_STOPS[Math.max(0,vi-1)].deg})}><Icon icon={ChevronDown} size={16} aria-hidden="true" className="size-3.5!"/></button>
+  <button type="button" className={btn} style={at("0","50%","translateY(-50%)")} aria-label="چرخش دوربین دور سوژه، به چپ"
+   onClick={()=>onAngle({azimuth:snapSide(az-SIDE_STEP)})}><Icon icon={ChevronLeft} size={16} aria-hidden="true" className="size-3.5!"/></button>
+  <button type="button" className={btn} style={at("100%","50%","translate(-100%,-50%)")} aria-label="چرخش دوربین دور سوژه، به راست"
+   onClick={()=>onAngle({azimuth:snapSide(az+SIDE_STEP)})}><Icon icon={ChevronRight} size={16} aria-hidden="true" className="size-3.5!"/></button>
+  <button type="button" title={now} aria-label={"زاویهٔ فعلی: "+now+". برگشت به هم‌سطح چشم، روبه‌رو"} onClick={()=>onAngle({elevation:0,azimuth:0})}
+   className="absolute flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" style={at("50%","50%","translate(-50%,-50%)")}>
+   <svg viewBox="0 0 24 24" className="size-6" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth={1.2}>
+    <ellipse cx={cx} cy={cy} rx={R} ry={R*0.38} strokeOpacity={0.5}/>
+    <circle cx={cx} cy={cy-4.2} r={1.6} fill="currentColor" stroke="none"/><path d={"M"+cx+" "+(cy-2.4)+"V"+cy} strokeWidth={1.6} strokeLinecap="round"/>
+    <path d={"M"+cam[0]+" "+cam[1]+"L"+cx+" "+(cy-3)} strokeDasharray="1.5 1.2"/>
+    <circle cx={cam[0]} cy={cam[1]} r={2.1} fill="currentColor" stroke="none"/>
+   </svg>
+  </button>
  </div>;
 }
 
@@ -831,7 +855,7 @@ function FrameFullscreen({staging,anchor,aspect,sel,onSelect,onProp,onFraming,di
       const c={x:snapAxis(drag.x-2*(e.clientX-drag.px)/fw),y:snapAxis(drag.y-2*(e.clientY-drag.py)/fh)};if(Number.isFinite(c.x)&&Number.isFinite(c.y))setDrag({...drag,cur:c});}}
      onPointerUp={()=>{if(drag){onFraming(drag.cur.x===0&&drag.cur.y===0?undefined:drag.cur);setDrag(null);}}} onPointerCancel={()=>setDrag(null)}
      onWheel={e=>onZoom(Math.max(0,Math.min(1,distance+e.deltaY*0.0015)))}>
-     <Scene3D staging={{...staging,framing:fr}} anchor={anchor} aspect={aspect} editable wide sel={sel} onSelect={onSelect} onProp={onProp}
+     <FrameScene staging={{...staging,framing:fr}} anchor={anchor} aspect={aspect} editable wide sel={sel} onSelect={onSelect} onProp={onProp}
       onPropTap={i=>setInspect(i)} onPropDown={()=>{propHit.current=true;}} onFrameRect={setRect} within={within}/>
     </div>
     {/* The frame: a green outline with its thirds; everything outside it is darkened (a wide shadow around it). */}
@@ -937,7 +961,7 @@ function PropInspector({prop:p,tag,reach:r,onChange}:{prop:SceneProp;tag:string;
 </div>
   <SliderRow label="جای افقی (تا بیرون از کادر)" ends={["چپ","راست"]} valueText={pct(p.x)} min={Math.min(r.xMin,p.x)} max={Math.max(r.xMax,p.x)} step={0.01} value={p.x} onChange={x=>onChange({x})}/>
   <SliderRow label="عمق (تا بریده از پایین)" ends={["جلو","عقب"]} valueText={pct(p.z)} min={Math.min(r.zMin,p.z)} max={r.zMax} step={0.01} value={p.z} onChange={z=>onChange({z})}/>
-  <SliderRow label="چرخش رو به دوربین" valueText={facingFa(facingOf(p))+" · "+fa(Math.round(facingOf(p)))+"°"} min={-180} max={180} step={1} value={facingOf(p)} onChange={f=>onChange({facing:f})}/>
+  <SliderRow label="چرخش رو به دوربین" valueText={facingFa(facingOf(p))+" · "+fa(Math.round(facingOf(p)))+"°"} min={-180} max={180} step={SIDE_STEP} value={snapSide(facingOf(p))} onChange={f=>onChange({facing:snapSide(f)})}/>
   <SliderRow label="ارتفاع از زمین" ends={["زمین","بالا"]} valueText={p.y>0.01?pct(p.y):"روی زمین"} min={0} max={1} step={0.01} value={p.y} onChange={y=>onChange({y})}/>
  </div>;
 }

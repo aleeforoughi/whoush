@@ -9,6 +9,7 @@
  */
 import {mkdir,readFile,writeFile} from "node:fs/promises";
 import path from "node:path";
+import {pathToFileURL} from "node:url";
 import sharp from "sharp";
 
 const MODEL=process.env.VISUALS_IMAGE_MODEL??"gpt-image-1.5";
@@ -71,6 +72,40 @@ export const ASSETS:{id:string;ref?:string;prompt:string;size:"1024x1024"|"1024x
  {id:"light-sky",ref:"light-sun",size:"1024x1024",prompt:"A stylized soft fluffy cloud with a gentle cool daylight glow behind it."},
  {id:"light-fire",ref:"light-sun",size:"1024x1024",prompt:"A stylized small campfire flame, soft rounded flame shapes glowing warm orange, on two small rounded logs."}
 ];
+/**
+ * Every camera height (docs/VISUAL_ASSETS.md, «بوم» angle stops): the frame draws each prop at the stop nearest to how the camera sees it, top, high, eye
+ * level, low or bottom, from the side it faces (front, 3/4, side, rear 3/4, back; the other side is the mirror): a matrix, every height with every side.
+ * Eye level is the side images above; these add top, high, low and bottom (the old straight-down `-top` images stay for the plan views). Each comes from
+ * the same side's eye-level image, so its design, facing and style stay the same.
+ * Ids: `<family>-<height>-<side>` (`human-high-3q`), or `<family>-<height>-round` for the things that look the same all round (`tree-low-round`).
+ */
+const HEIGHTS={
+ top:"seen from a BIRD'S-EYE VIEW: the camera is high above it, about 80 degrees up, looking almost straight DOWN at it. Very strong downward perspective: we mostly see its top, and the rest of it is steeply foreshortened below.",
+ high:"seen from a HIGH ANGLE: the camera is above it, about 35 degrees above, looking DOWN at it. Show this downward perspective clearly: we see more of its top, and its lower parts are foreshortened and smaller.",
+ low:"seen from a LOW ANGLE: the camera is below its middle, about 25 degrees below, looking UP at it. Show this upward perspective clearly: its lower parts look larger and closer, we see a little of its undersides, and its top is foreshortened and smaller.",
+ bottom:"seen from a dramatic WORM'S-EYE VIEW: the camera lies on the ground right in front of it, looking steeply UP at it (about 55 degrees). Extreme upward perspective: the parts touching the ground are huge in the foreground and we see their undersides, everything converges strongly upward and its top is tiny and far away."
+} as const;
+const SIDES={front:"seen from the FRONT, symmetrical",["3q"]:"in a FRONT THREE-QUARTER view, turned exactly the same way as the second reference",side:"in exact PROFILE, facing exactly the same way as the second reference",
+ ["3q-back"]:"in a REAR THREE-QUARTER view, turned exactly the same way as the second reference",back:"seen from BEHIND, symmetrical"} as const;
+type Side=keyof typeof SIDES;
+const ANGLED:{family:string;what:string;size:(typeof ASSETS)[number]["size"];eye:Partial<Record<Side,string>>}[]=[
+ {family:"human",what:"The same grey-haired faceless mannequin man as the second reference (short smooth sculpted hair in a medium GREY clay like a rounded cap), standing upright, full body from head to feet, arms along the sides,",size:"1024x1536",
+  eye:{front:"human-front",["3q"]:"human-3q",side:"human-side",["3q-back"]:"human-3q-back",back:"human-back"}},
+ {family:"woman",what:"The same faceless mannequin woman as the second reference (a slimmer, softer figure with a rounded shoulder-length bob in a medium GREY clay), standing upright, full body from head to feet, arms along the sides,",size:"1024x1536",
+  eye:{front:"woman-front",["3q"]:"woman-3q",side:"woman-side",["3q-back"]:"woman-3q-back",back:"woman-back"}},
+ {family:"vehicle",what:"The same stylized compact modern car as the second reference (smooth rounded toy-like forms, simple round wheels, no logos),",size:"1536x1024",
+  eye:{front:"vehicle-front",["3q"]:"vehicle-3q",side:"vehicle-side",["3q-back"]:"vehicle-3q-rear",back:"vehicle-rear"}},
+ {family:"animal",what:"The same stylized sitting cat as the second reference (simple smooth rounded forms, small rounded ears, the tail curled around),",size:"1024x1024",
+  eye:{front:"animal-front",["3q"]:"animal-3q",side:"animal-side",["3q-back"]:"animal-3q-back",back:"animal-back"}},
+ {family:"object",what:"The same simple rounded bottle-like product object as the second reference, standing upright,",size:"1024x1024",eye:{side:"object-side"}},
+ {family:"tree",what:"The same single stylized tree as the second reference (a smooth rounded lollipop-like canopy on a short straight trunk),",size:"1024x1536",eye:{side:"env-tree"}},
+ {family:"building",what:"The same stylized simple modern building block as the second reference (a rounded tall box with rounded rectangular windows),",size:"1024x1536",eye:{side:"env-building"}}
+];
+for(const f of ANGLED)for(const h of Object.keys(HEIGHTS) as (keyof typeof HEIGHTS)[]){
+ const sides=Object.entries(f.eye) as [Side,string][],round=sides.length===1;
+ for(const [side,ref] of sides)ASSETS.push({id:f.family+"-"+h+"-"+(round?"round":side),ref,size:f.size,
+  prompt:f.what+" "+(round?"":SIDES[side]+", ")+HEIGHTS[h]+" Keep exactly its design, proportions, colours and level of simplification."});
+}
 const OUT=path.join(process.cwd(),"public","visuals"),RAW=path.join(OUT,"raw");
 
 const REF_PREFIX="Use the reference image(s) ONLY as the style guide: match exactly their clay material, light grey-white colour, satin sheen, soft lighting from the upper left, ambient occlusion, level of simplification and rounded forms, so this new image belongs to the same set. Do not copy their subject unless asked. Create: ";
@@ -116,4 +151,5 @@ async function main(){
  }
  console.log(JSON.stringify(sizes));
 }
-main().catch(e=>{console.error(e instanceof Error?e.message:e);process.exit(1);});
+// Run only as a script (importing it, to read ASSETS, generates nothing).
+if(process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href)main().catch(e=>{console.error(e instanceof Error?e.message:e);process.exit(1);});

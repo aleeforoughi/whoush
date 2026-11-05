@@ -94,6 +94,23 @@ export function stepAngle(a:Staging["cameraAngle"],step:1|-1):(typeof ANGLE_ORDE
  const i=ANGLE_ORDER.indexOf(a==="dutch"?"eye_level":a);
  return ANGLE_ORDER[Math.min(ANGLE_ORDER.length-1,Math.max(0,i+step))];
 }
+/**
+ * The camera's five height stops, lowest first (Bottom, Low, Eye level, High, Top), at the named angles' elevations: the height slider, the camera drag and
+ * the frame's joystick snap to them, and the frame draws every prop's sprite at the stop nearest to how the camera sees it (lib/sprites.ts).
+ */
+export const VERTICAL_STOPS=[
+ {id:"bottom",angle:"worms_eye",fa:"از پایین"},{id:"low",angle:"low",fa:"پایین"},{id:"eye",angle:"eye_level",fa:"هم‌سطح چشم"},
+ {id:"high",angle:"high",fa:"بالا"},{id:"top",angle:"birds_eye",fa:"از بالا"}
+].map(v=>({...v,deg:CAMERA_ELEVATION[v.angle as (typeof ANGLE_ORDER)[number]]})) as readonly {id:"bottom"|"low"|"eye"|"high"|"top";angle:(typeof ANGLE_ORDER)[number];fa:string;deg:number}[];
+export type VerticalStop=(typeof VERTICAL_STOPS)[number]["id"];
+/** The height stop nearest to an elevation in degrees, as its index in VERTICAL_STOPS. */
+export const verticalIndex=(deg:number)=>VERTICAL_STOPS.reduce((b,v,i)=>Math.abs(v.deg-deg)<Math.abs(VERTICAL_STOPS[b].deg-deg)?i:b,2);
+export const snapVertical=(deg:number)=>VERTICAL_STOPS[verticalIndex(deg)].deg;
+/** The sides, every 45°: front, the front 3/4s, the sides, the rear 3/4s, the back. The orbit, the camera drag, a prop's turn and the joystick snap to them. */
+export const SIDE_STEP=45;
+export const snapSide=(deg:number)=>wrap180(Math.round(deg/SIDE_STEP)*SIDE_STEP);
+/** A side in words, from 0 (front) to 180 (back), turned toward frame right for positive angles: «روبه‌رو», «سه‌رخ»، «نیم‌رخ»، «سه‌رخ از پشت»، «پشت». */
+export function sideStopFa(deg:number):string{const a=Math.abs(snapSide(deg));return a===0?"روبه‌رو":a===45?"سه‌رخ":a===90?"نیم‌رخ":a===135?"سه‌رخ از پشت":"پشت";}
 const DIRS=Object.entries(LIGHT_ANGLE) as [Exclude<StagingLight["direction"],"top">,number][];
 /** The light direction nearest to an SVG angle in degrees (dragging a light around the subject snaps to the eight directions). */
 export function snapDirection(deg:number):Exclude<StagingLight["direction"],"top">{
