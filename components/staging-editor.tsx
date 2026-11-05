@@ -275,14 +275,14 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
      return <>
       {/* Right after the distance: Whoush Autopilot (on: Whoush keeps the lens and aperture right for the scene; off: fully manual). The bokeh toggle is
           off the canvas for now (the aperture slider still sets the background blur). */}
-      <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1">
+      <div className="flex flex-wrap items-center justify-start gap-x-6 gap-y-1">
        <Toggle label="اتوپایلوت هووش" on={autopilot} onChange={setAutopilot}/>
       </div>
-      <p className="-mt-1 text-center type-caption text-fg-secondary">{autopilot?"هووش بهترین لنز و دیافراگم رو خودش انتخاب می‌کنه.":"دستی: هر چی تنظیم کنی همون می‌مونه."}</p>
+      <p className="-mt-1 text-start type-caption text-fg-secondary">{autopilot?"هووش بهترین لنز و دیافراگم رو خودش انتخاب می‌کنه.":"دستی: هر چی تنظیم کنی همون می‌مونه."}</p>
       <SliderRow label="لنز (فاصلهٔ کانونی)" ends={["واید","تله"]} valueText={fa(l.focalLengthMm)+" میلی‌متر"+auto(l.auto.lens)} min={0} max={1} step={0.001} value={lensSlider(l.focalLengthMm)}
        onChange={v=>setManual({lensMm:lensFromSlider(v)})}/>
       {/* An ordinary lens keeps straight lines straight at any focal length, as the photo will; a fisheye is a choice of its own. */}
-      <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1">
+      <div className="flex flex-wrap items-center justify-start gap-x-6 gap-y-1">
        <Toggle label="لنز چشم‌ماهی (فیش‌آی)" on={Boolean(draft.fisheye)} onChange={on=>setDraft(d=>{const {fisheye:_f,...rest}=d;void _f;return on?{...rest,fisheye:true}:rest;})}/>
       </div>
       <SliderRow label="دیافراگم" ends={["باز، محو","بسته، واضح"]} valueText={l.aperture+auto(l.auto.aperture)} min={0} max={1} step={0.001} value={apertureSlider(l.apertureF)}
@@ -677,11 +677,12 @@ function Backdrop({env,W,H,horizon,bf,slide,wallY,gradient}:{env:NonNullable<Sta
 }
 
 /** A labelled on/off switch (Autopilot, bokeh): the label, then the switch, which runs left to right like every control here (on: knob on the right). */
+/** A switch: the switch itself first (on the right, as Persian reads), its label after it, the row aligned to the right. */
 function Toggle({label,on,onChange}:{label:string;on:boolean;onChange:(on:boolean)=>void}){
  return <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={()=>onChange(!on)}
   className="flex min-h-9 items-center gap-2 rounded-control px-1 type-label text-fg-primary outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
-  <span>{label}</span>
   <span dir="ltr" className={"relative inline-block h-5 w-9 shrink-0 rounded-full transition-colors motion-reduce:transition-none "+(on?"bg-primary":"bg-surface-hover")}><span className={"absolute top-0.5 size-4 rounded-full transition-[inset-inline-start] motion-reduce:transition-none "+(on?"start-4.5 bg-primary-foreground":"start-0.5 bg-fg-secondary")}/></span>
+  <span>{label}</span>
  </button>;
 }
 /** One labelled view tile (the camera's side and top views): bordered, the label above the drawing. */
