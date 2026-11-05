@@ -119,6 +119,8 @@ async function reconcile(job:Job,ledger:ReservationLedger,provider:MediaProvider
  if(now.getTime()-new Date(u.lastAttemptAt).getTime()<RECONCILE_BASE_MS*2**(u.attempts-1))return;
  const model=findMediaModel(job.modelId);
  if(!model||(job.mode==="live"&&!generationGate(model).live)||(job.mode==="dev_live"&&!devGenerationGate(model).live))return; // gate closed: keep waiting
+ // A provider without idempotency could make (and bill) a second job: the job waits for the owner instead (docs/evidence/BYTEPLUS.md, GOOGLE.md).
+ if(provider.resendSafe&&!provider.resendSafe(job.modelId))return;
  job.unknownSubmission={...u,attempts:u.attempts+1,lastAttemptAt:now.toISOString()};
  try{
   const r=await provider.submit({modelId:job.modelId,prompt:u.prompt,configuration:job.configuration,idempotencyKey:job.id});

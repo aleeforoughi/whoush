@@ -12,8 +12,8 @@ test("chat agents do not disclose LLM models",()=>{
 });
 test("model change updates displayed integer fixed charge",()=>{
  const a=createDemoProposal("generate an image");
- const b=selectProposalModel(a,"soul-image");
- assert.equal(b.fixedNeurons,2);
+ const pick=a.suggestions[1],b=selectProposalModel(a,pick.modelId);
+ assert.equal(b.fixedNeurons,pick.neurons);assert.ok(Number.isSafeInteger(b.fixedNeurons));
  assert.throws(()=>selectProposalModel(a,"unknown"));
 });
 test("internal reasoning tier remains private",()=>{

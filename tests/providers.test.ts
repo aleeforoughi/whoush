@@ -21,7 +21,8 @@ test("the router sends each call to the adapter of the model's provider, and sta
  assert.ok(providerRequestId.startsWith("mock-"),"higgsfield ids are not prefixed");
  await r.status(providerRequestId);
  assert.deepEqual(seen,["submit:soul-image","status:"+providerRequestId]);
- await assert.rejects(()=>r.status("kling:t1"),/No adapter for provider/,"a provider without an adapter is never called");
+ const kseen:string[]=[];registerAdapter("kling",()=>({...fake,status:async id=>{kseen.push(id);return {state:"queued",outputs:[]};}}));
+ assert.equal((await r.status("kling:t1")).state,"queued");assert.deepEqual(kseen,["t1"],"a tagged id reaches its own provider, prefix removed");
  await assert.rejects(()=>r.submit({modelId:"no-such-model",prompt:"p",configuration:{},idempotencyKey:"k"}),/Unknown model/);
 });
 test("credentials are per provider and every model names one",()=>{
@@ -29,8 +30,7 @@ test("credentials are per provider and every model names one",()=>{
  try{
   for(const k of Object.values(PROVIDER_CREDENTIAL_ENV).flat())delete process.env[k];
   assert.equal(hasProviderCredentials("kling"),false);
-  process.env.KLING_ACCESS_KEY="a";assert.equal(hasProviderCredentials("kling"),false,"Kling needs both keys");
-  process.env.KLING_SECRET_KEY="b";assert.equal(hasProviderCredentials("kling"),true);
+  process.env.KLING_API_KEY="k";assert.equal(hasProviderCredentials("kling"),true);
   assert.equal(hasProviderCredentials("google"),false);
  }finally{process.env={...saved};}
  for(const m of MEDIA_CATALOG)assert.ok(["higgsfield","google","byteplus","kling"].includes(m.provider),m.id);

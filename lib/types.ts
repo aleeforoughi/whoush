@@ -60,6 +60,10 @@ export interface MediaModel {
   sourceSecondsSkus?: readonly { upToSeconds: number; neurons: number }[];
   capabilities: ModelCapabilities;
   verifiedApiPath?: string; // absent until schema is verified; private, never serialized to consumers
+  /** Private: the provider's own model id, exactly as its API reference spells it (docs/evidence). */
+  providerModel?: string;
+  /** Private: the provider settings this SKU fixes (size, resolution, duration), so the billed configuration is the SKU's, never a provider default. */
+  providerParams?: Readonly<Record<string, string | number | boolean>>;
 }
 /** A model with an approved fixed Neuron SKU. */
 export type PricedMediaModel = MediaModel & { neurons: number };

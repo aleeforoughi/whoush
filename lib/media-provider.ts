@@ -10,13 +10,17 @@ export type ProviderState="queued"|"running"|"completed"|"completed_demo"|"faile
 /** `reportedModelId`: the model the provider says ran, only when it reports one (the documented Higgsfield status has no such field). */
 export type ProviderStatus={state:ProviderState;outputs:ProviderOutput[];expiresAt?:string;reportedModelId?:string};
 export type ProviderJob={modelId:string;prompt:string;configuration:MediaConfiguration;idempotencyKey:string};
-export interface MediaProvider{submit(job:ProviderJob):Promise<{providerRequestId:string}>;status(providerRequestId:string):Promise<ProviderStatus>;cancel(providerRequestId:string):Promise<void>}
-export {NotCancelableError};
 /**
- * A submission whose outcome is unknown: the request may have reached the provider (a timeout, a dropped connection, a 5xx, an unreadable 2xx).
- * It is never treated as "not sent": the job keeps its reservation and is reconciled by resending the same request with the same idempotency key.
+ * `resendSafe(modelId)`: whether resending the same request after an unclear outcome is safe, because the provider honors an idempotency key (Higgsfield).
+ * Absent means safe. Providers with no idempotency (Google, BytePlus, docs/evidence) answer false, and an unknown submission then waits for the owner.
  */
-export class SubmissionUnknownError extends Error{constructor(readonly reason:string){super("Submission outcome unknown: "+reason);this.name="SubmissionUnknownError";}}
+export interface MediaProvider{submit(job:ProviderJob):Promise<{providerRequestId:string}>;status(providerRequestId:string):Promise<ProviderStatus>;cancel(providerRequestId:string):Promise<void>;resendSafe?(modelId:string):boolean}
+export {NotCancelableError};
+import {SubmissionUnknownError} from "./provider-errors";
+import {BytePlusMediaProvider} from "./providers/byteplus";
+import {GoogleMediaProvider} from "./providers/google";
+import {KlingMediaProvider} from "./providers/kling";
+export {SubmissionUnknownError};
 /** Deterministic, offline: queued -> running -> completed_demo over polls. It never returns media URLs. */
 export class MockMediaProvider implements MediaProvider{
  private readonly polls=new Map<string,number>();
@@ -88,7 +92,7 @@ const g=globalThis as {__whoushMockProvider?:MediaProvider};
 export const sharedMockProvider=():MediaProvider=>(g.__whoushMockProvider??=new MockMediaProvider());
 /** Each direct provider's adapter (docs/PROVIDERS.md). One is added only with its API evidence recorded; a model whose provider has none is never submitted. */
 export type AdapterFactory=(mode:"live"|"dev_live")=>MediaProvider;
-const adapters=():Partial<Record<MediaProviderId,AdapterFactory>>=>((globalThis as {__whoushAdapters?:Partial<Record<MediaProviderId,AdapterFactory>>}).__whoushAdapters??={higgsfield:m=>new HiggsfieldMediaProvider(m)});
+const adapters=():Partial<Record<MediaProviderId,AdapterFactory>>=>((globalThis as {__whoushAdapters?:Partial<Record<MediaProviderId,AdapterFactory>>}).__whoushAdapters??={higgsfield:m=>new HiggsfieldMediaProvider(m),google:()=>new GoogleMediaProvider(),byteplus:()=>new BytePlusMediaProvider(),kling:()=>new KlingMediaProvider()});
 export function registerAdapter(p:MediaProviderId,f:AdapterFactory){adapters()[p]=f;}
 /**
  * A provider request id names its provider, so status and cancel reach the same API later: «google:…», «byteplus:…», «kling:…». Higgsfield ids keep their
@@ -107,5 +111,6 @@ export class RoutingMediaProvider implements MediaProvider{
  }
  async status(id:string):Promise<ProviderStatus>{const s=splitRequestId(id);return this.adapter(s.provider).status(s.id);}
  async cancel(id:string):Promise<void>{const s=splitRequestId(id);return this.adapter(s.provider).cancel(s.id);}
+ resendSafe(modelId:string):boolean{const m=findMediaModel(modelId);if(!m)return false;const a=this.adapter(m.provider);return a.resendSafe?a.resendSafe(modelId):true;}
 }
 export const providerForMode=(mode:GenerationMode):MediaProvider=>mode==="demo"?sharedMockProvider():new RoutingMediaProvider(mode);

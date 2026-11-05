@@ -22,12 +22,14 @@ export async function storeMedia(bytes:Uint8Array,mime:StoredMime):Promise<{id:s
  return {id,url:MEDIA_ROUTE+id};
 }
 /** Downloads a provider's result and stores it (its link may expire, or need the provider key). Only https, only a stored media type. */
-export async function mirrorMedia(url:string,headers?:Record<string,string>):Promise<{id:string;url:string;mime:StoredMime}>{
+/** `fallback`: the type to assume when the link does not say (a bare object-store download), so a good result is never retried forever. */
+export async function mirrorMedia(url:string,headers?:Record<string,string>,fallback?:StoredMime):Promise<{id:string;url:string;mime:StoredMime}>{
  if(new URL(url).protocol!=="https:")throw new Error("Only https media is mirrored");
  const r=await fetch(url,{headers,cache:"no-store",signal:AbortSignal.timeout(120_000)});
  if(!r.ok)throw new Error("Media download failed: "+r.status);
- const mime=(r.headers.get("content-type")??"").split(";")[0].trim() as StoredMime;
- if(!STORED_MIME.includes(mime))throw new Error("Unsupported media type");
+ const said=(r.headers.get("content-type")??"").split(";")[0].trim().toLowerCase();
+ const mime=(STORED_MIME as readonly string[]).includes(said)?said as StoredMime:fallback&&(!said||said==="application/octet-stream"||said==="binary/octet-stream")?fallback:undefined;
+ if(!mime)throw new Error("Unsupported media type");
  const s=await storeMedia(new Uint8Array(await r.arrayBuffer()),mime);return {...s,mime};
 }
 export async function readMedia(id:string):Promise<{bytes:Buffer;mime:StoredMime}|undefined>{
