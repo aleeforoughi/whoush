@@ -3,13 +3,16 @@ import {useEffect,useId,useRef,useState,type ComponentProps,type ReactNode,type 
 import {Badge,Card,Textarea} from "@aleeforoughi/feather-react";
 import {ATTACHMENT_KINDS,displayTag,insertMention,isMediaKind,mentionTrigger,roleLabelFa,tagMatchesQuery,type LocalAttachment} from "@/lib/attachments";
 
-export type MentionOption=Pick<LocalAttachment,"id"|"tag"|"kind"|"role">;
+/** One entry of the `#` picker: a file or a generation of this chat, with a short badge («تصویر», «تولید») and an optional caption (role, intent). */
+export type MentionOption={id:string;tag:string;badgeFa:string;captionFa?:string};
+/** A conversation file as a picker entry: its kind, and for media its role or «انتخاب خودکار هووش». */
+export const attachmentOption=(a:Pick<LocalAttachment,"id"|"tag"|"kind"|"role">):MentionOption=>({id:a.id,tag:a.tag,badgeFa:ATTACHMENT_KINDS[a.kind].labelFa,...(isMediaKind(a.kind)?{captionFa:a.role?roleLabelFa(a.role,a.kind):"انتخاب خودکار هووش"}:{})});
 const NAV_KEYS=["ArrowUp","ArrowDown","Enter","Tab","Escape"];
 
 /**
  * The prompt field with a `#` mention picker (`@` works too), built as an ARIA combobox: focus stays in the textarea, the list is a listbox whose
  * active option is announced through aria-activedescendant. Typing `#` (at the start or after whitespace) opens every conversation
- * attachment; more characters filter by tag word (Persian or English, either digit set, hyphen or not). Choosing one writes the canonical `#تصویر-۱`. An ordinary
+ * attachment and generation; more characters filter by tag word (Persian or English, either digit set, hyphen or not). Choosing one writes the canonical `#تصویر-۱`. An ordinary
  * hashtag such as `#نوروز` is not the start of any tag word, so the list closes. ArrowUp/ArrowDown move, Enter or Tab insert, Escape closes.
  * The field looks like one input: the border, radius and focus ring belong to the container, the textarea is borderless inside it. `startAction` (the «+» menu) and
  * `endAction` (the send button) are pinned to the bottom corners of the inline-start and inline-end edges, so they stay put as the textarea grows; the textarea reserves
@@ -66,8 +69,8 @@ export function MentionTextarea({value,onValueChange,options,inputRef,startActio
     onMouseDown={e=>{e.preventDefault();pick(o);}} onMouseMove={()=>{if(i!==current)setActive(i);}}
     className={"flex min-h-control cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 rounded-control px-3 py-2 "+(i===current?"bg-surface-hover":"")}>
     <bdi className="type-label text-fg-primary">{displayTag(o.tag)}</bdi>
-    <Badge variant="outline">{ATTACHMENT_KINDS[o.kind].labelFa}</Badge>
-    {isMediaKind(o.kind)&&<span className="type-caption text-fg-secondary">{o.role?roleLabelFa(o.role,o.kind):"انتخاب خودکار هووش"}</span>}
+    <Badge variant="outline">{o.badgeFa}</Badge>
+    {o.captionFa&&<span className="min-w-0 truncate type-caption text-fg-secondary">{o.captionFa}</span>}
    </div>)}
   </Card>
  </div>;

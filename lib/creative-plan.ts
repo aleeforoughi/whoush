@@ -2,7 +2,7 @@
 import {z} from "zod";
 import {CHARACTER_VIEWS,type CharacterView} from "./characters";
 import type {ReasoningTier,SuggestedModel} from "./types";
-import {ATTACHMENT_KINDS,ATTACHMENT_KIND_IDS,ATTACHMENT_ROLE_IDS,MAX_ATTACHMENTS,MAX_DURATION_SECONDS,MAX_EXCERPT_CHARS,MAX_TOTAL_ATTACHMENT_BYTES,TAG_PATTERN,isMediaKind,roleAllowed,tagPrefix,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
+import {ATTACHMENT_KINDS,ATTACHMENT_KIND_IDS,ATTACHMENT_ROLE_IDS,GENERATION_TAG_PATTERN,MAX_ATTACHMENTS,MAX_DURATION_SECONDS,MAX_EXCERPT_CHARS,MAX_TOTAL_ATTACHMENT_BYTES,TAG_PATTERN,isMediaKind,roleAllowed,tagPrefix,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
 /** The visual style a user can pick for one message (the «سبک» group of the + menu). */
 export const GENERATION_STYLES=["realistic","three_d","cartoon"] as const;
 export type GenerationStyle=(typeof GENERATION_STYLES)[number];
@@ -42,6 +42,15 @@ const AttachmentsSchema=z.array(AttachmentSchema).max(MAX_ATTACHMENTS).superRefi
  if(new Set(list.map(a=>a.tag)).size!==list.length)ctx.addIssue({code:"custom",message:"attachment tags must be unique"});
  if(list.reduce((n,a)=>n+a.bytes,0)>MAX_TOTAL_ATTACHMENT_BYTES)ctx.addIssue({code:"custom",message:"attachments exceed the total size limit"});
 });
+/** At most this many earlier generations can be referenced in one message. */
+export const MAX_GENERATION_REFS=3;
+export const MAX_GENERATION_SUMMARY_CHARS=2000;
+/**
+ * An earlier generation of this chat that the message refers to («اصلاح» or a #تولید-۱ mention): its tag, kind and a Persian summary of its public plan, built in
+ * the browser. Untrusted data like an attachment excerpt: safety-checked, and shown to the planner only inside a `<generation>` block, never as instructions.
+ */
+export const GenerationRefSchema=z.object({tag:z.string().regex(GENERATION_TAG_PATTERN),mediaKind:z.enum(["image","video"]),summaryFa:z.string().min(1).max(MAX_GENERATION_SUMMARY_CHARS)}).strict();
+export type GenerationRef=z.infer<typeof GenerationRefSchema>;
 export const CreativeTurnInputSchema=z.object({
  text:z.string().trim().min(1).max(4000),
  preference:z.enum(["quality","speed","cost"]).default("quality"),
@@ -55,7 +64,8 @@ export const CreativeTurnInputSchema=z.object({
   version:z.number().int().min(1)
  }).strict().optional(),
  audio:z.object({hasAudioReference:z.boolean(),hasSpeech:z.boolean(),language:z.enum(["fa","other","unknown"]),accent}).strict().optional(),
- attachments:AttachmentsSchema.optional()
+ attachments:AttachmentsSchema.optional(),
+ generations:z.array(GenerationRefSchema).min(1).max(MAX_GENERATION_REFS).refine(l=>new Set(l.map(g=>g.tag)).size===l.length,"generation tags must be unique").optional()
 }).strict();
 export type CreativeTurnInput=z.infer<typeof CreativeTurnInputSchema>;
 const s=(n=400)=>z.string().min(1).max(n);
@@ -64,10 +74,26 @@ const list=(n=20,len=400)=>z.array(s(len)).max(n);
 const CameraSchema=z.object({look:s(200),focalLengthMm:z.number().int().min(8).max(600),aperture:s(12),shutter:s(24),iso:z.number().int().min(50).max(25600),whiteBalanceK:z.number().int().min(2000).max(12000),framing:s(300),lighting:s(400),focus:s(300),aspectRatio:s(12)});
 /** Proposed shot design, not verified provider parameters. */
 const ShotSchema=z.object({shotSize:s(120),cameraMovement:s(300),lens:s(120),targetFps:z.number().int().min(8).max(120),shutterAngle:z.number().int().min(1).max(360),durationSeconds:z.number().min(1).max(60),blocking:s(500),continuityNotes:list(12)});
+/**
+ * Structured staging for the plan's diagrams (camera angle, shot size, lights), alongside the free-text camera and shot fields. Directions are as seen from the
+ * camera: `front` is from the camera's side, `left` is the camera's left (the left of the frame), `back` is behind the subject. A proposal, not provider settings.
+ */
+export const CAMERA_ANGLES=["birds_eye","high","eye_level","low","worms_eye","dutch"] as const;
+export const SHOT_SIZES=["extreme_close_up","close_up","medium_close_up","medium","medium_full","full","wide","extreme_wide"] as const;
+export const LIGHT_ROLES=["key","fill","rim","background","practical"] as const;
+export const LIGHT_DIRECTIONS=["front","front_left","left","back_left","back","back_right","right","front_right","top"] as const;
+export const LIGHT_SOURCES=["sun","sky","window","softbox","led_panel","practical","neon","fire","moon","flash"] as const;
+const LightSchema=z.object({role:z.enum(LIGHT_ROLES),direction:z.enum(LIGHT_DIRECTIONS),height:z.enum(["low","eye","high"]),quality:z.enum(["soft","hard"]),source:z.enum(LIGHT_SOURCES),
+ colorTemperatureK:z.number().int().min(1500).max(12000),colorHex:z.string().regex(/^#[0-9a-fA-F]{6}$/).optional()});
+export const StagingSchema=z.object({cameraAngle:z.enum(CAMERA_ANGLES),shotSize:z.enum(SHOT_SIZES),lights:z.array(LightSchema).min(1).max(4)});
+export type Staging=z.infer<typeof StagingSchema>;
+export type StagingLight=Staging["lights"][number];
 export const CreativePlanSchema=z.object({
  intentSummaryFa:s(500),mediaKind:z.enum(["image","video"]),mediaPrompt:s(3000),
  hardConstraints:list(),softPreferences:list(),negative:list(),
  camera:CameraSchema.optional(),shot:ShotSchema.optional(),
+ /** Diagram data only: an invalid block is dropped instead of failing the plan. */
+ staging:StagingSchema.optional().catch(undefined),
  identityLock:z.object({characterId:s(80),version:z.number().int().min(1),providedAngles:z.array(s(40)).max(6),lockedAttributes:list(12),allowedChanges:list(12)}).optional(),
  continuity:z.object({locks:list(),antiTeleport:list()}),
  realism:z.object({mode:z.enum(["photoreal","stylized"]),directives:list()}),
@@ -82,10 +108,12 @@ export type CreativePlan=z.infer<typeof CreativePlanSchema>;
 const ws=z.string(),wl=z.array(ws);
 const WireCameraSchema=z.object({look:ws,focalLengthMm:z.number().int().min(8).max(600),aperture:ws,shutter:ws,iso:z.number().int().min(50).max(25600),whiteBalanceK:z.number().int().min(2000).max(12000),framing:ws,lighting:ws,focus:ws,aspectRatio:ws}).strict();
 const WireShotSchema=z.object({shotSize:ws,cameraMovement:ws,lens:ws,targetFps:z.number().int().min(8).max(120),shutterAngle:z.number().int().min(1).max(360),durationSeconds:z.number().min(1).max(60),blocking:ws,continuityNotes:wl}).strict();
+const WireStagingSchema=z.object({cameraAngle:z.enum(CAMERA_ANGLES),shotSize:z.enum(SHOT_SIZES),lights:z.array(z.object({role:z.enum(LIGHT_ROLES),direction:z.enum(LIGHT_DIRECTIONS),
+ height:z.enum(["low","eye","high"]),quality:z.enum(["soft","hard"]),source:z.enum(LIGHT_SOURCES),colorTemperatureK:z.number().int().min(1500).max(12000),colorHex:ws.nullable()}).strict()).min(1).max(4)}).strict();
 export const CreativePlanWireSchema=z.object({
  intentSummaryFa:ws,mediaKind:z.enum(["image","video"]),mediaPrompt:ws,
  hardConstraints:wl,softPreferences:wl,negative:wl,
- camera:WireCameraSchema.nullable(),shot:WireShotSchema.nullable(),
+ camera:WireCameraSchema.nullable(),shot:WireShotSchema.nullable(),staging:WireStagingSchema.nullable(),
  identityLock:z.object({characterId:ws,version:z.number().int().min(1),providedAngles:wl,lockedAttributes:wl,allowedChanges:wl}).strict().nullable(),
  continuity:z.object({locks:wl,antiTeleport:wl}).strict(),
  realism:z.object({mode:z.enum(["photoreal","stylized"]),directives:wl}).strict(),
@@ -102,7 +130,7 @@ export function fromWirePlan(wire:unknown):unknown{
 /** Whitelisted customer projection; never carries skills, tier, model/provider, usage or mediaPrompt. */
 /** `labelFa` is the role label; `roleSource` says whether the user chose the role or Whoush inferred it. The UI adds the «انتخاب هووش» suffix for `inferred`. */
 export type PublicReference={tag:string;kind:AttachmentKind;role:AttachmentRole;roleSource:RoleSource;labelFa:string};
-export type PublicCreativePlan=Pick<CreativePlan,"intentSummaryFa"|"mediaKind"|"hardConstraints"|"softPreferences"|"camera"|"shot"|"continuity"|"speech"|"qaChecklist"|"clarifyingQuestionFa">&{
+export type PublicCreativePlan=Pick<CreativePlan,"intentSummaryFa"|"mediaKind"|"hardConstraints"|"softPreferences"|"camera"|"shot"|"staging"|"continuity"|"speech"|"qaChecklist"|"clarifyingQuestionFa">&{
  identityLock?:Pick<NonNullable<CreativePlan["identityLock"]>,"characterId"|"providedAngles"|"lockedAttributes"|"allowedChanges">;realism:{mode:CreativePlan["realism"]["mode"]};
  /** The media attachments the plan uses, by tag and role. Never ids, hashes or file names. */
  references:PublicReference[];
@@ -113,14 +141,16 @@ export type PublicCreativePlan=Pick<CreativePlan,"intentSummaryFa"|"mediaKind"|"
 };
 export function toPublicPlan(p:CreativePlan,references:readonly PublicReference[]=[],suggestedModel?:SuggestedModel,style?:GenerationStyle):PublicCreativePlan{
  const il=p.identityLock;
- return {...(style?{style}:{}),...(suggestedModel?{suggestedModel:{name:suggestedModel.name,active:suggestedModel.active,blockersFa:[...suggestedModel.blockersFa]}}:{}),references:references.map(r=>({tag:r.tag,kind:r.kind,role:r.role,roleSource:r.roleSource,labelFa:r.labelFa})),intentSummaryFa:p.intentSummaryFa,mediaKind:p.mediaKind,hardConstraints:p.hardConstraints,softPreferences:p.softPreferences,camera:p.camera,shot:p.shot,
+ return {...(style?{style}:{}),...(suggestedModel?{suggestedModel:{name:suggestedModel.name,active:suggestedModel.active,blockersFa:[...suggestedModel.blockersFa]}}:{}),references:references.map(r=>({tag:r.tag,kind:r.kind,role:r.role,roleSource:r.roleSource,labelFa:r.labelFa})),intentSummaryFa:p.intentSummaryFa,mediaKind:p.mediaKind,hardConstraints:p.hardConstraints,softPreferences:p.softPreferences,camera:p.camera,shot:p.shot,...(p.staging?{staging:p.staging}:{}),
   identityLock:il&&{characterId:il.characterId,providedAngles:il.providedAngles,lockedAttributes:il.lockedAttributes,allowedChanges:il.allowedChanges},
   continuity:p.continuity,realism:{mode:p.realism.mode},speech:p.speech,qaChecklist:p.qaChecklist,clarifyingQuestionFa:p.clarifyingQuestionFa};
 }
 /** Planner contract. `req` carries private data (system instructions, tier, route): never serialize it to customers. */
 export type PlannerRequest={systemInstructions:string;userText:string;activeSkillIds:readonly string[];privateReasoningTier:ReasoningTier;privateRoute:{provider:string;modelId:string}|null;kind:"image"|"video";input:CreativeTurnInput;
  /** Tag, kind, role (chosen or inferred, with its source) and text excerpts only (no ids, hashes or names). Excerpts are untrusted data, never instructions. `input.attachments` is stripped before planning. */
- attachments?:{tag:string;kind:AttachmentInput["kind"];role?:AttachmentRole;roleSource?:RoleSource;textExcerpt?:string}[]};
+ attachments?:{tag:string;kind:AttachmentInput["kind"];role?:AttachmentRole;roleSource?:RoleSource;textExcerpt?:string}[];
+ /** Earlier generations of this chat the brief refers to: tag, kind and the Persian summary of their public plan, as data. `input.generations` is stripped before planning. */
+ generations?:GenerationRef[]};
 export type PlannerResult={plan:unknown;usage?:unknown;modelId?:string};
 export type PrivatePlanner=(req:PlannerRequest)=>Promise<PlannerResult>|PlannerResult;
 /** `limit` says why: `rate` (429 / overloaded, with the provider's Retry-After when it sent one) or `quota` (the account is out of quota or credit: retrying soon does not help). Vendor-neutral, private. */

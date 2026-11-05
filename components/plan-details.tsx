@@ -1,6 +1,8 @@
 "use client";
 import type {ReactNode} from "react";
-import {Accordion,AccordionContent,AccordionItem,AccordionTrigger,Badge} from "@aleeforoughi/feather-react";
+import {Aperture,Camera,CircleHelp,Clapperboard,Film,Focus,Frame,Gauge,Lightbulb,ListChecks,Move,Paperclip,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Thermometer,Timer,type LucideIcon} from "lucide-react";
+import {Accordion,AccordionContent,AccordionItem,AccordionTrigger,Badge,Icon} from "@aleeforoughi/feather-react";
+import {StagingDiagrams} from "@/components/plan-diagrams";
 import {STYLE_LABEL_FA,type PublicCreativePlan} from "@/lib/creative-plan";
 import {CHARACTER_VIEWS} from "@/lib/characters";
 import {displayTag} from "@/lib/attachments";
@@ -39,52 +41,101 @@ export function SuggestedModelNote({model}:{model:NonNullable<PublicCreativePlan
  </section>;
 }
 
-/** The collapsible «جزئیات برنامه»: camera or shot design, constraints, continuity, QA. All of it is a proposal, not verified model settings. */
-export function PlanDetails({plan,defaultOpen=false}:{plan:PublicCreativePlan;defaultOpen?:boolean}){
- const {camera,shot,identityLock,speech,references}=plan;
- return <Accordion defaultValue={defaultOpen?["plan"]:[]}>
-  <AccordionItem value="plan">
-   <AccordionTrigger>جزئیات برنامه</AccordionTrigger>
-   <AccordionContent>
-    <div className="flex flex-col gap-5">
-     <p className="type-caption text-fg-secondary">این‌ها پیشنهاد کارگردانی هووش است، نه تنظیمات تأییدشدهٔ مدل.</p>
-     <Facts title="کلیات" rows={[["نوع خروجی",plan.mediaKind==="video"?"ویدیو":"تصویر"],["سبک",plan.realism.mode==="photoreal"?"واقع‌گرایانه":"سبک‌دار"],...(plan.style?[["سبک انتخاب‌شده",STYLE_LABEL_FA[plan.style]] as const]:[])]}/>
-     {references.length>0&&<section className="flex flex-col gap-2">
-      <h4 className="type-label text-fg-primary">مراجع</h4>
-      <ul className="flex flex-col gap-1 type-body-sm text-fg-primary">{references.map(r=><li key={r.tag}><bdi>{displayTag(r.tag)}</bdi> · {r.labelFa}{r.roleSource==="inferred"&&" (انتخاب هووش)"}</li>)}</ul>
-     </section>}
-     {camera&&<Facts title="دوربین" rows={[
-      ["حال‌وهوای دوربین",text(camera.look)],
-      ["لنز",<>{fa(camera.focalLengthMm)} میلی‌متر</>],
-      ["دیافراگم",latin(camera.aperture)],
-      ["سرعت شاتر",latin(camera.shutter)],
-      ["ISO",fa(camera.iso)],
-      ["تراز سفیدی",<>{fa(camera.whiteBalanceK)} کلوین</>],
-      ["کادر",text(camera.framing)],
-      ["نور",text(camera.lighting)],
-      ["فوکوس",text(camera.focus)],
-      ["نسبت تصویر",latin(camera.aspectRatio)]
-     ]}/>}
-     {shot&&<Facts title="نما" rows={[
-      ["اندازه نما",text(shot.shotSize)],
-      ["حرکت دوربین",text(shot.cameraMovement)],
-      ["لنز",text(shot.lens)],
-      ["فریم‌ریت",<>{fa(shot.targetFps)} {latin("fps")}</>],
-      ["زاویه شاتر",<>{fa(shot.shutterAngle)} درجه</>],
-      ["مدت",<>{fa(shot.durationSeconds)} ثانیه</>]
-     ]}/>}
-     <Bullets title="قیدهای قطعی" items={plan.hardConstraints}/>
-     <Bullets title="ترجیحات" items={plan.softPreferences}/>
-     {identityLock&&<>
-      <Facts title="قفل هویت کاراکتر" rows={[["زاویه‌های مرجع",identityLock.providedAngles.map(a=>VIEW_TITLE[a]??a).join("، ")]]}/>
-      <Bullets title="ویژگی‌های ثابت" items={identityLock.lockedAttributes}/>
-      <Bullets title="تغییرات مجاز" items={identityLock.allowedChanges}/>
-     </>}
-     <Bullets title="قفل‌های پیوستگی" items={[...plan.continuity.locks,...plan.continuity.antiTeleport]}/>
-     {speech&&<Facts title="گفتار" rows={[["هم‌زمان‌سازی لب",LIP_SYNC[speech.lipSync.status]??speech.lipSync.status],["لهجه",ACCENT[speech.accent]??speech.accent]]}/>}
-     <Bullets title="فهرست کنترل کیفیت" items={plan.qaChecklist}/>
-    </div>
-   </AccordionContent>
-  </AccordionItem>
- </Accordion>;
+/** A section of the plan in the conversation: an icon and a title, then its content. */
+function Section({icon,title,children}:{icon:LucideIcon;title:string;children:ReactNode}){
+ return <section className="flex flex-col gap-2">
+  <h4 className="flex items-center gap-2 type-label text-fg-primary"><Icon icon={icon} size={16} aria-hidden="true" className="size-4 shrink-0 text-fg-secondary"/>{title}</h4>
+  {children}
+ </section>;
+}
+/** A compact setting with its icon: «۸۵ میلی‌متر», «f/2.0», «ISO ۲۰۰». */
+function Spec({icon,label,children}:{icon:LucideIcon;label:string;children:ReactNode}){
+ return <li className="inline-flex h-7 items-center gap-1.5 rounded-control bg-surface-subtle px-2 type-caption text-fg-primary" title={label}>
+  <Icon icon={icon} size={16} aria-hidden="true" className="size-3.5 shrink-0 text-fg-secondary"/><span className="sr-only">{label}: </span>{children}
+ </li>;
+}
+/** A described setting with its icon: «کادر: …», «نور: …». */
+function Line({icon,label,children}:{icon:LucideIcon;label:string;children:ReactNode}){
+ return <li className="flex items-start gap-2 type-body-sm"><Icon icon={icon} size={16} aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-fg-secondary"/>
+  <span className="min-w-0"><span className="text-fg-secondary">{label}: </span><span className="text-fg-primary">{children}</span></span></li>;
+}
+
+/**
+ * A generation plan as part of the conversation (not inside the card): the clarifying question, the intent, the references, the camera, framing and lighting
+ * diagrams, the camera or shot settings as icon chips and lines, and the hard constraints; preferences, identity lock, continuity, speech and the QA checklist
+ * fold under «جزئیات بیشتر». All of it is Whoush's proposal, not verified model settings.
+ */
+export function PlanStory({plan}:{plan:PublicCreativePlan}){
+ const {camera,shot,identityLock,speech,references,staging}=plan;
+ const more=plan.softPreferences.length+plan.continuity.locks.length+plan.continuity.antiTeleport.length+plan.qaChecklist.length>0||identityLock||speech;
+ return <div className="flex flex-col gap-5">
+  {plan.clarifyingQuestionFa&&<p role="status" className="flex items-start gap-2 type-body-sm text-fg-primary">
+   <Icon icon={CircleHelp} size={16} aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary"/>
+   <span><span className="type-label">یک سؤال: </span>{text(plan.clarifyingQuestionFa)}</span>
+  </p>}
+  <Section icon={Sparkles} title="هدف">
+   <p className="type-body-sm text-fg-primary">{text(plan.intentSummaryFa)}</p>
+   <ul className="flex flex-wrap gap-2">
+    <Spec icon={plan.mediaKind==="video"?Clapperboard:Camera} label="نوع خروجی">{plan.mediaKind==="video"?"ویدیو":"تصویر"}</Spec>
+    <Spec icon={Sparkles} label="سبک">{plan.style?STYLE_LABEL_FA[plan.style]:plan.realism.mode==="photoreal"?"واقع‌گرایانه":"سبک‌دار"}</Spec>
+   </ul>
+  </Section>
+  {references.length>0&&<Section icon={Paperclip} title="مراجع">
+   <ul className="flex flex-wrap gap-2">{references.map(r=><li key={r.tag} className="inline-flex h-7 items-center gap-1.5 rounded-control bg-surface-subtle px-2 type-caption text-fg-primary">
+    <bdi className="type-label">{displayTag(r.tag)}</bdi><span className="text-fg-secondary">{r.labelFa}{r.roleSource==="inferred"&&" (انتخاب هووش)"}</span></li>)}</ul>
+  </Section>}
+  {staging&&<Section icon={Frame} title="کارگردانی تصویر">
+   <StagingDiagrams staging={staging} aspectRatio={camera?.aspectRatio}/>
+  </Section>}
+  {camera&&<Section icon={Camera} title="دوربین">
+   <ul className="flex flex-wrap gap-2">
+    <Spec icon={Ruler} label="لنز">{fa(camera.focalLengthMm)} میلی‌متر</Spec>
+    <Spec icon={Aperture} label="دیافراگم">{latin(camera.aperture)}</Spec>
+    <Spec icon={Timer} label="سرعت شاتر">{latin(camera.shutter)}</Spec>
+    <Spec icon={Gauge} label="حساسیت">{latin("ISO")} {fa(camera.iso)}</Spec>
+    <Spec icon={Thermometer} label="تراز سفیدی">{fa(camera.whiteBalanceK)} کلوین</Spec>
+    <Spec icon={RectangleHorizontal} label="نسبت تصویر">{latin(camera.aspectRatio)}</Spec>
+   </ul>
+   <ul className="flex flex-col gap-1.5">
+    <Line icon={Camera} label="حال‌وهوا">{text(camera.look)}</Line>
+    <Line icon={Frame} label="کادر">{text(camera.framing)}</Line>
+    <Line icon={Lightbulb} label="نور">{text(camera.lighting)}</Line>
+    <Line icon={Focus} label="فوکوس">{text(camera.focus)}</Line>
+   </ul>
+  </Section>}
+  {shot&&<Section icon={Clapperboard} title="نما">
+   <ul className="flex flex-wrap gap-2">
+    <Spec icon={Timer} label="مدت">{fa(shot.durationSeconds)} ثانیه</Spec>
+    <Spec icon={Film} label="فریم‌ریت">{fa(shot.targetFps)} {latin("fps")}</Spec>
+    <Spec icon={Aperture} label="زاویه شاتر">{fa(shot.shutterAngle)} درجه</Spec>
+   </ul>
+   <ul className="flex flex-col gap-1.5">
+    <Line icon={Frame} label="اندازه نما">{text(shot.shotSize)}</Line>
+    <Line icon={Move} label="حرکت دوربین">{text(shot.cameraMovement)}</Line>
+    <Line icon={Ruler} label="لنز">{text(shot.lens)}</Line>
+   </ul>
+  </Section>}
+  {plan.hardConstraints.length>0&&<Section icon={ShieldCheck} title="قیدهای قطعی">
+   <ul className="list-disc ps-5 type-body-sm text-fg-primary marker:text-fg-secondary">{plan.hardConstraints.map((x,i)=><li key={i}>{text(x)}</li>)}</ul>
+  </Section>}
+  {more&&<Accordion>
+   <AccordionItem value="more" className="border-b-0">
+    <AccordionTrigger className="py-0"><span className="flex items-center gap-2"><Icon icon={ListChecks} size={16} aria-hidden="true" className="size-4 text-fg-secondary"/>جزئیات بیشتر</span></AccordionTrigger>
+    <AccordionContent>
+     <div className="flex flex-col gap-5 pt-3">
+      <p className="type-caption text-fg-secondary">این‌ها پیشنهاد کارگردانی هووش است، نه تنظیمات تأییدشدهٔ مدل.</p>
+      <Bullets title="ترجیحات" items={plan.softPreferences}/>
+      {identityLock&&<>
+       <Facts title="قفل هویت کاراکتر" rows={[["زاویه‌های مرجع",identityLock.providedAngles.map(a=>VIEW_TITLE[a]??a).join("، ")]]}/>
+       <Bullets title="ویژگی‌های ثابت" items={identityLock.lockedAttributes}/>
+       <Bullets title="تغییرات مجاز" items={identityLock.allowedChanges}/>
+      </>}
+      <Bullets title="قفل‌های پیوستگی" items={[...plan.continuity.locks,...plan.continuity.antiTeleport]}/>
+      {speech&&<Facts title="گفتار" rows={[["هم‌زمان‌سازی لب",LIP_SYNC[speech.lipSync.status]??speech.lipSync.status],["لهجه",ACCENT[speech.accent]??speech.accent]]}/>}
+      <Bullets title="فهرست کنترل کیفیت" items={plan.qaChecklist}/>
+     </div>
+    </AccordionContent>
+   </AccordionItem>
+  </Accordion>}
+ </div>;
 }

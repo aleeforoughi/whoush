@@ -14,9 +14,11 @@ import {AttachmentCard,SentAttachmentCard} from "@/components/attachment-card";
 import {MessageActions,useNow} from "@/components/message-actions";
 import {ModeControl,useMode} from "@/components/mode-control";
 import {StyleControl,useStyleSetting} from "@/components/style-control";
-import type {AttachmentPatch} from "@/components/attachment-chip";
+import {TagBadge,type AttachmentPatch} from "@/components/attachment-chip";
 import {MediaViewer,type ViewerItem} from "@/components/media-viewer";
-import {MentionTextarea} from "@/components/mention-textarea";
+import {MentionTextarea,attachmentOption,type MentionOption} from "@/components/mention-textarea";
+import {GenerationRefCard} from "@/components/generation-ref-card";
+import {PlanStory} from "@/components/plan-details";
 import {MessageText} from "@/components/message-text";
 import {AttachmentTray,type AttachmentProblem} from "@/components/attachment-tray";
 import {RailShell} from "@/components/studio-rail";
@@ -25,10 +27,11 @@ import {getLocalCharacter,listLocalCharacters} from "@/lib/character-store";
 import {characterCoverage,characterUsability,type CharacterProfile} from "@/lib/characters";
 import {fa} from "@/lib/format";
 import {STORAGE_FULL_FA,getProject,listAssets,saveAsset,saveProject} from "@/lib/project-store";
-import {MAX_MESSAGES,assetToAttachment,attachmentToAsset,autoTitle,jobStateFa,rerunSource,uniqueById,type Project,type StoredMessage} from "@/lib/projects";
+import {MAX_MESSAGES,assetToAttachment,attachmentToAsset,autoTitle,jobStateFa,rerunSource,uniqueById,findGeneration,generationTagsIn,referencedGenerations,toGenerationRef,withGenerationTags,type ProposalSnapshot,type Project,type StoredMessage} from "@/lib/projects";
+import {MAX_GENERATION_REFS} from "@/lib/creative-plan";
 import type {GenerationStyle} from "@/lib/creative-plan";
 import type {AgentPreference} from "@/lib/types";
-import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,acceptFor,bumpTagCounters,insertMention,lowestFreeTag,newTagCounters,parseMentions,tooManyFa,toWireAttachment,validateAttachmentSet,withRole,withoutRole,type AttachmentKind,type AttachmentRole,type LocalAttachment} from "@/lib/attachments";
+import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,acceptFor,bumpTagCounters,displayTag,insertMention,lowestFreeTag,nextGenerationTag,newTagCounters,parseMentions,tooManyFa,toWireAttachment,validateAttachmentSet,withRole,withoutRole,type AttachmentKind,type AttachmentRole,type LocalAttachment} from "@/lib/attachments";
 import {readAttachment} from "@/lib/attachment-files";
 import type {InsertItem} from "@/lib/insert-menu";
 
@@ -121,6 +124,12 @@ export function Studio(){
  /** For the «۶ دقیقه پیش» under each message. */
  const now=useNow();
  const byTag=new Map(conversation.map(a=>[a.tag,a]));
+ /** The generations of this chat by tag (#تولید-۱ ...): every proposal is one. Only these can be referenced from this chat. */
+ const generationMap=new Map(messages.flatMap(m=>m.kind==="proposal"&&m.snapshot.tag?[[m.snapshot.tag,m.snapshot as ProposalSnapshot&{tag:string}] as const]:[]));
+ const generationSet=new Set(generationMap.keys());
+ /** Generations the next message asks to change («اصلاح»), shown as cards in the chat input before the files. */
+ const [genRefs,setGenRefs]=useState<string[]>([]);
+ const mentionOptions:MentionOption[]=[...conversation.map(attachmentOption),...[...generationMap.values()].map(g=>({id:"gen-"+g.tag,tag:g.tag,badgeFa:"تولید",captionFa:g.intentSummaryFa}))];
  /** Keep ?project= and ?character= in step with the state without reloading or adding history entries. */
  function syncUrl(project:string|null,character:string|null){
   const query=new URLSearchParams(window.location.search);
@@ -189,7 +198,7 @@ export function Studio(){
  function releaseAll(){
   urls.current.forEach(u=>URL.revokeObjectURL(u));urls.current.clear();
   blobs.current=new Map();savedAssets.current=new Set();
-  setAttachments([]);setSlots([]);setProblems([]);setAnnounce("");setViewer(null);tagCounters.current=newTagCounters();
+  setAttachments([]);setSlots([]);setGenRefs([]);setProblems([]);setAnnounce("");setViewer(null);tagCounters.current=newTagCounters();
   setMessages([]);setProposal(null);setLiveId(null);setJob(null);
   setPreview(idlePreview);setError("");setNotice("");setStorageNote("");setDraft("");
  }
@@ -223,7 +232,7 @@ export function Studio(){
    savedAssets.current=new Set(assets.map(a=>a.id));
    tagCounters.current=p.tagCounters;
    active.current={id:p.id,createdAt:p.createdAt,title:p.title,titleSource:p.titleSource,persisted:true};
-   setProjectId(p.id);setLocal({mode:p.mode,style:p.style});setMessages(restored);
+   setProjectId(p.id);setLocal({mode:p.mode,style:p.style});setMessages(withGenerationTags(restored));
    const lastJob=[...restored].reverse().find(m=>m.kind==="job");
    if(lastJob?.kind==="job"){setJob(lastJob.snapshot);setPreview(lastJob.snapshot.messageFa);}
    // The character: an explicit ?character= link wins, otherwise the project's own, and either must still be usable.
@@ -334,6 +343,20 @@ export function Studio(){
   if(r.text.length>4000)return;
   setDraft(r.text);requestAnimationFrame(()=>{el.focus();el.setSelectionRange(r.caret,r.caret);});
  }
+ /** «اصلاح» on a generation card: the generation becomes a card in the chat input (once; at most MAX_GENERATION_REFS) and focus goes to the prompt for the changes. */
+ function changeGeneration(tag:string){
+  if(!generationSet.has(tag))return;
+  setGenRefs(list=>list.includes(tag)||list.length>=MAX_GENERATION_REFS?list:[...list,tag]);
+  setAnnounce(displayTag(tag)+" برای تغییر به پیام اضافه شد؛ تغییرها را بنویس.");
+  requestAnimationFrame(()=>promptRef.current?.focus());
+ }
+ /** Scrolls to a generation's card in the conversation and moves focus to it. */
+ function showGeneration(tag:string){
+  const el=document.querySelector<HTMLElement>('[data-generation="'+CSS.escape(tag)+'"]');
+  if(!el)return;
+  el.scrollIntoView({block:"center",behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"});
+  el.querySelector<HTMLElement>("button")?.focus({preventScroll:true});
+ }
  /** A + menu entry adds an empty upload card (title and icon) inside the chat input and moves focus to it; «کاراکترهای من» opens the saved-character dialog. */
  function pickInsert(item:InsertItem){
   const slot=slotFor(item,crypto.randomUUID());
@@ -370,20 +393,25 @@ export function Studio(){
  }
  function send(e:FormEvent){
   e.preventDefault();const text=draft.trim();if(!text)return;
-  void runTurn(text,attachments,true);
+  void runTurn(text,attachments,genRefs,true);
  }
  /** «اجرای دوباره» under a message: sends that user message (or the one an agent message answered) again as a new turn, with its files and today's settings. */
  function rerun(id:string){
   const source=rerunSource(messages,id);
-  if(source)void runTurn(source.text,source.attachments??[],false);
+  if(source)void runTurn(source.text,source.attachments??[],source.generationTags??[],false);
  }
- /** One turn: a user message with `files` goes to the agent. From the composer (`fromComposer`) the draft, cards and tray clear; a rerun leaves them alone. */
- async function runTurn(text:string,files:LocalAttachment[],fromComposer:boolean){
+ /**
+  * One turn: a user message with `files` and the generations it asks to change (`changes`, the «اصلاح» cards) goes to the agent, with every generation of this
+  * chat it mentions (#تولید-۱). From the composer (`fromComposer`) the draft, cards and tray clear; a rerun leaves them alone.
+  */
+ async function runTurn(text:string,files:LocalAttachment[],changes:string[],fromComposer:boolean){
   if(!text||busy||reading||loadingProject)return;
   if(messages.length>=MAX_MESSAGES-4){setError(LIMIT_FA);return;}
   // This message's own files plus any earlier file it mentions as #تصویر-۱ or @image1 (metadata only, as before).
   const mentioned=parseMentions(text),own=new Set(files.map(a=>a.id));
   const outgoing=uniqueById([...messages.flatMap(m=>m.attachments??[]).filter(a=>mentioned.includes(a.tag)&&!own.has(a.id)),...files]);
+  const refs=referencedGenerations(changes,mentioned,generationSet),cardRefs=changes.filter(t=>generationSet.has(t));
+  const generations=refs.flatMap(t=>{const g=generationMap.get(t);return g?[toGenerationRef(g)]:[];});
   const fits=validateAttachmentSet(outgoing);
   if(!fits.ok){setError(fits.error);return;}
   // The profile may have been edited or withdrawn in another tab: send what is stored now, and only if it is still usable.
@@ -399,12 +427,12 @@ export function Studio(){
   }
   // The tray clears, but the files stay (with their object URLs) on the sent message; they are released on new chat, project switch or unmount.
   const sent=files,firstText=messages.find(m=>m.role==="user")?.text??text,characterId=current?.id??null;
-  if(fromComposer){setDraft("");setAttachments([]);setSlots([]);setProblems([]);}
+  if(fromComposer){setDraft("");setAttachments([]);setSlots([]);setGenRefs([]);setProblems([]);}
   setError("");setNotice("");setBusy(true);setProposal(null);setLiveId(null);setAnnounce("");
-  setMessages(m=>[...m,item({role:"user",text,...(sent.length?{attachments:sent}:{})})]);touch();
+  setMessages(m=>[...m,item({role:"user",text,...(sent.length?{attachments:sent}:{}),...(cardRefs.length?{generationTags:cardRefs}:{})})]);touch();
   const characterRef=current?{id:current.id,name:current.name,angles:characterCoverage(current.references).uploaded,version:current.version}:undefined;
   try{
-   const r=await fetch("/api/agent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(toWireAttachment)}:{})})});
+   const r=await fetch("/api/agent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(toWireAttachment)}:{}),...(generations.length?{generations}:{})})});
    if(!r.ok){
     const errorBody=await r.json().catch(()=>({})) as {error?:string;message?:string;plan?:AgentProposal["plan"]};
     if(r.status===422&&errorBody.error==="no_compatible_model"){
@@ -422,7 +450,8 @@ export function Studio(){
    }
    const data=await r.json() as AgentProposal&{message:string};
    const picked=data.suggestions.find(s=>s.modelId===data.recommendedModelId)??data.suggestions[0];
-   const reply=item({role:"agent",text:data.message,kind:"proposal",snapshot:{operation:data.operation,modelName:picked?.name??"",neurons:picked?.neurons??data.fixedNeurons,intentSummaryFa:data.plan.intentSummaryFa,plan:data.plan}});
+   const tag=nextGenerationTag(generationTagsIn(messages));
+   const reply=item({role:"agent",text:data.message,kind:"proposal",snapshot:{...(tag?{tag}:{}),operation:data.operation,modelName:picked?.name??"",neurons:picked?.neurons??data.fixedNeurons,intentSummaryFa:data.plan.intentSummaryFa,plan:data.plan}});
    setProposal(data);setLiveId(reply.id);setSelected(data.selectedModelId);setPreview("در انتظار تأیید تولید");setJob(null);
    setMessages(m=>[...m,reply]);
    adoptProject(firstText,characterId);
@@ -448,7 +477,8 @@ export function Studio(){
     const poll=await fetch("/api/generation/jobs/"+current.id,{cache:"no-store"});if(!poll.ok)break;
     current=await poll.json();setPreview(current.messageFa);setJob({state:current.state,messageFa:current.messageFa,outputs:current.outputs});
    }
-   setMessages(m=>[...m,item({role:"agent",text:current.messageFa,kind:"job",snapshot:{state:current.state,messageFa:current.messageFa}})]);setProposal(null);setLiveId(null);touch();
+   const genTag=liveId?(messages.find(m=>m.id===liveId)?.snapshot as ProposalSnapshot|undefined)?.tag:undefined;
+   setMessages(m=>[...m,item({role:"agent",text:current.messageFa,kind:"job",snapshot:{state:current.state,messageFa:current.messageFa,...(genTag?{tag:genTag}:{})}})]);setProposal(null);setLiveId(null);touch();
   }catch(err){setError(err instanceof Error?err.message:"خطای ناشناخته");}
   finally{setBusy(false);}
  }
@@ -516,17 +546,18 @@ export function Studio(){
      <div aria-live="polite" aria-label="گفت‌وگو" role="log" className="flex flex-col gap-4 p-4">
       <div className="type-body-sm text-fg-primary"><span className="sr-only">هووش: </span>{opening}</div>
       {loadingProject&&<p role="status" className="type-body-sm text-fg-secondary">در حال باز کردن پروژه…</p>}
-      {/* User messages: on the right (the start in RTL), in a filled grey bubble with no border, their files above it as the same cards they were in the chat
-          input. Agent messages: full-width plain text; only the cards that carry an action (proposal, no model) have a container. Each message gets the hover
-          action bar (copy, run again, time). */}
+      {/* User messages: on the right (the start in RTL), in a filled grey bubble with no border, their files and «اصلاح» generations above it as the same cards
+          they were in the chat input. Agent messages: full-width plain text, then the plan as part of the conversation (icons and diagrams), then the compact card
+          that carries the actions (generate, change). Each message gets the hover action bar (copy, run again, time). */}
       {messages.map(m=>{
        const actions=<MessageActions text={m.text} at={m.at} now={now} onRerun={()=>rerun(m.id)} rerunDisabled={busy||reading||loadingProject}/>;
        if(m.role==="user")return <div key={m.id} className="group flex flex-col items-start gap-2">
-        {m.attachments&&m.attachments.length>0&&<ul aria-label="پیوست‌های این پیام" className="flex max-w-full flex-wrap gap-2">
-         {m.attachments.map(a=><SentAttachmentCard key={a.id} item={a} onPreview={()=>openViewer(a)} onMention={()=>mentionTag(a.tag)}/>)}
+        {((m.attachments?.length??0)>0||(m.generationTags?.length??0)>0)&&<ul aria-label="پیوست‌های این پیام" className="flex max-w-full flex-wrap gap-2">
+         {(m.generationTags??[]).flatMap(t=>{const g=generationMap.get(t);return g?[<GenerationRefCard key={t} snapshot={g} onMention={()=>mentionTag(t)} onOpen={()=>showGeneration(t)}/>]:[];})}
+         {(m.attachments??[]).map(a=><SentAttachmentCard key={a.id} item={a} onPreview={()=>openViewer(a)} onMention={()=>mentionTag(a.tag)}/>)}
         </ul>}
         <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-card bg-secondary px-4 py-3 type-body-sm text-fg-primary">
-         <span className="sr-only">شما: </span><MessageText text={m.text} attachments={byTag} onOpen={openViewer}/>
+         <span className="sr-only">شما: </span><MessageText text={m.text} attachments={byTag} onOpen={openViewer} generations={generationSet} onGeneration={showGeneration}/>
         </div>
         <div className="-mt-1">{actions}</div>
        </div>;
@@ -538,11 +569,12 @@ export function Studio(){
          </div>
          :<p className="whitespace-pre-wrap break-words type-body-sm text-fg-primary">
           <span className="sr-only">هووش: </span>{m.text}
-          {m.kind==="job"&&<> <Badge variant="outline" className="align-middle">{jobStateFa(m.snapshot.state)}</Badge></>}
+          {m.kind==="job"&&<> <Badge variant="outline" className="align-middle">{jobStateFa(m.snapshot.state)}</Badge>{m.snapshot.tag&&<> <span className="inline-flex align-middle"><TagBadge tag={m.snapshot.tag} onMention={()=>mentionTag(m.snapshot.tag!)}/></span></>}</>}
          </p>}
+        {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan&&<PlanStory plan={m.snapshot.plan}/>}
         {m.kind==="proposal"&&(proposal&&m.id===liveId
-         ?<ProposalCard proposal={proposal} selected={selected} onSelect={setSelected} busy={busy} onApprove={()=>void approve()}/>
-         :<PastProposalCard snapshot={m.snapshot}/>)}
+         ?<ProposalCard proposal={proposal} tag={m.snapshot.tag} selected={selected} onSelect={setSelected} busy={busy} onApprove={()=>void approve()} onChange={()=>m.snapshot.tag&&changeGeneration(m.snapshot.tag)} onMention={m.snapshot.tag?()=>mentionTag(m.snapshot.tag!):undefined}/>
+         :<PastProposalCard snapshot={m.snapshot} onChange={()=>m.snapshot.tag&&changeGeneration(m.snapshot.tag)} onMention={m.snapshot.tag?()=>mentionTag(m.snapshot.tag!):undefined} disabled={!m.snapshot.tag}/>)}
         {m.kind==="no_model"&&<NoModelCard result={m.snapshot}/>}
         <div className="-mt-2">{actions}</div>
        </div>;
@@ -561,10 +593,11 @@ export function Studio(){
      <AttachmentTray items={attachments} cards={cards.length} problems={problems} reading={reading} onDismiss={key=>setProblems(list=>list.filter(p=>p.key!==key))}/>
      <input ref={fileInput} type="file" multiple hidden accept={ATTACHMENT_ACCEPT} data-testid="attachment-input" onChange={e=>{const files=Array.from(e.target.files??[]),upload=pendingUpload.current,slot=pendingSlot.current;pendingUpload.current=undefined;pendingSlot.current=undefined;e.target.value="";e.target.multiple=true;const card=slot?slots.find(x=>x.id===slot):undefined;if(card)void fillSlot(card,files);else void addFiles(files,upload);}}/>
      <Label className="sr-only" htmlFor="whoush-prompt">توضیح تصویر یا ویدیو</Label>
-     <MentionTextarea id="whoush-prompt" inputRef={promptRef} value={draft} onValueChange={setDraft} options={conversation} onPaste={onPaste} placeholder="چی می‌خوای بسازیم؟" aria-describedby="prompt-hint" rows={3} maxLength={4000} className="min-h-13 max-h-40 resize-none"
+     <MentionTextarea id="whoush-prompt" inputRef={promptRef} value={draft} onValueChange={setDraft} options={mentionOptions} onPaste={onPaste} placeholder="چی می‌خوای بسازیم؟" aria-describedby="prompt-hint" rows={3} maxLength={4000} className="min-h-13 max-h-40 resize-none"
       onSubmitShortcut={()=>{if(draft.trim()&&!busy&&!reading)formRef.current?.requestSubmit();}}
       startAction={<InsertMenu disabled={reading} onPick={pickInsert}/>}
-      top={cards.length>0?<ul aria-label="پیوست‌ها" className="flex items-stretch gap-2 overflow-x-auto pb-2 [scrollbar-width:thin]">
+      top={cards.length+genRefs.length>0?<ul aria-label="پیوست‌ها" className="flex items-stretch gap-2 overflow-x-auto pb-2 [scrollbar-width:thin]">
+       {genRefs.flatMap(t=>{const g=generationMap.get(t);return g?[<GenerationRefCard key={t} snapshot={g} onMention={()=>mentionTag(t)} onOpen={()=>showGeneration(t)} onRemove={()=>{setGenRefs(l=>l.filter(x=>x!==t));promptRef.current?.focus();}}/>]:[];})}
        {cards.map(c=>c.type==="slot"
         ?<UploadSlotCard key={c.slot.id} slot={c.slot} disabled={reading} onUpload={()=>openSlotPicker(c.slot)} onDropFiles={f=>void fillSlot(c.slot,f)} onRemove={()=>dropSlot(c.slot.id)}/>
         :<AttachmentCard key={c.attachment.id} item={c.attachment} onChange={patch=>patchAttachment(c.attachment.id,patch)} onRemove={()=>removeAttachment(c.attachment.id)} onPreview={()=>openViewer(c.attachment)} onMention={()=>mentionTag(c.attachment.tag)}/>)}

@@ -1,6 +1,6 @@
 /** Chat history as projects and the assets page: the pure data model. Browser-local only (see lib/project-store.ts); safe in the browser and on the server. */
-import {ATTACHMENT_KIND_IDS,ATTACHMENT_ROLE_IDS,MAX_ATTACHMENTS,splitMentions,tagPrefix,type AttachmentKind,type AttachmentRole,type AttachmentSpeech,type LocalAttachment,type TagCounters} from "./attachments";
-import {GENERATION_STYLES,type GenerationStyle,type PublicCreativePlan} from "./creative-plan";
+import {ATTACHMENT_KIND_IDS,ATTACHMENT_ROLE_IDS,MAX_ATTACHMENTS,displayTag,isGenerationTag,nextGenerationTag,splitMentions,tagPrefix,type AttachmentKind,type AttachmentRole,type AttachmentSpeech,type LocalAttachment,type TagCounters} from "./attachments";
+import {GENERATION_STYLES,MAX_GENERATION_REFS,MAX_GENERATION_SUMMARY_CHARS,STYLE_LABEL_FA,type GenerationRef,type GenerationStyle,type PublicCreativePlan} from "./creative-plan";
 import {faPlain} from "./format";
 import {MODES} from "./mode";
 import type {AgentPreference} from "./types";
@@ -17,10 +17,12 @@ export const PAST_PROPOSAL_FA="این پیشنهاد مربوط به قبل اس
 
 export type MessageKind="text"|"proposal"|"no_model"|"restricted"|"job";
 /** What a past proposal needs to be shown read-only: the recommended model and its fixed Neurons, and the public plan. Never approvable after a reload (quotes expire). */
-export type ProposalSnapshot={operation:"generate_image"|"generate_video";modelName:string;neurons:number;intentSummaryFa:string;plan:PublicCreativePlan};
+/** `tag` is the generation's tag in this chat (`generation1`, shown as #تولید-۱); proposals saved before tags existed get one when the project opens. */
+export type ProposalSnapshot={operation:"generate_image"|"generate_video";modelName:string;neurons:number;intentSummaryFa:string;plan:PublicCreativePlan;tag?:string};
 export type NoModelSnapshot={message:string;plan?:PublicCreativePlan};
-export type JobSnapshot={state:string;messageFa:string};
-type MessageBase={id:string;role:"user"|"agent";text:string;at:string;attachmentIds?:string[]};
+export type JobSnapshot={state:string;messageFa:string;tag?:string};
+/** `generationTags`: the earlier generations a user message referred to («اصلاح» cards), shown with it and sent again on a rerun. */
+type MessageBase={id:string;role:"user"|"agent";text:string;at:string;attachmentIds?:string[];generationTags?:string[]};
 export type StoredMessage=MessageBase&(
  |{kind?:"text"|"restricted";snapshot?:undefined}
  |{kind:"proposal";snapshot:ProposalSnapshot}
@@ -100,14 +102,15 @@ function checkMessage(m:unknown,i:number){
  if(typeof m.text!=="string"||m.text.length>MAX_MESSAGE_TEXT)bad("متن پیام");
  if(!isTime(m.at))bad("زمان پیام");
  if(m.attachmentIds!==undefined&&!(Array.isArray(m.attachmentIds)&&m.attachmentIds.length<=MAX_ATTACHMENTS&&m.attachmentIds.every(x=>typeof x==="string"&&ID.test(x))))bad("پیوست‌های پیام");
+ if(m.generationTags!==undefined&&!(Array.isArray(m.generationTags)&&m.generationTags.length<=MAX_GENERATION_REFS&&m.generationTags.every(x=>typeof x==="string"&&isGenerationTag(x))))bad("تولیدهای پیام");
  const s=m.snapshot;
  switch(m.kind){
   case undefined:case "text":case "restricted":if(s!==undefined)bad("پیام ساده عکس لحظه‌ای ندارد");break;
   case "proposal":
-   if(!isObject(s)||(s.operation!=="generate_image"&&s.operation!=="generate_video")||typeof s.modelName!=="string"||!Number.isSafeInteger(s.neurons)||typeof s.intentSummaryFa!=="string"||!isPlan(s.plan))bad("پیشنهاد");
+   if(!isObject(s)||(s.operation!=="generate_image"&&s.operation!=="generate_video")||typeof s.modelName!=="string"||!Number.isSafeInteger(s.neurons)||typeof s.intentSummaryFa!=="string"||!isPlan(s.plan)||(s.tag!==undefined&&!(typeof s.tag==="string"&&isGenerationTag(s.tag))))bad("پیشنهاد");
    break;
   case "no_model":if(!isObject(s)||typeof s.message!=="string"||(s.plan!==undefined&&!isPlan(s.plan)))bad("نبود مدل سازگار");break;
-  case "job":if(!isObject(s)||typeof s.state!=="string"||typeof s.messageFa!=="string")bad("وضعیت تولید");break;
+  case "job":if(!isObject(s)||typeof s.state!=="string"||typeof s.messageFa!=="string"||(s.tag!==undefined&&!(typeof s.tag==="string"&&isGenerationTag(s.tag))))bad("وضعیت تولید");break;
   default:bad("نوع پیام");
  }
 }
@@ -179,3 +182,47 @@ export function rerunSource<T extends {id:string;role:"user"|"agent"}>(messages:
 }
 /** Each item once, by id, first occurrence kept (a message sent again carries the same files as the original). */
 export const uniqueById=<T extends {id:string}>(items:readonly T[]):T[]=>{const seen=new Set<string>();return items.filter(x=>!seen.has(x.id)&&(seen.add(x.id),true));};
+
+// ---- generations: every proposal of a chat is a generation with its own tag (#تولید-۱), referable later in the same chat only ----
+type WithSnapshot={id:string;kind?:string;snapshot?:unknown};
+/** The generation tags in use in a transcript. */
+export function generationTagsIn(messages:readonly WithSnapshot[]):string[]{
+ return messages.flatMap(m=>m.kind==="proposal"&&typeof (m.snapshot as ProposalSnapshot).tag==="string"?[(m.snapshot as ProposalSnapshot).tag!]:[]);
+}
+/** Gives every proposal without a tag (saved before tags existed) the next free one, in transcript order; tagged ones keep theirs. Returns a new array. */
+export function withGenerationTags<T extends WithSnapshot>(messages:readonly T[]):T[]{
+ const used=generationTagsIn(messages);
+ return messages.map(m=>{
+  if(m.kind!=="proposal"||(m.snapshot as ProposalSnapshot).tag)return m;
+  const tag=nextGenerationTag(used);if(!tag)return m;
+  used.push(tag);return {...m,snapshot:{...(m.snapshot as ProposalSnapshot),tag}};
+ });
+}
+/** The proposal message of a generation tag in this transcript, if any. */
+export function findGeneration<T extends WithSnapshot>(messages:readonly T[],tag:string):(T&{snapshot:ProposalSnapshot})|undefined{
+ return messages.find(m=>m.kind==="proposal"&&(m.snapshot as ProposalSnapshot).tag===tag) as (T&{snapshot:ProposalSnapshot})|undefined;
+}
+const KIND_FA={image:"تصویر",video:"ویدیو"} as const;
+/**
+ * The Persian summary of a generation's public plan that goes with a message referring to it, so the planner can revise it: kind, model, intent, the chosen style,
+ * camera or shot, the key constraints and preferences. Plain data from the stored public plan (never the private media prompt), cut to the schema limit.
+ */
+export function generationSummaryFa(s:ProposalSnapshot):string{
+ const p=s.plan,c=p.camera,sh=p.shot,lines=[
+  "نوع: "+KIND_FA[p.mediaKind]+(s.modelName?" · مدل: "+s.modelName:""),
+  "هدف: "+p.intentSummaryFa,
+  ...(p.style?["سبک: "+STYLE_LABEL_FA[p.style]]:[]),
+  ...(c?["دوربین: "+c.look+"؛ لنز "+c.focalLengthMm+" میلی‌متر، "+c.aperture+"، کادر: "+c.framing+"؛ نور: "+c.lighting+"؛ نسبت "+c.aspectRatio]:[]),
+  ...(sh?["نما: "+sh.shotSize+"؛ حرکت: "+sh.cameraMovement+"؛ "+sh.durationSeconds+" ثانیه"]:[]),
+  ...(p.hardConstraints.length?["قیدها: "+p.hardConstraints.slice(0,6).join("؛ ")]:[]),
+  ...(p.softPreferences.length?["ترجیحات: "+p.softPreferences.slice(0,4).join("؛ ")]:[])
+ ];
+ const out=lines.join("\n");
+ return out.length>MAX_GENERATION_SUMMARY_CHARS?out.slice(0,MAX_GENERATION_SUMMARY_CHARS-1)+"…":out;
+}
+/** The wire reference of a generation for POST /api/agent. */
+export const toGenerationRef=(s:ProposalSnapshot&{tag:string}):GenerationRef=>({tag:s.tag,mediaKind:s.plan.mediaKind,summaryFa:generationSummaryFa(s)});
+/** The generations a message refers to: the «اصلاح» cards first, then those it mentions (#تولید-۱), each once, only ones of this chat, at most MAX_GENERATION_REFS. */
+export function referencedGenerations(cards:readonly string[],mentioned:readonly string[],known:ReadonlySet<string>):string[]{
+ return [...new Set([...cards,...mentioned.filter(isGenerationTag)])].filter(t=>known.has(t)).slice(0,MAX_GENERATION_REFS);
+}

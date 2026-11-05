@@ -116,13 +116,26 @@ export function bumpTagCounters(c:TagCounters,tag:string):TagCounters{
 }
 /** The Persian word shown in a tag: `image1` is `#تصویر-۱`. The internal/wire tag stays English. */
 export const TAG_WORD_FA={image:"تصویر",video:"ویدیو",audio:"صدا",file:"فایل"} as const satisfies Record<TagPrefix,string>;
+// ---- generation tags: every generation plan of a chat gets `generation1`, `generation2`, ... shown as #تولید-۱; they name generations of that chat only ----
+/** A mention names a file (`image1`, ...) or a generation of this chat (`generation1`). */
+export type MentionPrefix=TagPrefix|"generation";
+export const GENERATION_TAG_PATTERN=/^generation[1-9]\d?$/;
+export const GENERATION_WORD_FA="تولید";
+export const isGenerationTag=(tag:string)=>GENERATION_TAG_PATTERN.test(tag);
+/** The next generation tag of a chat: the lowest number not in use (generations are never removed, so in practice one more than the last). Undefined after 99. */
+export function nextGenerationTag(used:Iterable<string>):string|undefined{
+ const taken=new Set(used);
+ for(let n=1;n<=99;n++)if(!taken.has("generation"+n))return "generation"+n;
+ return undefined;
+}
+const WORD_FA:Record<MentionPrefix,string>={...TAG_WORD_FA,generation:GENERATION_WORD_FA};
 /** Every spelling accepted in a mention, as normalized by `normalizeMention`: Persian words (ویدئو too) and the legacy English prefixes. */
-const MENTION_WORDS:Record<string,TagPrefix>={"تصویر":"image","ویدیو":"video","ویدئو":"video","صدا":"audio","فایل":"file",image:"image",video:"video",audio:"audio",file:"file"};
+const MENTION_WORDS:Record<string,MentionPrefix>={"تصویر":"image","ویدیو":"video","ویدئو":"video","صدا":"audio","فایل":"file","تولید":"generation",image:"image",video:"video",audio:"audio",file:"file",generation:"generation"};
 const faNumber=(n:number|string)=>String(n).replace(/\d/g,d=>String.fromCharCode(0x06f0+Number(d)));
 /** The user-facing form of an internal tag: the Persian word, an ASCII hyphen and Persian digits. `image1` is `#تصویر-۱`, `file12` is `#فایل-۱۲`. */
 export function displayTag(tag:string):string{
- const m=/^(image|video|audio|file)(\d+)$/.exec(tag);
- return m?"#"+TAG_WORD_FA[m[1] as TagPrefix]+"-"+faNumber(m[2]):"#"+tag;
+ const m=/^(image|video|audio|file|generation)(\d+)$/.exec(tag);
+ return m?"#"+WORD_FA[m[1] as MentionPrefix]+"-"+faNumber(m[2]):"#"+tag;
 }
 /** Case and script tolerant form of a typed token: Arabic ي/ى become ی, ك becomes ک, Arabic-Indic and Persian digits become ASCII, the dashes U+2010, U+2011, U+2013 and U+2212 become `-`, ZWNJ and tatweel vanish. */
 const normalizeMention=(s:string)=>s.replace(/[\u200c\u0640]/g,"").replace(/[\u064a\u0649]/g,"\u06cc").replace(/\u0643/g,"\u06a9").replace(/[\u2010\u2011\u2013\u2212]/g,"-")
@@ -169,12 +182,16 @@ export function describeTagEn(a:{tag:string;kind:AttachmentKind;role?:Attachment
  if(a.kind==="audio")return "["+(en??"reference")+" audio "+n+"]";
  return "[attached document "+n+"]";
 }
-/** Replaces every mention, in any accepted spelling, with its English description; a tag with no attachment becomes `[missing attachment]`. */
-export function rewriteMentions(text:string,byTag:ReadonlyMap<string,{tag:string;kind:AttachmentKind;role?:AttachmentRole}>):string{
+/**
+ * Replaces every mention, in any accepted spelling, with its English description; a tag with no attachment becomes `[missing attachment]`. A generation of this chat
+ * (`#تولید-۱`) becomes `[earlier generation 1]`, or `[missing generation]` when it is not among `generations`.
+ */
+export function rewriteMentions(text:string,byTag:ReadonlyMap<string,{tag:string;kind:AttachmentKind;role?:AttachmentRole}>,generations:ReadonlySet<string>=new Set()):string{
  let out="",at=0;
  for(const m of scanMentions(text)){
   const a=byTag.get(m.tag);
-  out+=text.slice(at,m.index)+(a?describeTagEn(a):"[missing attachment]");at=m.index+m.raw.length;
+  const en=isGenerationTag(m.tag)?(generations.has(m.tag)?"[earlier generation "+tagNumber(m.tag)+"]":"[missing generation]"):a?describeTagEn(a):"[missing attachment]";
+  out+=text.slice(at,m.index)+en;at=m.index+m.raw.length;
  }
  return out+text.slice(at);
 }
@@ -188,9 +205,9 @@ export function insertMention(text:string,start:number,end:number,tag:string):{t
 function isTagQuery(q:string):boolean{
  return Object.keys(MENTION_WORDS).some(w=>w.startsWith(q)||(q.startsWith(w)&&/^-?\d{0,2}$/.test(q.slice(w.length))));
 }
-/** Whether an attachment's tag matches a normalized picker query (Persian or English word, either digit set, hyphen or not): `image1` matches `تص`, `im`, `تصویر-`, `تصویر۱` and `image1`, not `صدا`. */
+/** Whether an attachment's (or a generation's) tag matches a normalized picker query (Persian or English word, either digit set, hyphen or not): `image1` matches `تص`, `im`, `تصویر-`, `تصویر۱` and `image1`, not `صدا`. */
 export function tagMatchesQuery(tag:string,query:string):boolean{
- const q=normalizeMention(query),m=/^(image|video|audio|file)(\d+)$/.exec(tag);
+ const q=normalizeMention(query),m=/^(image|video|audio|file|generation)(\d+)$/.exec(tag);
  if(!m)return false;
  return Object.entries(MENTION_WORDS).some(([w,p])=>p===m[1]&&((w+m[2]).startsWith(q)||(w+"-"+m[2]).startsWith(q)));
 }
