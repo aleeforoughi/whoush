@@ -24,7 +24,7 @@ import {fa} from "@/lib/format";
 function viewCaptions(s:Staging,aspect:string){
  const n=(s.props??[]).length;
  return {
-  frame:{title:"کادر و چیدمان",value:SHOT_SIZE_FA[s.shotSize]+" · "+aspect+(n?" · "+fa(n)+" وسیله":"")},
+  frame:{title:"کادر و چیدمان",value:SHOT_SIZE_FA[s.shotSize]+" · "+aspect+(n?" · "+fa(n)+" پراپ":"")},
   camera:{title:"دوربین",value:CAMERA_ANGLE_FA[s.cameraAngle]+" · "+fa(Math.round(elevationOf(s)))+"°"+(Math.abs(s.cameraAzimuth??0)>=1?" · "+orbitFa(s.cameraAzimuth!):"")+" · زوم "+fa(zoomFactor(s))+"×"},
   light:{title:"نورپردازی",value:s.lights.length===1?"یک منبع نور":fa(s.lights.length)+" منبع نور"}
  };
@@ -105,7 +105,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
       onChange={x=>{const y=draft.framing?.y??0;set({framing:x===0&&y===0?undefined:{x,y}});}}/>
      <SliderRow label="جابه‌جایی کادر، عمودی" ends={["بالا","پایین"]} valueText={pct(draft.framing?.y??0)} min={-1} max={1} step={0.01} value={draft.framing?.y??0}
       onChange={y=>{const x=draft.framing?.x??0;set({framing:x===0&&y===0?undefined:{x,y}});}}/>
-     <p className="text-center type-caption text-fg-secondary">{props.length?"روی یه وسیله بزن تا تنظیماتش بیاد و بکشیش (بالا عقب، پایین جلو، حتی تا بیرون کادر)؛ ":""}پس‌زمینه رو بکشی، کادر جابه‌جا می‌شه.</p>
+     <p className="text-center type-caption text-fg-secondary">{props.length?"روی یه پراپ بزن تا تنظیماتش بیاد و بکشیش (بالا عقب، پایین جلو، حتی تا بیرون کادر)؛ ":""}پس‌زمینه رو بکشی، کادر جابه‌جا می‌شه.</p>
     </>}
    </Viewport>
    </div>

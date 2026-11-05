@@ -212,7 +212,7 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
     }}/>
   </div>
   </div>
-  <Card id={listId} role="listbox" aria-label={trigger?.prop?"تصویرهای مرجع برای "+trigger.prop:"پیوست‌ها، تولیدها و وسیله‌های صحنهٔ این گفت‌وگو"} size="sm" className={open?"absolute inset-x-0 bottom-full z-20 mb-1 max-h-56 overflow-y-auto bg-popover p-1 shadow-2":"hidden"}>
+  <Card id={listId} role="listbox" aria-label={trigger?.prop?"تصویرهای مرجع برای "+trigger.prop:"پیوست‌ها، تولیدها و پراپ‌های صحنهٔ این گفت‌وگو"} size="sm" className={open?"absolute inset-x-0 bottom-full z-20 mb-1 max-h-56 overflow-y-auto bg-popover p-1 shadow-2":"hidden"}>
    {matches.map((o,i)=><div key={o.id} id={optionId(i)} role="option" aria-selected={i===current}
     onMouseDown={e=>{e.preventDefault();pick(o);}} onMouseMove={()=>{if(i!==current)setActive(i);}}
     className={"flex min-h-control cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 rounded-control px-3 py-2 "+(i===current?"bg-surface-hover":"")}>

@@ -159,7 +159,7 @@ export function Studio(){
  const scene=sceneMsg&&sceneMsg.kind==="proposal"?(sceneEdit?.id===sceneMsg.id?sceneEdit.staging:sceneMsg.snapshot.plan.staging):undefined;
  const sceneGen=sceneMsg&&sceneMsg.kind==="proposal"&&sceneMsg.snapshot.tag?" · "+displayTag(sceneMsg.snapshot.tag):"";
  const mentionOptions:MentionOption[]=[...conversation.map(attachmentOption),...[...generationMap.values()].map(g=>({id:"gen-"+g.tag,tag:g.tag,badgeFa:"تولید",captionFa:g.intentSummaryFa})),
-  ...(scene?.props?propTags(scene.props).map((t,i)=>({id:"prop-"+i,tag:t,badgeFa:"صحنه",captionFa:scene.props![i].label+sceneGen})):[]),
+  ...(scene?.props?propTags(scene.props).map((t,i)=>({id:"prop-"+i,tag:t,badgeFa:"پراپ",captionFa:scene.props![i].label+sceneGen})):[]),
   ...(scene?lightTags(scene.lights).map((t,i)=>({id:"light-"+i,tag:t,badgeFa:"نور",captionFa:LIGHT_SOURCE_FA[scene.lights[i].source]+sceneGen})):[])];
  /** Keep ?project= and ?character= in step with the state without reloading or adding history entries. */
  function syncUrl(project:string|null,character:string|null){
