@@ -190,15 +190,15 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     {changed&&<span className="rounded-control bg-surface-selected px-2 py-0.5 type-caption text-fg-primary">تغییر کرده</span>}
     <Icon icon={ChevronDown} size={16} aria-hidden="true" className={"ms-auto size-4 shrink-0 text-fg-secondary transition-transform motion-reduce:transition-none "+(open?"rotate-180":"")}/>
    </span>
-   {/* Collapsed: just the frame, exactly the photo's crop as the frame simulates it, and the details of the frame, the camera and the lighting: under
-       it on a phone; where the card is wide, stacked beside it (to its left), right-aligned. A scene with no character (no frame) shows the camera and
+   {/* Collapsed: just the frame, exactly the photo's crop as the frame simulates it, and the details of the frame, the camera and the lighting, one under
+       another, right-aligned: under it on a phone; where the card is wide, beside it (to its left). A scene with no character (no frame) shows the camera and
        the lighting as small tiles instead. */}
    {!open&&!focused&&(show("frame")&&frameShown?(()=>{const {W,H}=frameSize(aspect),showCam=show("angle")||show("distance")||show("lens");
     return <span className="flex flex-col gap-2 @lg:flex-row @lg:items-start @lg:gap-5">
      <span ref={setSnapEl} className="dark relative block shrink-0 overflow-hidden rounded-card border border-line-secondary bg-background" style={{aspectRatio:String(W/H),width:"min(100%, "+Math.round(Math.min(240*W/H,360))+"px)"}}>
       {FRAME_RENDERER==="css"&&snapOnScreen?<FrameScene staging={draft} anchor={anchor} aspect={aspect}/>:null}
      </span>
-     <span className="flex flex-wrap gap-x-5 gap-y-2 @lg:flex-col @lg:flex-nowrap @lg:gap-3 @lg:pt-1">
+     <span className="flex flex-col gap-2 @lg:gap-3 @lg:pt-1">
       <SnapCaption c={cap.frame}/>{showCam&&<SnapCaption c={cap.camera}/>}{show("light")&&<SnapCaption c={cap.light}/>}
      </span>
     </span>;})()
