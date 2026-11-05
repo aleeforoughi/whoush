@@ -22,7 +22,7 @@
   - **نور (lighting):** only the lights and the target from above; drag lights around (eight directions); the inspector sets role, source, softness, height, kelvin and gel.
 - **Shared scene:** all views share one draft, so moving a prop updates every view at once. The environment is the fixed backdrop.
 - **Applying:** «این صحنه رو بساز» sends the changes as readable lines plus `stagingOverride` (and `aspectOverride`); the server applies them exactly (staging, a hard constraint, the provider prompt's layout and staging lines).
-- **Layout:** narrow containers (phones, the chat beside the preview) show one view at a time behind tabs; wide ones show them together. Every element stays inside its view (checked at 375px: no element outside its view, no horizontal scroll).
+- **Layout:** the three views are stacked in one scroll (framing and layout, then camera, then lighting), each with its controls underneath, at every width. Every element stays inside its view (checked at 375px: no element outside its view, no horizontal scroll).
 - **Input:** guides and borders are thin (0.4 to 0.7 units); touch targets are at least 44px; everything works with the keyboard.
 
 ## Live progress in the chat

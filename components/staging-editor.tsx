@@ -30,9 +30,7 @@ function withProps(s:Staging):Staging{
 export function StagingEditor({staging,aspectRatio,onApply,disabled}:{staging:Staging;aspectRatio?:string;onApply?:(s:Staging,aspect:string)=>void;disabled?:boolean}){
  const initial=withProps(staging);
  const [draft,setDraft]=useState<Staging>(initial),[aspect,setAspect]=useState(aspectRatio??"16:9"),[sel,setSel]=useState<Sel>({type:initial.props?.length?"prop":"light",i:0});
- // Narrow (a phone, or the chat beside the preview): one view at a time behind tabs. Wide (@2xl container): all three together.
- const [view,setView]=useState<"camera"|"frame"|"light">("frame");
- const shown=(k:typeof view)=>(view===k?"block":"hidden")+" @2xl:block";
+ // All three views in one scroll, in this order: framing and layout, camera, lighting; each view's controls right under it.
  const editable=Boolean(onApply);
  const changed=JSON.stringify(draft)!==JSON.stringify(initial)||aspect!==(aspectRatio??"16:9");
  const set=(p:Partial<Staging>)=>setDraft(d=>({...d,...p}));
@@ -40,12 +38,8 @@ export function StagingEditor({staging,aspectRatio,onApply,disabled}:{staging:St
  const props=draft.props??[];
  const setProp=(i:number,p:Partial<SceneProp>)=>setDraft(d=>({...d,props:(d.props??[]).map((x,j)=>j===i?{...x,...p}:x)}));
  return <div role="group" aria-label="بوم" className="@container flex min-w-0 flex-col gap-3">
-  <div role="tablist" aria-label="نماهای صحنه" className="grid grid-cols-3 gap-1 rounded-control bg-surface-subtle p-1 @2xl:hidden">
-   {([["frame","کادر"],["camera","دوربین"],["light","نور"]] as const).map(([k,label])=><button key={k} type="button" role="tab" aria-selected={view===k} onClick={()=>setView(k)}
-    className={"h-9 rounded-control type-label motion-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring "+(view===k?"bg-background text-fg-primary shadow-1":"text-fg-secondary")}>{label}</button>)}
-  </div>
-  <div className="grid min-w-0 grid-cols-1 gap-2 @2xl:grid-cols-2">
-   <div className={shown("frame")+" @2xl:col-span-2"}><Viewport title="کادر و چیدمان" value={SHOT_SIZE_FA[draft.shotSize]+" · "+aspect+(props.length?" · "+fa(props.length)+" وسیله":"")}>
+  <div className="flex min-w-0 flex-col gap-3">
+   <div><Viewport title="کادر و چیدمان" value={SHOT_SIZE_FA[draft.shotSize]+" · "+aspect+(props.length?" · "+fa(props.length)+" وسیله":"")}>
     <FrameView staging={draft} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={sel} onSelect={setSel} onProp={(i,x,z)=>setProp(i,{x,z})}/>
     {editable&&<>
      <input type="range" min={0} max={1} step={0.001} value={1-sliderFromScale(scaleOf(draft))} onChange={e=>{const sc=scaleFromSlider(1-Number(e.target.value));set({shotScale:sc,shotSize:nearestShot(sc)});}}
@@ -58,11 +52,11 @@ export function StagingEditor({staging,aspectRatio,onApply,disabled}:{staging:St
     {sel.type==="prop"&&props[sel.i]&&<PropInspector prop={props[sel.i]} onChange={p=>setProp(sel.i,p)}/>}
    </div>}
    </div>
-   <div className={shown("camera")}><Viewport title="زاویهٔ دوربین" value={CAMERA_ANGLE_FA[draft.cameraAngle]+" · "+fa(Math.round(elevationOf(draft)))+"°"}>
+   <div><Viewport title="زاویهٔ دوربین" value={CAMERA_ANGLE_FA[draft.cameraAngle]+" · "+fa(Math.round(elevationOf(draft)))+"°"}>
     <CameraView staging={draft} editable={editable} onElevation={e=>set({cameraElevation:e,cameraAngle:draft.cameraAngle==="dutch"?"dutch":snapElevation(e)})}/>
     {editable&&<div className="flex justify-center"><Chip on={draft.cameraAngle==="dutch"} onClick={()=>set({cameraAngle:draft.cameraAngle==="dutch"?snapElevation(elevationOf(draft)):"dutch"})}>زاویهٔ کج</Chip></div>}
    </Viewport></div>
-   <div className={shown("light")}>
+   <div>
     <Viewport title="نورپردازی (از بالا)" value={draft.lights.length===1?"یک منبع نور":fa(draft.lights.length)+" منبع نور"}>
      <LightView staging={draft} editable={editable} selected={sel.type==="light"?sel.i:-1} onSelect={i=>setSel({type:"light",i})} onLight={(i,deg)=>setLight(i,{angle:deg,direction:snapDirection(deg)})}/>
     </Viewport>
@@ -118,7 +112,7 @@ function CameraView({staging,editable,onElevation}:{staging:Staging;editable:boo
  const elevAt=(e:PointerEvent)=>{const r=svg.current!.getBoundingClientRect();const x=(e.clientX-r.left)*VW/r.width,y=(e.clientY-r.top)*VH/r.height;
   return Math.max(-60,Math.min(85,-Math.atan2(y-focus[1],x-focus[0])*180/Math.PI));};
  const key=(e:KeyboardEvent)=>{const step=e.key==="ArrowUp"||e.key==="ArrowRight"?5:e.key==="ArrowDown"||e.key==="ArrowLeft"?-5:0;if(!step)return;e.preventDefault();onElevation(Math.max(-60,Math.min(85,Math.round(elev+step))));};
- return <svg ref={svg} viewBox={"0 0 "+VW+" "+VH} className="block aspect-[22/19] w-full touch-none select-none text-fg-primary" aria-hidden={!editable}
+ return <svg ref={svg} viewBox={"0 0 "+VW+" "+VH} className="mx-auto block aspect-[22/19] w-full max-w-sm touch-none select-none text-fg-primary" aria-hidden={!editable}
   onPointerMove={e=>{if(drag!==null)setDrag(elevAt(e));}} onPointerUp={()=>{if(drag!==null){onElevation(Math.round(drag));setDrag(null);}}} onPointerCancel={()=>setDrag(null)}>
   <path d={"M"+polar(focus[0],focus[1],R,-85).join(" ")+" A"+R+" "+R+" 0 0 1 "+polar(focus[0],focus[1],R,60).join(" ")} fill="none" stroke="currentColor" strokeOpacity=".4" strokeWidth={0.5} strokeDasharray="2.5 3.5"/>
   <rect x={6} y={ground} width={VW-12} height={0.5} fill="currentColor" fillOpacity=".3"/>
@@ -176,7 +170,7 @@ function FrameView({staging,aspect,editable,onFraming,sel,onSelect,onProp}:{stag
   commit({x:snapAxis(fr.x+d[0]),y:snapAxis(fr.y+d[1])});
  };
  const third=(on:boolean,neg:boolean,i:number)=>on&&(i===1)===neg;
- return <svg ref={svg} viewBox={"-2 -2 "+(W+4)+" "+(H+4)} className="mx-auto block max-h-80 w-full touch-none select-none text-fg-primary" style={{aspectRatio:String((W+4)/(H+4))}} aria-hidden={!editable}
+ return <svg ref={svg} viewBox={"-2 -2 "+(W+4)+" "+(H+4)} className="mx-auto block w-full touch-none select-none text-fg-primary" style={{aspectRatio:String((W+4)/(H+4)),maxWidth:Math.round(320*(W+4)/(H+4))+"px"}} aria-hidden={!editable}
   onPointerMove={e=>{
    const u=unit();
    if(move){const p0=at({...base[move.i],x:move.x0,z:move.z0,y:0});const g=ground(p0.x+(e.clientX-move.px)*u.sx/k,p0.ground+(e.clientY-move.py)*u.sy/k);setMove({...move,...g});return;}
