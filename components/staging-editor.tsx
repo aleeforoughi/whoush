@@ -1079,16 +1079,16 @@ function FrameFullscreen({staging,anchor,aspect,sel,onSelect,onProp,onFraming,di
  */
 function LightView({staging,editable,selected,onSelect,onLight}:{staging:Staging;editable:boolean;selected:number;onSelect:(i:number)=>void;onLight:(i:number,deg:number)=>void}){
  const svg=useRef<SVGSVGElement>(null),uid=useId(),[drag,setDrag]=useState<{i:number;deg:number}|null>(null);
- const VW=240,VH=230,C:[number,number]=[120,104],R=76;
+ // As tall as the lights' circle with their pictures around it (no camera below it).
+ const VW=240,VH=214,C:[number,number]=[120,104],R=76;
  const pt=(e:PointerEvent)=>{const r=svg.current!.getBoundingClientRect();return [(e.clientX-r.left)*VW/r.width,(e.clientY-r.top)*VH/r.height] as const;};
  const target=mainProp(staging);
  const targetTint=target?propTints(staging.props??[])[(staging.props??[]).indexOf(target)]:undefined;
- return <svg ref={svg} viewBox={"0 0 "+VW+" "+VH} className="mx-auto block aspect-[240/230] w-full max-w-sm touch-pan-y select-none text-fg-primary"
+ return <svg ref={svg} viewBox={"0 0 "+VW+" "+VH} className="mx-auto block aspect-[240/214] w-full max-w-sm touch-pan-y select-none text-fg-primary"
   onPointerMove={e=>{if(drag){const [x,y]=pt(e),deg=Math.atan2(y-C[1],x-C[0])*180/Math.PI;if(Number.isFinite(deg))setDrag({...drag,deg});}}}
   onPointerUp={()=>{if(drag){if(Number.isFinite(drag.deg))onLight(drag.i,Math.round(((drag.deg%360)+360)%360));setDrag(null);}}} onPointerCancel={()=>setDrag(null)}>
   <BlueTint id={uid+"-sel"}/>
   <circle cx={C[0]} cy={C[1]} r={R} fill="none" stroke="currentColor" strokeOpacity=".35" strokeWidth={1} strokeDasharray="2 4" vectorEffect="non-scaling-stroke"/>
-  <line x1={C[0]} y1={C[1]+24} x2={C[0]} y2={VH-34} stroke="currentColor" strokeOpacity=".35" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
   {staging.lights.map((l,i)=>{
    const isDrag=drag?.i===i,top=l.direction==="top";
    const [x,y]=isDrag?polar(C[0],C[1],R,drag!.deg):top?[C[0]+(i%2?20:-20),C[1]-32]:polar(C[0],C[1],R,lightAngleOf(l)??LIGHT_ANGLE.front);
@@ -1119,7 +1119,6 @@ function LightView({staging,editable,selected,onSelect,onLight}:{staging:Staging
   })}
   {target&&targetTint&&<Tint id={uid+"-m"} color={targetTint}/>}
   {target?<PropTop tint={targetTint?uid+"-m":undefined} p={target} x={C[0]} y={C[1]+20} h={isCharacter(target)?40:28}/>:<CubeTop x={C[0]} y={C[1]+14} h={28}/>}
-  <Asset id="camera-top" x={C[0]} y={VH-4} h={28}/>
  </svg>;
 }
 
