@@ -1169,9 +1169,6 @@ function LightInspector({light:l,tag,canRemove,onChange,onRemove,onAdd}:{light:S
    <SelectTrigger size="sm" aria-label="منبع نور" className="w-full"><SourceIcon id={LIGHT_ASSETS[l.source]}/><SelectValue/></SelectTrigger>
    <SelectContent>{LIGHT_SOURCES.map(s=><SelectItem key={s} value={s}><span className="flex items-center gap-2"><SourceIcon id={LIGHT_ASSETS[s]}/>{LIGHT_SOURCE_FA[s]}</span></SelectItem>)}</SelectContent>
   </Select>
-  <div className="flex flex-wrap items-center gap-3">
-   <div className="flex gap-1" role="radiogroup" aria-label="کیفیت نور">{(["soft","hard"] as const).map(q=><Chip key={q} role="radio" on={l.quality===q} onClick={()=>onChange({quality:q})}>{LIGHT_QUALITY_FA[q]}</Chip>)}</div>
-  </div>
   {/* The light's height, floor to ceiling, on its own line. A planner's light «from above» (direction top) shows as the ceiling. */}
   <div className="flex flex-wrap items-center gap-2"><span className="type-caption text-fg-secondary">زاویهٔ نور</span>
    <div dir="ltr" className="flex flex-wrap gap-1" role="radiogroup" aria-label="زاویهٔ نور">{LIGHT_HEIGHTS.map(h=>{const on=l.direction==="top"?h==="ceiling":l.height===h;
