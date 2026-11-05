@@ -225,13 +225,13 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     {/* The frame's zoom, always right under it: whatever is selected (a character can fill a close-up, with nothing else to tap). */}
     {editable&&<>
      {/* The frame's ratio first, then its zoom. */}
-     <div className="flex flex-wrap justify-center gap-1">{["16:9","3:2","4:5","1:1","9:16"].map(r=><Chip key={r} on={aspect===r} onClick={()=>setAspect(r)}><bdi>{faText(r)}</bdi></Chip>)}</div>
+     <div className="flex flex-wrap justify-start gap-1">{["16:9","3:2","4:5","1:1","9:16"].map(r=><Chip key={r} on={aspect===r} onClick={()=>setAspect(r)}><bdi>{faText(r)}</bdi></Chip>)}</div>
      <input type="range" dir="ltr" min={0} max={1} step={0.001} value={1-distanceOf(draft)} onChange={e=>setDistance(1-Number(e.target.value))}
       aria-label="زوم (اندازهٔ نما، همون فاصلهٔ دوربین)" aria-valuetext={SHOT_SIZE_FA[draft.shotSize]+"، زوم "+fa(zoomFactor(draft))+"×"} className="h-5 w-full cursor-pointer accent-primary pointer-coarse:h-6"/>
      <span dir="ltr" className="-mt-3 flex justify-between type-caption text-fg-secondary" aria-hidden="true"><span>باز</span><span>نزدیک</span></span>
     </>}
     {/* The centre point's own settings, while its dot is selected. */}
-    {editable&&centerSel&&<div className="flex flex-col items-center gap-2 py-1 text-center">
+    {editable&&centerSel&&<div className="flex flex-col items-start gap-2 py-1 text-start">
      <p className="type-body-sm text-fg-primary">{draft.focusPoint||draft.pivot?"نقطهٔ فوکوس جابه‌جا شده؛ فوکوس و زوم روی همین نقطه‌ست.":"مرکز کادر روی سوژهٔ اصلیه"+(props[mainIdx]?" ("+propTags(props)[mainIdx]+")":"")+"؛ زوم دور همین نقطه انجام می‌شه."}</p>
      <p className="type-caption text-fg-secondary">نقطه رو روی بوم بکش تا جابه‌جا بشه (تصویر تکون نمی‌خوره).</p>
     </div>}
@@ -242,7 +242,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
       onChange={x=>{const y=draft.framing?.y??0;set({framing:x===0&&y===0?undefined:{x,y}});}}/>
      <SliderRow label="جابه‌جایی کادر، عمودی" ends={["بالا","پایین"]} valueText={pct(draft.framing?.y??0)} min={-1} max={1} step={0.01} value={draft.framing?.y??0}
       onChange={y=>{const x=draft.framing?.x??0;set({framing:x===0&&y===0?undefined:{x,y}});}}/>
-     <p className="text-center type-caption text-fg-secondary">{FRAME_MOVES_PROPS?(props.length?"روی یه پراپ بزن تا تنظیماتش بیاد و بکشیش (بالا عقب، پایین جلو، حتی تا بیرون کادر)؛ ":"")+"پس‌زمینه رو بکشی، کادر جابه‌جا می‌شه.":(props.some(isCharacter)?"روی کاراکتر بزن تا انتخاب بشه؛ ":"")+"کادر رو بکشی، جابه‌جا می‌شه."}</p>
+     <p className="text-start type-caption text-fg-secondary">{FRAME_MOVES_PROPS?(props.length?"روی یه پراپ بزن تا تنظیماتش بیاد و بکشیش (بالا عقب، پایین جلو، حتی تا بیرون کادر)؛ ":"")+"پس‌زمینه رو بکشی، کادر جابه‌جا می‌شه.":(props.some(isCharacter)?"روی کاراکتر بزن تا انتخاب بشه؛ ":"")+"کادر رو بکشی، جابه‌جا می‌شه."}</p>
     </>}
    </Viewport>
    </div>}
@@ -270,7 +270,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     {editable&&<SliderRow label="زاویهٔ کج (داچ)" ends={["به چپ","به راست"]} valueText={rollOf(draft)?fa(Math.abs(Math.round(rollOf(draft))))+"° "+(rollOf(draft)>0?"به راست":"به چپ"):"صاف"}
      min={-30} max={30} step={1} value={rollOf(draft)} onChange={v=>setDraft(d=>{const {cameraRoll:_r,...rest}=d;void _r;
       return v===0?{...rest,cameraAngle:d.cameraAngle==="dutch"?snapElevation(elevationOf(d)):d.cameraAngle}:{...rest,cameraRoll:v,cameraAngle:"dutch"};})}/>}
-    {editable&&SHOW_SHOT_STYLES&&<div className="flex flex-wrap justify-center gap-1" role="radiogroup" aria-label="نوع نما">
+    {editable&&SHOW_SHOT_STYLES&&<div className="flex flex-wrap justify-start gap-1" role="radiogroup" aria-label="نوع نما">
      {([[undefined,"معمولی"],["ots","روی شانه (OTS)"],["pov","دید سوژه (POV)"]] as const).map(([v,l])=><Chip key={l} role="radio" on={draft.shotStyle===v}
       onClick={()=>setDraft(d=>{const {shotStyle:_s,...rest}=d;void _s;return v?{...rest,shotStyle:v}:rest;})}>{l}</Chip>)}</div>}
     </>}
@@ -382,7 +382,7 @@ function Snap({c,children}:{c:{title:string;value:string};children:ReactNode}){
 function Viewport({title,value,children}:{title:string;value:string;children:ReactNode}){
  return <figure className="dark flex min-w-0 flex-col gap-2 overflow-hidden rounded-card bg-background p-3 text-fg-primary">
   <div className="flex flex-col gap-4">{children}</div>
-  <figcaption className="flex flex-col items-center gap-1 pt-1">
+  <figcaption className="flex flex-col items-start gap-1 pt-1">
    <span className="rounded-control bg-surface-hover px-3 py-0.5 type-caption text-fg-secondary">{title}</span>
    <span className="type-label text-fg-primary">{value}</span>
   </figcaption>
@@ -721,7 +721,7 @@ function SectionRule(){return <hr aria-hidden="true" className="my-1 border-0 bo
 /** One labelled view tile (the camera's side and top views): bordered, the label above the drawing. */
 function Tile({label,children}:{label:string;children:ReactNode}){
  return <div className="flex min-w-0 flex-col gap-1 rounded-card border border-line-secondary p-2">
-  <span className="text-center type-caption text-fg-secondary">{label}</span>{children}
+  <span className="text-start type-caption text-fg-secondary">{label}</span>{children}
  </div>;
 }
 /**
