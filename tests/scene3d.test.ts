@@ -15,10 +15,11 @@ test("3D camera: the field of view follows the focal length on a full-frame sens
  assert.ok(Math.abs(tele.fov-16.1)<0.5,"85mm fov "+tele.fov);
  // The same shot size: the wide lens stands much closer (that is what stretches near things), the long lens far back.
  assert.ok(dist(wide)<dist(tele)/4,"15mm close, 85mm far");
- // Very wide lenses bow into a fisheye; normal lenses do not.
  assert.equal(wide.fisheye,0,"15mm is wide, not yet fisheye");
  assert.equal(tele.fisheye,0);
- assert.ok(camera3D({...base,lensMm:8,autopilot:false},undefined,"16:9").fisheye>0.9);
+ // Only a fisheye lens bows the picture (an ordinary ultra-wide keeps lines straight); the wider it is, the more.
+ assert.equal(camera3D({...base,lensMm:8,autopilot:false},undefined,"16:9").fisheye,0);
+ assert.ok(camera3D({...base,lensMm:8,autopilot:false,fisheye:true},undefined,"16:9").fisheye>0.9);
 });
 
 test("3D camera: a bird's-eye view looks down from above, a worm's-eye from below; Dutch rolls",()=>{

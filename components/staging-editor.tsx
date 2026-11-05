@@ -237,6 +237,10 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
       <p className="-mt-1 text-center type-caption text-fg-secondary">{autopilot?"هووش بهترین لنز و دیافراگم رو خودش انتخاب می‌کنه.":"دستی: هر چی تنظیم کنی همون می‌مونه."}</p>
       <SliderRow label="لنز (فاصلهٔ کانونی)" ends={["واید","تله"]} valueText={fa(l.focalLengthMm)+" میلی‌متر"+auto(l.auto.lens)} min={0} max={1} step={0.001} value={lensSlider(l.focalLengthMm)}
        onChange={v=>setManual({lensMm:lensFromSlider(v)})}/>
+      {/* An ordinary lens keeps straight lines straight at any focal length, as the photo will; a fisheye is a choice of its own. */}
+      <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1">
+       <Toggle label="لنز چشم‌ماهی (فیش‌آی)" on={Boolean(draft.fisheye)} onChange={on=>setDraft(d=>{const {fisheye:_f,...rest}=d;void _f;return on?{...rest,fisheye:true}:rest;})}/>
+      </div>
       <SliderRow label="دیافراگم" ends={["باز، محو","بسته، واضح"]} valueText={l.aperture+auto(l.auto.aperture)} min={0} max={1} step={0.001} value={apertureSlider(l.apertureF)}
        onChange={v=>setManual({apertureF:apertureFromSlider(v)})}/>
      </>;})()}

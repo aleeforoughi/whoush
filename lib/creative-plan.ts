@@ -146,6 +146,8 @@ export const StagingSchema=z.object({subject:z.enum(SUBJECTS).optional(),cameraA
  lensMm:z.number().min(8).max(600).optional(),apertureF:z.number().min(0.95).max(22).optional(),
  /** Whoush Autopilot (on unless false): Whoush picks the lens and aperture and re-centres on the dominant subject; off, the user's values stay as set. */
  autopilot:z.boolean().optional(),
+ /** A fisheye lens (the user's choice, or the brief asks for one): the picture bulges from the centre and straight lines bow. Unset: a rectilinear lens. */
+ fisheye:z.boolean().optional(),
  /** The part of the main subject the shot is about, from the brief (face, eyes, hands, feet and shoes, jewelry): the zoom centres on it and the lens serves it. */
  focusDetail:z.enum(FOCUS_DETAILS).optional(),
  shotSize:z.enum(SHOT_SIZES),

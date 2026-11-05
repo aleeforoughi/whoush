@@ -11,6 +11,11 @@ import {DETAIL_HEIGHT,METERS_PER_Z,SENSOR_H_MM,backdropM,centerOnSubject,elevati
 
 /** Metres per stage unit sideways (the stage's ±1 is a 6 m wide set). */
 export const X_M=STAGE_X_M;
+/**
+ * How strongly the frame bows: none for an ordinary (rectilinear) lens at any focal length, as real ultra-wides keep lines straight; a fisheye lens bows
+ * more the wider it is (strong at 12 mm, gentle toward 30 mm).
+ */
+export const fisheyeOf=(s:Staging,focalMm:number)=>s.fisheye?Math.max(0.25,Math.min(1,(30-focalMm)/18)):0;
 /** Real sizes, in metres: height, and for the long things their length. */
 export function propSize(p:Pick<SceneProp,"kind"|"label">&{size?:SceneProp["size"]}):{h:number;len:number}{
  // People and the pets by their figures; everything else (a cube in the 2D frame) by its own size: Whoush's estimate or the everyday size of what it is.
@@ -70,14 +75,14 @@ export function camera3D(s:Staging,anchor:Staging|undefined,aspect:string):Camer
   const pos:[number,number,number]=[P[0]-ray[0]/len*t,P[1]-ray[1]/len*t,P[2]-ray[2]/len*t];
   const aimAt:[number,number,number]=[pos[0]+f[0]*d,pos[1]+f[1]*d,pos[2]+f[2]*d];
   const depth=(P[0]-pos[0])*f[0]+(P[1]-pos[1])*f[1]+(P[2]-pos[2])*f[2];
-  return {position:pos,target:aimAt,fov,roll:rollOf(s)*Math.PI/180,shift:[-fr.x/2,-fr.y/2],fisheye:Math.max(0,Math.min(1,(15-c.f)/7)),
+  return {position:pos,target:aimAt,fov,roll:rollOf(s)*Math.PI/180,shift:[-fr.x/2,-fr.y/2],fisheye:fisheyeOf(s,c.f),
    focusDistance:Math.max(0.05,depth),focalMm:c.f,aperture:c.N,backdrop:backdropM(s),pivot:P};
  }
  // Focus: on the centre point, or on whatever the user moved it onto (a prop, the ground, the far background).
  const fz=focusDepth(s,anchor,W,H),dist=(p:[number,number,number])=>Math.hypot(p[0]-position[0],p[1]-position[1],p[2]-position[2]);
  const focusOn=fz===undefined?dist(target):fz==="backdrop"?d+backdropM(s):(()=>{const p=(s.props??[]).find(x=>x.z===fz);
   if(!p)return dist([target[0],0,-(fz-worldOrigin(s,anchor).z)*METERS_PER_Z]);const w=propWorld(p,s,anchor).pos;return dist([w[0],w[1]+propSize(p).h*0.6,w[2]]);})();
- return {position,target,fov,roll:rollOf(s)*Math.PI/180,shift:[-fr.x/2,-fr.y/2],fisheye:Math.max(0,Math.min(1,(15-c.f)/7)),
+ return {position,target,fov,roll:rollOf(s)*Math.PI/180,shift:[-fr.x/2,-fr.y/2],fisheye:fisheyeOf(s,c.f),
   focusDistance:focusOn,focalMm:c.f,aperture:c.N,backdrop:backdropM(s)};
 }
 /**

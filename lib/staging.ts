@@ -149,6 +149,7 @@ export function describeStagingChangesFa(before:Staging,after:Staging,aspectBefo
  // The lens and aperture only when the user set them (Whoush's own pick follows the other changes by itself).
  const lb=lensFor(before),la=lensFor(after);
  if(before.lensMm!==after.lensMm&&lb.focalLengthMm!==la.focalLengthMm)out.push("لنز: "+arrow(lb.focalLengthMm+"mm",la.focalLengthMm+"mm"));
+ if(Boolean(before.fisheye)!==Boolean(after.fisheye))out.push("لنز چشم‌ماهی: "+arrow(before.fisheye?"روشن":"خاموش",after.fisheye?"روشن":"خاموش"));
  if(before.apertureF!==after.apertureF&&lb.aperture!==la.aperture)out.push("دیافراگم: "+arrow(lb.aperture,la.aperture)+(la.deep?"":" (بوکه)"));
  if((before.autopilot!==false)!==(after.autopilot!==false))out.push("اتوپایلوت هووش: "+arrow(before.autopilot===false?"خاموش":"روشن",after.autopilot===false?"خاموش":"روشن"));
  const dom=(s:Staging)=>{const m=(s.props??[]).find(p=>p.main);return m?(s.focusDetail&&m.kind==="person"?FOCUS_DETAIL_FA[s.focusDetail]+"ِ ":"")+m.label:"";};
@@ -691,8 +692,8 @@ export function lensFor(s:Staging):LensChoice{
  const deep=ap>=5.6;
  const apText="f/"+(ap<4||!Number.isInteger(ap)?ap.toFixed(1):String(ap));
  const n=(x:number)=>String(x).replace(/\d/g,d=>"۰۱۲۳۴۵۶۷۸۹"[Number(d)]);
- const fa=why+": لنز "+(macro?"ماکرو ":"")+n(f)+" میلی‌متری با دیافراگم "+apText+(deep?(together?" تا همهٔ سوژه‌ها واضح بمانند":" تا همه‌چیز واضح بماند"):" برای پس‌زمینهٔ محو (بوکه)")+(steep?"؛ زاویهٔ تند دوربین، لنز بازتر":"")+(lowLight?"؛ نور کم، دیافراگم بازتر و ISO "+n(iso):"")+(detail?"؛ فوکوس روی "+FOCUS_DETAIL_FA[detail]:"");
- const en="Lens: "+f+"mm"+(macro?" macro":"")+" at "+apText+(deep?", deep focus"+(together?" keeping every subject sharp":""):", shallow depth of field with soft bokeh")+(steep?", wide for the steep perspective":"")+(lowLight?", low light: ISO "+iso:"")+(detail?", focus on the subject's "+(detail==="feet"?"feet and shoes":detail)+"":"")+".";
+ const fa=why+": لنز "+(s.fisheye?"چشم‌ماهی ":"")+(macro?"ماکرو ":"")+n(f)+" میلی‌متری با دیافراگم "+apText+(deep?(together?" تا همهٔ سوژه‌ها واضح بمانند":" تا همه‌چیز واضح بماند"):" برای پس‌زمینهٔ محو (بوکه)")+(steep?"؛ زاویهٔ تند دوربین، لنز بازتر":"")+(lowLight?"؛ نور کم، دیافراگم بازتر و ISO "+n(iso):"")+(detail?"؛ فوکوس روی "+FOCUS_DETAIL_FA[detail]:"");
+ const en="Lens: "+f+"mm"+(macro?" macro":"")+(s.fisheye?" fisheye (strong barrel distortion: the picture bulges from the centre and straight lines bow)":"")+" at "+apText+(deep?", deep focus"+(together?" keeping every subject sharp":""):", shallow depth of field with soft bokeh")+(steep?", wide for the steep perspective":"")+(lowLight?", low light: ISO "+iso:"")+(detail?", focus on the subject's "+(detail==="feet"?"feet and shoes":detail)+"":"")+".";
  return {focalLengthMm:f,aperture:apText,apertureF:ap,iso,macro,deep,fa,en,auto:{lens:!userLens,aperture:!userAp}};
 }
 
@@ -750,7 +751,7 @@ export function sectionsFromWords(normalizedText:string):CanvasSection[]{
 export function stagingSections(a:Staging,b:Staging):CanvasSection[]{
  const keys:Record<Exclude<CanvasSection,"light">,(keyof Staging)[]>={
   frame:["framing","focusPoint","pivot","focusDetail","props","environmentDistance"],angle:["cameraAngle","cameraElevation","cameraAzimuth","cameraRoll","shotStyle"],
-  distance:["shotSize","shotScale"],lens:["lensMm","apertureF","autopilot"]};
+  distance:["shotSize","shotScale"],lens:["lensMm","apertureF","autopilot","fisheye"]};
  const pick=(s:Staging,k:(keyof Staging)[])=>JSON.stringify(k.map(x=>s[x]??null));
  return CANVAS_SECTIONS.filter(sec=>sec==="light"?JSON.stringify(a.lights)!==JSON.stringify(b.lights):pick(a,keys[sec])!==pick(b,keys[sec]));
 }
@@ -812,6 +813,8 @@ export function applyStagingCues(s:Staging,normalizedText:string):Staging{
  const back=["from behind","back view","rear view","از پشت سر","نمای پشت"].some(has)||(has("از پشت")&&!t.includes(" نور از پشت")),profile=["profile","side view","نیم رخ","نیمرخ","نیم‌رخ","از بغل"].some(has);
  const facing=back?180:profile?90:undefined,mi=(s.props??[]).findIndex(p=>p.main);
  // The kind of place (room, studio, street, forest, beach, desert, else open land), unless the scene already has one.
+ // A fisheye lens, when the brief asks for one.
+ if(["fisheye","fish eye","fish-eye","فیش آی","فیش‌آی","فیشای","چشم ماهی","چشم‌ماهی"].some(has))rest.fisheye=true;
  const env=ENVIRONMENT_CUES.find(([,ws])=>ws.some(has))?.[0];
  if(env&&!rest.environment)rest.environment=env;
  // The part of the subject the brief is about (the dominant detail): the frame and the lens centre on it.

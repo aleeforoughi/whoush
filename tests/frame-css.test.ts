@@ -149,13 +149,14 @@ test("lens: a level camera keeps verticals vertical; a tilted one makes them lea
  assert.ok(shape(85,"eye_level",0.8).stretch<shape(85,"eye_level",0).stretch*1.05,"85 mm barely does");
 });
 
-test("fisheye under 15 mm: the picture bulges from the centre, the corners stay; none above 15 mm",()=>{
- const v=cssView({...base,lensMm:12,autopilot:false},undefined,"16:9",800,450);
+test("fisheye: off by default at every focal length (an ordinary ultra-wide keeps lines straight); on, the picture bulges from the centre, the corners stay",()=>{
+ assert.equal(cssView({...base,lensMm:12,autopilot:false},undefined,"16:9",800,450).fish,0);
+ const v=cssView({...base,lensMm:12,autopilot:false,fisheye:true},undefined,"16:9",800,450);
  assert.ok(v.fish>0);
  const [x,y]=fish(v,...unfish(v,600,120));assert.ok(Math.hypot(x-600,y-120)<1e-6,"the two mappings invert each other");
  const c=unfish(v,800,450);assert.ok(Math.hypot(c[0]-800,c[1]-450)<1e-6,"a corner stays a corner");
  const m=unfish(v,500,225);assert.ok(m[0]<500,"near the centre, the picture comes from closer to the centre (it is magnified)");
- assert.equal(cssView({...base,lensMm:24,autopilot:false},undefined,"16:9",800,450).fish,0);
+ assert.ok(cssView({...base,lensMm:24,autopilot:false,fisheye:true},undefined,"16:9",800,450).fish<v.fish,"gentler on a longer lens");
 });
 
 test("aperture: the ground blurs band by band with distance, and the horizon as much as infinity",()=>{
@@ -173,7 +174,7 @@ test("sharp at any lens: each piece is drawn at about the px it covers on screen
  // Where a piece's own corner (x, y) lands on screen, through its matrix3d.
  const map=(tf:string,x:number,y:number)=>{const m=tf.slice(9,-1).split(",").map(Number),W=m[3]*x+m[7]*y+m[15];return [(m[0]*x+m[4]*y+m[12])/W,(m[1]*x+m[5]*y+m[13])/W];};
  for(const lens of [12,35,85,200]){
-  const s={...base,shotSize:"medium_close_up" as const,lensMm:lens,autopilot:false},v=cssView(s,undefined,"16:9",800,450),sp=propSprites(v,s.props!,s)[0];
+  const s={...base,shotSize:"medium_close_up" as const,lensMm:lens,autopilot:false,fisheye:lens<15},v=cssView(s,undefined,"16:9",800,450),sp=propSprites(v,s.props!,s)[0];
   assert.ok(sp.tiles.length>=1&&(lens<15?sp.tiles.length>1:sp.tiles.length===1),lens+"mm: "+sp.tiles.length+" pieces");
   for(const t of sp.tiles){
    const o=map(t.transform,0,0),r=map(t.transform,t.w,0),d=map(t.transform,0,t.h);
@@ -202,4 +203,12 @@ test("dragging the focus point never shakes the picture: each move re-picks it f
  for(let i=0;i<=60;i++){s={...s,pivot:pickPivot(s,s,"16:9",0.3+0.4*i/60,0.3+0.2*Math.sin(i/5))};
   const f=toScreen(cssView(s,s,"16:9",1000,562.5),[0,0,0])!;worst=Math.max(worst,Math.hypot(f[0]-f0[0],f[1]-f0[1]));}
  assert.ok(worst<0.01,"the main subject's feet moved "+worst.toFixed(3)+" px");
+});
+
+test("the brief asks for a fisheye: the lens turns fisheye and the provider is told",async()=>{
+ const {applyStagingCues,lensFor}=await import("../lib/staging");
+ const s=applyStagingCues(base,"یه عکس با لنز فیش‌آی از بالا");
+ assert.equal(s.fisheye,true);
+ assert.match(lensFor(s).en,/fisheye/);
+ assert.equal(applyStagingCues(base,"پرتره ساده").fisheye,undefined);
 });
