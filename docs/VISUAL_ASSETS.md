@@ -5,7 +5,12 @@
 - **Consistency:** `person-side` is the style anchor. Every other asset is generated through the image edits endpoint from the anchor, plus an earlier asset of the same family (for example `camera-top` from `camera-side`), so material, colour, sheen, lighting and simplification match.
 - **Style:** soft matte clay with a satin sheen, light grey-white, soft light from the upper left, no ground, no shadow, no text, no logos.
 - **Contents:**
-  - **Subjects:** person (side, front, top), object, animal, vehicle (each side and top).
+  - **Subjects:** object (side and top); every angle for the props that look different from each side, so the frame and the camera views show exactly how each faces the camera:
+    - **Man** (`human-*`, short grey hair so the back of the head reads differently from the face side) and **woman** (`woman-*`, a slimmer figure with a grey bob): front, front three-quarter, side, rear three-quarter, back and top.
+    - **Car:** front, front three-quarter, side, rear three-quarter, back and top. **Cat:** front, three-quarter, side, rear three-quarter, back and top.
+    - The older plain mannequin (`person-*`) is kept as a fallback.
+  - **Which way an image faces** is checked by eye after generating (the prompts ask for one way; the model does not always follow) and recorded in `NATIVE` in `components/staging-editor.tsx`; front and back views are symmetric and never mirrored.
+  - **Tints:** props of the same kind (several people) each get a soft tint so they read apart; the camera is tinted blue in the camera views.
   - **Environment:** mountains, tree, building, and a top-view cluster.
   - **Camera:** side and top views.
   - **Light sources:** softbox, LED panel, practical lamp, window, neon, flash, sun, moon, sky, fire.

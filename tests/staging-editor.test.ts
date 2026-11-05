@@ -28,7 +28,7 @@ test("every subject and light source has its assets in the pack",()=>{
  for(const v of Object.values(SUBJECT_ASSETS))for(const id of Object.values(v))assert.ok(VISUALS[id],id);
  for(const id of Object.values(LIGHT_ASSETS))assert.ok(VISUALS[id],id);
  assert.ok(VISUALS["camera-side"]&&VISUALS["camera-top"]&&VISUALS["env-tree"]&&VISUALS["env-building"]);
- for(const a of Object.values(VISUALS))assert.match(a.src,/^\/visuals\/[a-z-]+\.png$/);
+ for(const a of Object.values(VISUALS))assert.match(a.src,/^\/visuals\/[a-z0-9-]+\.png$/);
 });
 
 const base:Staging={subject:"person",cameraAngle:"eye_level",shotSize:"medium_close_up",lights:[{role:"key",direction:"front_left",height:"high",quality:"soft",source:"softbox",colorTemperatureK:5600},{role:"fill",direction:"front_right",height:"eye",quality:"soft",source:"softbox",colorTemperatureK:5600}]};
@@ -269,4 +269,16 @@ test("light strength: each role has its usual strength; a set strength reaches W
  assert.match(describeStagingEn(dim),/30% strength/);assert.match(describeStagingFa(dim),/شدت ۳۰٪/);
  assert.ok(describeStagingChangesFa({...base,lights:[base.lights[0]]},dim).some(l=>l.includes("شدت")));
  assert.ok(CreativeTurnInputSchema.shape.stagingOverride.safeParse({...dim,subject:"person"}).success);
+});
+
+test("people read apart: a woman from her label gets her own figure; props of the same kind each get their own tint",async()=>{
+ const {genderOf,propTints,topAssetOf}=await import("../lib/staging");
+ const P=(label:string,kind:"person"|"vehicle"="person")=>({kind,label,x:0,z:0,y:0});
+ assert.equal(genderOf(P("زن جوان")),"female");assert.equal(genderOf(P("دختر")),"female");assert.equal(genderOf(P("a young woman")),"female");
+ assert.equal(genderOf(P("مرد")),"male");assert.equal(genderOf(P("آدم")),undefined);assert.equal(genderOf(P("ماشین","vehicle")),undefined);
+ assert.equal(topAssetOf(P("مرد")),"human-top");
+ const t=propTints([P("زن"),P("مرد"),P("ماشین","vehicle"),P("دختر"),P("پسر")]);
+ assert.equal(t[2],undefined,"one car alone stays plain");
+ const people=[t[0],t[1],t[3],t[4]];assert.ok(people.every(Boolean));assert.equal(new Set(people).size,4,"four people, four colours");
+ assert.deepEqual(propTints([P("زن"),P("ماشین","vehicle")]),[undefined,undefined]);
 });

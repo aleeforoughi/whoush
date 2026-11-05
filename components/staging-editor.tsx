@@ -4,7 +4,7 @@ import {Box,ChevronDown,Lock,LockOpen,Plus,RotateCcw,Trash2,X} from "lucide-reac
 import {Button,Icon} from "@aleeforoughi/feather-react";
 import {FOCUS_DETAILS,LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
- SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
+ SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 import {fa} from "@/lib/format";
 
@@ -210,12 +210,28 @@ function Asset({id,x,y,h,mirror,sx=1,rotate=0,opacity=1,tint}:{id:string;x:numbe
  */
 /** A sprite's width on screen at height h. */
 const spriteW=(sp:{id:string;sx:number},h:number)=>{const v=VISUALS[sp.id];return v?h*sp.sx*v.width/v.height:h;};
+/**
+ * Which way each side or three-quarter image faces as drawn (1: right, -1: left), checked by eye on each generated image (the prompts asked for one way; the
+ * model did not always follow). Front and back views are symmetric and never mirrored.
+ */
+const NATIVE:Record<string,1|-1>={"person-side":-1,"vehicle-side":-1,"animal-side":1,"person-3q":-1,"animal-3q":1,"vehicle-3q":-1,"vehicle-3q-rear":1,
+ "human-side":-1,"human-3q":-1,"human-3q-back":-1,"animal-3q-back":1,"woman-side":-1,"woman-3q":-1,"woman-3q-back":-1};
+/** Each kind's views by angle to the camera (front within 25°, three-quarter to 65°, side, rear three-quarter from 115°, back from 155°), in order of preference. */
+const VIEWS:Partial<Record<SceneProp["kind"]|"woman",{front:string[];q:string[];side:string[];qBack:string[];back:string[]}>>={
+ person:{front:["human-front","person-front"],q:["human-3q","person-3q","person-front"],side:["human-side","person-side"],qBack:["human-3q-back","human-back","person-3q","person-front"],back:["human-back","person-front"]},
+ woman:{front:["woman-front","human-front"],q:["woman-3q","human-3q"],side:["woman-side","human-side"],qBack:["woman-3q-back","human-3q-back"],back:["woman-back","human-back"]},
+ vehicle:{front:["vehicle-front","vehicle-3q"],q:["vehicle-3q","vehicle-side"],side:["vehicle-side"],qBack:["vehicle-3q-rear","vehicle-side"],back:["vehicle-rear","vehicle-3q-rear"]},
+ animal:{front:["animal-front","animal-3q"],q:["animal-3q","animal-side"],side:["animal-side"],qBack:["animal-3q-back","animal-3q","animal-side"],back:["animal-back","animal-3q-back","animal-side"]}
+};
 function sprite(p:SceneProp):{id:string;mirror:boolean;sx:number}{
- const f=wrap180(facingOf(p)),a=Math.abs(f),mirror=f<0;
- // The person's side image faces left (its head is forward of the neck on the left), unlike the vehicle's and animal's: mirrored to face right.
- if(p.kind==="person")return a<45||a>135?{id:"person-front",mirror:false,sx:1}:{id:"person-side",mirror:!mirror,sx:1};
- if(p.kind==="vehicle"||p.kind==="animal")return {id:SIDE[p.kind],mirror,sx:Math.max(0.42,Math.abs(Math.sin(f*Math.PI/180)))};
- return {id:PROP_ASSETS[p.kind].front,mirror:false,sx:1};
+ // A woman (from the prop's label: «زن», «دختر», "woman") has her own figure.
+ const v=VIEWS[genderOf(p)==="female"?"woman":p.kind];if(!v)return {id:PROP_ASSETS[p.kind].front,mirror:false,sx:1};
+ const f=wrap180(facingOf(p)),a=Math.abs(f),dir:1|-1=f<0?-1:1;
+ const list=a<25?v.front:a<65?v.q:a<=115?v.side:a<=155?v.qBack:v.back;
+ const id=list.find(x=>VISUALS[x])??v.side[0];
+ // A side image standing in for a front or back view is narrowed (seen nearly head-on); a symmetric front or back view is never mirrored.
+ const symmetric=!(id in NATIVE),stand=(a<25||a>155)&&!symmetric;
+ return {id,mirror:symmetric?false:NATIVE[id]!==dir,sx:stand&&id.endsWith("-side")?Math.max(0.42,Math.abs(Math.sin(f*Math.PI/180))):stand?0.85:1};
 }
 
 /** The main prop (or the first), whose side view the camera view shows; an environment-only scene shows the landscape. */
@@ -234,15 +250,22 @@ const radiusOf=(v:number,min:number,span:number)=>min+span*Math.max(0,Math.min(1
 function CameraView({staging,editable,onCamera}:{staging:Staging;editable:boolean;onCamera:(c:{elevation:number;distance:number;flip?:boolean})=>void}){
  const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false),tint=useId();
  // Which side of the subject the camera is drawn on (1: right). It changes when a drag carries the camera over the top, so nothing jumps.
- const [side,setSide]=useState<1|-1>(1);
- const VW=220,VH=210,RMIN=30,RSPAN=48,focus:[number,number]=[110,104];
+ const [dragSide,setSide]=useState<1|-1>(1);
+ // The camera is drawn on the same side of the subject as in the top view (its left or right there); straight in front of or behind the subject (where
+ // the top view cannot say), on the side the last drag left it.
+ const sAz=Math.sin((staging.cameraAzimuth??0)*Math.PI/180),side:1|-1=Math.abs(sAz)>0.05?(sAz>0?1:-1):dragSide;
+ // How the subject faces in this diagram (sprite angle: 90 faces right, 0 faces the viewer, 180 its back), from its facing to the camera: its front toward
+ // the camera's side, away from it, or toward or away from the diagram's viewer when the camera sees it side on, exactly as the top view shows it.
+ const gOf=(f:number)=>{const r=f*Math.PI/180;return Math.atan2(side*Math.cos(r),-side*Math.sin(r))*180/Math.PI;};
+ const VW=220,VH=210,RMIN=26,RSPAN=34,focus:[number,number]=[110,104];
  const m=mainProp(staging),kind=m?.kind;
  const size=kind?Math.min(92,PROP_HEIGHT[kind]*92):58,ground=Math.min(VH-8,focus[1]+(kind==="person"?size*0.9:size*0.55));
  const elev=elevationOf(staging),dist=distanceOf(staging),R=radiusOf(dist,RMIN,RSPAN);
  const phi=side===1?elev:180-elev,[cx,cy]=polar(focus[0],focus[1],R,-phi);
  const aim=Math.atan2(focus[1]-cy,focus[0]-cx)*180/Math.PI,roll=staging.cameraAngle==="dutch"?14:0,camLeft=cx<focus[0];
  // The subject as this diagram's viewer sees it: facing the camera's side when it faces the camera (sprite: 90 faces right, 0 faces the viewer).
- const sp=m?sprite({...m,facing:wrap180(side*90-facingOf(m))}):undefined;
+ const sp=m?sprite({...m,facing:wrap180(gOf(facingOf(m)))}):undefined;
+ const mTint=m?propTints(staging.props??[])[(staging.props??[]).indexOf(m)]:undefined;
  const at=(e:PointerEvent)=>{const r=svg.current!.getBoundingClientRect();const x=(e.clientX-r.left)*VW/r.width-focus[0],y=(e.clientY-r.top)*VH/r.height-focus[1];
   const psi=Math.atan2(-y,x)*180/Math.PI,s2:1|-1=x>=0?1:-1;
   return {side:s2,elevation:Math.round(Math.max(-60,Math.min(85,wrap180(s2===1?psi:180-psi)))),distance:Math.max(0,Math.min(1,(Math.hypot(x,y)-RMIN)/RSPAN))};};
@@ -257,10 +280,11 @@ function CameraView({staging,editable,onCamera}:{staging:Staging;editable:boolea
   <BlueTint id={tint}/>
   <circle cx={focus[0]} cy={focus[1]} r={R} fill="none" stroke="currentColor" strokeOpacity=".4" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
   <line x1={6} x2={VW-6} y1={ground} y2={ground} stroke="currentColor" strokeOpacity=".3" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
-  {kind&&sp?<Asset id={sp.id} x={focus[0]} y={ground} h={size} mirror={sp.mirror} sx={sp.sx}/>:<><Asset id="env-mountains" x={focus[0]} y={ground} h={52}/><Asset id="env-tree" x={focus[0]+44} y={ground} h={30}/></>}
+  {mTint&&<Tint id={tint+"-m"} color={mTint}/>}
+  {kind&&sp?<Asset id={sp.id} x={focus[0]} y={ground} h={size} mirror={sp.mirror} sx={sp.sx} tint={mTint?tint+"-m":undefined}/>:<><Asset id="env-mountains" x={focus[0]} y={ground} h={52}/><Asset id="env-tree" x={focus[0]+44} y={ground} h={30}/></>}
   {/* Which way the subject faces, as an arrow at chest height (the same facing as the top view's arrow): toward the camera, away from it, or toward the
       viewer (a dot) when the camera sees it side on. The faceless figure alone does not say it clearly. */}
-  {kind&&m&&(()=>{const g=wrap180(side*90-facingOf(m)),dx=Math.sin(g*Math.PI/180),y=ground-size*(kind==="person"?0.62:0.5),x0=focus[0]+dx*size*0.14,x1=focus[0]+dx*size*0.42;
+  {kind&&m&&(()=>{const g=gOf(facingOf(m)),dx=Math.sin(g*Math.PI/180),y=ground-size*(kind==="person"?0.62:0.5),x0=focus[0]+dx*size*0.14,x1=focus[0]+dx*size*0.42;
    return <g className="pointer-events-none" aria-hidden="true">{Math.abs(dx)<0.35?<circle cx={focus[0]} cy={y} r={2.6} className="fill-primary"/>
     :<><line x1={x0} y1={y} x2={x1} y2={y} className="stroke-primary" strokeWidth={1.4} vectorEffect="non-scaling-stroke"/>
      <path d={"M"+(x1+Math.sign(dx)*3)+" "+y+" L"+(x1-Math.sign(dx)*3)+" "+(y-3.5)+" L"+(x1-Math.sign(dx)*3)+" "+(y+3.5)+"Z"} className="fill-primary"/></>}</g>;})()}
@@ -270,8 +294,8 @@ function CameraView({staging,editable,onCamera}:{staging:Staging;editable:boolea
    onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);setDragging(true);}:undefined}
    className={editable?(dragging?"cursor-grabbing":"cursor-grab")+" touch-none outline-none focus-visible:[&>circle]:stroke-primary":""}>
    {/* A large, finger-sized grab area around the camera (about 50px on a phone), the camera itself drawn blue. */}
-   <circle cx={cx} cy={cy} r={36} fill="transparent" strokeWidth={2}/>
-   <Asset id="camera-side" x={cx} y={cy+camH("camera-side")/2} h={camH("camera-side")} mirror={camLeft} rotate={(camLeft?aim:aim-180)+roll} tint={tint}/>
+   {(()=>{const away=(aim+180)*Math.PI/180,L=CAMERA_SIZE/2;return <circle cx={cx+Math.cos(away)*L} cy={cy+Math.sin(away)*L} r={36} fill="transparent" strokeWidth={2}/>;})()}
+   <CameraGlyph view="side" x={cx} y={cy} rotate={aim-180+(camLeft?-roll:roll)} flip={camLeft} tint={tint}/>
   </g>
  </svg>;
 }
@@ -283,7 +307,7 @@ function CameraView({staging,editable,onCamera}:{staging:Staging;editable:boolea
  */
 function OrbitView({staging,editable,onOrbit}:{staging:Staging;editable:boolean;onOrbit:(c:{azimuth:number;distance:number})=>void}){
  const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false),tint=useId();
- const VW=220,VH=210,C:[number,number]=[110,105],RMIN=34,RSPAN=48,U=44;
+ const VW=220,VH=210,C:[number,number]=[110,105],RMIN=30,RSPAN=30,U=44;
  const az=staging.cameraAzimuth??0,dist=distanceOf(staging),R=radiusOf(dist,RMIN,RSPAN),rad=az*Math.PI/180,c=Math.cos(rad),n=Math.sin(rad);
  const props=staging.props??[],m=mainProp(staging),px=m?.x??0,pz=m?.z??0;
  // The scene is kept as the camera sees it; turning it back by the orbit draws it as laid out, with the camera moving around it.
@@ -302,7 +326,7 @@ function OrbitView({staging,editable,onOrbit}:{staging:Staging;editable:boolean;
   {/* Whoush's original camera position, for reference */}
   <circle cx={C[0]} cy={C[1]+R} r={2} fill="currentColor" fillOpacity=".35"/>
   {/* Only the target (the main subject): the camera views are about the camera around it, not the rest of the scene. */}
-  {m&&<Asset id={PROP_ASSETS[m.kind].top} x={C[0]} y={C[1]+14} h={28} rotate={-(facingOf(m)+az)}/>}
+  {m&&(()=>{const t=propTints(props)[props.indexOf(m)];return <>{t&&<Tint id={tint+"-m"} color={t}/>}<Asset id={topAssetOf(m)} x={C[0]} y={C[1]+14} h={28} rotate={-(facingOf(m)+az)} tint={t?tint+"-m":undefined}/></>;})()}
   {!props.length&&<Asset id="env-top" x={C[0]} y={C[1]+22} h={44}/>}
   {/* The main subject's facing, the same as in the frame and the side view: an arrow from it the way it faces. */}
   {m&&(()=>{const fw=(facingOf(m)+az)*Math.PI/180,[x,y]=place(m),d:[number,number]=[Math.sin(fw),Math.cos(fw)],r0=17,r1=31,tip:[number,number]=[x+d[0]*r1,y+d[1]*r1];
@@ -316,19 +340,36 @@ function OrbitView({staging,editable,onOrbit}:{staging:Staging;editable:boolean;
    aria-valuemin={-180} aria-valuemax={180} aria-valuenow={Math.round(az)}
    onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);setDragging(true);}:undefined}
    className={editable?(dragging?"cursor-grabbing":"cursor-grab")+" touch-none outline-none focus-visible:[&>circle]:stroke-primary":""}>
-   <circle cx={cam[0]} cy={cam[1]} r={36} fill="transparent" strokeWidth={2}/>
-   <Asset id="camera-top" x={cam[0]} y={cam[1]+camH("camera-top")/2} h={camH("camera-top")} rotate={-az} tint={tint}/>
+   <circle cx={cam[0]+n*CAMERA_SIZE/2} cy={cam[1]+c*CAMERA_SIZE/2} r={36} fill="transparent" strokeWidth={2}/>
+   <CameraGlyph view="top" x={cam[0]} y={cam[1]} rotate={-az} tint={tint}/>
   </g>
  </svg>;
 }
 
-/** The camera's drawn height so its longest side is the same in both camera views (large enough to see and grab with a finger). */
+/** The camera's size in both camera views (its longest side, large enough to see and grab with a finger). */
 const CAMERA_SIZE=44;
-const camH=(id:string)=>{const v=VISUALS[id];return v?CAMERA_SIZE*Math.min(1,v.height/v.width):CAMERA_SIZE;};
+/**
+ * Where the lens is on each camera image, as a share of its width and height: the side image's lens points left with its axis at 64% of the height; the top
+ * image's lens points up with its axis at 31% of the width.
+ */
+const LENS={side:{id:"camera-side",x:0,y:0.64},top:{id:"camera-top",x:0.31,y:0}} as const;
+/**
+ * The camera drawn with its lens tip exactly at (x, y), the lens on the line toward the subject and the body behind it: `rotate` turns the lens's own
+ * direction (left for the side image, up for the top one) toward the subject; `flip` keeps the side camera upright when it is on the subject's left.
+ */
+function CameraGlyph({view,x,y,rotate,flip,tint}:{view:"side"|"top";x:number;y:number;rotate:number;flip?:boolean;tint?:string}){
+ const l=LENS[view],a=VISUALS[l.id];if(!a)return null;
+ const k=CAMERA_SIZE/Math.max(a.width,a.height),w=a.width*k,h=a.height*k;
+ return <g transform={"translate("+x+" "+y+") rotate("+rotate+")"+(flip?" scale(1 -1)":"")}>
+  <image href={a.src} x={-l.x*w} y={-l.y*h} width={w} height={h} preserveAspectRatio="xMidYMid meet" filter={tint?"url(#"+tint+")":undefined}/>
+ </g>;
+}
 /** A filter that tints a drawing with the brand blue, keeping its shading (the camera is blue in the camera views; the lighting view keeps it white). */
-function BlueTint({id}:{id:string}){
+function BlueTint({id}:{id:string}){return <Tint id={id} color="var(--color-primary)"/>;}
+/** A filter that tints a drawing with a colour, keeping its shading (props of the same kind, each its own colour). */
+function Tint({id,color}:{id:string;color:string}){
  return <defs><filter id={id} colorInterpolationFilters="sRGB">
-  <feFlood style={{floodColor:"var(--color-primary)"}} result="blue"/><feComposite in="blue" in2="SourceAlpha" operator="in" result="tint"/>
+  <feFlood style={{floodColor:color}} result="blue"/><feComposite in="blue" in2="SourceAlpha" operator="in" result="tint"/>
   <feBlend in="tint" in2="SourceGraphic" mode="multiply"/>
  </filter></defs>;
 }
@@ -382,6 +423,8 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
  const pinch=usePinch(sp=>onZoom?.(Math.max(0,Math.min(1,pinchFrom.current-Math.log(sp)/Math.log(ZOOM_RANGE[1]/ZOOM_RANGE[0])))),()=>{pinchFrom.current=sliderFromScale(scaleOf(staging));setMove(null);setDrag(null);});
  const base=(staging.props??[]).map((p,i)=>move?.i===i?{...p,x:move.x,z:move.z}:p);
  const order=base.map((p,i)=>({p,i})).sort((a,b)=>b.p.z-a.p.z);
+ // Props of the same kind (several people...) each get their own tint so they read apart.
+ const tints=propTints(base);
  // Each prop's place in words, with the frame's cuts as drawn (for screen readers; the same words Whoush and the provider get).
  const placed=withFrameCuts({...staging,props:base,framing:drag?.cur??staging.framing},anchor,aspect).props??[];
  // The scene is laid out once, in fixed world positions; the shot size is a pure zoom of that world about the original main subject, which the frame
@@ -442,7 +485,8 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
       className={editable?(move?.i===i?"cursor-grabbing outline-none":"cursor-grab outline-none"):""}>
       {p.y>0.05&&<ellipse cx={a.x} cy={a.ground} rx={w*0.35} ry={Math.max(1,a.h*0.04)} fill="currentColor" fillOpacity=".18"/>}
       <rect x={a.x-Math.max(w,18/k)/2} y={a.y-Math.max(a.h,18/k)} width={Math.max(w,18/k)} height={Math.max(a.h,18/k)} fill="transparent"/>
-      {(()=>{const sp=sprite(p);return <Asset id={sp.id} x={a.x} y={a.y} h={a.h} mirror={sp.mirror} sx={sp.sx}/>;})()}
+      {tints[i]&&<Tint id={clip+"-t"+i} color={tints[i]!}/>}
+      {(()=>{const sp=sprite(p);return <Asset id={sp.id} x={a.x} y={a.y} h={a.h} mirror={sp.mirror} sx={sp.sx} tint={tints[i]?clip+"-t"+i:undefined}/>;})()}
       {on&&<rect x={a.x-w/2-1} y={a.y-a.h-1} width={w+2} height={a.h+2} rx={2} fill="none" className="stroke-primary" strokeWidth={1} vectorEffect="non-scaling-stroke" strokeDasharray="3 2"/>}
      </g>;})}
    </g>
@@ -481,6 +525,7 @@ function LightView({staging,editable,selected,onSelect,onLight}:{staging:Staging
  const VW=240,VH=230,C:[number,number]=[120,104],R=76;
  const pt=(e:PointerEvent)=>{const r=svg.current!.getBoundingClientRect();return [(e.clientX-r.left)*VW/r.width,(e.clientY-r.top)*VH/r.height] as const;};
  const target=mainProp(staging);
+ const targetTint=target?propTints(staging.props??[])[(staging.props??[]).indexOf(target)]:undefined;
  return <svg ref={svg} viewBox={"0 0 "+VW+" "+VH} className="mx-auto block aspect-[240/230] w-full max-w-sm touch-pan-y select-none text-fg-primary"
   onPointerMove={e=>{if(drag){const [x,y]=pt(e),deg=Math.atan2(y-C[1],x-C[0])*180/Math.PI;if(Number.isFinite(deg))setDrag({...drag,deg});}}}
   onPointerUp={()=>{if(drag){if(Number.isFinite(drag.deg))onLight(drag.i,Math.round(((drag.deg%360)+360)%360));setDrag(null);}}} onPointerCancel={()=>setDrag(null)}>
@@ -510,7 +555,8 @@ function LightView({staging,editable,selected,onSelect,onLight}:{staging:Staging
     <text x={lx} y={ly+3} textAnchor="middle" fill="currentColor" fillOpacity=".8" fontSize={9}>{fa(i+1)}</text>
    </g>;
   })}
-  {target?<Asset id={PROP_ASSETS[target.kind].top} x={C[0]} y={C[1]+20} h={target.kind==="building"?44:target.kind==="vehicle"?48:40}/>:<Asset id="env-top" x={C[0]} y={C[1]+26} h={52}/>}
+  {target&&targetTint&&<Tint id={uid+"-m"} color={targetTint}/>}
+  {target?<Asset tint={targetTint?uid+"-m":undefined} id={topAssetOf(target)} x={C[0]} y={C[1]+20} h={target.kind==="building"?44:target.kind==="vehicle"?48:40}/>:<Asset id="env-top" x={C[0]} y={C[1]+26} h={52}/>}
   <Asset id="camera-top" x={C[0]} y={VH-4} h={28}/>
  </svg>;
 }

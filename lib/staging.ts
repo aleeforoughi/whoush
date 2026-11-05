@@ -165,7 +165,7 @@ export const TEMPERATURE_GRADIENT="linear-gradient(to right,"+[1500,2700,4000,56
 export type SceneProp=NonNullable<Staging["props"]>[number];
 export const PROP_KIND_FA:Record<SceneProp["kind"],string>={person:"آدم",object:"شیء",animal:"حیوان",vehicle:"وسیله نقلیه",tree:"درخت",building:"ساختمان"};
 /** Which asset shows a prop from the side (camera view, front) and from above. */
-export const PROP_ASSETS:Record<SceneProp["kind"],{front:string;top:string}>={person:{front:"person-front",top:"person-top"},object:{front:"object-side",top:"object-top"},animal:{front:"animal-side",top:"animal-top"},vehicle:{front:"vehicle-side",top:"vehicle-top"},tree:{front:"env-tree",top:"tree-top"},building:{front:"env-building",top:"building-top"}};
+export const PROP_ASSETS:Record<SceneProp["kind"],{front:string;top:string}>={person:{front:"human-front",top:"human-top"},object:{front:"object-side",top:"object-top"},animal:{front:"animal-side",top:"animal-top"},vehicle:{front:"vehicle-side",top:"vehicle-top"},tree:{front:"env-tree",top:"tree-top"},building:{front:"env-building",top:"building-top"}};
 /** Real-world-ish heights (a person is 1), so props keep plausible proportions in the camera view. */
 export const PROP_HEIGHT:Record<SceneProp["kind"],number>={person:1,object:0.35,animal:0.45,vehicle:0.8,tree:2.2,building:3.2};
 /** Words that name a prop, with its Persian label: the first match of each group becomes a prop (in the order the groups are listed). */
@@ -246,6 +246,26 @@ export function frameSize(aspect:string):{W:number;H:number}{
  return r>=1?{W:150,H:Math.round(150/r)}:{W:Math.round(110*r),H:110};
 }
 /** A prop's width in the frame, from its asset's proportions. */
+/** Whether a person prop is a woman or a man, from its label (and so which figure draws it); undefined when the label does not say. */
+const FEMALE=["زن","دختر","خانم","بانو","مادر","عروس","مادربزرگ","woman","girl","lady","female","mother","bride","zan","dokhtar","khanom"];
+const MALE=["مرد","پسر","آقا","پدر","داماد","پدربزرگ","man","boy","guy","male","father","groom","mard","pesar","agha"];
+export function genderOf(p:Pick<SceneProp,"kind"|"label">):"female"|"male"|undefined{
+ if(p.kind!=="person")return undefined;
+ const words=p.label.toLowerCase().split(/[\s\u200c\-_،,]+/);
+ return words.some(w=>FEMALE.includes(w))?"female":words.some(w=>MALE.includes(w))?"male":undefined;
+}
+/** A prop's top-view image: a woman has her own. */
+export const topAssetOf=(p:Pick<SceneProp,"kind"|"label">)=>genderOf(p)==="female"&&VISUALS["woman-top"]?"woman-top":PROP_ASSETS[p.kind].top;
+/**
+ * Soft tints for props of the same kind (four people, two cars): each one its own colour so they read apart; a prop alone of its kind stays plain.
+ * No two tinted props share a colour.
+ */
+export const PROP_TINTS=["#f2b866","#6fcfb8","#f29bb8","#a99bf0","#93cc6e","#f09a6b"] as const;
+export function propTints(props:readonly SceneProp[]):(string|undefined)[]{
+ const count=new Map<string,number>();for(const p of props)count.set(p.kind,(count.get(p.kind)??0)+1);
+ let n=0;
+ return props.map(p=>(count.get(p.kind)??0)>1?PROP_TINTS[n++%PROP_TINTS.length]:undefined);
+}
 export function propWidth(kind:SceneProp["kind"],h:number):number{const a=VISUALS[PROP_ASSETS[kind].front];return a?h*a.width/a.height:h;}
 /**
  * The frame's camera: the scene is laid out once in fixed world positions (as a full shot frames it) and the shot size is a pure zoom `k` of that world
