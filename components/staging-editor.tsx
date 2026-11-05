@@ -255,6 +255,12 @@ function CameraView({staging,editable,onCamera}:{staging:Staging;editable:boolea
   <circle cx={focus[0]} cy={focus[1]} r={R} fill="none" stroke="currentColor" strokeOpacity=".4" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
   <line x1={6} x2={VW-6} y1={ground} y2={ground} stroke="currentColor" strokeOpacity=".3" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
   {kind&&sp?<Asset id={sp.id} x={focus[0]} y={ground} h={size} mirror={sp.mirror} sx={sp.sx}/>:<><Asset id="env-mountains" x={focus[0]} y={ground} h={52}/><Asset id="env-tree" x={focus[0]+44} y={ground} h={30}/></>}
+  {/* Which way the subject faces, as an arrow at chest height (the same facing as the top view's arrow): toward the camera, away from it, or toward the
+      viewer (a dot) when the camera sees it side on. The faceless figure alone does not say it clearly. */}
+  {kind&&m&&(()=>{const g=wrap180(side*90-facingOf(m)),dx=Math.sin(g*Math.PI/180),y=ground-size*(kind==="person"?0.62:0.5),x0=focus[0]+dx*size*0.14,x1=focus[0]+dx*size*0.42;
+   return <g className="pointer-events-none" aria-hidden="true">{Math.abs(dx)<0.35?<circle cx={focus[0]} cy={y} r={2.6} className="fill-primary"/>
+    :<><line x1={x0} y1={y} x2={x1} y2={y} className="stroke-primary" strokeWidth={1.4} vectorEffect="non-scaling-stroke"/>
+     <path d={"M"+(x1+Math.sign(dx)*3)+" "+y+" L"+(x1-Math.sign(dx)*3)+" "+(y-3.5)+" L"+(x1-Math.sign(dx)*3)+" "+(y+3.5)+"Z"} className="fill-primary"/></>}</g>;})()}
   <line x1={cx} y1={cy} x2={focus[0]} y2={focus[1]} className="stroke-primary" strokeWidth={1.2} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
   <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="ارتفاع و فاصلهٔ دوربین (۳۶۰ درجه)" aria-valuetext={CAMERA_ANGLE_FA[staging.cameraAngle]+"، "+Math.round(elev)+" درجه، "+orbitFa(staging.cameraAzimuth??0)+"، زوم "+zoomFactor(staging)+"×"}
    aria-valuemin={-60} aria-valuemax={85} aria-valuenow={Math.round(elev)}
@@ -443,8 +449,8 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   <div dir="rtl" className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
    style={{left:((tag.x+2)/(W+4)*100)+"%",top:((tag.y+2)/(H+4)*100)+"%"}}>
    {onLock&&<button type="button" aria-pressed={locked} aria-label={(locked?"باز کردن قفل انتخاب ":"قفل کردن انتخاب ")+tag.text} onClick={()=>onLock(!locked)}
-    className={"pointer-events-auto flex size-5 items-center justify-center rounded-control border border-primary motion-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring "+(locked?"bg-primary text-primary-foreground":"bg-background/70 text-primary hover:bg-surface-hover")}>
-    <Icon icon={locked?Lock:LockOpen} size={16} aria-hidden="true" className={"size-3! "+(locked?"fill-current":"")}/></button>}
+    className={"pointer-events-auto flex size-5 items-center justify-center rounded-[2px] border border-primary motion-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring "+(locked?"bg-primary text-primary-foreground":"bg-background/70 text-primary hover:bg-surface-hover")}>
+    <Icon icon={locked?Lock:LockOpen} size={16} aria-hidden="true" className={"size-3! "+(locked?"[&_rect]:fill-current":"")}/></button>}
    <bdi className="whitespace-nowrap text-[11px] font-medium leading-none text-primary">{tag.text}</bdi>
   </div>
  </div>;
