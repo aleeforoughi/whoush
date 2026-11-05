@@ -190,22 +190,21 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     {changed&&<span className="rounded-control bg-surface-selected px-2 py-0.5 type-caption text-fg-primary">تغییر کرده</span>}
     <Icon icon={ChevronDown} size={16} aria-hidden="true" className={"ms-auto size-4 shrink-0 text-fg-secondary transition-transform motion-reduce:transition-none "+(open?"rotate-180":"")}/>
    </span>
-   {/* Collapsed: the frame, exactly the photo's crop as the frame simulates it, with its details; then the camera and the lighting, smaller, each with
-       its details. Every snapshot has the same rounded border. On a phone they stack; where the card is wide they sit in one row, the two smaller tiles
-       sharing the room beside the frame, so no wide empty band is left. */}
-   {!open&&!focused&&<span className="flex flex-col gap-3 @lg:flex-row @lg:items-start @lg:gap-4">
-    {show("frame")&&frameShown&&(()=>{const {W,H}=frameSize(aspect);
-     return <span className="flex shrink-0 flex-col gap-1.5">
-      <span ref={setSnapEl} className="dark relative block overflow-hidden rounded-card border border-line-secondary bg-background" style={{aspectRatio:String(W/H),width:"min(100%, "+Math.round(Math.min(220*W/H,300))+"px)"}}>
-       {FRAME_RENDERER==="css"&&snapOnScreen?<FrameScene staging={draft} anchor={anchor} aspect={aspect}/>:null}
-      </span>
-      <SnapCaption c={cap.frame}/>
-     </span>;})()}
-    {((show("angle")||show("distance")||show("lens"))||show("light"))&&<span className="flex flex-wrap gap-3 @lg:grid @lg:min-w-0 @lg:flex-1 @lg:grid-cols-2 @lg:gap-4">
+   {/* Collapsed: just the frame, exactly the photo's crop as the frame simulates it, and under it the details of the frame, the camera and the
+       lighting. A scene with no character (no frame) shows the camera and the lighting as small tiles instead. */}
+   {!open&&!focused&&(show("frame")&&frameShown?(()=>{const {W,H}=frameSize(aspect),showCam=show("angle")||show("distance")||show("lens");
+    return <span className="flex flex-col gap-2">
+     <span ref={setSnapEl} className="dark relative block overflow-hidden rounded-card border border-line-secondary bg-background" style={{aspectRatio:String(W/H),width:"min(100%, "+Math.round(Math.min(240*W/H,360))+"px)"}}>
+      {FRAME_RENDERER==="css"&&snapOnScreen?<FrameScene staging={draft} anchor={anchor} aspect={aspect}/>:null}
+     </span>
+     <span className="flex flex-wrap gap-x-5 gap-y-2">
+      <SnapCaption c={cap.frame}/>{showCam&&<SnapCaption c={cap.camera}/>}{show("light")&&<SnapCaption c={cap.light}/>}
+     </span>
+    </span>;})()
+   :<span className="flex flex-wrap gap-3">
      {(show("angle")||show("distance")||show("lens"))&&<SnapTile c={cap.camera}><CameraView staging={draft} anchor={anchor} aspect={aspect} editable={false} onCamera={()=>{}}/></SnapTile>}
      {show("light")&&<SnapTile c={cap.light}><LightView staging={draft} editable={false} selected={-1} onSelect={()=>{}} onLight={()=>{}}/></SnapTile>}
-    </span>}
-   </span>}
+    </span>)}
   </button>
   <div id={bodyId} hidden={!open&&!focused} className="flex min-w-0 flex-col gap-3">
   <div className="flex min-w-0 flex-col gap-3">
@@ -350,7 +349,7 @@ function SnapCaption({c}:{c:{title:string;value:string}}){
 }
 /** A smaller snapshot tile (the camera, the lighting): its drawing in a dark tile with the frame's rounded border, its details under it. */
 function SnapTile({c,children}:{c:{title:string;value:string};children:ReactNode}){
- return <span className="flex w-36 min-w-0 flex-col gap-1.5 @lg:w-full @lg:max-w-60">
+ return <span className="flex w-36 min-w-0 flex-col gap-1.5 @lg:w-44">
   <span className="dark flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-card border border-line-secondary bg-background p-2 text-fg-primary [&_svg]:h-full! [&_svg]:max-h-full! [&_svg]:w-auto! [&_svg]:max-w-full! [&_svg]:pointer-events-none">{children}</span>
   <SnapCaption c={c}/>
  </span>;
