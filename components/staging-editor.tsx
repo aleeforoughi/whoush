@@ -1086,6 +1086,7 @@ function LightView({staging,editable,selected,onSelect,onLight}:{staging:Staging
  return <svg ref={svg} viewBox={"0 0 "+VW+" "+VH} className="mx-auto block aspect-[240/230] w-full max-w-sm touch-pan-y select-none text-fg-primary"
   onPointerMove={e=>{if(drag){const [x,y]=pt(e),deg=Math.atan2(y-C[1],x-C[0])*180/Math.PI;if(Number.isFinite(deg))setDrag({...drag,deg});}}}
   onPointerUp={()=>{if(drag){if(Number.isFinite(drag.deg))onLight(drag.i,Math.round(((drag.deg%360)+360)%360));setDrag(null);}}} onPointerCancel={()=>setDrag(null)}>
+  <BlueTint id={uid+"-sel"}/>
   <circle cx={C[0]} cy={C[1]} r={R} fill="none" stroke="currentColor" strokeOpacity=".35" strokeWidth={1} strokeDasharray="2 4" vectorEffect="non-scaling-stroke"/>
   <line x1={C[0]} y1={C[1]+24} x2={C[0]} y2={VH-34} stroke="currentColor" strokeOpacity=".35" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
   {staging.lights.map((l,i)=>{
@@ -1100,16 +1101,20 @@ function LightView({staging,editable,selected,onSelect,onLight}:{staging:Staging
    return <g key={i} role={editable?"button":undefined} tabIndex={editable?0:undefined} aria-label={faText(lightTags(staging.lights)[i]+"، "+LIGHT_DIRECTION_FA[l.direction]+(l.angle!==undefined?" ("+Math.round(l.angle)+" درجه)":""))} aria-pressed={editable?on:undefined}
     onKeyDown={editable?key:undefined} onClick={editable?()=>onSelect(i):undefined}
     onPointerDown={editable&&!top?e=>{onSelect(i);capture(svg.current,e.pointerId);const [px,py]=pt(e);setDrag({i,deg:Math.atan2(py-C[1],px-C[0])*180/Math.PI});}:undefined}
-    className={editable?"cursor-grab touch-none outline-none":""}>
+    className={editable?"cursor-grab touch-none outline-none":""} opacity={editable&&!on?0.7:1}>
     <defs><radialGradient id={g}><stop offset="0%" stopColor={color} stopOpacity={1}/><stop offset={soft?"35%":"70%"} stopColor={color} stopOpacity={.85}/><stop offset="100%" stopColor={color} stopOpacity={0}/></radialGradient>
      <linearGradient id={g+"b"} x1={x} y1={y} x2={C[0]} y2={C[1]} gradientUnits="userSpaceOnUse"><stop offset="0" stopColor={color} stopOpacity={(soft?.45:.6)*(0.25+0.75*power)}/><stop offset="1" stopColor={color} stopOpacity="0"/></linearGradient></defs>
     {!top&&<path d={"M"+x+" "+y+" L"+ax.toFixed(1)+" "+ay.toFixed(1)+" L"+bx.toFixed(1)+" "+by.toFixed(1)+" Z"} fill={"url(#"+g+"b)"}/>}
-    <circle cx={x} cy={y} r={22} fill="transparent"/>
+    {/* A finger-sized grab area around the light and around its picture, so either takes it. */}
+    <circle cx={x} cy={y} r={30} fill="transparent"/>
+    <circle cx={ox} cy={oy} r={16} fill="transparent"/>
+    {/* The selected light: a blue ring and halo around it, its picture tinted blue and its number blue; the others are a little faded. */}
+    {on&&<circle cx={x} cy={y} r={15} className="fill-primary stroke-primary" fillOpacity={0.18} strokeWidth={2} vectorEffect="non-scaling-stroke"/>}
     <circle cx={x} cy={y} r={(soft?15:10)*(0.6+0.5*power)} fill={"url(#"+g+")"} opacity={0.35+0.65*power}/>
-    <circle cx={x} cy={y} r={soft?6.5:5} fill={color} className={on?"stroke-primary":"stroke-background"} strokeWidth={on?1.2:0.6}/>
+    <circle cx={x} cy={y} r={soft?6.5:5} fill={color} className={on?"stroke-primary":"stroke-background"} strokeWidth={on?1.6:0.6}/>
     {/* The source's icon sits outside the circle, its number (#نور-N) inside, so neither covers the other. */}
-    <Asset id={LIGHT_ASSETS[l.source]} x={ox} y={oy+8} h={16} opacity={.95}/>
-    <text x={lx} y={ly+3} textAnchor="middle" fill="currentColor" fillOpacity=".8" fontSize={9}>{fa(i+1)}</text>
+    <Asset id={LIGHT_ASSETS[l.source]} x={ox} y={oy+8} h={on?18:16} opacity={.95} tint={on?uid+"-sel":undefined}/>
+    <text x={lx} y={ly+3} textAnchor="middle" className={on?"fill-primary":undefined} fill={on?undefined:"currentColor"} fillOpacity={on?1:.8} fontSize={on?10:9} fontWeight={on?700:400}>{fa(i+1)}</text>
    </g>;
   })}
   {target&&targetTint&&<Tint id={uid+"-m"} color={targetTint}/>}
