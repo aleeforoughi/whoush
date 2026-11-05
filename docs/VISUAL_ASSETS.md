@@ -38,6 +38,8 @@
 - **Removed:** the bottle, car, building and tree images (they're cubes now).
 
 ## Beta: characters only
+**The frame in «بوم»:** full width. The camera sees past the crop, and the crop is a thin blue dotted rectangle with its ratio («4:5») in its corner. Everything outside it is darkened, so what the output will hold stands out. A drag moves the rectangle under the finger, and pinch zooms. Four arrows in the middle of the edges change the angle: top and bottom raise or lower the camera a height stop, left and right orbit it 45°. This replaced the joystick and the «پیش‌نمایش تقریبی» label. How much of the view the crop takes is `FRAME_FILL`.
+
 **Props stay where Whoush put them (beta):** «بوم» doesn't reposition props at all. A drag anywhere on the frame, on a character too, moves only the frame (the crop). A tap on a character selects it: its tag shows on the frame and its settings show below, which is only its turn (no place sliders). Tapping it again, or anywhere else, goes back to the frame's settings. The frame's zoom stays right under it whatever is selected. The selection badge, the «#کادر» tag and the lock are hidden. All of this is behind `FRAME_MOVES_PROPS` in `components/staging-editor.tsx`.
 
 «بوم»'s frame draws only the characters: people and the pets with their own images (cat, dog, horse). Other props (objects, vehicles, buildings, trees, other animals) stay in the scene, the plan and the provider prompt, but the frame doesn't draw them and the focus can't be placed on them (`isCharacter`). A scene without a character (only a place, or only other props) shows no frame, only the camera and the lighting (`showsFrame`).
@@ -60,7 +62,7 @@
     - **Focus dot:** stays inside the frame.
   - **HD characters:** `scripts/visual-hd.ts` exports each character image as a WebP of up to 1536 px from its raw generation, trimmed exactly like the 640 px PNG. The frame uses it when a character is drawn larger than its PNG. A raw that no longer trims to the PNG's shape (regenerated or refinished since) gets no HD version, so a close-up is never stretched; HD files without a PNG are removed. Re-run it, then `scripts/visual-manifest.ts`, after generating.
 - **WebGL (Plan B, parked):** the three.js models are kept in `components/scene-3d.tsx` and on the `archive/plan-b-3d` branch. Switch with `FRAME_RENDERER` in `components/staging-editor.tsx`.
-- **Angle controls:** the height and orbit sliders, the camera drags and each prop's turn snap to the stops. The joystick in the frame's bottom-left steps them: up and down change the height, left and right orbit 45°. Its centre shows the angle and resets to eye level, from the front.
+- **Angle controls:** the height and orbit sliders, the camera drags and each prop's turn snap to the stops. The four arrows on the frame's edges step them: top and bottom change the height, left and right orbit 45°.
 
 ## «بوم» (Canvas): the scene widget
 - **Camera distance tile:** the subject on the left and the camera on its stand to the right. Drag the camera sideways for its distance (the frame's zoom), or up and down for its height on the stand, a pedestal move that keeps the angle (`cameraLift`, also the «بالا و پایین بردن دوربین (پایه)» slider, never under the ground: `liftLimits`). The stand's arrows move only the height. For a character, a blue dotted rectangle on it shows what the frame covers (`cropOnSubject`): the lens, the angle, the crop and the camera's height all move it, exactly as the frame draws it.

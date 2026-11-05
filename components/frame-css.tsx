@@ -61,26 +61,28 @@ function placeLayers(v:CssView,env:string,D:number):Layer[]{
  return out;
 }
 
-export default function FrameCSS({staging,anchor,aspect,editable,sel,onSelect,onProp,onPropTap,onPropDown,onProject,wide,onFrameRect,lockedTo,within}:Scene3DProps){
+export default function FrameCSS({staging,anchor,aspect,editable,sel,onSelect,onProp,onPropTap,onPropDown,onProject,wide,wideFill,onFrameRect,lockedTo,within}:Scene3DProps){
  const root=useRef<HTMLDivElement>(null),[[w,h],setSize]=useState<[number,number]>([0,0]);
  useLayoutEffect(()=>{const el=root.current;if(!el)return;const ro=new ResizeObserver(()=>setSize([el.clientWidth,el.clientHeight]));ro.observe(el);setSize([el.clientWidth,el.clientHeight]);return ()=>ro.disconnect();},[]);
  const [moving,setMoving]=useState<{i:number;x:number;z:number}|null>(null);
  const grab=useRef<{i:number;feet:[number,number];from:[number,number];lift:number;far:boolean}|null>(null);
  const base=(staging.props??[]).map((p,i)=>moving?.i===i?{...p,x:moving.x,z:moving.z}:p);
  // An extreme close-up past what the frame can draw: the frame stays at its tightest, and the real crop shows as a green guide on the face.
- const cuKey=JSON.stringify([staging,anchor??null,aspect,w,h,wide??false]);
+ const cuKey=JSON.stringify([staging,anchor??null,aspect,w,h,wide??false,wideFill??null]);
  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the scene's content, not its object identity
- const cu=useMemo(()=>w>0&&h>0?closeUp(staging,anchor,aspect,w,h,wide):undefined,[cuKey]);
+ const cu=useMemo(()=>w>0&&h>0?closeUp(staging,anchor,aspect,w,h,wide,wideFill):undefined,[cuKey]);
  const shown=cu?.draw??staging;
  // The camera comes from the scene as it is (a prop being dragged moves only itself).
- const v=w>0&&h>0?cssView(shown,anchor,aspect,w,h,wide):undefined;
+ const v=w>0&&h>0?cssView(shown,anchor,aspect,w,h,wide,wideFill):undefined;
  // In the beta the frame draws only the characters (people and the pets); the other props stay in the scene and the prompt.
  const sprites=v?propSprites(v,base,shown,anchor).filter(sp=>isCharacter(base[sp.i])):[];
  const tints=propTints(base);
  // Where the centre point and the top of the selected prop land, for the frame's overlays; where the frame lies in the wide view.
  const proj:Record<string,[number,number]>={};
- if(v){const c=toScreen(v,focusWorld(v));if(c)proj.center=[c[0]/w,c[1]/h];
-  const sp=sel!=null?sprites.find(s=>s.i===sel):undefined;const t=sp&&toScreen(v,sp.top);if(t)proj.sel=[t[0]/w,t[1]/h];}
+ // Fractions of the frame (in the wide view, of the frame's rectangle within it).
+ const toFrame=(p:[number,number]):[number,number]=>v?.frame?[(p[0]/w-(v.frame.x-v.frame.w/2))/v.frame.w,(p[1]/h-(v.frame.y-v.frame.h/2))/v.frame.h]:[p[0]/w,p[1]/h];
+ if(v){const c=toScreen(v,focusWorld(v));if(c)proj.center=toFrame(c);
+  const sp=sel!=null?sprites.find(s=>s.i===sel):undefined;const t=sp&&toScreen(v,sp.top);if(t)proj.sel=toFrame(t);}
  const projKey=JSON.stringify(proj),rectKey=JSON.stringify(v?.frame??null);
  useEffect(()=>{if(v)onProject?.(JSON.parse(projKey));
   // eslint-disable-next-line react-hooks/exhaustive-deps -- reported when the points change

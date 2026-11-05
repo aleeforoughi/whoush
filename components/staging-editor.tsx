@@ -29,6 +29,8 @@ const FrameScene=FRAME_RENDERER==="css"?FrameCSS:Scene3D;
  * character selects it (its tag shows on it, and its settings below: only its turn, no place sliders). The selection's badge and the lock are hidden.
  */
 const FRAME_MOVES_PROPS=false;
+/** The full-width frame: how much of the view's height the crop's rectangle takes (the rest shows what lies around it). */
+const FRAME_FILL=0.78;
 let webglOk:boolean|undefined;
 /** Whether this browser can draw WebGL (checked once; the test context is released at once). */
 function hasWebGL():boolean{
@@ -722,6 +724,8 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
  const [drag,setDrag]=useState<{px:number;py:number;x:number;y:number;cur:{x:number;y:number}}|null>(null);
  const [move,setMove]=useState<{i:number;px:number;py:number;x0:number;z0:number;x:number;z:number}|null>(null);
  const [pivot,setPivot]=useState(false);
+ // The full-width frame (3D): where the crop's rectangle lies in the view (fractions), and the view's box.
+ const [rect,setRectRaw]=useState<FrameRect|null>(null),setRect=(r:FrameRect)=>setRectRaw(o=>sameJSON(o,r)?o:r),box=useRef<HTMLDivElement>(null);
  /** Taking the centre point's dot: selects it (unless the selection is locked) and starts dragging it. */
  const pivotDown=(e:PointerEvent)=>{e.stopPropagation();capture(svg.current,e.pointerId);if(!locked)onSelectCenter?.();setPivot(true);};
  /** A pointer position in the frame's own coordinates (the viewBox). */
@@ -774,7 +778,7 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
  const tag=!editable||centerSel?undefined:sel!=null&&base[sel]?(()=>{const p=base[sel],a=at(p),wf=spriteW(sprite(p),a.h);
   const [rx,ty]=three?(proj.sel?[proj.sel[0]*W+8,proj.sel[1]*H]:[W-3,3]):cam.toScreen(a.x+wf/2+1,a.y-a.h-1);return {x:Math.max(52,Math.min(W-1,rx)),y:Math.max(0,Math.min(H-2,ty)),above:ty>12,text:propTags(base,true)[sel]};})()
   :{x:W-3,y:3,above:false,text:"#کادر"};
- const svgEl=<svg ref={svg} viewBox={"-2 -2 "+(W+4)+" "+(H+4)} {...(editable&&onZoom&&!three?pinch:{})} className={"mx-auto block w-full touch-none select-none text-fg-primary"+(three?" pointer-events-none relative z-[1]":"")} style={{aspectRatio:String((W+4)/(H+4)),maxWidth:Math.round(320*(W+4)/(H+4))+"px"}} aria-hidden={!editable}
+ const svgEl=<svg ref={svg} viewBox={"-2 -2 "+(W+4)+" "+(H+4)} {...(editable&&onZoom&&!three?pinch:{})} className={"mx-auto block w-full touch-none select-none text-fg-primary"+(three?" pointer-events-none relative z-[1] h-full":"")} style={three?undefined:{aspectRatio:String((W+4)/(H+4)),maxWidth:Math.round(320*(W+4)/(H+4))+"px"}} aria-hidden={!editable}
   onPointerMove={e=>{
    if(pivot){const [sx,sy]=svgPt(e);if(Number.isFinite(sx)&&Number.isFinite(sy))onFocus?.(three?{pivot:pickPivot({...staging,framing:fr},anchor,aspect,inFrame(sx/W),inFrame(sy/H))}:moveFocusPoint({...staging,framing:fr},anchor,W,H,sx,sy));return;}
    const u=unit();
@@ -816,7 +820,6 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
       {on&&<rect x={a.x-w/2-1} y={a.y-a.h-1} width={w+2} height={a.h+2} rx={2} fill="none" className="stroke-primary" strokeWidth={1} vectorEffect="non-scaling-stroke" strokeDasharray="3 2"/>}
      </g>;})}
    </g></>}
-   {editable&&<text x={W-3} y={H-3} direction="rtl" textAnchor="start" fontSize={3.6} fill="currentColor" fillOpacity=".55" className="pointer-events-none" aria-hidden="true">پیش‌نمایش تقریبی</text>}
    {[1,2].map(i=><g key={i} strokeDasharray="3 3" strokeWidth={1} className="pointer-events-none">
     <line vectorEffect="non-scaling-stroke" x1={W*i/3} x2={W*i/3} y1={0} y2={H} className={third(onX,fr.x<0,i)?"stroke-primary":""} stroke={third(onX,fr.x<0,i)?undefined:"currentColor"} strokeOpacity={third(onX,fr.x<0,i)?1:.3}/>
     <line vectorEffect="non-scaling-stroke" x1={0} x2={W} y1={H*i/3} y2={H*i/3} className={third(onY,fr.y<0,i)?"stroke-primary":""} stroke={third(onY,fr.y<0,i)?undefined:"currentColor"} strokeOpacity={third(onY,fr.y<0,i)?1:.3}/>
@@ -836,7 +839,9 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
     <circle cx={dx} cy={dy} r={1.8} className={staging.focusPoint||staging.pivot?"fill-primary":"fill-primary-foreground stroke-primary"} strokeWidth={0.8} vectorEffect="non-scaling-stroke"/>
    </g>;})()}
   {/* With no prop selected, the frame itself is: a blue outline and its «#کادر» tag, and the controls below are the frame's. */}
-  {editable&&(sel==null||!base[sel])&&!centerSel
+  {three
+   ?<rect width={W} height={H} fill="none" className="pointer-events-none stroke-primary" strokeWidth={1} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
+   :editable&&(sel==null||!base[sel])&&!centerSel
    ?<><rect width={W} height={H} rx={6} fill="none" className="pointer-events-none stroke-primary" strokeWidth={1.6} vectorEffect="non-scaling-stroke"/>
 </>
    :<rect width={W} height={H} rx={6} fill="none" stroke="currentColor" strokeOpacity=".75" strokeWidth={1.2} vectorEffect="non-scaling-stroke" className="pointer-events-none"/>}
@@ -845,29 +850,70 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
  /** Arrow keys move a prop (the 3D view's keyboard access: one hidden button per prop). */
  const propKey=(i:number)=>(e:KeyboardEvent)=>{const p=base[i];if(!p||(locked&&sel!==i))return;
   const d={ArrowLeft:[-0.1,0],ArrowRight:[0.1,0],ArrowUp:[0,0.1],ArrowDown:[0,-0.1]}[e.key as "ArrowLeft"];if(!d)return;e.preventDefault();onSelect?.(i);const g=within(p,{x:p.x+d[0],z:p.z+d[1]});onProp?.(i,g.x,g.z);};
- return <div className="relative mx-auto w-full" style={{maxWidth:maxW+"px"}}>
-  {/* The 3D frame under the drawing's overlays (thirds, outline, centre point, tags): a press on a prop picks and drags it on the ground; a press on the empty
-      set slides the crop, as in 2D. */}
-  {three&&<div role="slider" tabIndex={0} aria-label={"جای سوژه در کادر: "+placementFa(staging.framing)} aria-valuetext={placementFa(staging.framing)} aria-valuenow={Math.round(fr.x*100)} aria-valuemin={-100} aria-valuemax={100}
-   onKeyDown={key} {...(onZoom?pinch:{})} className={"absolute touch-none overflow-hidden bg-background outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring "+(drag?"cursor-grabbing":"cursor-grab")}
-   style={{insetInlineStart:(2/(W+4)*100)+"%",top:(2/(H+4)*100)+"%",width:(W/(W+4)*100)+"%",height:(H/(H+4)*100)+"%",borderRadius:(6/W*100)+"% / "+(6/H*100)+"%"}}
-   onPointerDown={e=>{if(propHit.current){propHit.current=false;return;}if(e.button>0)return;capture(e.currentTarget,e.pointerId);if(!locked&&FRAME_MOVES_PROPS)onSelect?.(null);cropDrag(e);}}
-   onPointerMove={e=>{if(!drag)return;const u=unit(),[ddx,ddy]=cam.unroll((e.clientX-drag.px)*u.sx,(e.clientY-drag.py)*u.sy);const c={x:snapAxis(drag.x+ddx/(W/2)),y:snapAxis(drag.y+ddy/(H/2))};if(Number.isFinite(c.x)&&Number.isFinite(c.y))setDrag({...drag,cur:c});}}
-   onPointerUp={e=>{if(!drag)return;
-    // A tap (no drag) picks what is under it: a character selects it (its settings show); the selected one again, or anywhere else, goes back to the
-    // frame's own settings.
-    if(!FRAME_MOVES_PROPS&&Math.hypot(e.clientX-drag.px,e.clientY-drag.py)<5){const b=e.currentTarget.getBoundingClientRect(),hit=pickPivot({...staging,framing:fr},anchor,aspect,(e.clientX-b.left)/b.width,(e.clientY-b.top)/b.height).on;
-     onSelect?.(typeof hit==="number"&&hit!==sel&&base[hit]&&isCharacter(base[hit])?hit:null);setDrag(null);return;}
-    commit(drag.cur);setDrag(null);}} onPointerCancel={()=>setDrag(null)}>
-   <FrameScene staging={{...staging,framing:fr}} anchor={anchor} aspect={aspect} editable={FRAME_MOVES_PROPS} sel={centerSel?null:sel} lockedTo={locked&&sel!=null?sel:undefined}
-    onSelect={i=>{if(!locked)onSelect?.(i);}} onProp={onProp} onPropDown={()=>{propHit.current=true;}} onProject={setProj} within={within}/>
+ if(three){
+  // Full width: the camera sees past the crop, the crop is a thin blue dotted rectangle in it (its ratio in its corner) with the rest dimmed, as full
+  // screen. A drag moves the rectangle under the finger; a tap on a character selects it; pinch zooms. The drawing's overlays (thirds, centre point,
+  // tag) lie over the rectangle, so they move with it.
+  const boxAspect=Math.min(2,Math.max(1.2,W/H*1.5)),r=rect,left=r?r.x-r.w/2:0,top=r?r.y-r.h/2:0;
+  const over=r?{left:(left-r.w*2/W)*100+"%",top:(top-r.h*2/H)*100+"%",width:r.w*(W+4)/W*100+"%",height:r.h*(H+4)/H*100+"%"}:undefined;
+  return <div className="relative w-full overflow-hidden rounded-[10px]">
+   <div ref={box} role="slider" tabIndex={0} aria-label={"جای کادر: "+placementFa(staging.framing)} aria-valuetext={placementFa(staging.framing)} aria-valuenow={Math.round(fr.x*100)} aria-valuemin={-100} aria-valuemax={100}
+    onKeyDown={key} {...(onZoom?pinch:{})} className={"relative w-full touch-none overflow-hidden bg-background outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring "+(drag?"cursor-grabbing":"cursor-grab")}
+    style={{aspectRatio:String(boxAspect)}}
+    onPointerDown={e=>{if(propHit.current){propHit.current=false;return;}if(e.button>0)return;capture(e.currentTarget,e.pointerId);cropDrag(e);}}
+    onPointerMove={e=>{if(!drag||!r||!box.current)return;const b=box.current.getBoundingClientRect(),fw=r.w*b.width,fh=r.h*b.height;
+     // The rectangle follows the finger: the crop moves by −2× the drag over the frame's size (the frame's centre is offset by −crop/2 of its size).
+     const c={x:snapAxis(drag.x-2*(e.clientX-drag.px)/fw),y:snapAxis(drag.y-2*(e.clientY-drag.py)/fh)};if(Number.isFinite(c.x)&&Number.isFinite(c.y))setDrag({...drag,cur:c});}}
+    onPointerUp={e=>{if(!drag)return;
+     // A tap (no drag) picks what is under it in the frame: a character selects it (its settings show); the selected one again, or anywhere else,
+     // goes back to the frame's own settings.
+     if(Math.hypot(e.clientX-drag.px,e.clientY-drag.py)<5){const b=e.currentTarget.getBoundingClientRect(),fx=r?((e.clientX-b.left)/b.width-left)/r.w:-1,fy=r?((e.clientY-b.top)/b.height-top)/r.h:-1;
+      const hit=fx>=0&&fx<=1&&fy>=0&&fy<=1?pickPivot({...staging,framing:fr},anchor,aspect,fx,fy).on:undefined;
+      onSelect?.(typeof hit==="number"&&hit!==sel&&base[hit]&&isCharacter(base[hit])?hit:null);setDrag(null);return;}
+     commit(drag.cur);setDrag(null);}} onPointerCancel={()=>setDrag(null)}>
+    <FrameScene staging={{...staging,framing:fr}} anchor={anchor} aspect={aspect} editable={FRAME_MOVES_PROPS} wide wideFill={FRAME_FILL} sel={centerSel?null:sel} lockedTo={locked&&sel!=null?sel:undefined}
+     onSelect={i=>{if(!locked)onSelect?.(i);}} onProp={onProp} onPropDown={()=>{propHit.current=true;}} onProject={setProj} onFrameRect={setRect} within={within}/>
+    {/* Outside the crop is darkened, so what the output will hold stands out. */}
+    {r&&<svg aria-hidden="true" className="pointer-events-none absolute inset-0 size-full" viewBox="0 0 1 1" preserveAspectRatio="none">
+     <path fillRule="evenodd" fill="black" fillOpacity={0.65} d={"M0 0H1V1H0Z M"+left+" "+top+"h"+r.w+"v"+r.h+"h"+(-r.w)+"Z"}/></svg>}
+   </div>
+   {r&&<div className="pointer-events-none absolute" style={over}>
+    {svgEl}
+    {/* The crop's ratio, small, in its top-left corner. */}
+    <bdi dir="ltr" aria-hidden="true" className="absolute rounded-[4px] bg-background/60 px-1 text-[10px] font-medium leading-4 text-primary" style={{left:(2/(W+4)*100)+"%",top:(2/(H+4)*100)+"%",margin:"4px"}}>{aspect}</bdi>
+    {/* Tag text, then (on its right) the lock in a small button: outline when unlocked, filled blue with a white lock when locked. On touch screens the
+      button is larger and its tap area reaches about 44px around it (an invisible ::before), so it is easy to hit with a finger. */}
+  {tag&&(FRAME_MOVES_PROPS||(sel!=null&&base[sel]))&&<div dir="rtl" className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
+   style={{right:((W+2-tag.x)/(W+4)*100)+"%",top:((tag.y+2)/(H+4)*100)+"%"}}>
+   {FRAME_MOVES_PROPS&&onLock&&<button type="button" aria-pressed={locked} aria-label={(locked?"باز کردن قفل انتخاب ":"قفل کردن انتخاب ")+tag.text} onClick={()=>onLock(!locked)}
+    className={"pointer-events-auto relative flex size-6 items-center justify-center rounded-[4px] before:absolute before:-inset-2.5 before:content-[''] pointer-coarse:size-7 border border-primary motion-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring "+(locked?"bg-primary text-primary-foreground":"bg-transparent text-primary")}>
+    <Icon icon={locked?Lock:LockOpen} size={16} aria-hidden="true" className={"size-3.5! "+(locked?"[&_rect]:fill-current":"")}/></button>}
+   <bdi className="whitespace-nowrap text-xs font-medium leading-none text-primary pointer-coarse:text-[13px]">{tag.text}</bdi>
   </div>}
+   </div>}
   {three&&<div className="sr-only">{base.map((p,i)=>isCharacter(p)&&<button key={i} type="button" aria-pressed={sel===i} onClick={()=>{if(!locked)onSelect?.(i);}} onKeyDown={FRAME_MOVES_PROPS?propKey(i):undefined}>{propTags(base)[i]+"، "+propPlaceFa(placed[i]??p)}</button>)}</div>}
-  {svgEl}
-  {onAngle&&<AngleJoystick staging={staging} onAngle={onAngle} inset={(2/(W+4)*100)+"%"} insetY={(2/(H+4)*100)+"%"}/>}
+   {onAngle&&<AngleArrows staging={staging} onAngle={onAngle}/>}
   {three&&onFullscreen&&<button type="button" onClick={onFullscreen} aria-label="نمایش تمام‌صفحهٔ کادر"
    className="absolute top-3 end-3 z-10 flex size-8 items-center justify-center rounded-control bg-background/70 text-fg-primary shadow-1 backdrop-blur-sm motion-hover hover:bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
    <Icon icon={Maximize2} size={16} aria-hidden="true"/></button>}
+  {/* What the controls below are adjusting, while a prop is selected: a blue badge in the frame's top-right corner, «تنظیم #آدم ×»; × goes back to the
+      frame's own settings (and unlocks). */}
+  {FRAME_MOVES_PROPS&&((sel!=null&&base[sel])||centerSel)&&onBack&&<div className="absolute top-3 start-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1.5">
+   {/* Each badge hugs its text in full (never cut); when two do not fit side by side, the second wraps under the first. */}
+   <button type="button" onClick={onBack} aria-label={"تنظیم "+(centerSel?"مرکز":propTags(base)[sel!])+"، برگشت به تنظیمات کادر"}
+   className="flex h-7 w-max shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-primary ps-2.5 pe-1.5 text-xs font-medium text-primary-foreground shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:h-8">
+   <span>تنظیم {centerSel?"مرکز":<bdi>{propTags(base)[sel!]}</bdi>}</span><Icon icon={X} size={16} aria-hidden="true" className="size-3.5! shrink-0"/>
+   </button>
+   {/* With the centre point selected: back to Whoush's default centre (on the dominant subject, Whoush's framing); white badge, blue text. */}
+   {centerSel&&<button type="button" onClick={()=>onFocus?.(null)} aria-label="بازگشت به مرکز سوژه"
+    className="flex h-7 w-max shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-white ps-2 pe-2.5 text-xs font-medium text-primary shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60 pointer-coarse:h-8">
+    <Icon icon={Undo2} size={16} aria-hidden="true" className="size-3.5! shrink-0"/>بازگشت به مرکز سوژه</button>}
+  </div>}
+ </div>;
+ }
+ return <div className="relative mx-auto w-full" style={{maxWidth:maxW+"px"}}>
+  {svgEl}
+  {onAngle&&<AngleArrows staging={staging} onAngle={onAngle}/>}
   {/* What the controls below are adjusting, while a prop is selected: a blue badge in the frame's top-right corner, «تنظیم #آدم ×»; × goes back to the
       frame's own settings (and unlocks). */}
   {FRAME_MOVES_PROPS&&((sel!=null&&base[sel])||centerSel)&&onBack&&<div className="absolute top-3 start-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1.5">
@@ -894,36 +940,22 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
 }
 
 /**
- * The angle joystick, in the frame's bottom-left corner: up and down move the camera through the five height stops, left and right orbit it 45° around the
- * subject (the sides the pack is drawn at). The centre shows the angle as a small gizmo (the camera on its ring around the subject, raised by its height);
- * tapping it goes back to eye level, from the front.
+ * The camera's angle from the frame: four arrows in the middle of its edges. Top and bottom move the camera through the five height stops (higher,
+ * lower); left and right orbit it 45° around the subject (the sides the pack is drawn at).
  */
-function AngleJoystick({staging,onAngle,inset,insetY}:{staging:Staging;onAngle:(c:{elevation?:number;azimuth?:number})=>void;inset:string;insetY:string}){
- const vi=verticalIndex(elevationOf(staging)),az=snapSide(staging.cameraAzimuth??0),stop=VERTICAL_STOPS[vi];
- const btn="absolute flex size-6 items-center justify-center rounded-full bg-background/80 text-fg-primary shadow-1 backdrop-blur-sm motion-hover hover:bg-background disabled:opacity-40 outline-none focus-visible:outline-2 focus-visible:outline-ring before:absolute before:-inset-2 before:content-[''] pointer-coarse:size-7";
- const at=(x:string,y:string,t:string)=>({left:x,top:y,transform:t});
- const now=stop.fa+"، "+sideStopFa(az)+(Math.abs(az)%180?(az>0?" از راست":" از چپ"):"");
- // The gizmo: the subject in the middle, its ground ring seen from a little above, the camera on it at the orbit, raised by the height.
- const e=stop.deg*Math.PI/180,a=az*Math.PI/180,R=8,cx=12,cy=13,cam:[number,number]=[cx+R*Math.sin(a)*Math.cos(e),cy+R*0.38*Math.cos(a)*Math.cos(e)-R*Math.sin(e)];
- return <div dir="ltr" role="group" aria-label={"زاویهٔ دوربین: "+now} className="absolute z-10 size-[76px] pointer-coarse:size-[84px]" style={{left:"calc("+inset+" + 6px)",bottom:"calc("+insetY+" + 6px)"}}
-  onPointerDown={e=>e.stopPropagation()}>
-  <button type="button" className={btn} style={at("50%","0","translateX(-50%)")} disabled={vi>=VERTICAL_STOPS.length-1} aria-label={"دوربین بالاتر"+(VERTICAL_STOPS[vi+1]?": "+VERTICAL_STOPS[vi+1].fa:"")}
-   onClick={()=>onAngle({elevation:VERTICAL_STOPS[Math.min(VERTICAL_STOPS.length-1,vi+1)].deg})}><Icon icon={ChevronUp} size={16} aria-hidden="true" className="size-3.5!"/></button>
-  <button type="button" className={btn} style={at("50%","100%","translate(-50%,-100%)")} disabled={vi<=0} aria-label={"دوربین پایین‌تر"+(VERTICAL_STOPS[vi-1]?": "+VERTICAL_STOPS[vi-1].fa:"")}
-   onClick={()=>onAngle({elevation:VERTICAL_STOPS[Math.max(0,vi-1)].deg})}><Icon icon={ChevronDown} size={16} aria-hidden="true" className="size-3.5!"/></button>
-  <button type="button" className={btn} style={at("0","50%","translateY(-50%)")} aria-label="چرخش دوربین دور سوژه، به چپ"
-   onClick={()=>onAngle({azimuth:snapSide(az-SIDE_STEP)})}><Icon icon={ChevronLeft} size={16} aria-hidden="true" className="size-3.5!"/></button>
-  <button type="button" className={btn} style={at("100%","50%","translate(-100%,-50%)")} aria-label="چرخش دوربین دور سوژه، به راست"
-   onClick={()=>onAngle({azimuth:snapSide(az+SIDE_STEP)})}><Icon icon={ChevronRight} size={16} aria-hidden="true" className="size-3.5!"/></button>
-  <button type="button" title={now} aria-label={"زاویهٔ فعلی: "+now+". برگشت به هم‌سطح چشم، روبه‌رو"} onClick={()=>onAngle({elevation:0,azimuth:0})}
-   className="absolute flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" style={at("50%","50%","translate(-50%,-50%)")}>
-   <svg viewBox="0 0 24 24" className="size-6" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth={1.2}>
-    <ellipse cx={cx} cy={cy} rx={R} ry={R*0.38} strokeOpacity={0.5}/>
-    <circle cx={cx} cy={cy-4.2} r={1.6} fill="currentColor" stroke="none"/><path d={"M"+cx+" "+(cy-2.4)+"V"+cy} strokeWidth={1.6} strokeLinecap="round"/>
-    <path d={"M"+cam[0]+" "+cam[1]+"L"+cx+" "+(cy-3)} strokeDasharray="1.5 1.2"/>
-    <circle cx={cam[0]} cy={cam[1]} r={2.1} fill="currentColor" stroke="none"/>
-   </svg>
-  </button>
+function AngleArrows({staging,onAngle}:{staging:Staging;onAngle:(c:{elevation?:number;azimuth?:number})=>void}){
+ const vi=verticalIndex(elevationOf(staging)),az=snapSide(staging.cameraAzimuth??0);
+ const btn="absolute z-10 flex size-8 items-center justify-center rounded-full bg-background/70 text-fg-primary shadow-1 backdrop-blur-sm motion-hover hover:bg-background disabled:opacity-30 outline-none focus-visible:outline-2 focus-visible:outline-ring before:absolute before:-inset-1.5 before:content-['']";
+ const now=VERTICAL_STOPS[vi].fa+"، "+sideStopFa(az)+(Math.abs(az)%180?(az>0?" از راست":" از چپ"):"");
+ return <div dir="ltr" role="group" aria-label={"زاویهٔ دوربین: "+now} className="contents" onPointerDown={e=>e.stopPropagation()}>
+  <button type="button" className={btn} style={{left:"50%",top:6,transform:"translateX(-50%)"}} disabled={vi>=VERTICAL_STOPS.length-1} aria-label={"دوربین بالاتر"+(VERTICAL_STOPS[vi+1]?": "+VERTICAL_STOPS[vi+1].fa:"")}
+   onPointerDown={e=>e.stopPropagation()} onClick={()=>onAngle({elevation:VERTICAL_STOPS[Math.min(VERTICAL_STOPS.length-1,vi+1)].deg})}><Icon icon={ChevronUp} size={16} aria-hidden="true"/></button>
+  <button type="button" className={btn} style={{left:"50%",bottom:6,transform:"translateX(-50%)"}} disabled={vi<=0} aria-label={"دوربین پایین‌تر"+(VERTICAL_STOPS[vi-1]?": "+VERTICAL_STOPS[vi-1].fa:"")}
+   onPointerDown={e=>e.stopPropagation()} onClick={()=>onAngle({elevation:VERTICAL_STOPS[Math.max(0,vi-1)].deg})}><Icon icon={ChevronDown} size={16} aria-hidden="true"/></button>
+  <button type="button" className={btn} style={{left:6,top:"50%",transform:"translateY(-50%)"}} aria-label="چرخش دوربین دور سوژه، به چپ"
+   onPointerDown={e=>e.stopPropagation()} onClick={()=>onAngle({azimuth:snapSide(az-SIDE_STEP)})}><Icon icon={ChevronLeft} size={16} aria-hidden="true"/></button>
+  <button type="button" className={btn} style={{right:6,top:"50%",transform:"translateY(-50%)"}} aria-label="چرخش دوربین دور سوژه، به راست"
+   onPointerDown={e=>e.stopPropagation()} onClick={()=>onAngle({azimuth:snapSide(az+SIDE_STEP)})}><Icon icon={ChevronRight} size={16} aria-hidden="true"/></button>
  </div>;
 }
 

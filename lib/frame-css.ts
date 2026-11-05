@@ -32,13 +32,13 @@ export type CssView={cam:Camera3D;
  /** Barrel distortion of an ultra-wide lens (0 none): the picture bulges from the centre and straight lines bow (fisheye, under 15 mm). */fish:number};
 
 /** The camera for a frame (or a wide view around it) of w×h px. A worm's-eye camera below the ground is lifted onto it along its sight line (same aim). */
-export function cssView(s:Staging,anchor:Staging|undefined,aspect:string,w:number,h:number,wide=false):CssView{
+export function cssView(s:Staging,anchor:Staging|undefined,aspect:string,w:number,h:number,wide=false,/** The wide view: how much of its height the frame takes (wideFrameRect). */fill?:number):CssView{
  const cam=camera3D(s,anchor,aspect),t=cam.target as V3;
  let pos=cam.position as V3;
  const MIN_Y=0.05;
  if(pos[1]<MIN_Y&&t[1]>MIN_Y){const k=(MIN_Y-pos[1])/(t[1]-pos[1]);pos=add(pos,mul(sub(t,pos),k));}
  const f=norm(sub(t,pos));let r=cross(f,[0,1,0]);r=Math.hypot(...r)<1e-6?[1,0,0]:norm(r);const u=cross(r,f);
- const {W,H}=frameSize(aspect),frame=wide?wideFrameRect(cam,W/H,w,h):undefined,frameH=frame?frame.h*h:h;
+ const {W,H}=frameSize(aspect),frame=wide?wideFrameRect(cam,W/H,w,h,fill):undefined,frameH=frame?frame.h*h:h;
  const D=(frameH/2)/Math.tan(cam.fov*Math.PI/360);
  const pp:[number,number]=frame?[w/2,h/2]:[w/2-cam.shift[0]*w,h/2-cam.shift[1]*h];
  const depthT=Math.max(0.05,dot(sub(t,pos),f));
@@ -442,7 +442,7 @@ function frameCorners(v:CssView):[number,number][]{
  * the subject: the real frame's corners where they cross the plane through the focus point square to the lens, in the drawn view's px. `draw` is the
  * staging to draw; with no guide it is `s` itself.
  */
-export function closeUp(s:Staging,anchor:Staging|undefined,aspect:string,w:number,h:number,wide=false):{draw:Staging;guide?:[number,number][]}{
+export function closeUp(s:Staging,anchor:Staging|undefined,aspect:string,w:number,h:number,wide=false,fill?:number):{draw:Staging;guide?:[number,number][]}{
  const props=s.props??[],m=props.find(p=>p.main);
  if(!m||!isCharacter(m))return {draw:s};
  // The frame draws down to the whole head with a little room around it (its picture never blown up past what it holds); tighter is the guide.
@@ -451,7 +451,7 @@ export function closeUp(s:Staging,anchor:Staging|undefined,aspect:string,w:numbe
  if(at>=lo-1e-3)return {draw:s};
  // The drawn frame holds the whole face, so the guide lands on the eyes or the mouth.
  const sc=scaleFromSlider(lo),draw:Staging={...s,shotScale:sc,shotSize:nearestShot(sc),...(s.focusDetail==="eyes"||s.focusDetail==="mouth"?{focusDetail:"face" as const}:{})};
- const real=cssView(s,anchor,aspect,w,h,wide),shown=cssView(draw,anchor,aspect,w,h,wide),f=focusWorld(real),n=real.f;
+ const real=cssView(s,anchor,aspect,w,h,wide,fill),shown=cssView(draw,anchor,aspect,w,h,wide,fill),f=focusWorld(real),n=real.f;
  const guide:[number,number][]=[];
  for(const [x,y] of frameCorners(real)){
   const d=rayAt(real,x,y),den=dot(d,n);if(den<1e-6)return {draw};

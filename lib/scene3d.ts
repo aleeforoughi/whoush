@@ -125,8 +125,8 @@ export function depthOfField(c:Pick<Camera3D,"focalMm"|"aperture"|"focusDistance
 /** Where the frame lies in the wide (full-screen) view, as fractions of the view: its size and centre, the crop moving the frame, not the picture. */
 export type FrameRect={x:number;y:number;w:number;h:number};
 /** The frame's rectangle in a wide view of `vw`×`vh` pixels: as large as fits with room around it (to see past the frame), moved by the crop. */
-export function wideFrameRect(cam:Pick<Camera3D,"shift">,frameAspect:number,vw:number,vh:number):FrameRect{
- const fh=Math.min(vh*0.62,vw*0.84/frameAspect),fw=fh*frameAspect;
+export function wideFrameRect(cam:Pick<Camera3D,"shift">,frameAspect:number,vw:number,vh:number,/** How much of the view's height the frame takes at most. */fill=0.62):FrameRect{
+ const fh=Math.min(vh*fill,vw*0.84/frameAspect),fw=fh*frameAspect;
  return {w:fw/vw,h:fh/vh,x:0.5+cam.shift[0]*fw/vw,y:0.5+cam.shift[1]*fh/vh};
 }
 /** The clay look of the asset pack, for the 3D figures, and the dark set they stand in (colours live here: TSX holds no hex values). */

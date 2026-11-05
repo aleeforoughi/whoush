@@ -225,6 +225,7 @@ export type Scene3DProps={staging:Staging;anchor?:Staging;aspect:string;
  /** A press landed on a prop (it runs before the page's own handlers, so a press on the empty set can start a crop drag instead). */onPropDown?:()=>void;
  /** Where some points land on screen: `center` (the centre point) and `sel` (above the selected prop). */onProject?:(p:Record<string,[number,number]>)=>void;
  /** The wide (full-screen) view: the camera sees past the frame; `onFrameRect` says where the frame lies. */wide?:boolean;onFrameRect?:(r:FrameRect)=>void;
+ /** The wide view: how much of its height the frame takes at most (the CSS frame only). */wideFill?:number;
  /** The selection is locked on this prop: only it can be taken. */lockedTo?:number;
  /** Clamps a ground point to where the prop may go. */within?:(p:SceneProp,g:{x:number;z:number})=>{x:number;z:number}};
 
