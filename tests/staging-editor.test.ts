@@ -204,3 +204,39 @@ test("references map to the props they show and name them on the canvas: #زن:�
  assert.match(describeLayoutFa(mapped),/زن \(مثل #تصویر-۱\)/);assert.match(describeLayoutEn(mapped),/person \(looks like the attached reference\)/);
  assert.equal((props[0] as {refs?:string[]}).refs,undefined,"the planner's props are not changed in place");
 });
+
+test("props and lights by tag in the chat: #زن is a badge, «:» maps it to an image (#زن:تصویر-۱), and Whoush applies typed mappings before its own",async()=>{
+ const {splitMentions,mentionTrigger,propMention,propMentionParts,fileTagOf,parseMentions}=await import("../lib/attachments");
+ const {editorSegments}=await import("../lib/mention-editor");
+ const {typedMappings,expandMappings,applyTypedMappings,mapReferences,lightTags}=await import("../lib/staging");
+ const scene=["#زن","#ماشین-قرمز","#درخت-۲","#نور-۱"];
+ assert.equal(fileTagOf("تصویر-۱"),"image1");assert.equal(fileTagOf("تولید-۱"),undefined,"a generation is not a reference");
+ assert.equal(propMention("#زن","image1"),"#زن:تصویر-۱");assert.deepEqual(propMentionParts("#زن:تصویر-۱"),{prop:"#زن",file:"image1"});
+ assert.deepEqual(splitMentions("#زن:تصویر-۱ رو ببر جلو و #ماشین-قرمز عقب، #نوروز",scene).filter(p=>"tag" in p).map(p=>(p as {tag:string}).tag),["#زن:تصویر-۱","#ماشین-قرمز"]);
+ assert.deepEqual(parseMentions("#زن:تصویر-۱"),[],"without the scene, prop mentions are plain text for the server's file checks");
+ const known=new Set([...scene,"image1"]);
+ assert.deepEqual(editorSegments("#زن:تصویر-۱ جلو",known).segments,[{tag:"#زن:تصویر-۱"},{text:" جلو"}]);
+ assert.deepEqual(editorSegments("#زن:تصویر-۲ جلو",known).segments,[{tag:"#زن"},{text:":تصویر-۲ جلو"}],"an unknown file keeps only the prop as a badge");
+ assert.deepEqual(mentionTrigger("#زن:",4,scene),{start:0,query:"",prop:"#زن"},"«:» after a prop opens the references");
+ assert.deepEqual(mentionTrigger("سلام #ما",8,scene),{start:5,query:"ما"},"«#» finds the scene's props");
+ assert.equal(mentionTrigger("#نو",3,[]),undefined,"an ordinary hashtag is not a trigger");
+ assert.deepEqual(lightTags([...base.lights,...base.lights]).slice(0,2),["#نور-۱","#نور-۲"]);
+ // Whoush: typed mappings first, then its own for the rest.
+ const text="#زن:تصویر-۲ کنار #ماشین-قرمز";
+ assert.deepEqual(typedMappings(text),[{prop:"#زن",file:"image2"}]);
+ assert.equal(expandMappings(text),"#زن (#تصویر-۲) کنار #ماشین-قرمز");
+ const props=[{kind:"person" as const,label:"زن",x:0,z:-0.25,y:0,main:true,refs:["image1"]},{kind:"vehicle" as const,label:"ماشین قرمز",x:0.5,z:0.2,y:0}];
+ const typed=applyTypedMappings(props,typedMappings(text))!;
+ assert.deepEqual(typed[0].refs,["image1","image2"]);
+ const auto=mapReferences(applyTypedMappings(props.map(p=>({...p,refs:undefined})),[{prop:"#ماشین-قرمز",file:"image1"}]),[{tag:"image1",kind:"image",role:"character"}])!;
+ assert.deepEqual(auto.map(p=>p.refs),[undefined,["image1"]],"a typed mapping wins: Whoush does not also map that file");
+});
+
+test("a brief with a typed mapping reaches the planner as an ordinary mention and the scene shows it",async()=>{
+ // Media review is not on yet, so a brief with an image is planned but not offered; the plan is still shown with its scene.
+ const r=await orchestrateCreativeTurn({text:"#زن:تصویر-۱ کنار یک ماشین قرمز",attachments:[{id:crypto.randomUUID(),tag:"image1",kind:"image",mime:"image/png",bytes:1,sha256:"a".repeat(64),role:"character"}]});
+ assert.ok(r.status==="planned"||r.status==="unsupported",JSON.stringify(r));
+ const plan=(r as {plan:import("../lib/creative-plan").PublicCreativePlan}).plan;
+ assert.deepEqual(plan.staging?.props?.find(x=>x.kind==="person")?.refs,["image1"]);
+ assert.match(plan.intentSummaryFa,/#زن \(#تصویر-۱\)/,"the planner read the mapping as an ordinary mention");
+});

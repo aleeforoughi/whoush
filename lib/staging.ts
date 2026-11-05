@@ -1,7 +1,7 @@
 /** Labels and geometry for the plan diagrams (camera angle, framing, lighting). Pure: no React, safe on the server and in tests. */
 import {PROP_X_RANGE,PROP_Z_RANGE,type Staging,type StagingLight} from "./creative-plan";
 import {VISUALS} from "./visual-assets";
-import {displayTag} from "./attachments";
+import {displayTag,fileTagOf,normalizeMentionText} from "./attachments";
 
 export const CAMERA_ANGLE_FA:Record<Staging["cameraAngle"],string>={birds_eye:"از بالا (نمای پرنده)",high:"زاویهٔ بالا",eye_level:"هم‌سطح چشم",low:"زاویهٔ پایین",worms_eye:"از پایین (نمای کرم)",dutch:"زاویهٔ کج (داچ)"};
 export const SHOT_SIZE_FA:Record<Staging["shotSize"],string>={extreme_close_up:"خیلی نزدیک",close_up:"نمای نزدیک",medium_close_up:"نزدیک متوسط",medium:"نمای متوسط",medium_full:"تا زانو",full:"تمام‌قد",wide:"نمای باز",extreme_wide:"خیلی باز"};
@@ -9,7 +9,8 @@ export const LIGHT_ROLE_FA:Record<StagingLight["role"],string>={key:"نور اص
 export const LIGHT_SOURCE_FA:Record<StagingLight["source"],string>={sun:"خورشید",sky:"نور آسمان",window:"پنجره",softbox:"سافت‌باکس",led_panel:"پنل LED",practical:"چراغ صحنه",neon:"نئون",fire:"آتش",moon:"ماه",flash:"فلاش"};
 export const LIGHT_QUALITY_FA:Record<StagingLight["quality"],string>={soft:"نرم",hard:"سخت"};
 export const LIGHT_DIRECTION_FA:Record<StagingLight["direction"],string>={front:"از روبه‌رو",front_left:"جلو، چپ",left:"از چپ",back_left:"پشت، چپ",back:"از پشت",back_right:"پشت، راست",right:"از راست",front_right:"جلو، راست",top:"از بالا"};
-export const LIGHT_HEIGHT_FA:Record<StagingLight["height"],string>={low:"پایین",eye:"هم‌سطح",high:"بالا"};
+export const LIGHT_HEIGHT_FA:Record<StagingLight["height"],string>={floor:"کف",low:"پایین",eye:"هم‌سطح",high:"بالا",ceiling:"سقف"};
+const LIGHT_HEIGHT_EN:Record<StagingLight["height"],string>={floor:"at floor level (uplight)",low:"low height",eye:"eye-level height",high:"high height",ceiling:"overhead from the ceiling"};
 
 /**
  * Where the camera sits in the side view, as degrees above the subject's eye line (90 is straight above, negative is below). Dutch is eye level with the camera
@@ -68,7 +69,7 @@ export function describeStagingFa(s:Staging):string{
 }
 /** The arranged scene in English, appended to the provider-facing media prompt. */
 export function describeStagingEn(s:Staging):string{
- const lights=s.lights.map(l=>l.role+" light: "+l.quality+" "+l.source.replace("_"," ")+" from "+DIR_EN[l.direction]+(l.angle!==undefined?" ("+Math.round(l.angle)+"° in top view)":"")+", "+l.height+" height, "+l.colorTemperatureK+"K"+(l.colorHex?" "+l.colorHex+" gel":""));
+ const lights=s.lights.map(l=>l.role+" light: "+l.quality+" "+l.source.replace("_"," ")+" from "+DIR_EN[l.direction]+(l.angle!==undefined?" ("+Math.round(l.angle)+"° in top view)":"")+", "+LIGHT_HEIGHT_EN[l.height]+", "+l.colorTemperatureK+"K"+(l.colorHex?" "+l.colorHex+" gel":""));
  return "Staging: "+ANGLE_EN[s.cameraAngle]+" camera"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+"° from eye level)":"")+(orbitEn(s.cameraAzimuth??0)?", "+orbitEn(s.cameraAzimuth??0):"")+", "+SHOT_EN[s.shotSize]+(s.shotScale!==undefined?" ("+zoomFactor(s)+"x of a full shot)":"")+", "+placementEn(s.framing)+"; "+lights.join("; ")+"."+(s.props?.length?" "+describeLayoutEn(s.props):"");
 }
 /** The subject a brief is about, from its words: a person, an animal, a vehicle, a product or object, or an environment when there is no single main subject. */
@@ -300,6 +301,27 @@ export function propTags(props:readonly SceneProp[],withRefs=false):string[]{
  return props.map(p=>{const b="#"+p.label.trim().replace(/[\s\u200c]+/g,"-");const n=(seen.get(b)??0)+1;seen.set(b,n);const t=n===1?b:b+"-"+fa2(n);
   return withRefs&&p.refs?.length?t+":"+p.refs.map(r=>displayTag(r).slice(1)).join("،"):t;});
 }
+/** Each light's tag: «#نور-۱», «#نور-۲», ... in the order of the lighting setup, to point at it in the chat. */
+export const lightTags=(lights:readonly StagingLight[])=>lights.map((_,i)=>"#نور-"+fa2(i+1));
+const MAP_RE=()=>/(?<![\p{L}\p{N}\p{M}\u200c_@#])#([\p{L}\p{N}\u200c\u0640-]+?):([\p{L}\u200c\u0640]+[-\u2010\u2011\u2013\u2212]?\p{N}+)(?![\p{L}\p{N}\p{M}\u200c\u0640_-])/gu;
+/** The mappings the user typed («#زن:تصویر-۱»): which prop tag goes with which file, in order. */
+export function typedMappings(text:string):{prop:string;file:string}[]{
+ return [...text.matchAll(MAP_RE())].flatMap(m=>{const file=fileTagOf(m[2]);return file?[{prop:"#"+m[1],file}]:[];});
+}
+/** The brief as the planner reads it: a typed mapping «#زن:تصویر-۱» becomes «#زن (#تصویر-۱)», so the file is an ordinary mention (checked and described). */
+export const expandMappings=(text:string)=>text.replace(MAP_RE(),(all,prop:string,word:string)=>fileTagOf(word)?"#"+prop+" (#"+word+")":all);
+/** Applies the user's typed mappings to the props whose tags they name: that prop looks like that file (and no other prop does). They win over Whoush's own. */
+export function applyTypedMappings(props:readonly SceneProp[]|undefined,maps:readonly {prop:string;file:string}[]):SceneProp[]|undefined{
+ if(!props?.length||!maps.length)return props?[...props]:props;
+ const tags=propTags(props).map(normalizeMentionText);
+ let out=props.map(p=>({...p}));
+ for(const m of maps){
+  const i=tags.indexOf(normalizeMentionText(m.prop));if(i<0)continue;
+  out=out.map((p,j)=>j===i?p:{...p,refs:p.refs?.filter(r=>r!==m.file)}).map(p=>p.refs?.length===0?(({refs:_,...q})=>{void _;return q;})(p):p);
+  if(!(out[i].refs??[]).includes(m.file))out[i]={...out[i],refs:[...(out[i].refs??[]),m.file].slice(-4)};
+ }
+ return out;
+}
 /** Roles of a reference that describe a person (or an animal character); an object reference describes a product (or a vehicle). */
 const LOOK_ROLES=["character","outfit","hairstyle","makeup"];
 /**
@@ -310,8 +332,9 @@ export function mapReferences(props:readonly SceneProp[]|undefined,refs:readonly
  if(!props?.length||!refs.length)return props?[...props]:props;
  const out=props.map(p=>({...p}));
  const pick=(ok:(p:SceneProp)=>boolean)=>out.find(p=>p.main&&ok(p))??out.find(ok);
+ const taken=new Set(out.flatMap(p=>p.refs??[]));
  for(const r of refs){
-  if(r.kind!=="image")continue;
+  if(r.kind!=="image"||taken.has(r.tag))continue;
   const t=LOOK_ROLES.includes(r.role)?pick(p=>p.kind==="person")??pick(p=>p.kind==="animal"):r.role==="object"?pick(p=>p.kind==="object")??pick(p=>p.kind==="vehicle"):undefined;
   if(t&&!(t.refs??[]).includes(r.tag)&&(t.refs?.length??0)<4)t.refs=[...(t.refs??[]),r.tag];
  }

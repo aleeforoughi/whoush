@@ -9,7 +9,7 @@ import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./
 import {displayTag,inferAttachmentRoles,isGenerationTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
 import {providerForModelId} from "./llm-routing";
 import {replyScriptFor} from "./finglish";
-import {applyStagingCues,describeStagingEn,describeStagingFa,detectProps,detectSubject,mapReferences,tidyProps} from "./staging";
+import {applyStagingCues,applyTypedMappings,describeStagingEn,describeStagingFa,detectProps,detectSubject,expandMappings,mapReferences,tidyProps,typedMappings} from "./staging";
 import {findGif,type ChatGif} from "./giphy";
 import {detectMediaKind,suggestModel} from "./router";
 import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
@@ -308,7 +308,9 @@ export function mediaRequirements(input:{characterRef?:{angles:readonly string[]
 }
 // ---- orchestration ----
 export async function orchestrateCreativeTurn(rawInput:unknown,deps:OrchestratorDeps={}):Promise<OrchestratorResult>{
- const parsed=CreativeTurnInputSchema.parse(rawInput),audit=deps.audit??defaultAuditSink,now=deps.now??(()=>new Date());
+ const raw=CreativeTurnInputSchema.parse(rawInput);
+ // Mappings typed in the brief («#زن:تصویر-۱»: this prop looks like that file) are kept aside; the planner reads them as «#زن (#تصویر-۱)», an ordinary mention.
+ const typed=typedMappings(raw.text),parsed={...raw,text:expandMappings(raw.text)},audit=deps.audit??defaultAuditSink,now=deps.now??(()=>new Date());
  const stage=(x:TurnStage)=>{try{deps.onStage?.(x);}catch{ /* progress is best effort */ }};
  stage("reading");
  const safety=evaluateTextSafety(parsed.text);
@@ -426,7 +428,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // misread), what the brief says explicitly (angle, shot size, side, lighting words) wins over the planner's choice, and the resulting scene is written into
  // the provider prompt as the deciding direction, so the output follows what the canvas shows.
  if(plan.staging&&!parsed.stagingOverride){
-  plan.staging=applyStagingCues({...plan.staging,props:mapReferences(tidyProps(plan.staging.props),refs)},normalizePersian(parsed.text));
+  plan.staging=applyStagingCues({...plan.staging,props:mapReferences(applyTypedMappings(tidyProps(plan.staging.props),typed),refs)},normalizePersian(parsed.text));
   const en=" Scene (must match): "+describeStagingEn(plan.staging);
   plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
  }

@@ -31,7 +31,7 @@ import {fa} from "@/lib/format";
 import {STORAGE_FULL_FA,getProject,listAssets,saveAsset,saveProject} from "@/lib/project-store";
 import {MAX_MESSAGES,assetToAttachment,attachmentToAsset,autoTitle,rerunSource,uniqueById,answerBrief,historyFor,toggleReaction,generationTagsIn,referencedGenerations,toGenerationRef,withGenerationTags,type GifSnapshot,type ProposalSnapshot,type Project,type StoredMessage} from "@/lib/projects";
 import {MAX_GENERATION_REFS,type ReactionEmoji,type Staging} from "@/lib/creative-plan";
-import {describeStagingChangesFa} from "@/lib/staging";
+import {LIGHT_SOURCE_FA,describeStagingChangesFa,lightTags,propTags} from "@/lib/staging";
 import {STAGE_TEXT,postAgentTurn} from "@/lib/agent-stream";
 import type {TurnStage} from "@/lib/orchestrator-stages";
 import {replyScriptFor} from "@/lib/finglish";
@@ -154,7 +154,13 @@ export function Studio(){
  /** The generations of this chat by tag (#تولید-۱ ...): every proposal is one. Only these can be referenced from this chat. */
  const generationMap=new Map(messages.flatMap(m=>m.kind==="proposal"&&m.snapshot.tag?[[m.snapshot.tag,m.snapshot as ProposalSnapshot&{tag:string}] as const]:[]));
  const generationSet=new Set(generationMap.keys());
- const mentionOptions:MentionOption[]=[...conversation.map(attachmentOption),...[...generationMap.values()].map(g=>({id:"gen-"+g.tag,tag:g.tag,badgeFa:"تولید",captionFa:g.intentSummaryFa}))];
+ // The latest scene («بوم» of the newest generation, as the user arranged it): its props and lights can be named in the chat (#زن, #نور-۱).
+ const sceneMsg=[...messages].reverse().find(m=>m.kind==="proposal"&&m.snapshot.plan?.staging);
+ const scene=sceneMsg&&sceneMsg.kind==="proposal"?(sceneEdit?.id===sceneMsg.id?sceneEdit.staging:sceneMsg.snapshot.plan.staging):undefined;
+ const sceneGen=sceneMsg&&sceneMsg.kind==="proposal"&&sceneMsg.snapshot.tag?" · "+displayTag(sceneMsg.snapshot.tag):"";
+ const mentionOptions:MentionOption[]=[...conversation.map(attachmentOption),...[...generationMap.values()].map(g=>({id:"gen-"+g.tag,tag:g.tag,badgeFa:"تولید",captionFa:g.intentSummaryFa})),
+  ...(scene?.props?propTags(scene.props).map((t,i)=>({id:"prop-"+i,tag:t,badgeFa:"صحنه",captionFa:scene.props![i].label+sceneGen})):[]),
+  ...(scene?lightTags(scene.lights).map((t,i)=>({id:"light-"+i,tag:t,badgeFa:"نور",captionFa:LIGHT_SOURCE_FA[scene.lights[i].source]+sceneGen})):[])];
  /** Keep ?project= and ?character= in step with the state without reloading or adding history entries. */
  function syncUrl(project:string|null,character:string|null){
   const query=new URLSearchParams(window.location.search);

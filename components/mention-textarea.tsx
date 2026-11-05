@@ -1,7 +1,7 @@
 "use client";
 import {useEffect,useId,useImperativeHandle,useLayoutEffect,useRef,useState,type ClipboardEvent,type KeyboardEvent,type ReactNode,type RefObject} from "react";
 import {Badge,Card} from "@aleeforoughi/feather-react";
-import {ATTACHMENT_KINDS,displayTag,insertMention,isMediaKind,mentionTrigger,roleLabelFa,tagMatchesQuery,type LocalAttachment} from "@/lib/attachments";
+import {ATTACHMENT_KINDS,displayTag,insertMention,isMediaKind,isPropTag,mentionTrigger,propMatchesQuery,propMention,roleLabelFa,tagMatchesQuery,type LocalAttachment} from "@/lib/attachments";
 import {editorSegments,removeBadge,type EditorSegment} from "@/lib/mention-editor";
 
 /** One entry of the `#` picker: a file or a generation of this chat, with a short badge («تصویر», «تولید») and an optional caption (role, intent). */
@@ -91,13 +91,16 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
  const el=useRef<HTMLDivElement>(null);
  const rendered=useRef<string|null>(null);
  const composing=useRef(false);
- const [trigger,setTrigger]=useState<{start:number;query:string}|null>(null);
+ const [trigger,setTrigger]=useState<{start:number;query:string;prop?:string}|null>(null);
  const [active,setActive]=useState(0);
  /** The `#` or `@` position the user closed with Escape: the list stays closed until the token changes. */
  const dismissed=useRef(-1);
  const known=new Set(options.map(o=>o.tag));
  const knownKey=[...known].sort().join(",");
- const matches=trigger?options.filter(o=>tagMatchesQuery(o.tag,trigger.query)):[];
+ const props=options.filter(o=>isPropTag(o.tag)).map(o=>o.tag);
+ // After «#زن:» the list is the images to map the prop to; otherwise files, generations and the scene's props.
+ const matches=!trigger?[]:trigger.prop?options.filter(o=>/^image\d/.test(o.tag)&&tagMatchesQuery(o.tag,trigger.query))
+  :options.filter(o=>isPropTag(o.tag)?propMatchesQuery(o.tag,trigger.query):tagMatchesQuery(o.tag,trigger.query));
  const open=trigger!==null&&matches.length>0,current=Math.min(active,Math.max(0,matches.length-1));
  useEffect(()=>{if(open)document.getElementById(optionId(current))?.scrollIntoView({block:"nearest"});});
 
@@ -118,10 +121,10 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
  function sync(){
   const root=el.current;if(!root)return;
   const caret=caretOf(root);
-  const t=caret===undefined?undefined:mentionTrigger(serialize(root),caret);
+  const t=caret===undefined?undefined:mentionTrigger(serialize(root),caret,props);
   if(!t)dismissed.current=-1;
   if(!t||t.start===dismissed.current){setTrigger(null);return;}
-  if(!trigger||trigger.start!==t.start||trigger.query!==t.query)setActive(0);
+  if(!trigger||trigger.start!==t.start||trigger.query!==t.query||trigger.prop!==t.prop)setActive(0);
   setTrigger(t);
  }
  function onInput(){
@@ -148,7 +151,7 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
   const root=el.current;if(!root||!trigger)return;
   const base=rendered.current??value,caret=caretOf(root)??base.length;
   const end=caret+(/^[\p{L}\p{N}‌ـ‐‑–−\-]*/u.exec(base.slice(caret))?.[0].length??0);
-  insertAt(trigger.start,end,o.tag);
+  insertAt(trigger.start,end,trigger.prop?propMention(trigger.prop,o.tag):o.tag);
  }
  useImperativeHandle(handleRef,()=>({
   focus:()=>{const root=el.current;if(!root)return;root.focus();if(caretOf(root)===undefined)placeCaret(root,(rendered.current??value).length);},
@@ -209,11 +212,11 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
     }}/>
   </div>
   </div>
-  <Card id={listId} role="listbox" aria-label="پیوست‌ها و تولیدهای این گفت‌وگو" size="sm" className={open?"absolute inset-x-0 bottom-full z-20 mb-1 max-h-56 overflow-y-auto bg-popover p-1 shadow-2":"hidden"}>
+  <Card id={listId} role="listbox" aria-label={trigger?.prop?"تصویرهای مرجع برای "+trigger.prop:"پیوست‌ها، تولیدها و وسیله‌های صحنهٔ این گفت‌وگو"} size="sm" className={open?"absolute inset-x-0 bottom-full z-20 mb-1 max-h-56 overflow-y-auto bg-popover p-1 shadow-2":"hidden"}>
    {matches.map((o,i)=><div key={o.id} id={optionId(i)} role="option" aria-selected={i===current}
     onMouseDown={e=>{e.preventDefault();pick(o);}} onMouseMove={()=>{if(i!==current)setActive(i);}}
     className={"flex min-h-control cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 rounded-control px-3 py-2 "+(i===current?"bg-surface-hover":"")}>
-    <bdi className="type-label text-fg-primary">{displayTag(o.tag)}</bdi>
+    <bdi className="type-label text-fg-primary">{trigger?.prop?propMention(trigger.prop,o.tag):displayTag(o.tag)}</bdi>
     <Badge variant="outline">{o.badgeFa}</Badge>
     {o.captionFa&&<span className="min-w-0 truncate type-caption text-fg-secondary">{o.captionFa}</span>}
    </div>)}

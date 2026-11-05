@@ -2,9 +2,9 @@
 import {useEffect,useId,useRef,useState,type KeyboardEvent,type PointerEvent,type ReactNode} from "react";
 import {Box,ChevronDown,Plus,RotateCcw,Trash2,X} from "lucide-react";
 import {Button,Icon} from "@aleeforoughi/feather-react";
-import {LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
+import {LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
- SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,facingFa,propTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
+ SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 import {fa} from "@/lib/format";
 
@@ -114,7 +114,7 @@ export function StagingEditor({staging,aspectRatio,onChange}:{staging:Staging;as
     <Viewport {...cap.light}>
      <LightView staging={draft} editable={editable} selected={lightSel} onSelect={setLightSel} onLight={(i,deg)=>setLight(i,{angle:deg,direction:snapDirection(deg)})}/>
     </Viewport>
-    {editable&&draft.lights[lightSel]&&<div className="mt-2"><LightInspector light={draft.lights[lightSel]} canRemove={draft.lights.length>1}
+    {editable&&draft.lights[lightSel]&&<div className="mt-2"><LightInspector light={draft.lights[lightSel]} tag={lightTags(draft.lights)[lightSel]} canRemove={draft.lights.length>1}
      onChange={p=>setLight(lightSel,p)}
      onRemove={()=>{const i=lightSel;setDraft(d=>({...d,lights:d.lights.filter((_,j)=>j!==i)}));setLightSel(0);}}
      onAdd={draft.lights.length<4?()=>{setDraft(d=>({...d,lights:[...d.lights,{role:"fill",direction:"front_right",height:"eye",quality:"soft",source:"softbox",colorTemperatureK:5600}]}));setLightSel(draft.lights.length);}:undefined}/></div>}
@@ -368,7 +368,7 @@ function LightView({staging,editable,selected,onSelect,onLight}:{staging:Staging
    const on=selected===i,deg=Math.atan2(y-C[1],x-C[0])*180/Math.PI;
    const [ox,oy]=top?[x,y-20]:polar(C[0],C[1],R+19,deg),[lx,ly]=top?[x,y+21]:polar(C[0],C[1],R-22,deg);
    const key=(e:KeyboardEvent)=>{const step=e.key==="ArrowRight"||e.key==="ArrowDown"?10:e.key==="ArrowLeft"||e.key==="ArrowUp"?-10:0;if(!step||top)return;e.preventDefault();onSelect(i);onLight(i,(((lightAngleOf(l)??90)+step)%360+360)%360);};
-   return <g key={i} role={editable?"button":undefined} tabIndex={editable?0:undefined} aria-label={LIGHT_ROLE_FA[l.role]+"، "+LIGHT_DIRECTION_FA[l.direction]+(l.angle!==undefined?" ("+Math.round(l.angle)+" درجه)":"")} aria-pressed={editable?on:undefined}
+   return <g key={i} role={editable?"button":undefined} tabIndex={editable?0:undefined} aria-label={lightTags(staging.lights)[i]+"، "+LIGHT_DIRECTION_FA[l.direction]+(l.angle!==undefined?" ("+Math.round(l.angle)+" درجه)":"")} aria-pressed={editable?on:undefined}
     onKeyDown={editable?key:undefined} onClick={editable?()=>onSelect(i):undefined}
     onPointerDown={editable&&!top?e=>{onSelect(i);capture(svg.current,e.pointerId);const [px,py]=pt(e);setDrag({i,deg:Math.atan2(py-C[1],px-C[0])*180/Math.PI});}:undefined}
     className={editable?"cursor-grab outline-none":""}>
@@ -378,9 +378,9 @@ function LightView({staging,editable,selected,onSelect,onLight}:{staging:Staging
     <circle cx={x} cy={y} r={22} fill="transparent"/>
     <circle cx={x} cy={y} r={soft?15:10} fill={"url(#"+g+")"}/>
     <circle cx={x} cy={y} r={soft?6.5:5} fill={color} className={on?"stroke-primary":"stroke-background"} strokeWidth={on?1.2:0.6}/>
-    {/* The source's icon sits outside the circle, the role label inside, so neither covers the other. */}
+    {/* The source's icon sits outside the circle, its number (#نور-N) inside, so neither covers the other. */}
     <Asset id={LIGHT_ASSETS[l.source]} x={ox} y={oy+8} h={16} opacity={.95}/>
-    <text x={lx} y={ly+3} textAnchor="middle" fill="currentColor" fillOpacity=".8" fontSize={9}>{LIGHT_ROLE_FA[l.role].replace("نور ","")}</text>
+    <text x={lx} y={ly+3} textAnchor="middle" fill="currentColor" fillOpacity=".8" fontSize={9}>{fa(i+1)}</text>
    </g>;
   })}
   {target?<Asset id={PROP_ASSETS[target.kind].top} x={C[0]} y={C[1]+20} h={target.kind==="building"?44:target.kind==="vehicle"?48:40}/>:<Asset id="env-top" x={C[0]} y={C[1]+26} h={52}/>}
@@ -412,19 +412,22 @@ function PropInspector({prop:p,tag,reach:r,onChange,onClose}:{prop:SceneProp;tag
 }
 
 /** The selected light's settings. */
-function LightInspector({light:l,canRemove,onChange,onRemove,onAdd}:{light:StagingLight;canRemove:boolean;onChange:(p:Partial<StagingLight>)=>void;onRemove:()=>void;onAdd?:()=>void}){
+function LightInspector({light:l,tag,canRemove,onChange,onRemove,onAdd}:{light:StagingLight;tag:string;canRemove:boolean;onChange:(p:Partial<StagingLight>)=>void;onRemove:()=>void;onAdd?:()=>void}){
  const ang=lightAngleOf(l)??90;
  return <div className="flex flex-col gap-3 rounded-card border border-line-secondary bg-surface-subtle p-3">
-  <SliderRow label={"جهت نور ("+LIGHT_ROLE_FA[l.role]+")"} valueText={l.direction==="top"?"از بالا":LIGHT_DIRECTION_FA[l.direction]+" · "+fa(Math.round(ang))+"°"} min={0} max={359} step={1} value={ang}
+  <div className="flex items-center gap-2"><SourceIcon id={LIGHT_ASSETS[l.source]}/><bdi className="type-label text-primary">{tag}</bdi><span className="type-caption text-fg-secondary">{LIGHT_SOURCE_FA[l.source]}</span></div>
+  <SliderRow label="جهت نور" valueText={l.direction==="top"?"از بالا":LIGHT_DIRECTION_FA[l.direction]+" · "+fa(Math.round(ang))+"°"} min={0} max={359} step={1} value={ang}
    disabled={l.direction==="top"} onChange={v=>onChange({angle:v,direction:snapDirection(v)})}/>
-  <div className="flex flex-wrap items-center gap-1" role="radiogroup" aria-label="نقش نور">{LIGHT_ROLES.map(r=><Chip key={r} role="radio" on={l.role===r} onClick={()=>onChange({role:r})}>{LIGHT_ROLE_FA[r]}</Chip>)}</div>
   <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="منبع نور">{LIGHT_SOURCES.map(s=><button key={s} type="button" role="radio" aria-checked={l.source===s} onClick={()=>onChange({source:s})} title={LIGHT_SOURCE_FA[s]}
    className={"flex h-9 items-center gap-1 rounded-control border px-2 type-caption motion-hover "+(l.source===s?"border-primary bg-surface-selected text-fg-primary":"border-line-secondary text-fg-secondary hover:bg-surface-hover")}>
    <SourceIcon id={LIGHT_ASSETS[s]}/>{LIGHT_SOURCE_FA[s]}</button>)}</div>
   <div className="flex flex-wrap items-center gap-3">
    <div className="flex gap-1" role="radiogroup" aria-label="کیفیت نور">{(["soft","hard"] as const).map(q=><Chip key={q} role="radio" on={l.quality===q} onClick={()=>onChange({quality:q})}>{LIGHT_QUALITY_FA[q]}</Chip>)}</div>
-   <div className="flex gap-1" role="radiogroup" aria-label="ارتفاع نور">{(["low","eye","high"] as const).map(h=><Chip key={h} role="radio" on={l.height===h} onClick={()=>onChange({height:h})}>{LIGHT_HEIGHT_FA[h]}</Chip>)}</div>
-   <Chip on={l.direction==="top"} onClick={()=>onChange({direction:l.direction==="top"?"front_left":"top"})}>از بالا</Chip>
+  </div>
+  {/* The light's height, floor to ceiling, on its own line. A planner's light «from above» (direction top) shows as the ceiling. */}
+  <div className="flex flex-wrap items-center gap-2"><span className="type-caption text-fg-secondary">زاویهٔ نور</span>
+   <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="زاویهٔ نور">{LIGHT_HEIGHTS.map(h=>{const on=l.direction==="top"?h==="ceiling":l.height===h;
+    return <Chip key={h} role="radio" on={on} onClick={()=>onChange({height:h,...(l.direction==="top"?{direction:snapDirection(90),angle:90}:{})})}>{LIGHT_HEIGHT_FA[h]}</Chip>;})}</div>
   </div>
   <label className="flex flex-col gap-1 type-caption text-fg-secondary">
    <span>دمای رنگ: <bdi>{fa(l.colorTemperatureK)}</bdi> کلوین</span>
