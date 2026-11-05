@@ -141,7 +141,8 @@ export const SUBJECT_ASSETS:Partial<Record<NonNullable<Staging["subject"]>,{side
 }
 export const LIGHT_ASSETS:Record<StagingLight["source"],string>={sun:"light-sun",sky:"light-sky",window:"light-window",softbox:"light-softbox",led_panel:"light-led-panel",practical:"light-practical",neon:"light-neon",fire:"light-fire",moon:"light-moon",flash:"light-flash"};
 /** Gel colours offered for a light (none means its colour temperature). */
-export const GEL_COLORS=["#ff5a5f","#ff9f1c","#ffd23f","#3ddc97","#4f8cff","#b07cff"] as const;
+/** The light colours offered: red, a deep orange (clearly coloured, never mistaken for warm tungsten or candle light), green, blue and violet. */
+export const GEL_COLORS=["#ff5a5f","#ff6a00","#3ddc97","#4f8cff","#b07cff"] as const;
 /**
  * What the user changed in the diagrams, as short Persian lines for the message sent to Whoush («زاویهٔ دوربین: هم‌سطح چشم ← زاویهٔ پایین»). Lights are compared by
  * position in the list; added and removed lights are named. Empty when nothing changed.
