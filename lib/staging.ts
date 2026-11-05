@@ -52,8 +52,8 @@ const hslHex=(h:number,l:number)=>{const c=(1-Math.abs(2*l-1)),x=c*(1-Math.abs((
  return "#"+[r,g,b].map(v=>Math.round((v+m)*255).toString(16).padStart(2,"0")).join("");};
 /** A coloured light at a tint: always fully saturated, from a bright neon glow (light, never washed out) to a deep, strong colour. */
 // An orange's bright end stops sooner: lighter, it would read as warm white light (tungsten, a candle) instead of a coloured one.
-export const tintHex=(colorHex:string,tint:number)=>{const h=hueOf(colorHex.toLowerCase()),top=h>=15&&h<=50?0.6:0.72,t=Math.max(0,Math.min(1,tint));
- return hslHex(h,top-(top-0.46)*t);};
+export const tintHex=(colorHex:string,tint:number)=>{const h=hueOf(colorHex.toLowerCase()),top=h>=15&&h<=50?0.64:0.78,t=Math.max(0,Math.min(1,tint));
+ return hslHex(h,top-(top-0.32)*t);};
 /** The light's colour as drawn: its white at its temperature, or its colour at its tint. */
 export const lightHex=(l:StagingLight)=>l.colorHex?tintHex(l.colorHex,tintOf(l)):kelvinToHex(l.colorTemperatureK);
 /** A tint in words: from a bright, light colour to a deep, strong one. */

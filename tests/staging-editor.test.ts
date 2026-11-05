@@ -427,7 +427,9 @@ test("a coloured light's tint: how strong its colour is reaches the drawing, Who
  const l={role:"key" as const,direction:"left" as const,height:"high" as const,quality:"soft" as const,source:"softbox" as const,colorTemperatureK:5600,colorHex:"#ff5a5f"};
  // Always fully saturated: light at a low tint (a bright glow, not washed out toward white), deep at a high one.
  const lum=(h:string)=>[1,3,5].reduce((a,i)=>a+parseInt(h.slice(i,i+2),16),0),sat=(h:string)=>{const v=[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));return Math.max(...v)-Math.min(...v);};
- assert.ok(lum(lightHex({...l,tint:0}))>lum(lightHex({...l,tint:1})));assert.ok(sat(lightHex({...l,tint:0}))>=110&&sat(lightHex({...l,tint:1}))>=230);
+ const [b0,b5,b1]=[0,0.5,1].map(t=>lightHex({...l,tint:t})),min=(h:string)=>Math.min(...[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)));
+ assert.ok(lum(b0)>lum(b5)*1.2&&lum(b5)>lum(b1)*1.4,"bright, middle and deep clearly apart: "+[b0,b5,b1].join(" "));
+ assert.equal(min(b1),0,"deep stays pure (no white in it)");assert.ok(sat(b0)>=100,"bright is still a colour, not white");
  const s={...base,lights:[{...l,tint:0.2}]};
  assert.match(describeStagingEn(s),/a bright, neon-like #ff5a5f colour gel/);assert.match(describeStagingFa(s),/رنگ #ff5a5f \(روشن\)/);
  assert.ok(describeStagingChangesFa(s,{...s,lights:[{...l,tint:0.9}]}).some(x=>x.includes("شدت رنگ روشن ← پررنگ")));
