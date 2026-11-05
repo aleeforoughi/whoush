@@ -296,6 +296,18 @@ export function moveFocusPoint(s:Staging,anchor:Staging|undefined,W:number,H:num
  const c=(v:number)=>Math.max(-1,Math.min(1,v));
  return {focusPoint:fp,framing:{x:c(fr.x+(a0-a1)/(W/2)),y:c(fr.y+(b0-b1)/(H/2))}};
 }
+/**
+ * Where the frame's centre point (the zoom pivot: the dominant subject's face by default, its detail, or the dot the user moved) sits on the dominant
+ * subject, for the camera diagrams' sight line: `height` as a share of the subject's height above its ground, `lateral` sideways in the camera's view
+ * (ground units, positive to the right).
+ */
+export function centerOnSubject(s:Staging,anchor:Staging|undefined,aspect:string):{height:number;lateral:number}{
+ const {W,H}=frameSize(aspect),cam=frameCamera(s,anchor,W,H),props=s.props??[],m=props.find(p=>p.main)??props[0];
+ if(!m)return {height:0.5,lateral:0};
+ const v=propInView(m,W,H,cam.unitH),spread=W*0.42*(1-depthT(m.z)*0.4);
+ const c=(x:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,x));
+ return {height:c((v.groundY-cam.F[1])/Math.max(v.h,1e-6),-0.3,1.8),lateral:c((cam.F[0]-v.x)/spread,-3,3)};
+}
 export function frameCamera(s:Staging,anchor:Staging|undefined,W:number,H:number){
  const WORLD=SHOT_BODY_FRACTION.full,unitH=H*0.92/WORLD,k=WORLD/Math.max(scaleOf(s),0.05),fr=s.framing??{x:0,y:0};
  const ap=(anchor??s).props??[],am=ap.find(p=>p.main)??ap[0];

@@ -4,7 +4,7 @@ import {Box,ChevronDown,Lock,LockOpen,Plus,RotateCcw,Trash2,X} from "lucide-reac
 import {Button,Icon} from "@aleeforoughi/feather-react";
 import {FOCUS_DETAILS,LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
- SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
+ SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 import {fa} from "@/lib/format";
 
@@ -111,15 +111,11 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
    </span>
    {!open&&<span className="grid grid-cols-1 gap-2">
     <Snap c={cap.frame}><FrameView staging={draft} anchor={anchor} aspect={aspect}/></Snap>
-    <Snap c={cap.camera}><CameraView staging={draft} editable={false} onCamera={()=>{}}/></Snap>
+    <Snap c={cap.camera}><CameraView staging={draft} anchor={anchor} aspect={aspect} editable={false} onCamera={()=>{}}/></Snap>
     <Snap c={cap.light}><LightView staging={draft} editable={false} selected={-1} onSelect={()=>{}} onLight={()=>{}}/></Snap>
    </span>}
   </button>
   <div id={bodyId} hidden={!open} className="flex min-w-0 flex-col gap-3">
-  {editable&&<div className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-line-secondary px-3 py-2">
-   <span className="type-caption text-fg-secondary">{autopilot?"هووش بهترین تنظیمات دوربین رو خودش انتخاب می‌کنه.":"دستی: هر چی تنظیم کنی همون می‌مونه."}</span>
-   <Toggle label="اتوپایلوت هووش" on={autopilot} onChange={setAutopilot}/>
-  </div>}
   <div className="flex min-w-0 flex-col gap-3">
    <div ref={frameArea}><Viewport {...cap.frame}>
     <FrameView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={setPropSel} onProp={(i,x,z)=>setProp(i,{x,z})} onZoom={setDistance} locked={locked} onLock={setLocked}
@@ -146,11 +142,11 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
     {/* The two camera views side by side, each its own tile: from the side (height and distance) and from above (the orbit), synced through one scene. */}
     <div className="grid grid-cols-2 gap-2">
      <Tile label="زاویه دوربین / عمودی">
-      <CameraView staging={draft} editable={editable} onCamera={c=>{aim();setDraft(d=>{const n=c.flip?orbitCamera(d,180):d;
+      <CameraView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onCamera={c=>{aim();setDraft(d=>{const n=c.flip?orbitCamera(d,180):d;
        return {...n,cameraElevation:c.elevation,cameraAngle:n.cameraAngle==="dutch"?"dutch":snapElevation(c.elevation)};});}}/>
      </Tile>
      <Tile label="زاویه دوربین / افقی">
-      <OrbitView staging={draft} editable={editable} onOrbit={c=>orbitTo(c.azimuth)}/>
+      <OrbitView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onOrbit={c=>orbitTo(c.azimuth)}/>
      </Tile>
     </div>
     {editable&&<SliderRow label="ارتفاع دوربین" ends={["پایین","بالا"]} valueText={CAMERA_ANGLE_FA[draft.cameraAngle]+" · "+fa(Math.round(elevationOf(draft)))+"°"} min={-60} max={85} step={1} value={elevationOf(draft)}
@@ -165,20 +161,23 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
       onClick={()=>setDraft(d=>{const {shotStyle:_s,...rest}=d;void _s;return v?{...rest,shotStyle:v}:rest;})}>{l}</Chip>)}</div>}
     {/* The camera's distance on its own tile, after the angles: drag the camera nearer or farther (the frame's zoom follows), or use the slider. */}
     <Tile label="فاصله دوربین">
-     <DistanceView staging={draft} editable={editable} onDistance={setDistance}/>
+     <DistanceView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onDistance={setDistance}/>
     </Tile>
     {editable&&<SliderRow label="فاصلهٔ دوربین (همون زوم کادر)" ends={["نزدیک","دور"]} valueText={SHOT_SIZE_FA[draft.shotSize]+" · زوم "+fa(zoomFactor(draft))+"×"} min={0} max={1} step={0.001} value={distanceOf(draft)} onChange={setDistance}/>}
     {/* Lens and aperture: Whoush's pick for the scene (lib/staging.ts, lensFor) until the user moves a slider; bokeh is the aperture opened wide. */}
     {editable&&(()=>{const l=lensFor(draft),auto=(on:boolean)=>on?" · خودکار":"";
      return <>
+      {/* Right after the distance: Whoush Autopilot (on: Whoush keeps the lens and aperture right for the scene; off: fully manual) beside bokeh (on: the
+          aperture opens wide for a soft background; off: stopped down, everything sharp). */}
+      <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1">
+       <Toggle label="اتوپایلوت هووش" on={autopilot} onChange={setAutopilot}/>
+       <Toggle label="بوکه" on={!l.deep} onChange={on=>setManual({apertureF:on?1.8:8})}/>
+      </div>
+      <p className="-mt-1 text-center type-caption text-fg-secondary">{autopilot?"هووش بهترین لنز و دیافراگم رو خودش انتخاب می‌کنه.":"دستی: هر چی تنظیم کنی همون می‌مونه."}</p>
       <SliderRow label="لنز (فاصلهٔ کانونی)" ends={["واید","تله"]} valueText={fa(l.focalLengthMm)+" میلی‌متر"+auto(l.auto.lens)} min={0} max={1} step={0.001} value={lensSlider(l.focalLengthMm)}
        onChange={v=>setManual({lensMm:lensFromSlider(v)})}/>
       <SliderRow label="دیافراگم" ends={["باز، محو","بسته، واضح"]} valueText={l.aperture+auto(l.auto.aperture)} min={0} max={1} step={0.001} value={apertureSlider(l.apertureF)}
        onChange={v=>setManual({apertureF:apertureFromSlider(v)})}/>
-      <div className="flex flex-wrap items-center justify-center gap-2">
-       {/* A plain toggle: on opens the aperture wide for a soft background, off stops it down so everything is sharp (both are hand settings). */}
-       <Toggle label="بوکه" on={!l.deep} onChange={on=>setManual({apertureF:on?1.8:8})}/>
-      </div>
      </>;})()}
    </Viewport></div>
    <div>
@@ -297,11 +296,12 @@ const SIDE:Record<SceneProp["kind"],string>={person:"person-side",object:"object
  * The camera's distance, its own tile: the dominant subject on the left and the camera on a track to its right, its lens on the line to the subject's
  * focus (the face for a person). Drag the camera along the track: nearer zooms the frame in, farther zooms out (the same value as the frame's zoom).
  */
-function DistanceView({staging,editable,onDistance}:{staging:Staging;editable:boolean;onDistance:(v:number)=>void}){
+function DistanceView({staging,anchor,aspect,editable,onDistance}:{staging:Staging;anchor?:Staging;aspect?:string;editable:boolean;onDistance:(v:number)=>void}){
  const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false),tint=useId(),grab=useRef(0);
  const VW=440,VH=150,X0=60,NEAR=150,FAR=400,ground=VH-12;
  const m=mainProp(staging),kind=m?.kind,size=kind?Math.min(116,PROP_HEIGHT[kind]*116):70;
- const focusY=kind?ground-size*(kind==="person"?0.88:0.5):ground-30;
+ // The camera's track runs at the height of the frame's centre point on the subject (its face by default).
+ const focusY=kind?Math.max(14,Math.min(ground-4,ground-size*centerOnSubject(staging,anchor,aspect??"16:9").height)):ground-30;
  const dist=distanceOf(staging),camX=NEAR+(FAR-NEAR)*dist;
  // The subject as the camera sees it, the same image as the frame and the vertical angle tile.
  const sp=m?sprite(m):undefined,mTint=m?propTints(staging.props??[])[(staging.props??[]).indexOf(m)]:undefined;
@@ -335,7 +335,7 @@ const radiusOf=(v:number,min:number,span:number)=>min+span*Math.max(0,Math.min(1
  * distance (the frame's zoom follows). The subject is drawn the way it faces the camera (its face toward the camera, its back, or side on), like the frame
  * and the top view. Sized so the whole circle stays inside at any distance.
  */
-function CameraView({staging,editable,onCamera}:{staging:Staging;editable:boolean;onCamera:(c:{elevation:number;flip?:boolean})=>void}){
+function CameraView({staging,anchor,aspect,editable,onCamera}:{staging:Staging;/** For the sight line: the frame's centre point (see FrameView). */anchor?:Staging;aspect?:string;editable:boolean;onCamera:(c:{elevation:number;flip?:boolean})=>void}){
  const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false),tint=useId();
  // Which side of the subject the camera is drawn on (1: right). It changes when a drag carries the camera over the top, so nothing jumps.
  const [dragSide,setSide]=useState<1|-1>(1);
@@ -347,7 +347,9 @@ function CameraView({staging,editable,onCamera}:{staging:Staging;editable:boolea
  // Angle only: the camera stays at one distance here (the distance has its own tile).
  const elev=elevationOf(staging),R=56;
  const phi=side===1?elev:180-elev,[cx,cy]=polar(focus[0],focus[1],R,-phi);
- const aim=Math.atan2(focus[1]-cy,focus[0]-cx)*180/Math.PI,roll=rollOf(staging),camLeft=cx<focus[0];
+ // The sight line ends at the frame's centre point on the subject (its face by default, the detail the shot is about, or where the user moved the dot).
+ const target:[number,number]=kind?[focus[0],Math.max(6,Math.min(VH-6,ground-size*centerOnSubject(staging,anchor,aspect??"16:9").height))]:focus;
+ const aim=Math.atan2(target[1]-cy,target[0]-cx)*180/Math.PI,roll=rollOf(staging),camLeft=cx<focus[0];
  // The subject as this diagram's viewer sees it: facing the camera's side when it faces the camera (sprite: 90 faces right, 0 faces the viewer).
  // The subject as the camera sees it (front, three-quarter, profile, rear three-quarter or back), the same image as the frame: orbiting behind it shows its back.
  const sp=m?sprite(m):undefined;
@@ -368,7 +370,8 @@ function CameraView({staging,editable,onCamera}:{staging:Staging;editable:boolea
   <line x1={6} x2={VW-6} y1={ground} y2={ground} stroke="currentColor" strokeOpacity=".3" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
   {mTint&&<Tint id={tint+"-m"} color={mTint}/>}
   {kind&&sp?<Asset id={sp.id} x={focus[0]} y={ground} h={size} mirror={sp.mirror} sx={sp.sx} tint={mTint?tint+"-m":undefined}/>:<><Asset id="env-mountains" x={focus[0]} y={ground} h={52}/><Asset id="env-tree" x={focus[0]+44} y={ground} h={30}/></>}
-  <line x1={cx} y1={cy} x2={focus[0]} y2={focus[1]} className="stroke-primary" strokeWidth={1.2} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
+  <circle cx={target[0]} cy={target[1]} r={2.2} className="fill-primary"/>
+  <line x1={cx} y1={cy} x2={target[0]} y2={target[1]} className="stroke-primary" strokeWidth={1.2} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
   <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="ارتفاع و فاصلهٔ دوربین (۳۶۰ درجه)" aria-valuetext={CAMERA_ANGLE_FA[staging.cameraAngle]+"، "+Math.round(elev)+" درجه، "+orbitFa(staging.cameraAzimuth??0)+"، زوم "+zoomFactor(staging)+"×"}
    aria-valuemin={-60} aria-valuemax={85} aria-valuenow={Math.round(elev)}
    onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);setDragging(true);}:undefined}
@@ -385,7 +388,7 @@ function CameraView({staging,editable,onCamera}:{staging:Staging;editable:boolea
  * and the camera on a circle around it. Drag the camera around for its orbit (front, sides, behind) and in or out for its distance; the frame above turns
  * and zooms to match, live.
  */
-function OrbitView({staging,editable,onOrbit}:{staging:Staging;editable:boolean;onOrbit:(c:{azimuth:number})=>void}){
+function OrbitView({staging,anchor,aspect,editable,onOrbit}:{staging:Staging;anchor?:Staging;aspect?:string;editable:boolean;onOrbit:(c:{azimuth:number})=>void}){
  const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false),tint=useId();
  const VW=220,VH=210,C:[number,number]=[110,105],U=44;
  // Angle only: the camera stays at one distance here (the distance has its own tile).
@@ -394,6 +397,7 @@ function OrbitView({staging,editable,onOrbit}:{staging:Staging;editable:boolean;
  // The scene is kept as the camera sees it; turning it back by the orbit draws it as laid out, with the camera moving around it.
  const place=(p:SceneProp):[number,number]=>{const vx=p.x-px,vz=p.z-pz;return [C[0]+(vx*c-vz*n)*U,C[1]-(vx*n+vz*c)*U];};
  const cam:[number,number]=[C[0]+R*n,C[1]+R*c];
+ const lat=centerOnSubject(staging,anchor,aspect??"16:9").lateral,target:[number,number]=[C[0]+lat*c*U,C[1]-lat*n*U];
  const at=(e:PointerEvent)=>{const r=svg.current!.getBoundingClientRect();const x=(e.clientX-r.left)*VW/r.width-C[0],y=(e.clientY-r.top)*VH/r.height-C[1];
   return {azimuth:Math.round(Math.atan2(x,y)*180/Math.PI)};};
  const key=(e:KeyboardEvent)=>{
@@ -416,13 +420,15 @@ function OrbitView({staging,editable,onOrbit}:{staging:Staging;editable:boolean;
     <line x1={x+d[0]*r0} y1={y+d[1]*r0} x2={tip[0]} y2={tip[1]} className="stroke-primary" strokeWidth={1.4} vectorEffect="non-scaling-stroke"/>
     <path d={"M"+tip[0]+" "+tip[1]+" L"+(tip[0]-d[0]*6+side[0]*4)+" "+(tip[1]-d[1]*6+side[1]*4)+" L"+(tip[0]-d[0]*6-side[0]*4)+" "+(tip[1]-d[1]*6-side[1]*4)+"Z"} className="fill-primary"/>
    </g>;})()}
-  <line x1={cam[0]} y1={cam[1]} x2={C[0]} y2={C[1]} className="stroke-primary" strokeWidth={1.2} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
+  {/* The sight line ends at the frame's centre point (sideways of the subject when the user moved it). */}
+  <circle cx={target[0]} cy={target[1]} r={2.2} className="fill-primary"/>
+  <line x1={cam[0]} y1={cam[1]} x2={target[0]} y2={target[1]} className="stroke-primary" strokeWidth={1.2} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
   <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="چرخش و فاصلهٔ دوربین دور سوژه" aria-valuetext={orbitFa(az)+"، زوم "+zoomFactor(staging)+"×"}
    aria-valuemin={-180} aria-valuemax={180} aria-valuenow={Math.round(az)}
    onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);setDragging(true);}:undefined}
    className={editable?(dragging?"cursor-grabbing":"cursor-grab")+" touch-none outline-none focus-visible:[&>circle]:stroke-primary":""}>
    <circle cx={cam[0]+n*CAMERA_SIZE/2} cy={cam[1]+c*CAMERA_SIZE/2} r={36} fill="transparent" strokeWidth={2}/>
-   <CameraGlyph view="top" x={cam[0]} y={cam[1]} rotate={-az} tint={tint}/>
+   <CameraGlyph view="top" x={cam[0]} y={cam[1]} rotate={Math.atan2(target[0]-cam[0],-(target[1]-cam[1]))*180/Math.PI} tint={tint}/>
   </g>
  </svg>;
 }

@@ -335,3 +335,13 @@ test("Whoush Autopilot: on by default (Whoush's lens and aperture); off keeps th
  assert.ok(describeStagingChangesFa(s,manual).includes("اتوپایلوت هووش: روشن ← خاموش"));
  assert.ok(CreativeTurnInputSchema.shape.stagingOverride.safeParse({...manual,subject:"person"}).success);
 });
+
+test("the camera diagrams' sight line ends at the frame's centre point: the face by default, the detail, or where the user moved it",async()=>{
+ const {centerOnSubject,moveFocusPoint,frameSize,frameCamera}=await import("../lib/staging");
+ const s:Staging={...base,shotSize:"medium",props:[{kind:"person",label:"زن",x:0,z:-0.25,y:0,main:true}]};
+ assert.ok(Math.abs(centerOnSubject(s,s,"16:9").height-0.88)<0.01,"the face");
+ assert.ok(Math.abs(centerOnSubject({...s,focusDetail:"feet"},s,"16:9").height-0.05)<0.01,"the feet when the shot is about the shoes");
+ const {W,H}=frameSize("16:9"),c=frameCamera(s,s,W,H),[fx,fy]=c.toScreen(c.F[0],c.F[1]);
+ const moved={...s,...moveFocusPoint(s,s,W,H,fx+20,fy+15)},o=centerOnSubject(moved,s,"16:9");
+ assert.ok(o.height<0.88&&o.lateral>0,"moved down and right on the subject: "+JSON.stringify(o));
+});
