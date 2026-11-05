@@ -382,9 +382,12 @@ function DistanceView({staging,anchor,aspect,editable,onDistance}:{staging:Stagi
  const dist=distanceOf(staging),camX=NEAR+(FAR-NEAR)*dist;
  // The subject as the camera sees it, the same image as the frame and the vertical angle tile.
  const sp=m?sprite(m):undefined,mTint=m?propTints(staging.props??[])[(staging.props??[]).indexOf(m)]:undefined;
+ // The tile is as tall as what it shows: from just above the taller of the subject and the camera down to just under the ground, so a short subject
+ // (the mountains, a cat) leaves no empty band above it.
+ const subjectTop=ground-(kind&&sp?size:56),top=Math.max(0,Math.min(subjectTop,focusY-CAMERA_SIZE*0.55)-10),viewH=VH-top;
  const toDist=(e:PointerEvent)=>{const r=svg.current!.getBoundingClientRect();const x=(e.clientX-r.left)*VW/r.width-grab.current;return Math.max(0,Math.min(1,(x-NEAR)/(FAR-NEAR)));};
  const key=(e:KeyboardEvent)=>{const d={ArrowRight:0.05,ArrowUp:0.05,ArrowLeft:-0.05,ArrowDown:-0.05}[e.key as "ArrowUp"];if(!d)return;e.preventDefault();onDistance(Math.max(0,Math.min(1,dist+d)));};
- return <svg ref={svg} viewBox={"0 0 "+VW+" "+VH} className="mx-auto block w-full touch-pan-y select-none text-fg-primary" style={{aspectRatio:VW+"/"+VH}} aria-hidden={!editable}
+ return <svg ref={svg} viewBox={"0 "+top+" "+VW+" "+viewH} className="mx-auto block w-full touch-pan-y select-none text-fg-primary" style={{aspectRatio:VW+"/"+viewH}} aria-hidden={!editable}
   onPointerMove={e=>{if(!dragging)return;const v=toDist(e);if(Number.isFinite(v))onDistance(v);}} onPointerUp={()=>setDragging(false)} onPointerCancel={()=>setDragging(false)}>
   <BlueTint id={tint}/>{mTint&&<Tint id={tint+"-m"} color={mTint}/>}
   <line x1={8} x2={VW-8} y1={ground} y2={ground} stroke="currentColor" strokeOpacity=".3" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
