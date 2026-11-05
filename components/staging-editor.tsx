@@ -1,12 +1,36 @@
 "use client";
-import {useEffect,useId,useRef,useState,type KeyboardEvent,type PointerEvent,type ReactNode} from "react";
-import {Box,ChevronDown,Lock,LockOpen,Plus,RotateCcw,Trash2,Undo2,X} from "lucide-react";
-import {Button,Icon} from "@aleeforoughi/feather-react";
+import {useEffect,useId,useRef,useState,useSyncExternalStore,type KeyboardEvent,type PointerEvent,type ReactNode} from "react";
+import dynamic from "next/dynamic";
+import {Dialog as DialogPrimitive} from "@base-ui/react/dialog";
+import {Box,ChevronDown,Lock,LockOpen,Maximize2,Plus,RotateCcw,Trash2,Undo2,X} from "lucide-react";
+import {Button,Dialog,DialogBody,DialogContent,DialogHeader,DialogPortal,DialogTitle,Icon} from "@aleeforoughi/feather-react";
 import {FOCUS_DETAILS,LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
  SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,rollOf,lensSizeFactor,backdropFactor,wallDepth,blurAt,horizonShift,focusDepth,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 import {fa} from "@/lib/format";
+import type {FrameRect} from "./scene-3d";
+
+/** The frame in real 3D (three.js), loaded only in the browser and only when «بوم» is open; the 2D drawing stays as the collapsed snapshot and the fallback. */
+const Scene3D=dynamic(()=>import("./scene-3d"),{ssr:false,loading:()=>null});
+let webglOk:boolean|undefined;
+/** Whether this browser can draw WebGL (checked once; the test context is released at once). */
+function hasWebGL():boolean{
+ if(webglOk===undefined){try{const c=document.createElement("canvas"),gl=c.getContext("webgl2")??c.getContext("webgl");webglOk=Boolean(gl);gl?.getExtension("WEBGL_lose_context")?.loseContext();}catch{webglOk=false;}}
+ return webglOk;
+}
+const noSubscribe=()=>()=>{};
+/** The 3D frame is used when the browser can draw it (never on the server). */
+const useWebGL=()=>useSyncExternalStore(noSubscribe,hasWebGL,()=>false);
+/** Whether an element is on screen (or near it), so heavy views draw only while they can be seen. */
+function useOnScreen(el:Element|null):boolean{
+ const [on,setOn]=useState(false);
+ useEffect(()=>{if(!el||typeof IntersectionObserver==="undefined")return;
+  const io=new IntersectionObserver(es=>setOn(es.some(e=>e.isIntersecting)),{rootMargin:"200px"});io.observe(el);return ()=>io.disconnect();},[el]);
+ return Boolean(el)&&on;
+}
+/** Sets a state only when its value really changed (the 3D view reports on every draw). */
+const sameJSON=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 
 /**
  * «بوم» (Canvas): the plan's scene as a small, adjustable lo-fi 3D viewport ("a little Blender") built from the pre-rendered asset pack (public/visuals, docs/VISUAL_ASSETS.md):
@@ -93,20 +117,23 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  const full=open,show=(sec:CanvasSection)=>full||!focused||Boolean(focus?.includes(sec));
  // A press anywhere outside the frame and its controls (elsewhere in the canvas, or outside it) deselects the prop: the frame is selected again. Not while
  // the selection is locked.
- const frameArea=useRef<HTMLDivElement>(null);
  // The centre point can be selected too (its dot): its own settings show, and the badge reads «تنظیم مرکز».
  const [centerSel,setCenterSel]=useState(false);
+ // The frame in 3D when the browser can draw it, and its full-screen view.
+ const webgl=useWebGL(),[fullscreen,setFullscreen]=useState(false);
+ // One WebGL view per open, visible frame (browsers allow only a few at once): hidden or scrolled-away cards draw nothing in 3D.
+ const frameArea=useRef<HTMLDivElement|null>(null),[frameEl,setFrameEl]=useState<HTMLDivElement|null>(null),onScreen=useOnScreen(frameEl);
  /** Back to Whoush's own choice: the centre point on the dominant subject where it stands now, with Whoush's original framing (the crop pan). */
  const resetFocus=()=>{
   setFocusProps(draft.props);
   setDraft(d=>{const {focusPoint:_p,framing:_f,...rest}=d;void _p;void _f;return {...rest,...(initial.framing?{framing:initial.framing}:{})};});
  };
  useEffect(()=>{
-  if((propSel===null&&!centerSel)||locked)return;
+  if((propSel===null&&!centerSel)||locked||fullscreen)return;
   const off=(e:Event)=>{const t=e.target as Node|null;if(t&&frameArea.current&&!frameArea.current.contains(t)){setPropSel(null);setCenterSel(false);}};
   document.addEventListener("pointerdown",off,true);
   return ()=>document.removeEventListener("pointerdown",off,true);
- },[propSel,centerSel,locked]);
+ },[propSel,centerSel,locked,fullscreen]);
  // Collapsed: three live snapshots of the scene as it is now (frame, camera, lighting), read-only; opening it shows the canvas and its controls.
  const cap=viewCaptions(draft,aspect);
 
@@ -131,9 +158,12 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
   </button>
   <div id={bodyId} hidden={!open&&!focused} className="flex min-w-0 flex-col gap-3">
   <div className="flex min-w-0 flex-col gap-3">
-   {show("frame")&&<div ref={frameArea}><Viewport {...cap.frame}>
+   {show("frame")&&<div ref={el=>{frameArea.current=el;setFrameEl(el);}}><Viewport {...cap.frame}>
     <FrameView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={i=>{setPropSel(i);setCenterSel(false);}} centerSel={centerSel} onSelectCenter={()=>{setCenterSel(true);setPropSel(null);}} onProp={(i,x,z)=>setProp(i,{x,z})} onZoom={setDistance} locked={locked} onLock={setLocked} onBack={()=>{setPropSel(null);setCenterSel(false);setLocked(false);}}
-     onFocus={f=>{if(f)set(f);else resetFocus();}}/>
+     onFocus={f=>{if(f)set(f);else resetFocus();}} three={webgl&&onScreen&&(open||focused)&&!fullscreen} onFullscreen={()=>{setCenterSel(false);setFullscreen(true);}}/>
+    {fullscreen&&<FrameFullscreen staging={draft} anchor={anchor} aspect={aspect} sel={propSel} onSelect={i=>{setPropSel(i);setCenterSel(false);setLocked(false);}}
+     onProp={(i,x,z)=>setProp(i,{x,z})} onFraming={f=>set({framing:f})} distance={distanceOf(draft)} onZoom={setDistance} onClose={()=>setFullscreen(false)}
+     inspector={i=>props[i]?<PropInspector prop={withFrameCuts(draft,anchor,aspect).props![i]} tag={propTags(props,true)[i]} reach={propReach(props[i],draft,anchor,aspect)} onChange={p=>setProp(i,p)}/>:null}/>}
     {/* The centre point's own settings, while its dot is selected. */}
     {editable&&centerSel&&<div className="flex flex-col items-center gap-2 py-1 text-center">
      <p className="type-body-sm text-fg-primary">{draft.focusPoint?"مرکز کادر جابه‌جا شده؛ زوم دور همین نقطه انجام می‌شه.":"مرکز کادر روی سوژهٔ اصلیه"+(props[mainIdx]?" ("+propTags(props)[mainIdx]+")":"")+"؛ زوم دور همین نقطه انجام می‌شه."}</p>
@@ -588,7 +618,7 @@ const snapAxis=(v:number)=>Math.max(-1,Math.min(1,Math.round(v*100)/100));
  * - Drag the empty background: slides the crop like a crop tool, snapping to the thirds and the centre.
  * - Keyboard: arrow keys move the selected prop (or the crop when the frame itself has focus).
  */
-function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp,onZoom,locked=false,onLock,onFocus,onBack,centerSel=false,onSelectCenter}:{staging:Staging;
+function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp,onZoom,locked=false,onLock,onFocus,onBack,centerSel=false,onSelectCenter,three=false,onFullscreen}:{staging:Staging;
  /** The scene whose main subject anchors the zoom (Whoush's original layout): fixed while props move, so moving the main subject moves only it. */anchor?:Staging;
  aspect:string;editable?:boolean;onFraming?:(f:{x:number;y:number}|undefined)=>void;
  /** The selected prop (null: none, the frame's own settings show). */sel?:number|null;onSelect?:(i:number|null)=>void;onProp?:(i:number,x:number,z:number)=>void;
@@ -597,7 +627,13 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
  /** The centre-point dot: dragged to a new place (its new centre point and the crop that keeps the picture still), or double-clicked back to the dominant subject. */
  onFocus?:(f:{focusPoint:{x:number;y:number};framing:{x:number;y:number}}|null)=>void;
  /** Back to the frame's own settings (the badge's ×). */onBack?:()=>void;
- /** The centre point's dot is selected (its settings show), and selecting it. */centerSel?:boolean;onSelectCenter?:()=>void}){
+ /** The centre point's dot is selected (its settings show), and selecting it. */centerSel?:boolean;onSelectCenter?:()=>void;
+ /** Draw the frame in real 3D (the lens's perspective, any height angle, fisheye, depth of field); the 2D drawing's overlays stay on top. */three?:boolean;
+ /** Opens the frame full screen. */onFullscreen?:()=>void}){
+ // In 3D: where the centre point and the selected prop land on screen (fractions of the frame), and whether a press just landed on a prop.
+ const [proj,setProjRaw]=useState<Record<string,[number,number]>>({});
+ const setProj=(p:Record<string,[number,number]>)=>setProjRaw(o=>sameJSON(o,p)?o:p);
+ const propHit=useRef(false);
  const clip=useId(),svg=useRef<SVGSVGElement>(null),{W,H}=frameSize(aspect);
  const [drag,setDrag]=useState<{px:number;py:number;x:number;y:number;cur:{x:number;y:number}}|null>(null);
  const [move,setMove]=useState<{i:number;px:number;py:number;x0:number;z0:number;x:number;z:number}|null>(null);
@@ -651,9 +687,9 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
  const maxW=Math.round(320*(W+4)/(H+4));
  // The centre point selected: neither a prop nor the frame is (no tag, no frame outline).
  const tag=!editable||centerSel?undefined:sel!=null&&base[sel]?(()=>{const p=base[sel],a=at(p),wf=spriteW(sprite(p),a.h);
-  const [rx,ty]=cam.toScreen(a.x+wf/2+1,a.y-a.h-1);return {x:Math.max(52,Math.min(W-1,rx)),y:Math.max(0,Math.min(H-2,ty)),above:ty>12,text:propTags(base,true)[sel]};})()
+  const [rx,ty]=three?(proj.sel?[proj.sel[0]*W+8,proj.sel[1]*H]:[W-3,3]):cam.toScreen(a.x+wf/2+1,a.y-a.h-1);return {x:Math.max(52,Math.min(W-1,rx)),y:Math.max(0,Math.min(H-2,ty)),above:ty>12,text:propTags(base,true)[sel]};})()
   :{x:W-3,y:3,above:false,text:"#کادر"};
- const svgEl=<svg ref={svg} viewBox={"-2 -2 "+(W+4)+" "+(H+4)} {...(editable&&onZoom?pinch:{})} className="mx-auto block w-full touch-none select-none text-fg-primary" style={{aspectRatio:String((W+4)/(H+4)),maxWidth:Math.round(320*(W+4)/(H+4))+"px"}} aria-hidden={!editable}
+ const svgEl=<svg ref={svg} viewBox={"-2 -2 "+(W+4)+" "+(H+4)} {...(editable&&onZoom&&!three?pinch:{})} className={"mx-auto block w-full touch-none select-none text-fg-primary"+(three?" pointer-events-none relative z-[1]":"")} style={{aspectRatio:String((W+4)/(H+4)),maxWidth:Math.round(320*(W+4)/(H+4))+"px"}} aria-hidden={!editable}
   onPointerMove={e=>{
    if(pivot){const [sx,sy]=svgPt(e);if(Number.isFinite(sx)&&Number.isFinite(sy))onFocus?.(moveFocusPoint({...staging,framing:fr},anchor,W,H,sx,sy));return;}
    const u=unit();
@@ -663,17 +699,17 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   <defs><clipPath id={clip}><rect width={W} height={H} rx={6}/></clipPath>
    <linearGradient id={clip+"g"} x1="0" y1="0" x2="0" y2="1"><stop offset=".5" stopColor="currentColor" stopOpacity="0"/><stop offset="1" stopColor="currentColor" stopOpacity=".14"/></linearGradient></defs>
   <g clipPath={"url(#"+clip+")"}>
-   <rect width={W} height={H} className="fill-background"/>
-   {editable&&<rect width={W} height={H} fill="transparent" role="slider" tabIndex={0} aria-label={"جای سوژه در کادر: "+placementFa(staging.framing)} aria-valuetext={placementFa(staging.framing)}
+   {!three&&<rect width={W} height={H} className="fill-background"/>}
+   {editable&&!three&&<rect width={W} height={H} fill="transparent" role="slider" tabIndex={0} aria-label={"جای سوژه در کادر: "+placementFa(staging.framing)} aria-valuetext={placementFa(staging.framing)}
     aria-valuenow={Math.round(fr.x*100)} aria-valuemin={-100} aria-valuemax={100} onKeyDown={key} className={"outline-none "+(drag?"cursor-grabbing":"cursor-grab")}
     onPointerDown={e=>{capture(svg.current,e.pointerId);if(locked&&sel!=null&&base[sel]){moveLocked(e);return;}if(!locked)onSelect?.(null);cropDrag(e);}}/>}
-   {blurStd("backdrop")>0&&<defs><filter id={clip+"-bd"} x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation={blurStd("backdrop")}/></filter></defs>}
+   {!three&&<>{blurStd("backdrop")>0&&<defs><filter id={clip+"-bd"} x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation={blurStd("backdrop")}/></filter></defs>}
    <g transform={backdrop} className="pointer-events-none" filter={blurStd("backdrop")>0?"url(#"+clip+"-bd)":undefined}>
     <Backdrop env={staging.environment??"landscape"} W={W} H={H} horizon={horizon} bf={bf} gradient={"url(#"+clip+"g)"}
      slide={-wrap180(staging.cameraAzimuth??0)/180*W*1.2*bf} wallY={propInView({kind:"object",x:0,z:Math.min(3,wallDepth(live)),y:0},W,H,unitH).groundY}/>
    </g>
    <g transform={world}>
-    {order.map(({p,i})=>{const a=at(p),sp=sprite(p),w=spriteW(sp,a.h),on=sel===i;
+    {!three&&order.map(({p,i})=>{const a=at(p),sp=sprite(p),w=spriteW(sp,a.h),on=sel===i;
      const pkey=(e:KeyboardEvent)=>{if(e.key==="Escape"&&on){e.preventDefault();e.stopPropagation();if(!locked)onSelect?.(null);return;}
       if(locked&&!on)return;
       const d={ArrowLeft:[-0.1,0],ArrowRight:[0.1,0],ArrowUp:[0,0.1],ArrowDown:[0,-0.1]}[e.key as "ArrowLeft"];if(!d)return;e.preventDefault();e.stopPropagation();onSelect?.(i);const g=within(p,{x:p.x+d[0],z:p.z+d[1]});onProp?.(i,g.x,g.z);};
@@ -694,7 +730,7 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
        </g>;})()}
       {on&&<rect x={a.x-w/2-1} y={a.y-a.h-1} width={w+2} height={a.h+2} rx={2} fill="none" className="stroke-primary" strokeWidth={1} vectorEffect="non-scaling-stroke" strokeDasharray="3 2"/>}
      </g>;})}
-   </g>
+   </g></>}
    {editable&&<text x={W-3} y={H-3} direction="rtl" textAnchor="start" fontSize={3.6} fill="currentColor" fillOpacity=".55" className="pointer-events-none" aria-hidden="true">پیش‌نمایش تقریبی</text>}
    {[1,2].map(i=><g key={i} strokeDasharray="3 3" strokeWidth={1} className="pointer-events-none">
     <line vectorEffect="non-scaling-stroke" x1={W*i/3} x2={W*i/3} y1={0} y2={H} className={third(onX,fr.x<0,i)?"stroke-primary":""} stroke={third(onX,fr.x<0,i)?undefined:"currentColor"} strokeOpacity={third(onX,fr.x<0,i)?1:.3}/>
@@ -703,9 +739,9 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   </g>
   {/* The centre point: the zoom pivots around it. On the dominant subject (its face for a person) unless the user moved it; drag to move it (the picture
       stays still), double-click to bring it back to the dominant subject. A large invisible ring makes it easy to take with a finger. */}
-  {editable&&onFocus&&(()=>{const [dx,dy]=cam.toScreen(cam.F[0],cam.F[1]);if(dx<-1||dx>W+1||dy<-1||dy>H+1)return null;
+  {editable&&onFocus&&(()=>{const [dx,dy]=three?(proj.center?[proj.center[0]*W,proj.center[1]*H]:[NaN,NaN]):cam.toScreen(cam.F[0],cam.F[1]);if(!(dx>=-1&&dx<=W+1&&dy>=-1&&dy<=H+1))return null;
    return <g role="slider" tabIndex={0} aria-label={"نقطهٔ مرکز کادر"+(staging.focusPoint?" (جابه‌جا شده؛ دوبار بزن تا برگرده روی سوژهٔ اصلی)":" (روی سوژهٔ اصلی)")}
-    aria-valuetext={staging.focusPoint?"جابه‌جا شده":"روی سوژهٔ اصلی"} className={"touch-none outline-none "+(pivot?"cursor-grabbing":"cursor-move")}
+    aria-valuetext={staging.focusPoint?"جابه‌جا شده":"روی سوژهٔ اصلی"} className={"pointer-events-auto touch-none outline-none "+(pivot?"cursor-grabbing":"cursor-move")}
     onPointerDown={pivotDown} onDoubleClick={e=>{e.stopPropagation();onFocus(null);}}
     onKeyDown={e=>{const d={ArrowLeft:[-2,0],ArrowRight:[2,0],ArrowUp:[0,-2],ArrowDown:[0,2]}[e.key as "ArrowLeft"];if(e.key==="Enter"){e.preventDefault();onFocus(null);return;}if(!d)return;e.preventDefault();e.stopPropagation();onFocus(moveFocusPoint({...staging,framing:fr},anchor,W,H,dx+d[0],dy+d[1]));}}>
     <circle cx={dx} cy={dy} r={10} fill="transparent"/>
@@ -720,8 +756,26 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
    :<rect width={W} height={H} rx={6} fill="none" stroke="currentColor" strokeOpacity=".75" strokeWidth={1.2} vectorEffect="non-scaling-stroke" className="pointer-events-none"/>}
  </svg>;
  if(!editable)return svgEl;
+ /** Arrow keys move a prop (the 3D view's keyboard access: one hidden button per prop). */
+ const propKey=(i:number)=>(e:KeyboardEvent)=>{const p=base[i];if(!p||(locked&&sel!==i))return;
+  const d={ArrowLeft:[-0.1,0],ArrowRight:[0.1,0],ArrowUp:[0,0.1],ArrowDown:[0,-0.1]}[e.key as "ArrowLeft"];if(!d)return;e.preventDefault();onSelect?.(i);const g=within(p,{x:p.x+d[0],z:p.z+d[1]});onProp?.(i,g.x,g.z);};
  return <div className="relative mx-auto w-full" style={{maxWidth:maxW+"px"}}>
+  {/* The 3D frame under the drawing's overlays (thirds, outline, centre point, tags): a press on a prop picks and drags it on the ground; a press on the empty
+      set slides the crop, as in 2D. */}
+  {three&&<div role="slider" tabIndex={0} aria-label={"جای سوژه در کادر: "+placementFa(staging.framing)} aria-valuetext={placementFa(staging.framing)} aria-valuenow={Math.round(fr.x*100)} aria-valuemin={-100} aria-valuemax={100}
+   onKeyDown={key} {...(onZoom?pinch:{})} className={"absolute touch-none overflow-hidden bg-background outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring "+(drag?"cursor-grabbing":"cursor-grab")}
+   style={{insetInlineStart:(2/(W+4)*100)+"%",top:(2/(H+4)*100)+"%",width:(W/(W+4)*100)+"%",height:(H/(H+4)*100)+"%",borderRadius:(6/W*100)+"% / "+(6/H*100)+"%"}}
+   onPointerDown={e=>{if(propHit.current){propHit.current=false;return;}if(e.button>0)return;capture(e.currentTarget,e.pointerId);if(!locked)onSelect?.(null);cropDrag(e);}}
+   onPointerMove={e=>{if(!drag)return;const u=unit(),[ddx,ddy]=cam.unroll((e.clientX-drag.px)*u.sx,(e.clientY-drag.py)*u.sy);const c={x:snapAxis(drag.x+ddx/(W/2)),y:snapAxis(drag.y+ddy/(H/2))};if(Number.isFinite(c.x)&&Number.isFinite(c.y))setDrag({...drag,cur:c});}}
+   onPointerUp={()=>{if(drag){commit(drag.cur);setDrag(null);}}} onPointerCancel={()=>setDrag(null)}>
+   <Scene3D staging={{...staging,framing:fr}} anchor={anchor} aspect={aspect} editable sel={centerSel?null:sel} lockedTo={locked&&sel!=null?sel:undefined}
+    onSelect={i=>{if(!locked)onSelect?.(i);}} onProp={onProp} onPropDown={()=>{propHit.current=true;}} onProject={setProj} within={within}/>
+  </div>}
+  {three&&<div className="sr-only">{base.map((p,i)=><button key={i} type="button" aria-pressed={sel===i} onClick={()=>{if(!locked)onSelect?.(i);}} onKeyDown={propKey(i)}>{propTags(base)[i]+"، "+propPlaceFa(placed[i]??p)}</button>)}</div>}
   {svgEl}
+  {three&&onFullscreen&&<button type="button" onClick={onFullscreen} aria-label="نمایش تمام‌صفحهٔ کادر"
+   className="absolute top-3 end-3 z-10 flex size-8 items-center justify-center rounded-control bg-background/70 text-fg-primary shadow-1 backdrop-blur-sm motion-hover hover:bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+   <Icon icon={Maximize2} size={16} aria-hidden="true"/></button>}
   {/* What the controls below are adjusting, while a prop is selected: a blue badge in the frame's top-right corner, «تنظیم #آدم ×»; × goes back to the
       frame's own settings (and unlocks). */}
   {((sel!=null&&base[sel])||centerSel)&&onBack&&<div className="absolute top-3 start-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1.5">
@@ -745,6 +799,68 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
    <bdi className="whitespace-nowrap text-xs font-medium leading-none text-primary pointer-coarse:text-[13px]">{tag.text}</bdi>
   </div>}
  </div>;
+}
+
+/**
+ * The frame full screen, to look around and check: the same camera seeing past the frame, the frame itself outlined in green with everything outside it
+ * darkened. Drag a prop to move it on the ground; tap one to adjust it in a modal; drag anywhere else to move the frame (the crop); pinch or scroll to zoom.
+ */
+function FrameFullscreen({staging,anchor,aspect,sel,onSelect,onProp,onFraming,distance,onZoom,onClose,inspector}:{staging:Staging;anchor?:Staging;aspect:string;
+ sel:number|null;onSelect:(i:number|null)=>void;onProp:(i:number,x:number,z:number)=>void;onFraming:(f:{x:number;y:number}|undefined)=>void;
+ /** The camera's distance (0 closest) and zooming it. */distance:number;onZoom:(v:number)=>void;onClose:()=>void;
+ /** A prop's settings, for the modal. */inspector:(i:number)=>ReactNode}){
+ const [rect,setRectRaw]=useState<FrameRect|null>(null);
+ const setRect=(r:FrameRect)=>setRectRaw(o=>sameJSON(o,r)?o:r);
+ const [inspect,setInspect]=useState<number|null>(null);
+ const [drag,setDrag]=useState<{px:number;py:number;x:number;y:number;cur:{x:number;y:number}}|null>(null);
+ const box=useRef<HTMLDivElement>(null),propHit=useRef(false),pinchFrom=useRef(0);
+ const fr=drag?.cur??staging.framing??{x:0,y:0};
+ const props=staging.props??[];
+ const within=(p:SceneProp,g:{x:number;z:number})=>{const r=propReach(p,staging,anchor,aspect);const c=(v:number,lo:number,hi:number)=>Math.round(Math.max(lo,Math.min(hi,v))*100)/100;return {x:c(g.x,r.xMin,r.xMax),z:c(g.z,r.zMin,r.zMax)};};
+ const pinch=usePinch(sp=>onZoom(Math.max(0,Math.min(1,pinchFrom.current-Math.log(sp)/Math.log(ZOOM_RANGE[1]/ZOOM_RANGE[0])))),()=>{pinchFrom.current=distance;setDrag(null);});
+ const pct=(v:number)=>(v*100)+"%";
+ return <Dialog open onOpenChange={o=>{if(!o)onClose();}}>
+  <DialogPortal>
+   <DialogPrimitive.Popup aria-label="کادر، تمام‌صفحه" aria-modal="true"
+    className="dark fixed inset-0 z-50 m-0 h-dvh w-screen max-w-none overflow-hidden border-0 bg-background p-0 text-fg-primary outline-none">
+    {/* The set: a press on a prop takes it (the 3D view handles it first); anywhere else moves the frame under the finger. */}
+    <div ref={box} className={"absolute inset-0 touch-none "+(drag?"cursor-grabbing":"cursor-grab")} {...pinch}
+     onPointerDown={e=>{if(propHit.current){propHit.current=false;return;}if(e.button>0)return;capture(e.currentTarget,e.pointerId);onSelect(null);setDrag({px:e.clientX,py:e.clientY,x:fr.x,y:fr.y,cur:fr});}}
+     onPointerMove={e=>{if(!drag||!rect||!box.current)return;const b=box.current.getBoundingClientRect(),fw=rect.w*b.width,fh=rect.h*b.height;
+      // The frame follows the finger: its centre is offset by −crop/2 of its size, so the crop moves by −2× the drag over the frame's size.
+      const c={x:snapAxis(drag.x-2*(e.clientX-drag.px)/fw),y:snapAxis(drag.y-2*(e.clientY-drag.py)/fh)};if(Number.isFinite(c.x)&&Number.isFinite(c.y))setDrag({...drag,cur:c});}}
+     onPointerUp={()=>{if(drag){onFraming(drag.cur.x===0&&drag.cur.y===0?undefined:drag.cur);setDrag(null);}}} onPointerCancel={()=>setDrag(null)}
+     onWheel={e=>onZoom(Math.max(0,Math.min(1,distance+e.deltaY*0.0015)))}>
+     <Scene3D staging={{...staging,framing:fr}} anchor={anchor} aspect={aspect} editable wide sel={sel} onSelect={onSelect} onProp={onProp}
+      onPropTap={i=>setInspect(i)} onPropDown={()=>{propHit.current=true;}} onFrameRect={setRect} within={within}/>
+    </div>
+    {/* The frame: a green outline with its thirds; everything outside it is darkened (a wide shadow around it). */}
+    {/* Everything outside the frame is darkened: a veil over the whole view with the frame cut out of it. */}
+    {rect&&<svg aria-hidden="true" className="pointer-events-none absolute inset-0 size-full" viewBox="0 0 1 1" preserveAspectRatio="none">
+     <path fillRule="evenodd" fill="black" fillOpacity={0.65} d={"M0 0H1V1H0Z M"+(rect.x-rect.w/2)+" "+(rect.y-rect.h/2)+"h"+rect.w+"v"+rect.h+"h"+(-rect.w)+"Z"}/></svg>}
+    {rect&&<div aria-hidden="true" className="pointer-events-none absolute border-2 border-success"
+     style={{left:pct(rect.x-rect.w/2),top:pct(rect.y-rect.h/2),width:pct(rect.w),height:pct(rect.h)}}>
+     {[1,2].map(i=><span key={i}><span className="absolute inset-y-0 border-s border-dashed border-success/40" style={{insetInlineStart:pct(i/3)}}/>
+      <span className="absolute inset-x-0 border-t border-dashed border-success/40" style={{top:pct(i/3)}}/></span>)}
+     <span className="absolute -top-7 start-0 rounded-control bg-success px-2 py-0.5 text-xs font-medium text-success-foreground"><bdi>{aspect}</bdi> · کادر</span>
+    </div>}
+    <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-3">
+     <p className="max-w-md rounded-control bg-background/70 px-3 py-2 type-caption text-fg-secondary backdrop-blur-sm">
+      {props.length?"پراپ‌ها رو بکش؛ روی هر کدوم بزن تا تنظیماتش بیاد. ":""}جای خالی رو بکشی کادر جابه‌جا می‌شه؛ با دو انگشت یا اسکرول زوم کن.</p>
+     <DialogPrimitive.Close aria-label="بستن تمام‌صفحه"
+      className="pointer-events-auto flex size-10 shrink-0 items-center justify-center rounded-control bg-background/70 text-fg-primary shadow-1 backdrop-blur-sm motion-hover hover:bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+      <Icon icon={X} size={20} aria-hidden="true"/></DialogPrimitive.Close>
+    </div>
+    {/* The tapped prop's settings, in a modal over the set. */}
+    <Dialog open={inspect!==null&&Boolean(props[inspect])} onOpenChange={o=>{if(!o)setInspect(null);}}>
+     <DialogContent className="dark">
+      <DialogHeader className="ps-12"><DialogTitle>تنظیم <bdi>{inspect!==null?propTags(props)[inspect]:""}</bdi></DialogTitle></DialogHeader>
+      <DialogBody>{inspect!==null&&inspector(inspect)}</DialogBody>
+     </DialogContent>
+    </Dialog>
+   </DialogPrimitive.Popup>
+  </DialogPortal>
+ </Dialog>;
 }
 
 /**

@@ -282,13 +282,13 @@ export function propWidth(kind:SceneProp["kind"],h:number):number{const a=VISUAL
  * (a full or wider shot keeps the ground where it is). screen = pan + C + k·(world − F). `visible` is the world rectangle on screen.
  */
 /** Where each detail sits on a standing person, as a share of their height from the ground. */
-const DETAIL_HEIGHT:Record<NonNullable<Staging["focusDetail"]>,number>={face:0.88,eyes:0.9,jewelry:0.78,hands:0.45,feet:0.05};
+export const DETAIL_HEIGHT:Record<NonNullable<Staging["focusDetail"]>,number>={face:0.88,eyes:0.9,jewelry:0.78,hands:0.45,feet:0.05};
 export const FOCUS_DETAIL_FA:Record<NonNullable<Staging["focusDetail"]>,string>={face:"صورت",eyes:"چشم‌ها",hands:"دست‌ها",feet:"پاها و کفش",jewelry:"جواهر و اکسسوری"};
 // ---- the frame as a lo-fi previz of the output: one physical camera (full-frame sensor, the lens and aperture Whoush or the user chose) ----
-const SENSOR_H_MM=24,PERSON_M=1.7,METERS_PER_Z=4,REF_FOCAL=35;
+export const SENSOR_H_MM=24,PERSON_M=1.7,METERS_PER_Z=4,REF_FOCAL=35;
 /** How far behind the main subject each kind of place's background stands, in metres: a room's back wall is close, mountains are far. */
 const ENVIRONMENT_DISTANCE_M:Record<NonNullable<Staging["environment"]>,number>={landscape:200,room:5,studio:3,street:30,forest:22,beach:300,desert:250};
-const backdropM=(s:Staging)=>ENVIRONMENT_DISTANCE_M[s.environment??"landscape"];
+export const backdropM=(s:Staging)=>ENVIRONMENT_DISTANCE_M[s.environment??"landscape"];
 export const ENVIRONMENT_FA:Record<NonNullable<Staging["environment"]>,string>={landscape:"فضای باز",room:"داخل اتاق",studio:"استودیو",street:"خیابان و شهر",forest:"جنگل و پارک",beach:"ساحل",desert:"بیابان"};
 const ENVIRONMENT_EN:Record<NonNullable<Staging["environment"]>,string>={landscape:"an open landscape",room:"an interior room",studio:"a photo studio with a seamless backdrop",street:"a city street",forest:"a forest or park",beach:"a beach by the sea",desert:"a desert"};
 const clampN=(v:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,v));
