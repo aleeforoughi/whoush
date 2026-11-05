@@ -104,6 +104,7 @@ export const LIGHT_DIRECTIONS=["front","front_left","left","back_left","back","b
 export const LIGHT_SOURCES=["sun","sky","window","softbox","led_panel","practical","neon","fire","moon","flash"] as const;
 export const LIGHT_HEIGHTS=["floor","low","eye","high","ceiling"] as const;
 export const FOCUS_DETAILS=["face","eyes","hands","feet","jewelry"] as const;
+export const ENVIRONMENTS=["landscape","room","studio","street","forest","beach","desert"] as const;
 const LightSchema=z.object({role:z.enum(LIGHT_ROLES),direction:z.enum(LIGHT_DIRECTIONS),
  /** The exact position around the subject in top-view degrees (0 right of frame, 90 toward the camera), set by dragging; `direction` is its nearest name. */
  angle:z.number().min(0).max(360).optional(),
@@ -135,6 +136,8 @@ export const StagingSchema=z.object({subject:z.enum(SUBJECTS).optional(),cameraA
  /** How far the camera has orbited around the main subject from Whoush's view, in degrees: positive to the subject's left (the viewer's right), ±180 behind it. */
  cameraAzimuth:z.number().min(-180).max(180).optional(),
  /** A Dutch (canted) angle: the camera rolled this many degrees (positive clockwise); unset or 0: level. */cameraRoll:z.number().min(-45).max(45).optional(),
+ /** The kind of place, for the canvas's background and its distance (Whoush detects it from the brief; open landscape when it does not say). */
+ environment:z.enum(ENVIRONMENTS).optional(),
  /** A shot type: over the shoulder of another person, or the subject's own point of view. */shotStyle:z.enum(["ots","pov"]).optional(),
  /** The user's own lens and aperture (unset: Whoush picks them for the scene, lib/staging.ts lensFor). */
  lensMm:z.number().min(8).max(600).optional(),apertureF:z.number().min(0.95).max(22).optional(),

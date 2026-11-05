@@ -4,7 +4,7 @@ import {Box,ChevronDown,Lock,LockOpen,Plus,RotateCcw,Trash2,Undo2,X} from "lucid
 import {Button,Icon} from "@aleeforoughi/feather-react";
 import {FOCUS_DETAILS,LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
- SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,rollOf,lensSizeFactor,backdropFactor,blurAt,horizonShift,focusDepth,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
+ SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,rollOf,lensSizeFactor,backdropFactor,wallDepth,blurAt,horizonShift,focusDepth,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 import {fa} from "@/lib/format";
 
@@ -495,6 +495,56 @@ function Tint({id,color}:{id:string;color:string}){
   <feBlend in="tint" in2="SourceGraphic" mode="multiply"/>
  </filter></defs>;
 }
+/**
+ * The place behind the props, drawn from the pack and simple shapes (no image per place), at its real distance (it scales with the lens and blurs with the
+ * focus through the group it is drawn in). Open places have a sky horizon at eye level; a room has a back wall meeting the floor (no horizon), side walls
+ * converging toward it and a window; a studio has a seamless backdrop with no line at all; streets and forests hide the horizon behind buildings and trees.
+ */
+function Backdrop({env,W,H,horizon,bf,slide,wallY,gradient}:{env:NonNullable<Staging["environment"]>;W:number;H:number;horizon:number;bf:number;slide:number;wallY:number;gradient:string}){
+ const line=(y:number,o=".3")=><line x1={-W*4} x2={W*5} y1={y} y2={y} stroke="currentColor" strokeOpacity={o} strokeWidth={1} vectorEffect="non-scaling-stroke"/>;
+ // A row of one pack asset along the horizon, varied in size and mirrored every other time, sliding with the camera's orbit.
+ const row=(id:string,h:number,step:number,count=9)=>Array.from({length:count*2+1},(_,k)=>k-count).map(n=>{const vary=0.78+0.44*(((n*37)%7+7)%7)/6;
+  return <Asset key={n} id={id} x={W*0.5+slide+n*step*bf} y={horizon+1} h={h*bf*vary} mirror={n%2!==0} opacity={0.7}/>;});
+ if(env==="room"){
+  const top=-H*3,floor=wallY;
+  return <>
+   {/* The back wall down to the floor, the floor below it, side walls running from the frame's lower corners to the wall's corners. */}
+   <rect x={-W*4} y={top} width={W*9} height={floor-top} fill="currentColor" fillOpacity=".07"/>
+   <rect x={-W*4} y={floor} width={W*9} height={H*4} fill={gradient}/>
+   {line(floor,".35")}
+   <line x1={W*0.5-W*0.62*bf} y1={floor} x2={-W*1.2} y2={H*1.6} stroke="currentColor" strokeOpacity=".25" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
+   <line x1={W*0.5+W*0.62*bf} y1={floor} x2={W*2.2} y2={H*1.6} stroke="currentColor" strokeOpacity=".25" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
+   <line x1={W*0.5-W*0.62*bf} y1={floor} x2={W*0.5-W*0.62*bf} y2={top} stroke="currentColor" strokeOpacity=".18" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
+   <line x1={W*0.5+W*0.62*bf} y1={floor} x2={W*0.5+W*0.62*bf} y2={top} stroke="currentColor" strokeOpacity=".18" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
+   <Asset id="light-window" x={W*0.5+slide*0.6+W*0.22*bf} y={floor-H*0.14*bf} h={H*0.42*bf} opacity={0.55}/>
+  </>;
+ }
+ if(env==="studio")return <>
+  {/* A seamless backdrop: one soft sweep from wall to floor, no horizon. */}
+  <rect x={-W*4} y={-H*3} width={W*9} height={H*8} fill="currentColor" fillOpacity=".05"/>
+  <rect x={-W*4} y={wallY-H*0.12} width={W*9} height={H*4} fill={gradient}/>
+ </>;
+ const ground=<rect x={-W*4} y={horizon} width={W*9} height={H*4} fill={gradient}/>;
+ if(env==="street")return <>{ground}{line(horizon,".2")}{row("env-building",H*0.42,W*0.2)}</>;
+ if(env==="forest")return <>{ground}{line(horizon,".2")}{row("env-tree",H*0.34,W*0.14,12)}</>;
+ if(env==="beach")return <>
+  {ground}
+  {/* The sea: a flat band from the horizon down to the shore. */}
+  <rect x={-W*4} y={horizon} width={W*9} height={H*0.07*bf} fill="currentColor" fillOpacity=".14"/>
+  {line(horizon,".45")}{line(horizon+H*0.07*bf,".2")}
+ </>;
+ if(env==="desert"){
+  // Low dunes: a soft wave along the horizon.
+  const amp=H*0.035*bf,len=W*0.55*bf,x0=-W*4+((slide%len)+len)%len-len;
+  let d="M"+x0+" "+(horizon+1);for(let x=x0;x<W*5;x+=len)d+=" Q"+(x+len/4)+" "+(horizon-amp*2)+" "+(x+len/2)+" "+(horizon-amp*0.6)+" T"+(x+len)+" "+(horizon+1);
+  return <>{ground}<path d={d+" L"+W*5+" "+(horizon+2)+" L"+(-W*4)+" "+(horizon+2)+"Z"} fill="currentColor" fillOpacity=".16"/>{line(horizon,".25")}</>;
+ }
+ // Open landscape: a wide mountain range repeated edge to edge along the horizon.
+ const mh=H*0.3*bf,v=VISUALS["env-mountains"],mw=(v?mh*v.width/v.height:mh*1.7)*2.2;
+ return <>{ground}{line(horizon)}
+  {[-3,-2,-1,0,1,2,3].map(n=><Asset key={n} id="env-mountains" x={W*0.5+slide+n*mw*0.9} y={horizon+1} h={mh} sx={2.2} mirror={n%2!==0} opacity={0.7}/>)}</>;
+}
+
 /** A labelled on/off switch (Autopilot, bokeh): the label, then the switch, which runs left to right like every control here (on: knob on the right). */
 function Toggle({label,on,onChange}:{label:string;on:boolean;onChange:(on:boolean)=>void}){
  return <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={()=>onChange(!on)}
@@ -619,13 +669,8 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
     onPointerDown={e=>{capture(svg.current,e.pointerId);if(locked&&sel!=null&&base[sel]){moveLocked(e);return;}if(!locked)onSelect?.(null);cropDrag(e);}}/>}
    {blurStd("backdrop")>0&&<defs><filter id={clip+"-bd"} x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation={blurStd("backdrop")}/></filter></defs>}
    <g transform={backdrop} className="pointer-events-none" filter={blurStd("backdrop")>0?"url(#"+clip+"-bd)":undefined}>
-    <rect x={-W*4} y={horizon} width={W*9} height={H*4} fill={"url(#"+clip+"g)"}/>
-    <line x1={-W*4} x2={W*5} y1={horizon} y2={horizon} stroke="currentColor" strokeOpacity=".3" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
-    {/* The environment is the fixed backdrop behind every prop, in the same world: it zooms with the scene and never moves on its own; it scales with the
-        lens (a long lens magnifies it) and blurs with the focus, which makes the depth of field easy to read. Orbiting the camera slides it past. */}
-    {/* A wide range: the mountains stretched and repeated edge to edge along the horizon, so they fill the background at any lens and orbit. */}
-    {(()=>{const mh=H*0.3*bf,v=VISUALS["env-mountains"],mw=(v?mh*v.width/v.height:mh*1.7)*2.2,slide=-wrap180(staging.cameraAzimuth??0)/180*W*1.2*bf;
-     return [-3,-2,-1,0,1,2,3].map(n=><Asset key={n} id="env-mountains" x={W*0.5+slide+n*mw*0.9} y={horizon+1} h={mh} sx={2.2} mirror={n%2!==0} opacity={0.7}/>);})()}
+    <Backdrop env={staging.environment??"landscape"} W={W} H={H} horizon={horizon} bf={bf} gradient={"url(#"+clip+"g)"}
+     slide={-wrap180(staging.cameraAzimuth??0)/180*W*1.2*bf} wallY={propInView({kind:"object",x:0,z:Math.min(3,wallDepth(live)),y:0},W,H,unitH).groundY}/>
    </g>
    <g transform={world}>
     {order.map(({p,i})=>{const a=at(p),sp=sprite(p),w=spriteW(sp,a.h),on=sel===i;

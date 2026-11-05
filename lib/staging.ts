@@ -70,7 +70,7 @@ export function describeStagingFa(s:Staging):string{
 /** The arranged scene in English, appended to the provider-facing media prompt. */
 export function describeStagingEn(s:Staging):string{
  const lights=s.lights.map(l=>l.role+" light: "+l.quality+" "+l.source.replace("_"," ")+" from "+DIR_EN[l.direction]+(l.angle!==undefined?" ("+Math.round(l.angle)+"° in top view)":"")+", "+LIGHT_HEIGHT_EN[l.height]+", "+l.colorTemperatureK+"K"+(l.intensity!==undefined?", "+Math.round(l.intensity*100)+"% strength":"")+(l.colorHex?" "+l.colorHex+" gel":""));
- return "Staging: "+ANGLE_EN[s.cameraAngle]+" camera"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+"° from eye level)":"")+(orbitEn(s.cameraAzimuth??0)?", "+orbitEn(s.cameraAzimuth??0):"")+(s.cameraRoll?", Dutch angle tilted "+Math.abs(Math.round(s.cameraRoll))+"° "+(s.cameraRoll>0?"clockwise":"counter-clockwise"):"")+(s.shotStyle==="ots"?", over-the-shoulder shot":s.shotStyle==="pov"?", point-of-view shot through the subject's eyes":"")+focusEn(s)+(s.focusDetail?", framed on the main subject's "+(s.focusDetail==="feet"?"feet and shoes":s.focusDetail):"")+", "+SHOT_EN[s.shotSize]+(s.shotScale!==undefined?" ("+zoomFactor(s)+"x of a full shot)":"")+", "+placementEn(s.framing)+"; "+lights.join("; ")+"."+(s.props?.length?" "+describeLayoutEn(s.props):"");
+ return "Staging: "+ANGLE_EN[s.cameraAngle]+" camera"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+"° from eye level)":"")+(orbitEn(s.cameraAzimuth??0)?", "+orbitEn(s.cameraAzimuth??0):"")+(s.cameraRoll?", Dutch angle tilted "+Math.abs(Math.round(s.cameraRoll))+"° "+(s.cameraRoll>0?"clockwise":"counter-clockwise"):"")+(s.shotStyle==="ots"?", over-the-shoulder shot":s.shotStyle==="pov"?", point-of-view shot through the subject's eyes":"")+(s.environment&&s.environment!=="landscape"?", in "+ENVIRONMENT_EN[s.environment]:"")+focusEn(s)+(s.focusDetail?", framed on the main subject's "+(s.focusDetail==="feet"?"feet and shoes":s.focusDetail):"")+", "+SHOT_EN[s.shotSize]+(s.shotScale!==undefined?" ("+zoomFactor(s)+"x of a full shot)":"")+", "+placementEn(s.framing)+"; "+lights.join("; ")+"."+(s.props?.length?" "+describeLayoutEn(s.props):"");
 }
 /** The subject a brief is about, from its words: a person, an animal, a vehicle, a product or object, or an environment when there is no single main subject. */
 export function detectSubject(normalizedText:string,hasCharacter=false):NonNullable<Staging["subject"]>{
@@ -285,7 +285,12 @@ export function propWidth(kind:SceneProp["kind"],h:number):number{const a=VISUAL
 const DETAIL_HEIGHT:Record<NonNullable<Staging["focusDetail"]>,number>={face:0.88,eyes:0.9,jewelry:0.78,hands:0.45,feet:0.05};
 export const FOCUS_DETAIL_FA:Record<NonNullable<Staging["focusDetail"]>,string>={face:"صورت",eyes:"چشم‌ها",hands:"دست‌ها",feet:"پاها و کفش",jewelry:"جواهر و اکسسوری"};
 // ---- the frame as a lo-fi previz of the output: one physical camera (full-frame sensor, the lens and aperture Whoush or the user chose) ----
-const SENSOR_H_MM=24,PERSON_M=1.7,METERS_PER_Z=4,BACKDROP_M=200,REF_FOCAL=35;
+const SENSOR_H_MM=24,PERSON_M=1.7,METERS_PER_Z=4,REF_FOCAL=35;
+/** How far behind the main subject each kind of place's background stands, in metres: a room's back wall is close, mountains are far. */
+const ENVIRONMENT_DISTANCE_M:Record<NonNullable<Staging["environment"]>,number>={landscape:200,room:5,studio:3,street:30,forest:22,beach:300,desert:250};
+const backdropM=(s:Staging)=>ENVIRONMENT_DISTANCE_M[s.environment??"landscape"];
+export const ENVIRONMENT_FA:Record<NonNullable<Staging["environment"]>,string>={landscape:"فضای باز",room:"داخل اتاق",studio:"استودیو",street:"خیابان و شهر",forest:"جنگل و پارک",beach:"ساحل",desert:"بیابان"};
+const ENVIRONMENT_EN:Record<NonNullable<Staging["environment"]>,string>={landscape:"an open landscape",room:"an interior room",studio:"a photo studio with a seamless backdrop",street:"a city street",forest:"a forest or park",beach:"a beach by the sea",desert:"a desert"};
 const clampN=(v:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,v));
 /**
  * The camera as a real one: focal length f and aperture N (lensFor), and its distance d to the centre point, solved from the shot size so a medium shot stays
@@ -308,15 +313,21 @@ export function lensSizeFactor(s:Staging,z:number):number{
  return clampN(rel/relRef,0.35,3);
 }
 /** The far backdrop's size against the plain drawing: a long lens magnifies it (less of the environment fits), a wide lens shows more of it, smaller. */
-export const backdropFactor=(s:Staging)=>clampN(physicalCamera(s).f/REF_FOCAL,0.55,2.6);
+export function backdropFactor(s:Staging):number{
+ // The same perspective as a prop at the background's distance: far mountains grow with the focal length, a near wall hardly does.
+ const c=physicalCamera(s),D=backdropM(s),dRef=c.d*REF_FOCAL/c.f;
+ return clampN((c.d/(c.d+D))/(dRef/(dRef+D)),0.55,2.6);
+}
+/** Where the floor meets a room's back wall (or a studio's backdrop), as a stage depth for the frame's ground. */
+export const wallDepth=(s:Staging)=>physicalCamera(s).zMain+backdropM(s)/METERS_PER_Z;
 /**
  * Depth-of-field blur at depth z (or the far backdrop), as a share of the frame's height: the thin-lens circle of confusion, f²/(N(d−f)) · |x−d|/x on a
  * 24 mm sensor. The centre point's depth is sharp; f/1.8 at 85 mm melts the background, f/8 at 24 mm keeps everything sharp, a macro distance blurs all but a sliver.
  */
 export function blurAt(s:Staging,z:number|"backdrop",focusZ?:number|"backdrop"):number{
- const c=physicalCamera(s),f=c.f,x=(z==="backdrop"?c.d+BACKDROP_M:distanceTo(c,z))*1000;
+ const c=physicalCamera(s),f=c.f,B=backdropM(s),x=(z==="backdrop"?c.d+B:distanceTo(c,z))*1000;
  // The focus plane: the main subject, or wherever the centre point was moved (focusDepth).
- const dmm=(focusZ===undefined?c.d:focusZ==="backdrop"?c.d+BACKDROP_M:distanceTo(c,focusZ))*1000;
+ const dmm=(focusZ===undefined?c.d:focusZ==="backdrop"?c.d+B:distanceTo(c,focusZ))*1000;
  const coc=(f*f)/(c.N*Math.max(1,dmm-f))*Math.abs(x-dmm)/x;
  return clampN(coc/SENSOR_H_MM,0,0.08);
 }
@@ -664,6 +675,16 @@ const CUES={
  shot:[["extreme_close_up",["extreme close up","extreme closeup","macro","ماکرو","خیلی نزدیک"]],["close_up",["close up","closeup","close-up","کلوزآپ","کلوز آپ","نمای نزدیک"]],["medium_close_up",["medium close up","head and shoulders","سر و شانه"]],["medium",["medium shot","waist up","نمای متوسط","تا کمر"]],["medium_full",["knees up","تا زانو"]],["full",["full body","full length","full shot","تمام قد","تمام‌قد","کل بدن"]],["extreme_wide",["extreme wide","خیلی باز"]],["wide",["wide shot","wide angle","نمای باز","نمای عریض"]]] as [Staging["shotSize"],string[]][],
  side:[[-1/3,["on the left","left side","سمت چپ","طرف چپ"]],[1/3,["on the right","right side","سمت راست","طرف راست"]],[0,["centered","in the center","in the middle","وسط کادر","وسط قاب"]]] as [number,string[]][]
 };
+const ENVIRONMENT_CUES:[NonNullable<Staging["environment"]>,string[]][]=[
+ ["studio",["studio","photo studio","seamless","white background","plain background","استودیو","آتلیه","پس زمینه سفید","بک گراند سفید","پس زمینه ساده"]],
+ ["room",["room","indoor","indoors","interior","cafe","café","coffee shop","restaurant","kitchen","bedroom","living room","office","classroom","hall","home","house","bar",
+  "اتاق","داخل","کافه","کافی شاپ","رستوران","آشپزخانه","آشپزخونه","اتاق خواب","پذیرایی","دفتر","کلاس","سالن","خانه","خونه","مغازه"]],
+ ["street",["street","city","alley","downtown","urban","sidewalk","market","bazaar","خیابان","خیابون","کوچه","شهر","بازار","پیاده رو","میدان"]],
+ ["forest",["forest","woods","park","garden","jungle","جنگل","پارک","باغ","درختان"]],
+ ["beach",["beach","sea","ocean","shore","coast","ساحل","دریا","اقیانوس","کنار دریا"]],
+ ["desert",["desert","dunes","sand dunes","بیابان","کویر","صحرا","تپه های شنی"]],
+ ["landscape",["mountain","mountains","landscape","field","meadow","valley","کوه","کوهستان","دشت","دره","چمنزار"]]
+];
 const DETAIL_CUES:[NonNullable<Staging["focusDetail"]>,string[]][]=[
  ["eyes",["eyes","close up of the eye","چشم","چشم‌ها","چشمها","چشماش"]],
  ["jewelry",["ring","necklace","earring","earrings","bracelet","jewelry","انگشتر","گردنبند","گوشواره","دستبند","جواهر"]],
@@ -694,6 +715,9 @@ export function applyStagingCues(s:Staging,normalizedText:string):Staging{
  // Which way the main subject faces: «از پشت» / "from behind" shows its back, «نیم‌رخ» / "profile" its side (a light «از پشت» is a light cue, not this).
  const back=["from behind","back view","rear view","از پشت سر","نمای پشت"].some(has)||(has("از پشت")&&!t.includes(" نور از پشت")),profile=["profile","side view","نیم رخ","نیمرخ","نیم‌رخ","از بغل"].some(has);
  const facing=back?180:profile?90:undefined,mi=(s.props??[]).findIndex(p=>p.main);
+ // The kind of place (room, studio, street, forest, beach, desert, else open land), unless the scene already has one.
+ const env=ENVIRONMENT_CUES.find(([,ws])=>ws.some(has))?.[0];
+ if(env&&!rest.environment)rest.environment=env;
  // The part of the subject the brief is about (the dominant detail): the frame and the lens centre on it.
  const detail=DETAIL_CUES.find(([,ws])=>ws.some(has))?.[0];
  if(detail)rest.focusDetail=detail;

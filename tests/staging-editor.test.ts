@@ -406,3 +406,15 @@ test("focus follows the centre point: on a prop it is sharp and the subject soft
  assert.equal(focusDepth(sky,s,W,H),"backdrop");
  assert.equal(focusDepth(s,s,W,H),undefined,"no centre point moved: the main subject");
 });
+
+test("the place is detected from the brief and sets the background's distance: a room's wall is close (it blurs little), mountains are far",async()=>{
+ const {applyStagingCues,blurAt,backdropFactor,describeStagingEn}=await import("../lib/staging");
+ const s:Staging={...base,shotSize:"medium",lensMm:85,apertureF:1.8,props:[{kind:"person",label:"زن",x:0,z:-0.25,y:0,main:true}]};
+ const env=(t:string)=>applyStagingCues(s,normalizePersian(t)).environment;
+ assert.equal(env("پرتره یه زن توی کافه"),"room");assert.equal(env("a model in a photo studio"),"studio");assert.equal(env("یه مرد توی خیابون شب"),"street");
+ assert.equal(env("کنار دریا موقع غروب"),"beach");assert.equal(env("a hiker in the forest"),"forest");assert.equal(env("کویر"),"desert");assert.equal(env("a portrait"),undefined);
+ const room={...s,environment:"room" as const},open={...s,environment:"landscape" as const};
+ assert.ok(blurAt(room,"backdrop")<blurAt(open,"backdrop"),"a near wall is less blurred than far mountains");
+ assert.ok(backdropFactor(open)>backdropFactor(room),"a long lens magnifies far mountains more than a near wall");
+ assert.match(describeStagingEn(room),/in an interior room/);
+});
