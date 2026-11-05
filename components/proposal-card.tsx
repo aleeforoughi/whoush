@@ -98,7 +98,7 @@ export function PastProposalCard({snapshot,onMention,adjusted,onBuildScene,busy}
   </p>
   <div className="flex flex-wrap items-center gap-2">
    {adjusted&&onBuildScene&&<Button type="button" onClick={onBuildScene} disabled={busy}><Icon icon={Box} aria-hidden="true"/>این صحنه رو بساز</Button>}
-   <p role="note" className="min-w-0 flex-1 type-caption text-fg-secondary">{adjusted?"صحنهٔ «بوم» تغییر کرده؛ هووش با همین صحنه یه برنامه و قیمت تازه می‌ده.":PAST_PROPOSAL_FA}</p>
+   <p role="note" className="min-w-0 flex-1 type-caption text-fg-secondary">{adjusted?"صحنهٔ «بوم» تغییر کرده؛ هووش با همین صحنه یه پرامپت و قیمت تازه می‌ده.":PAST_PROPOSAL_FA}</p>
   </div>
  </Card>;
 }

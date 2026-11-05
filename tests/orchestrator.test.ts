@@ -434,7 +434,7 @@ test("attachments: md and pdf only plan normally with a proposal, and the determ
  const r=planned(await orchestrateCreativeTurn({text:"a photo of a lake",attachments:[att("md"),att("json"),att("pdf")]}));
  assert.ok(r.proposal.fixedNeurons>0&&Number.isInteger(r.proposal.fixedNeurons));
  const soft=r.plan.softPreferences.join("\n");
- assert.match(soft,/۲ سند متنی/);assert.ok(soft.includes("محتوای فایل PDF هنوز خوانده نمی‌شود و در برنامه اثری ندارد"));
+ assert.match(soft,/۲ سند متنی/);assert.ok(soft.includes("محتوای فایل PDF هنوز خوانده نمی‌شود و در پرامپت اثری ندارد"));
  const none=planned(await orchestrateCreativeTurn({text:"a photo of a lake"}));assert.ok(!none.plan.softPreferences.join("").includes("سند متنی")&&!none.plan.softPreferences.join("").includes("PDF"));
  assert.notEqual(last().fallbackReason,"media_review_unavailable");
 });

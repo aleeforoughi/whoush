@@ -68,7 +68,7 @@ function Line({icon,label,children}:{icon:LucideIcon;label:string;children:React
  * fold under «جزئیات بیشتر»; «بوم» (the adjustable scene) comes last. All of it is Whoush's proposal, not verified model settings.
  */
 export function PlanStory({plan,onStagingChange,focus}:{plan:PublicCreativePlan;
- /** A follow-up about one or two parts of the scene: «بوم» shows just those parts (expandable to all), and the rest of the plan folds under «جزئیات برنامه». */
+ /** A follow-up about one or two parts of the scene: «بوم» shows just those parts (expandable to all), and the rest of the plan folds under «جزئیات پرامپت». */
  focus?:readonly string[];
  /** When set (the live generation), «بوم» is adjustable and every change flows to the generation card. */onStagingChange?:(s:Staging,aspect:string,changed:boolean)=>void}){
  const {shot,identityLock,speech,references,staging}=plan;
@@ -148,7 +148,7 @@ export function PlanStory({plan,onStagingChange,focus}:{plan:PublicCreativePlan;
   {editor}
   <Accordion>
    <AccordionItem value="plan" className="border-b-0">
-    <AccordionTrigger className="rounded-card px-3 py-2.5 hover:no-underline hover:bg-surface-hover aria-expanded:bg-surface-selected aria-expanded:hover:bg-surface-selected"><span className="flex items-center gap-2"><Icon icon={ListChecks} size={16} aria-hidden="true" className="size-4 text-fg-secondary group-aria-expanded/accordion-trigger:text-primary"/>جزئیات برنامه</span></AccordionTrigger>
+    <AccordionTrigger className="rounded-card px-3 py-2.5 hover:no-underline hover:bg-surface-hover aria-expanded:bg-surface-selected aria-expanded:hover:bg-surface-selected"><span className="flex items-center gap-2"><Icon icon={ListChecks} size={16} aria-hidden="true" className="size-4 text-fg-secondary group-aria-expanded/accordion-trigger:text-primary"/>جزئیات پرامپت</span></AccordionTrigger>
     <AccordionContent><div className="flex flex-col gap-5 pt-3">{details}</div></AccordionContent>
    </AccordionItem>
   </Accordion>

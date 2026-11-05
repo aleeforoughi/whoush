@@ -13,7 +13,7 @@ export function parseNdjson(buffer:string):{events:StreamEvent[];rest:string}{
 }
 /** The live status line for a stage, in the user's script (Finglish for a Finglish message). */
 export const STAGE_TEXT:Record<"fa"|"finglish",Record<TurnStage,string>>={
- fa:{reading:"دارم پیامت رو می‌خونم…",planning:"دارم صحنه، دوربین و نور رو می‌چینم…",checking:"دارم برنامه رو چک می‌کنم…",pricing:"دارم مدل و قیمت رو پیدا می‌کنم…"},
+ fa:{reading:"دارم پیامت رو می‌خونم…",planning:"دارم صحنه، دوربین و نور رو می‌چینم…",checking:"دارم پرامپت رو چک می‌کنم…",pricing:"دارم مدل و قیمت رو پیدا می‌کنم…"},
  finglish:{reading:"Daram payamet ro mikhunam…",planning:"Daram sahne, durbin o nur ro michinam…",checking:"Daram barname ro check mikonam…",pricing:"Daram model o gheymat ro peyda mikonam…"}
 };
 /**
