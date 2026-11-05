@@ -645,13 +645,14 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   {/* What the controls below are adjusting, while a prop is selected: a blue badge in the frame's top-right corner, «تنظیم #آدم ×»; × goes back to the
       frame's own settings (and unlocks). */}
   {((sel!=null&&base[sel])||centerSel)&&onBack&&<div className="absolute top-3 start-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1.5">
+   {/* Each badge hugs its text in full (never cut); when two do not fit side by side, the second wraps under the first. */}
    <button type="button" onClick={onBack} aria-label={"تنظیم "+(centerSel?"مرکز":propTags(base)[sel!])+"، برگشت به تنظیمات کادر"}
-   className="flex h-7 max-w-[70%] items-center gap-1 rounded-full bg-primary ps-2.5 pe-1.5 text-xs font-medium text-primary-foreground shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:h-8">
-   <span className="truncate">تنظیم {centerSel?"مرکز":<bdi>{propTags(base)[sel!]}</bdi>}</span><Icon icon={X} size={16} aria-hidden="true" className="size-3.5! shrink-0"/>
+   className="flex h-7 w-max shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-primary ps-2.5 pe-1.5 text-xs font-medium text-primary-foreground shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:h-8">
+   <span>تنظیم {centerSel?"مرکز":<bdi>{propTags(base)[sel!]}</bdi>}</span><Icon icon={X} size={16} aria-hidden="true" className="size-3.5! shrink-0"/>
    </button>
    {/* With the centre point selected: back to Whoush's default centre (on the dominant subject, Whoush's framing); white badge, blue text. */}
    {centerSel&&<button type="button" onClick={()=>onFocus?.(null)} aria-label="بازگشت به مرکز سوژه"
-    className="flex h-7 items-center gap-1 rounded-full bg-white ps-2 pe-2.5 text-xs font-medium text-primary shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60 pointer-coarse:h-8">
+    className="flex h-7 w-max shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-white ps-2 pe-2.5 text-xs font-medium text-primary shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60 pointer-coarse:h-8">
     <Icon icon={Undo2} size={16} aria-hidden="true" className="size-3.5! shrink-0"/>بازگشت به مرکز سوژه</button>}
   </div>}
   {/* Tag text, then (on its right) the lock in a small button: outline when unlocked, filled blue with a white lock when locked. On touch screens the
