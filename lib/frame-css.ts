@@ -8,9 +8,9 @@
  * projected by the browser exactly where the camera sees that point, for any s; s = D / (the aim point's depth) keeps the aim point on the screen plane.
  */
 import type {Staging} from "./creative-plan";
-import {camera3D,propSize,propWorld,stageFromWorld,wideFrameRect,worldOrigin,type Camera3D,type FrameRect} from "./scene3d";
+import {camera3D,closeShare,propSize,propWorld,stageFromWorld,wideFrameRect,worldOrigin,type Camera3D,type FrameRect} from "./scene3d";
 import {PROP_X_RANGE,PROP_Z_RANGE} from "./creative-plan";
-import {METERS_PER_Z,VERTICAL_STOPS,cubeDims,facingOf,frameSize,isCharacter,isCube,nearestShot,scaleFromSlider,supportOf,verticalIndex,wrap180,type SceneProp,type VerticalStop} from "./staging";
+import {DETAIL_HEIGHT,METERS_PER_Z,VERTICAL_STOPS,cubeDims,facingOf,frameSize,isCharacter,isCube,nearestShot,scaleFromSlider,scaleOf,sliderFromScale,supportOf,verticalIndex,wrap180,type SceneProp,type VerticalStop} from "./staging";
 import {sizeOf,spanM,spriteFor,widthM,familyOf,type SpriteSide} from "./sprites";
 import {VISUALS} from "./visual-assets";
 
@@ -88,15 +88,19 @@ export function billboard(v:CssView,p:V3,mpp:number,mirror=false,minDepth=0.3,/*
  * along that line; the camera's own up when it looks almost straight down at it). CSS perspective then draws it as a real rectilinear lens would:
  * stretched toward the frame's edges by a wide lens close up, leaning in when the camera tilts. `above` is the share of the picture above `at`.
  */
-export function standee(v:CssView,at:V3,wpx:number,hpx:number,mppX:number,mppY:number,mirror:boolean,above:number,/** The height the picture was drawn from, degrees. */drawnFrom:number):{o:V3;ex:V3;ey:V3;depth:number;quad:V3[]}|undefined{
+export function standee(v:CssView,at:V3,wpx:number,hpx:number,mppX:number,mppY:number,mirror:boolean,above:number,/** The height the picture was drawn from, degrees. */drawnFrom:number,
+ /** The picture turned in its own plane, degrees clockwise (an overhead plan view turned to the way the thing faces). */spin=0,
+ /** The share of the picture left of `at`. */across=0.5):{o:V3;ex:V3;ey:V3;depth:number;quad:V3[]}|undefined{
  // Square to the line of sight across the ground, tilted by the height the picture shows (not the exact line to the camera): an eye-level picture
  // stands straight up, so a level camera keeps verticals vertical; only a tilted camera makes them lean.
  const ray=sub(at,v.pos),flat=Math.hypot(ray[0],ray[2]),e=drawnFrom*Math.PI/180;
  const n:V3=flat>1e-6?norm([ray[0]/flat*Math.cos(e),-Math.sin(e),ray[2]/flat*Math.cos(e)]):norm(ray),vert=sub([0,1,0],mul(n,n[1])),lv=Math.hypot(...vert);
  // Looking down (or up) steeply, the world's vertical along the line of sight vanishes: blend toward the camera's up.
  const t=Math.min(1,lv/0.35),up=norm(add(mul(lv>1e-6?norm(vert):v.u,t),mul(v.u,1-t)));
- const R=norm(cross(n,up)),U=norm(cross(R,n)),W=wpx*mppX,H=hpx*mppY;
- const o=add(add(at,mul(R,mirror?W/2:-W/2)),mul(U,H*above)),ex=mul(R,(mirror?-1:1)*mppX),ey=mul(U,-mppY);
+ const R=norm(cross(n,up)),U=norm(cross(R,n)),sp=spin*Math.PI/180,c=Math.cos(sp),sn=Math.sin(sp);
+ // The picture's own right and down, turned clockwise by `spin` within the plane (mirrored: its right flipped).
+ const ex=mul(add(mul(R,c),mul(U,-sn)),(mirror?-1:1)*mppX),ey=mul(add(mul(R,-sn),mul(U,-c)),mppY);
+ const o=add(add(at,mul(ex,-wpx*across)),mul(ey,-hpx*above));
  const quad=[o,add(o,mul(ex,wpx)),add(add(o,mul(ex,wpx)),mul(ey,hpx)),add(o,mul(ey,hpx))];
  if(quad.some(q=>toCam(v,q)[2]<0.05))return undefined;
  const depth=toCam(v,at)[2];
@@ -168,19 +172,35 @@ export type PropSprite={i:number;id:string;src:string;
  * A thing standing at `ground` (world, its lift included), `h` metres tall, turned `facing`: the pack's image for the height and side the camera sees it
  * from, centred on its middle at its real size, blurred by the lens.
  */
-export function thingSprite(v:CssView,p:Pick<SceneProp,"kind"|"label">,ground:V3,size:{h:number;len:number;wid:number},facing:number,/** Where on it the angle is measured, as a share of its height. */look=0.5){
+export function thingSprite(v:CssView,p:Pick<SceneProp,"kind"|"label">,ground:V3,size:{h:number;len:number;wid:number},facing:number,/** Where on it the angle is measured, as a share of its height. */look=0.5,
+ /** How close the shot is, 0 (full length and wider) to 1 (a ۳/۴ shot and closer, lib/scene3d.ts closeShare): a close shot places a person by the face. */close=0){
  const h=size.h,centre:V3=[ground[0],ground[1]+h/2,ground[2]];
  const view=viewOf(v,[ground[0],ground[1]+h*look,ground[2]],facing),sp=spriteFor(p,view.stop,view.apparent),a=VISUALS[sp.id];if(!a)return undefined;
  const stopDeg=VERTICAL_STOPS.find(x=>x.id===sp.height)!.deg;
  // The image's height in metres: the thing's height foreshortened plus its depth seen from above or below, at its real size. A cube also takes the
  // object's width (a desk is wide and low, a phone thin and tall), so it is stretched sideways to it.
- const mpp=spanM(size,stopDeg,sp.side)/a.height,sx=familyOf(p)==="cube"?(widthM(size,sp.side)/a.width)/mpp:1;
+ // Sized to how tall the thing really looks from where the camera is (not from the height its picture was drawn at), so crossing from one angle's
+ // picture to the next never changes its size; an overhead plan view is the thing's footprint, at its own size.
+ const mpp=spanM(size,sp.height==="top"?stopDeg:view.elevation,sp.side)/a.height,sx=familyOf(p)==="cube"?(widthM(size,sp.side)/a.width)/mpp:1;
  // Placed by its middle; a camera so close that its middle is beside or behind the lens (a worm's-eye close-up) places it by the point it looks at.
  const lookAt:V3=[ground[0],ground[1]+h*look,ground[2]],mppX=mpp*sx;
  // Tilted toward the height the camera sees it from: an image from another height (the pack lacks this one yet) still faces the camera instead of
  // lying foreshortened (an eye-level picture seen from overhead would shrink to a sliver).
  const seenDeg=VERTICAL_STOPS.find(x=>x.id===view.stop)!.deg;
- const st=standee(v,centre,a.width,a.height,mppX,mpp,sp.mirror,0.5,seenDeg)??standee(v,lookAt,a.width,a.height,mppX,mpp,sp.mirror,1-look,seenDeg);if(!st)return undefined;
+ // A person's pictures differ in how big and where the head is drawn (from below the legs are long and the head small): a close shot places each by its
+ // face at the face's real place and size, so the face stays put whichever angle's picture is drawn; a full-length shot places it by its body, so the
+ // feet stay on the ground. Between, it blends with the zoom.
+ // An overhead plan view (no head to measure) is placed at the head's height up close, where the camera looks down onto the head, not the waist.
+ const head=a.head,ref=VISUALS[familyOf(p)+"-front"]?.head,person=Boolean(ref)&&(Boolean(head)||sp.height==="top"),k=person?Math.max(0,Math.min(1,close)):0;
+ const faceAt:V3=[ground[0],ground[1]+h*DETAIL_HEIGHT.face,ground[2]],mppHead=head&&ref?(ref.neck-ref.top)*h/((head.neck-head.top)*a.height):mpp;
+ const m2=mpp+(mppHead-mpp)*k,at:V3=k?add(centre,mul(sub(faceAt,centre),k)):centre;
+ // The picture faces the camera squarely, tilted to the camera's real height (it is drawn as seen from about there): nothing of it is foreshortened or
+ // reaches toward the lens, and as the camera rises or sinks it turns smoothly with it, so crossing from one angle's picture to the next never jumps.
+ // An overhead plan view lies flat.
+ const toCamDir=sub(v.pos,at),realDeg=Math.asin(Math.max(-1,Math.min(1,toCamDir[1]/(Math.hypot(...toCamDir)||1))))*180/Math.PI;
+ const tilt=sp.height==="top"?seenDeg:realDeg;
+ const st=standee(v,at,a.width,a.height,mppX*m2/mpp,m2,sp.mirror,0.5+((head?(head.top+head.neck)/2:0.5)-0.5)*k,tilt,sp.spin,0.5+((head?.x??0.5)-0.5)*k)
+  ??standee(v,lookAt,a.width,a.height,mppX,mpp,sp.mirror,1-look,seenDeg,sp.spin);if(!st)return undefined;
  const tiles=tilesFor(v,st.o,st.ex,st.ey,a.width,a.height);if(!tiles)return undefined;
  // Drawn at the px it covers on screen, so the lens's blur (screen px) applies as it is; drawn larger than its 640 px image (a close-up), from its HD version.
  const big=Math.max(...tiles.map(t=>t.bh))>a.height*0.75;
@@ -194,12 +214,14 @@ export function thingSprite(v:CssView,p:Pick<SceneProp,"kind"|"label">,ground:V3
 export function propSprites(v:CssView,props:readonly SceneProp[],s:Staging,anchor?:Staging):PropSprite[]{
  const m=(anchor??s).props?.find(p=>p.main)??props.find(p=>p.main)??props[0];
  const aim=m?Math.max(0,Math.min(1,(v.cam.target[1]-propWorld(m,s,anchor).pos[1])/propSize(m).h)):0.5;
+ // How close the shot is: a ۳/۴ shot and closer places a person by the face, a full-length one by the body (thingSprite).
+ const close=closeShare(s);
  return props.flatMap((p,i):PropSprite[]=>{
   const g=propWorld(p,s,anchor,props).pos as V3,size=sizeOf(p);
   if(isCube(p)){const b=boxFaces(v,g,cubeDims(p),facingOf(p));if(!b)return [];
    return [{i,id:"box",src:"",tiles:[],depth:supportOf(p,props)?b.depth-0.01:b.depth,blur:(s.pivot?s.pivot.on===i:Boolean(p.main))?0:b.blur,side:"front" as SpriteSide,stop:"eye" as VerticalStop,faces:b.faces,
     quads:b.faces.map(f=>f.quad),ground:g,top:[g[0],g[1]+size.h*1.05,g[2]] as V3}];}
-  const t=thingSprite(v,p,g,size,facingOf(p),m&&p.kind===m.kind?aim:0.5);
+  const t=thingSprite(v,p,g,size,facingOf(p),m&&p.kind===m.kind?aim:0.5,close);
   // Something resting on another (a phone on a desk) is drawn after it.
   const under=supportOf(p,props);
   // The prop the camera focuses on is sharp: its picture is one flat plane through its middle, but the focus sits on it (its face, or where the user
@@ -373,4 +395,58 @@ export function propReach3D(p:SceneProp,s:Staging,anchor:Staging|undefined,aspec
  const xMax=!right(PROP_X_RANGE[1])?PROP_X_RANGE[1]:solve(right,p.x,PROP_X_RANGE[1]);
  const r2=(n:number)=>Math.round(n*100)/100;
  return {xMin:r2(Math.min(xMin,p.x)),xMax:r2(Math.max(xMax,p.x)),zMin:r2(Math.min(zMin,p.z)),zMax:r2(Math.max(zMax,p.z))};
+}
+
+// ---- the camera-distance diagram: what the frame covers on the subject, and how high the camera may go ----
+/** The camera's line through a point of the view (px). */
+function rayAt(v:CssView,sx:number,sy:number):V3{const [ux,uy]=unfish(v,sx,sy),[x,y]=rot(v,ux,uy,-1);return add(v.f,add(mul(v.r,(x-v.pp[0])/v.D),mul(v.u,-(y-v.pp[1])/v.D)));}
+/**
+ * What the frame covers on the main subject: where the frame's top, bottom, left and right edges (through its middle) cross the upright plane through
+ * the subject square to the camera, in metres from the subject's ground point (up, and toward the frame's right). The crop, the angle, the lens and the
+ * camera's height all count, exactly as the frame draws them. Undefined without a subject.
+ */
+export function cropOnSubject(s:Staging,anchor:Staging|undefined,aspect:string):{top:number;bottom:number;left:number;right:number}|undefined{
+ const props=s.props??[],m=props.find(p=>p.main)??props[0];if(!m)return undefined;
+ const {W,H}=frameSize(aspect),w=1000,h=1000*H/W,v=cssView(s,anchor,aspect,w,h),g=propWorld(m,s,anchor,props).pos as V3;
+ const flat=Math.hypot(v.f[0],v.f[2]),n:V3=flat>1e-3?[v.f[0]/flat,0,v.f[2]/flat]:[0,0,-1],side=norm(cross(n,[0,1,0]));
+ const hit=(sx:number,sy:number)=>{const d=rayAt(v,sx,sy),den=dot(d,n);if(Math.abs(den)<1e-6)return undefined;const t=dot(sub(g,v.pos),n)/den;return t>0?add(v.pos,mul(d,t)):undefined;};
+ const T=hit(w/2,0),B=hit(w/2,h),L=hit(0,h/2),R=hit(w,h/2);
+ return {top:T?T[1]-g[1]:Infinity,bottom:B?B[1]-g[1]:-Infinity,left:L?dot(sub(L,g),side):-Infinity,right:R?dot(sub(R,g),side):Infinity};
+}
+/** How far the camera may be lowered (it stays above the ground) or raised, metres, at its current angle and distance. */
+export function liftLimits(s:Staging,anchor:Staging|undefined,aspect:string):[number,number]{
+ const v=cssView({...s,cameraLift:0},anchor,aspect,100,100);return [Math.min(0,Math.round((0.05-v.pos[1])*100)/100),6];
+}
+
+// ---- an extreme close-up past what the frame can draw ----
+/** The tightest frame drawn for a character: its head's height times this (the head with a little room above and below). */
+export const HEAD_ROOM=1.5;
+/** The frame's four corners as drawn (px, clockwise from top-left): the whole view, or the frame's rectangle in the wide view. */
+function frameCorners(v:CssView):[number,number][]{
+ if(!v.frame)return [[0,0],[v.w,0],[v.w,v.h],[0,v.h]];
+ const cx=v.frame.x*v.w,cy=v.frame.y*v.h,hw=v.frame.w*v.w/2,hh=v.frame.h*v.h/2;
+ return [[cx-hw,cy-hh],[cx+hw,cy-hh],[cx+hw,cy+hh],[cx-hw,cy+hh]];
+}
+/**
+ * An extreme close-up of a character (its eyes, its mouth) is allowed past the zoom the frame can draw (zoomLimits: the character's picture would be
+ * blown up past MAX_MAGNIFY, softer than its image). Past that point the frame stays at its tightest and shows, as `guide`, where the real crop falls on
+ * the subject: the real frame's corners where they cross the plane through the focus point square to the lens, in the drawn view's px. `draw` is the
+ * staging to draw; with no guide it is `s` itself.
+ */
+export function closeUp(s:Staging,anchor:Staging|undefined,aspect:string,w:number,h:number,wide=false):{draw:Staging;guide?:[number,number][]}{
+ const props=s.props??[],m=props.find(p=>p.main);
+ if(!m||!isCharacter(m))return {draw:s};
+ // The frame draws down to the whole head with a little room around it (its picture never blown up past what it holds); tighter is the guide.
+ const ref=VISUALS[familyOf(m)+"-front"]?.head,headCrop=ref?sliderFromScale((ref.neck-ref.top)*HEAD_ROOM):0;
+ const lo=Math.max(zoomLimits(s,anchor,aspect)[0],headCrop),at=sliderFromScale(scaleOf(s));
+ if(at>=lo-1e-3)return {draw:s};
+ // The drawn frame holds the whole face, so the guide lands on the eyes or the mouth.
+ const sc=scaleFromSlider(lo),draw:Staging={...s,shotScale:sc,shotSize:nearestShot(sc),...(s.focusDetail==="eyes"||s.focusDetail==="mouth"?{focusDetail:"face" as const}:{})};
+ const real=cssView(s,anchor,aspect,w,h,wide),shown=cssView(draw,anchor,aspect,w,h,wide),f=focusWorld(real),n=real.f;
+ const guide:[number,number][]=[];
+ for(const [x,y] of frameCorners(real)){
+  const d=rayAt(real,x,y),den=dot(d,n);if(den<1e-6)return {draw};
+  const p=toScreen(shown,add(real.pos,mul(d,dot(sub(f,real.pos),n)/den)));if(!p)return {draw};guide.push(p);
+ }
+ return {draw,guide};
 }

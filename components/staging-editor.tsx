@@ -130,8 +130,11 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  const setDistance=(v:number)=>{aim();setDistanceOnly(v);};
  // The zoom stays within what this scene allows (the camera never inside or past the subject: lib/frame-css.ts, zoomLimits); a new lens or angle that
  // would put it there pulls the zoom back to the nearest allowed.
- const zoomTo=(d:Staging,v:number):Staging=>{const [lo,hi]=zoomLimits(d,anchor,aspect),sc=scaleFromSlider(Math.max(lo,Math.min(hi,v)));return {...d,shotScale:sc,shotSize:nearestShot(sc)};};
- const fitZoom=(d:Staging):Staging=>{const v=sliderFromScale(scaleOf(d)),[lo]=zoomLimits(d,anchor,aspect);return v<lo?zoomTo(d,lo):d;};
+ // A character may be zoomed past what the frame can draw, down to an extreme close-up of its eyes or mouth: the frame then stays at its tightest and shows
+ // the real crop as a green guide on the face (lib/frame-css.ts, closeUp).
+ const tightest=(d:Staging)=>{const m=(d.props??[]).find(p=>p.main);return m&&isCharacter(m)?0:zoomLimits(d,anchor,aspect)[0];};
+ const zoomTo=(d:Staging,v:number):Staging=>{const lo=tightest(d),sc=scaleFromSlider(Math.max(lo,Math.min(1,v)));return {...d,shotScale:sc,shotSize:nearestShot(sc)};};
+ const fitZoom=(d:Staging):Staging=>{const v=sliderFromScale(scaleOf(d)),lo=tightest(d);return v<lo?zoomTo(d,lo):d;};
  const setDistanceOnly=(v:number)=>setDraft(d=>zoomTo(d,v));
  const setProp=(i:number,p:Partial<SceneProp>)=>setDraft(d=>({...d,props:(d.props??[]).map((x,j)=>j===i?{...x,...p}:x)}));
  // Collapsed by default: «بوم» is advanced settings. The card shows the scene in one line; opening it shows the canvas and its controls.

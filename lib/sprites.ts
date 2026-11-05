@@ -30,20 +30,25 @@ export function familyOf(p:Pick<SceneProp,"kind"|"label">):SpriteFamily{
  * back views and the cube are symmetric and never mirrored.
  */
 export const NATIVE:Record<string,1|-1>={"person-side":-1,"animal-side":1,"person-3q":-1,"animal-3q":1,
- "human-side":-1,"human-3q":-1,"human-3q-back":-1,"animal-3q-back":1,"woman-side":-1,"woman-3q":-1,"woman-3q-back":-1};
+ "human-side":-1,"human-3q":-1,"human-3q-back":-1,"animal-3q-back":1,"woman-side":-1,"woman-3q":-1,"woman-3q-back":-1,
+ "dog-side":1,"dog-3q":1,"dog-3q-back":1,"horse-side":1,"horse-3q":1,"horse-3q-back":1};
 /** The side the camera sees, from the prop's apparent facing (0: it faces the camera; positive: its front turned toward frame right). */
 export function sideOf(apparent:number):{side:SpriteSide;dir:1|-1}{
  const f=wrap180(apparent),a=Math.abs(f);
  return {side:a<22.5?"front":a<67.5?"3q":a<=112.5?"side":a<=157.5?"3q-back":"back",dir:f<0?-1:1};
 }
 /** The heights tried for a stop, nearest first: a missing image falls back toward eye level (top to high, bottom to low), then eye level itself. */
-const TOWARD:Record<VerticalStop,VerticalStop[]>={top:["top","high"],high:["high"],eye:[],low:["low"],bottom:["bottom","low"]};
+const TOWARD:Record<VerticalStop,VerticalStop[]>={top:["high"],high:["high"],eye:[],low:["low"],bottom:["bottom","low"]};
 /**
  * The image for a prop seen from `stop`, showing `apparent` (its facing as the camera sees it): the matrix image when the pack has it, else the nearest
  * height toward eye level. `mirror` flips a side or 3/4 image whose drawn direction is the other way. `side` is the side the camera sees (for sizing).
  */
-export function spriteFor(p:Pick<SceneProp,"kind"|"label">,stop:VerticalStop,apparent:number):{id:string;mirror:boolean;side:SpriteSide;/** The height the image shows (a fallback may show another). */height:VerticalStop}{
+export function spriteFor(p:Pick<SceneProp,"kind"|"label">,stop:VerticalStop,apparent:number):{id:string;mirror:boolean;side:SpriteSide;/** The height the image shows (a fallback may show another). */height:VerticalStop;
+ /** Turned in its own plane, degrees clockwise: from overhead every side is the same plan view turned (its front toward the bottom when it faces the camera). */spin?:number}{
  const fam=familyOf(p),{side:seen,dir}=sideOf(apparent);
+ // From overhead: the character's straight-down plan view, turned to the way it faces (the same picture for every side).
+ const plan=fam==="human"?"human-top":fam==="woman"?(VISUALS["woman-top"]?"woman-top":"human-top"):fam==="animal"?"animal-top":fam==="dog"?"dog-top":fam==="horse"?"horse-top":undefined;
+ if(stop==="top"&&plan&&VISUALS[plan])return {id:plan,mirror:false,side:seen,height:"top",spin:-wrap180(apparent)};
  // A cube looks the same from its four sides: its front stands for the sides and the back, its 3/4 for the rear 3/4. Its real size (how wide, how deep)
  // is applied when it is drawn (widthM), so a car seen side on is still long.
  const img:SpriteSide=fam==="cube"?(seen==="3q"||seen==="3q-back"?"3q":"front"):seen;

@@ -6,10 +6,10 @@
  * is drawn at the px it covers on screen, so the frame stays sharp at any focal length and pixel density (no raster filter). The aperture blurs each
  * thing by its distance from the focus. Same props as the 3D view, so the frame and its full-screen view use either.
  */
-import {useEffect,useLayoutEffect,useRef,useState,type CSSProperties,type PointerEvent} from "react";
+import {useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type PointerEvent} from "react";
 import type {Scene3DProps} from "./scene-3d";
 import {SCENE_COLORS} from "@/lib/scene3d";
-import {cssView,toScreen,nearZ,blurPx,boxFaces,shade,propSprites,stageAt,gridBands,focusWorld,horizonPaths,tilesFor,toCam,type CssView,type Tile,type V3} from "@/lib/frame-css";
+import {closeUp,cssView,toScreen,nearZ,blurPx,boxFaces,shade,propSprites,stageAt,gridBands,focusWorld,horizonPaths,tilesFor,toCam,type CssView,type Tile,type V3} from "@/lib/frame-css";
 import {isCharacter,propTints} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 
@@ -67,10 +67,15 @@ export default function FrameCSS({staging,anchor,aspect,editable,sel,onSelect,on
  const [moving,setMoving]=useState<{i:number;x:number;z:number}|null>(null);
  const grab=useRef<{i:number;feet:[number,number];from:[number,number];lift:number;far:boolean}|null>(null);
  const base=(staging.props??[]).map((p,i)=>moving?.i===i?{...p,x:moving.x,z:moving.z}:p);
+ // An extreme close-up past what the frame can draw: the frame stays at its tightest, and the real crop shows as a green guide on the face.
+ const cuKey=JSON.stringify([staging,anchor??null,aspect,w,h,wide??false]);
+ // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the scene's content, not its object identity
+ const cu=useMemo(()=>w>0&&h>0?closeUp(staging,anchor,aspect,w,h,wide):undefined,[cuKey]);
+ const shown=cu?.draw??staging;
  // The camera comes from the scene as it is (a prop being dragged moves only itself).
- const v=w>0&&h>0?cssView(staging,anchor,aspect,w,h,wide):undefined;
+ const v=w>0&&h>0?cssView(shown,anchor,aspect,w,h,wide):undefined;
  // In the beta the frame draws only the characters (people and the pets); the other props stay in the scene and the prompt.
- const sprites=v?propSprites(v,base,staging,anchor).filter(sp=>isCharacter(base[sp.i])):[];
+ const sprites=v?propSprites(v,base,shown,anchor).filter(sp=>isCharacter(base[sp.i])):[];
  const tints=propTints(base);
  // Where the centre point and the top of the selected prop land, for the frame's overlays; where the frame lies in the wide view.
  const proj:Record<string,[number,number]>={};
@@ -85,7 +90,7 @@ export default function FrameCSS({staging,anchor,aspect,editable,sel,onSelect,on
  },[rectKey]);
  if(!v)return <div ref={root} className="absolute inset-0"/>;
  const local=(e:PointerEvent):[number,number]=>{const b=root.current!.getBoundingClientRect();return [e.clientX-b.left,e.clientY-b.top];};
- const layers:Layer[]=[...placeLayers(v,staging.environment??"landscape",v.cam.backdrop),
+ const layers:Layer[]=[...placeLayers(v,shown.environment??"landscape",v.cam.backdrop),
   ...sprites.flatMap((s):Layer[]=>s.faces
    ?s.faces.map(f=>({key:"p"+s.i+f.key,depth:s.depth,tiles:f.tiles,fill:{color:shade(sel===s.i?C.selected:tints[s.i]??C.clay,f.shade)},blur:s.blur,prop:s.i}))
    :[{key:"p"+s.i,depth:s.depth,tiles:s.tiles,fill:{src:s.src},blur:s.blur,tint:tints[s.i]||sel===s.i?"url(#fc-t"+s.i+")":undefined,prop:s.i}])]
@@ -101,7 +106,7 @@ export default function FrameCSS({staging,anchor,aspect,editable,sel,onSelect,on
  };
  const move=(i:number)=>(e:PointerEvent<HTMLElement>)=>{const g=grab.current;if(!g||g.i!==i)return;e.stopPropagation();
   const [x,y]=local(e);if(!g.far&&Math.hypot(x-g.from[0],y-g.from[1])<5)return;g.far=true;
-  const st=stageAt(v,g.feet[0]+x-g.from[0],g.feet[1]+y-g.from[1],g.lift,staging,anchor);if(!st)return;
+  const st=stageAt(v,g.feet[0]+x-g.from[0],g.feet[1]+y-g.from[1],g.lift,shown,anchor);if(!st)return;
   const p=base[i],c=within?within(p,st):st;if(Number.isFinite(c.x)&&Number.isFinite(c.z))setMoving({i,...c});};
  const up=(i:number)=>(e:PointerEvent<HTMLElement>)=>{const g=grab.current;if(!g||g.i!==i)return;e.stopPropagation();grab.current=null;
   if(moving&&moving.i===i)onProp?.(i,moving.x,moving.z);else if(!g.far)onPropTap?.(i);setMoving(null);};
@@ -145,7 +150,14 @@ export default function FrameCSS({staging,anchor,aspect,editable,sel,onSelect,on
    <path d={hp.hazeUp[0]} fill="url(#fc-hu)"/><path d={hp.hazeDown[0]} fill="url(#fc-hd)"/>
   </svg>
   {layers.filter(l=>l.depth<HAZE_DEPTH).map(l=>group(l))}
+  {cu?.guide&&<svg aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-visible" width={w} height={h}>
+   {/* Outside the real crop dims a little; its border is the real frame. */}
+   <path fillRule="evenodd" fill={C.black} fillOpacity={0.35} d={"M-1 -1H"+(w+1)+"V"+(h+1)+"H-1Z"+guidePath(cu.guide)}/>
+   <path d={guidePath(cu.guide)} fill="none" stroke={C.closeUp} strokeWidth={2} strokeLinejoin="round"/>
+  </svg>}
  </div>;
 }
+/** A closed outline through the guide's corners. */
+const guidePath=(q:[number,number][])=>"M"+q.map(p=>p[0].toFixed(1)+" "+p[1].toFixed(1)).join("L")+"Z";
 /** Things farther than this (metres) sit behind the horizon's haze: the mountains, the far rows of the place. */
 const HAZE_DEPTH=150;

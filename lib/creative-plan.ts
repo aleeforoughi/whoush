@@ -103,7 +103,7 @@ export const LIGHT_ROLES=["key","fill","rim","background","practical"] as const;
 export const LIGHT_DIRECTIONS=["front","front_left","left","back_left","back","back_right","right","front_right","top"] as const;
 export const LIGHT_SOURCES=["sun","sky","window","softbox","led_panel","practical","neon","fire","moon","flash"] as const;
 export const LIGHT_HEIGHTS=["floor","low","eye","high","ceiling"] as const;
-export const FOCUS_DETAILS=["face","eyes","hands","feet","jewelry"] as const;
+export const FOCUS_DETAILS=["face","eyes","mouth","hands","feet","jewelry"] as const;
 export const ENVIRONMENTS=["landscape","room","studio","street","forest","beach","desert"] as const;
 const LightSchema=z.object({role:z.enum(LIGHT_ROLES),direction:z.enum(LIGHT_DIRECTIONS),
  /** The exact position around the subject in top-view degrees (0 right of frame, 90 toward the camera), set by dragging; `direction` is its nearest name. */
@@ -136,6 +136,8 @@ export const StagingSchema=z.object({subject:z.enum(SUBJECTS).optional(),cameraA
  cameraElevation:z.number().min(-60).max(85).optional(),
  /** How far the camera has orbited around the main subject from Whoush's view, in degrees: positive to the subject's left (the viewer's right), ±180 behind it. */
  cameraAzimuth:z.number().min(-180).max(180).optional(),
+ /** The camera raised (positive) or lowered (negative) from where it frames the subject, metres: the camera and its aim move up or down together, like a
+  pedestal, so its angle stays and the frame slides up or down the subject. Never below the ground. */cameraLift:z.number().min(-5).max(20).optional(),
  /** A Dutch (canted) angle: the camera rolled this many degrees (positive clockwise); unset or 0: level. */cameraRoll:z.number().min(-45).max(45).optional(),
  /** The kind of place, for the canvas's background and its distance (Whoush detects it from the brief; open landscape when it does not say). */
  environment:z.enum(ENVIRONMENTS).optional(),

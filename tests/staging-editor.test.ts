@@ -108,7 +108,7 @@ test("dragging a prop in the camera view: the ground point under the pointer is 
 test("smooth adjustments: exact camera elevation, zoom and light angle; the names are the nearest description; small moves still count as changes",async()=>{
  const {nearestShot,scaleFromSlider,sliderFromScale,zoomFactor}=await import("../lib/staging");
  assert.equal(nearestShot(0.31),"medium_close_up");assert.equal(nearestShot(3),"wide");
- assert.equal(scaleFromSlider(0),0.09);assert.equal(scaleFromSlider(1),5);assert.ok(Math.abs(sliderFromScale(scaleFromSlider(0.37))-0.37)<0.001);
+ assert.equal(scaleFromSlider(0),0.04);assert.equal(scaleFromSlider(1),5);assert.ok(Math.abs(sliderFromScale(scaleFromSlider(0.37))-0.37)<0.001);
  const smooth={...base,cameraAngle:"high" as const,cameraElevation:22,shotScale:0.7,lights:[{...base.lights[0],angle:150},base.lights[1]]};
  const lines=describeStagingChangesFa(base,smooth);
  assert.ok(lines[0]==="زاویهٔ دوربین: هم‌سطح چشم (0°) ← زاویهٔ بالا (22°)",lines[0]);assert.ok(lines[1].startsWith("کادر: نزدیک متوسط (زوم 3.4×) ← نزدیک متوسط (زوم "+zoomFactor(smooth)+"×)"),lines[1]);

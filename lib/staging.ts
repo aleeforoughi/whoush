@@ -65,12 +65,12 @@ export function placementEn(f?:{x:number;y:number}):string{
 /** The arranged scene in Persian, for the plan's hard constraints (what the user set in the diagrams). */
 export function describeStagingFa(s:Staging):string{
  const lights=s.lights.map(l=>LIGHT_ROLE_FA[l.role]+": "+LIGHT_SOURCE_FA[l.source]+"، "+LIGHT_QUALITY_FA[l.quality]+"، "+LIGHT_DIRECTION_FA[l.direction]+"، ارتفاع "+LIGHT_HEIGHT_FA[l.height]+"، "+l.colorTemperatureK+" کلوین"+(l.intensity!==undefined?"، شدت "+intensityFa(l.intensity):"")+(l.colorHex?"، رنگ "+l.colorHex:""));
- return "صحنهٔ تنظیم‌شده: زاویهٔ دوربین «"+CAMERA_ANGLE_FA[s.cameraAngle]+"»"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+" درجه)":"")+(Math.abs(s.cameraAzimuth??0)>=1?"، دوربین "+orbitFa(s.cameraAzimuth!):"")+(s.cameraRoll?"، زاویهٔ کج (داچ) "+Math.abs(Math.round(s.cameraRoll))+" درجه":"")+(s.shotStyle==="ots"?"، نمای روی شانه":s.shotStyle==="pov"?"، نمای دید سوژه":"")+focusFa(s)+(s.focusDetail?"، تمرکز روی "+FOCUS_DETAIL_FA[s.focusDetail]:"")+"، کادر «"+SHOT_SIZE_FA[s.shotSize]+"»"+(s.shotScale!==undefined?" (زوم "+zoomFactor(s)+"×)":"")+(s.subject?"، سوژه: "+SUBJECT_FA[s.subject]:"")+"، جای سوژه: "+placementFa(s.framing)+(s.props?.length?"؛ "+describeLayoutFa(s.props):"")+"؛ "+lights.join("؛ ");
+ return "صحنهٔ تنظیم‌شده: زاویهٔ دوربین «"+CAMERA_ANGLE_FA[s.cameraAngle]+"»"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+" درجه)":"")+(Math.abs(s.cameraAzimuth??0)>=1?"، دوربین "+orbitFa(s.cameraAzimuth!):"")+(Math.abs(s.cameraLift??0)>=0.05?"، دوربین "+fa2(Math.round(Math.abs(s.cameraLift!)*100))+" سانتی‌متر "+(s.cameraLift!>0?"بالاتر":"پایین‌تر"):"")+(s.cameraRoll?"، زاویهٔ کج (داچ) "+Math.abs(Math.round(s.cameraRoll))+" درجه":"")+(s.shotStyle==="ots"?"، نمای روی شانه":s.shotStyle==="pov"?"، نمای دید سوژه":"")+focusFa(s)+(s.focusDetail?"، تمرکز روی "+FOCUS_DETAIL_FA[s.focusDetail]:"")+"، کادر «"+SHOT_SIZE_FA[s.shotSize]+"»"+(s.shotScale!==undefined?" (زوم "+zoomFactor(s)+"×)":"")+(s.subject?"، سوژه: "+SUBJECT_FA[s.subject]:"")+"، جای سوژه: "+placementFa(s.framing)+(s.props?.length?"؛ "+describeLayoutFa(s.props):"")+"؛ "+lights.join("؛ ");
 }
 /** The arranged scene in English, appended to the provider-facing media prompt. */
 export function describeStagingEn(s:Staging):string{
  const lights=s.lights.map(l=>l.role+" light: "+l.quality+" "+l.source.replace("_"," ")+" from "+DIR_EN[l.direction]+(l.angle!==undefined?" ("+Math.round(l.angle)+"° in top view)":"")+", "+LIGHT_HEIGHT_EN[l.height]+", "+l.colorTemperatureK+"K"+(l.intensity!==undefined?", "+Math.round(l.intensity*100)+"% strength":"")+(l.colorHex?" "+l.colorHex+" gel":""));
- return "Staging: "+ANGLE_EN[s.cameraAngle]+" camera"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+"° from eye level)":"")+(orbitEn(s.cameraAzimuth??0)?", "+orbitEn(s.cameraAzimuth??0):"")+(s.cameraRoll?", Dutch angle tilted "+Math.abs(Math.round(s.cameraRoll))+"° "+(s.cameraRoll>0?"clockwise":"counter-clockwise"):"")+(s.shotStyle==="ots"?", over-the-shoulder shot":s.shotStyle==="pov"?", point-of-view shot through the subject's eyes":"")+(s.environment&&s.environment!=="landscape"?", in "+ENVIRONMENT_EN[s.environment]:"")+(s.environmentDistance!==undefined?", the background about "+Math.round(s.environmentDistance)+" m behind the subject":"")+focusEn(s)+(s.focusDetail?", framed on the main subject's "+(s.focusDetail==="feet"?"feet and shoes":s.focusDetail):"")+", "+SHOT_EN[s.shotSize]+(s.shotScale!==undefined?" ("+zoomFactor(s)+"x of a full shot)":"")+", "+placementEn(s.framing)+"; "+lights.join("; ")+"."+(s.props?.length?" "+describeLayoutEn(s.props):"");
+ return "Staging: "+ANGLE_EN[s.cameraAngle]+" camera"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+"° from eye level)":"")+(orbitEn(s.cameraAzimuth??0)?", "+orbitEn(s.cameraAzimuth??0):"")+(Math.abs(s.cameraLift??0)>=0.05?", camera "+(s.cameraLift!>0?"raised ":"lowered ")+Math.round(Math.abs(s.cameraLift!)*100)+" cm with its aim (same angle)":"")+(s.cameraRoll?", Dutch angle tilted "+Math.abs(Math.round(s.cameraRoll))+"° "+(s.cameraRoll>0?"clockwise":"counter-clockwise"):"")+(s.shotStyle==="ots"?", over-the-shoulder shot":s.shotStyle==="pov"?", point-of-view shot through the subject's eyes":"")+(s.environment&&s.environment!=="landscape"?", in "+ENVIRONMENT_EN[s.environment]:"")+(s.environmentDistance!==undefined?", the background about "+Math.round(s.environmentDistance)+" m behind the subject":"")+focusEn(s)+(s.focusDetail?", framed on the main subject's "+(s.focusDetail==="feet"?"feet and shoes":s.focusDetail):"")+", "+SHOT_EN[s.shotSize]+(s.shotScale!==undefined?" ("+zoomFactor(s)+"x of a full shot)":"")+", "+placementEn(s.framing)+"; "+lights.join("; ")+"."+(s.props?.length?" "+describeLayoutEn(s.props):"");
 }
 /** The subject a brief is about, from its words: a person, an animal, a vehicle, a product or object, or an environment when there is no single main subject. */
 export function detectSubject(normalizedText:string,hasCharacter=false):NonNullable<Staging["subject"]>{
@@ -143,6 +143,7 @@ export function describeStagingChangesFa(before:Staging,after:Staging,aspectBefo
  if(before.cameraAngle!==after.cameraAngle||Math.abs(eb-ea)>=2)out.push("زاویهٔ دوربین: "+arrow(CAMERA_ANGLE_FA[before.cameraAngle]+" ("+Math.round(eb)+"°)",CAMERA_ANGLE_FA[after.cameraAngle]+" ("+Math.round(ea)+"°)"));
  if(before.shotSize!==after.shotSize||Math.abs(Math.log(scaleOf(before)/scaleOf(after)))>0.03)out.push("کادر: "+arrow(SHOT_SIZE_FA[before.shotSize]+" (زوم "+zoomFactor(before)+"×)",SHOT_SIZE_FA[after.shotSize]+" (زوم "+zoomFactor(after)+"×)"));
  if(Math.abs(wrap180((after.cameraAzimuth??0)-(before.cameraAzimuth??0)))>=2)out.push("چرخش دوربین: "+arrow(orbitFa(before.cameraAzimuth??0),orbitFa(after.cameraAzimuth??0)));
+ if(Math.round((before.cameraLift??0)*100)!==Math.round((after.cameraLift??0)*100))out.push("ارتفاع دوربین (بالا و پایین): "+arrow(liftFa(before.cameraLift),liftFa(after.cameraLift)));
  if(Math.round(before.cameraRoll??0)!==Math.round(after.cameraRoll??0))out.push("زاویهٔ کج (داچ): "+arrow(Math.round(before.cameraRoll??0)+"°",Math.round(after.cameraRoll??0)+"°"));
  const style=(s:Staging)=>s.shotStyle==="ots"?"روی شانه":s.shotStyle==="pov"?"دید سوژه":"معمولی";
  if(style(before)!==style(after))out.push("نوع نما: "+arrow(style(before),style(after)));
@@ -380,8 +381,8 @@ export function propWidth(p:Pick<SceneProp,"kind"|"label">&{size?:SceneProp["siz
  * (a full or wider shot keeps the ground where it is). screen = pan + C + k·(world − F). `visible` is the world rectangle on screen.
  */
 /** Where each detail sits on a standing person, as a share of their height from the ground. */
-export const DETAIL_HEIGHT:Record<NonNullable<Staging["focusDetail"]>,number>={face:0.88,eyes:0.9,jewelry:0.78,hands:0.45,feet:0.05};
-export const FOCUS_DETAIL_FA:Record<NonNullable<Staging["focusDetail"]>,string>={face:"صورت",eyes:"چشم‌ها",hands:"دست‌ها",feet:"پاها و کفش",jewelry:"جواهر و اکسسوری"};
+export const DETAIL_HEIGHT:Record<NonNullable<Staging["focusDetail"]>,number>={face:0.88,eyes:0.9,mouth:0.855,jewelry:0.78,hands:0.45,feet:0.05};
+export const FOCUS_DETAIL_FA:Record<NonNullable<Staging["focusDetail"]>,string>={face:"صورت",eyes:"چشم‌ها",mouth:"لب‌ها",hands:"دست‌ها",feet:"پاها و کفش",jewelry:"جواهر و اکسسوری"};
 // ---- the frame as a lo-fi previz of the output: one physical camera (full-frame sensor, the lens and aperture Whoush or the user chose) ----
 export const SENSOR_H_MM=24,PERSON_M=1.7,METERS_PER_Z=4,REF_FOCAL=35;
 /** How far behind the main subject each kind of place's background stands, in metres: a room's back wall is close, mountains are far. */
@@ -632,6 +633,8 @@ export function orbitFa(az:number):string{
  const a=Math.round(wrap180(az));if(Math.abs(a)<1)return "روبه‌رو";
  return Math.abs(a)>=170?"از پشت سوژه":fa2(Math.abs(a))+"° دور سوژه، "+(a>0?"به راست":"به چپ");
 }
+/** The camera's lift in words: «۳۰ سانتی‌متر بالاتر», «عادی». */
+export const liftFa=(l?:number)=>Math.abs(l??0)<0.05?"عادی":fa2(Math.round(Math.abs(l!)*100))+" سانتی‌متر "+(l!>0?"بالاتر":"پایین‌تر");
 const fa2=(n:number)=>String(n).replace(/\d/g,d=>"۰۱۲۳۴۵۶۷۸۹"[Number(d)]);
 export function orbitEn(az:number):string{
  const a=Math.round(wrap180(az));if(Math.abs(a)<1)return "";
@@ -670,7 +673,7 @@ export function lensFor(s:Staging):LensChoice{
  const detail=kind==="person"?s.focusDetail:undefined;
  if(detail&&detail!=="face"&&sc<=0.3){
   // A detail of a person, close: eyes and jewelry are macro work (100mm, stopped down a little); hands and shoes a 100mm with a soft background.
-  f=100;macro=detail==="eyes"||detail==="jewelry";ap=macro?4:2.8;why="نمای جزئیات "+FOCUS_DETAIL_FA[detail];
+  f=100;macro=detail==="eyes"||detail==="mouth"||detail==="jewelry";ap=macro?4:2.8;why="نمای جزئیات "+FOCUS_DETAIL_FA[detail];
  }
  else if(subject==="environment"||sc>=2.4){f=sc>=5?16:24;ap=8;why="نمای باز";}
  else if(sc<=0.12&&kind&&kind!=="person"){f=100;ap=5.6;macro=true;why="ماکرو";}
@@ -712,7 +715,7 @@ export function nearestShot(scale:number):Staging["shotSize"]{
  return SHOT_ORDER.reduce((b,c)=>Math.abs(Math.log(c[1]/scale))<Math.abs(Math.log(b[1]/scale))?c:b)[0];
 }
 /** The zoom bar runs on a log scale from the tightest close-up to the widest shot: position 0..1 ↔ body share. */
-export const ZOOM_RANGE=[0.09,5] as const;
+export const ZOOM_RANGE=[0.04,5] as const;
 export const scaleFromSlider=(v:number)=>Math.round(Math.exp(Math.log(ZOOM_RANGE[0])+v*(Math.log(ZOOM_RANGE[1])-Math.log(ZOOM_RANGE[0])))*1000)/1000;
 export const sliderFromScale=(s:number)=>(Math.log(Math.min(ZOOM_RANGE[1],Math.max(ZOOM_RANGE[0],s)))-Math.log(ZOOM_RANGE[0]))/(Math.log(ZOOM_RANGE[1])-Math.log(ZOOM_RANGE[0]));
 /** The effective values of a staging: exact ones when set, otherwise the named ones. */
@@ -758,7 +761,7 @@ export function sectionsFromWords(normalizedText:string):CanvasSection[]{
 /** The parts of «بوم» that differ between two scenes (a revision's plan against the generation it revises). */
 export function stagingSections(a:Staging,b:Staging):CanvasSection[]{
  const keys:Record<Exclude<CanvasSection,"light">,(keyof Staging)[]>={
-  frame:["framing","focusPoint","pivot","focusDetail","props","environmentDistance"],angle:["cameraAngle","cameraElevation","cameraAzimuth","cameraRoll","shotStyle"],
+  frame:["framing","focusPoint","pivot","focusDetail","props","environmentDistance"],angle:["cameraAngle","cameraElevation","cameraAzimuth","cameraRoll","cameraLift","shotStyle"],
   distance:["shotSize","shotScale"],lens:["lensMm","apertureF","autopilot","fisheye"]};
  const pick=(s:Staging,k:(keyof Staging)[])=>JSON.stringify(k.map(x=>s[x]??null));
  return CANVAS_SECTIONS.filter(sec=>sec==="light"?JSON.stringify(a.lights)!==JSON.stringify(b.lights):pick(a,keys[sec])!==pick(b,keys[sec]));
@@ -795,6 +798,7 @@ const DETAIL_CUES:[NonNullable<Staging["focusDetail"]>,string[]][]=[
  ["jewelry",["ring","necklace","earring","earrings","bracelet","jewelry","انگشتر","گردنبند","گوشواره","دستبند","جواهر"]],
  ["feet",["shoes","shoe","sneakers","boots","feet","کفش","کفشش","کفش‌ها","کتونی","چکمه","پاهاش"]],
  ["hands",["hands","دست","دست‌ها","دستاش","دستهاش"]],
+ ["mouth",["mouth","lips","lip","دهان","دهن","دهنش","لب","لب‌ها","لبها","لباش","لبش"]],
  ["face",["face","portrait","صورت","چهره","صورتش","پرتره"]]
 ];
 const LIGHT_CUES:{words:string[];apply:(key:StagingLight)=>StagingLight}[]=[

@@ -50,17 +50,22 @@ export type Camera3D={
  * The camera, as the 2D canvas and the prompt see it: the lens and aperture (Whoush's or the user's), the distance solved from the shot size (on the frame's
  * vertical sensor side), aimed at the frame's centre point on the subject (its face by default), raised by the height angle, rolled by the Dutch angle.
  */
+/** How close the shot is, 0 (full length and wider) to 1 (a ۳/۴ shot and closer): a close shot is framed and drawn by the face, not the whole figure. */
+export function closeShare(s:Staging):number{return Math.max(0,Math.min(1,Math.log(1.1/scaleOf(s))/Math.log(1.1/0.75)));}
 export function camera3D(s:Staging,anchor:Staging|undefined,aspect:string):Camera3D{
  const c=physicalCamera(s),{W,H}=frameSize(aspect),portrait=H>W,sensorV=portrait?36:SENSOR_H_MM;
  const m=mainOf(s),subjectH=m?propSize(m).h:1.7;
  // The shot size frames the subject as it looks from this angle (its height foreshortened plus its depth seen from above or below), so a full shot
  // from overhead is as full as one at eye level: the camera comes closer, as a photographer would, instead of the subject shrinking in the frame.
- const span=m?spanM(sizeOf(m),elevationOf(s),"front"):subjectH,eRad=elevationOf(s)*Math.PI/180;
+ // A close shot is about the face, which does not foreshorten like a whole figure: from a medium shot in, the distance no longer depends on the angle
+ // (lib/frame-css.ts places a person's picture by its face as closely), so turning the camera never zooms it.
+ const close=closeShare(s);
+ const span=m?spanM(sizeOf(m),elevationOf(s),"front")*(1-close)+subjectH*close:subjectH,eRad=elevationOf(s)*Math.PI/180;
  // That distance is to the subject's middle (where its picture stands); the camera aims at its face, which from above is nearer the lens and from below
  // farther. A close-up is about the face itself, so the correction fades in with how much of the body the shot shows.
- const aimShare=m?.kind==="person"?DETAIL_HEIGHT[s.focusDetail??"face"]:0.5,offset=(aimShare-0.5)*subjectH*Math.sin(eRad)*Math.min(1,scaleOf(s));
+ const aimShare=m?.kind==="person"?DETAIL_HEIGHT[s.focusDetail??"face"]:0.5,offset=(aimShare-0.5)*subjectH*Math.sin(eRad)*Math.min(1,scaleOf(s))*(1-close);
  // Looking down on a whole figure, the camera stays above its head (a full overhead shot cannot be framed tighter than that).
- const floor=m?.kind==="person"&&eRad>0.5?(subjectH*(1-aimShare)+0.15)/Math.sin(eRad):0.12,free=scaleOf(s)*span*c.f/sensorV-offset;
+ const floor=m?.kind==="person"&&eRad>0.5?Math.max(0.12,(subjectH*(1-aimShare)+0.15)/Math.sin(eRad)*(1-close)):0.12,free=scaleOf(s)*span*c.f/sensorV-offset;
  const d=Math.max(floor,free);
  // Aimed at the anchor (the dominant subject where the camera last framed it): its face for a person, or the detail the brief names; or at the centre
  // point the user placed, measured on the dominant subject where it stands now.
@@ -96,8 +101,11 @@ export function camera3D(s:Staging,anchor:Staging|undefined,aspect:string):Camer
  else if(m&&!s.focusPoint){const w=propWorld(m,s,anchor).pos,h=propSize(m).h;focus=[w[0],w[1]+h*(m.kind==="person"?DETAIL_HEIGHT[s.focusDetail??"face"]:0.5),w[2]];}
  if(focus){
   const depth=(focus[0]-pos[0])*f[0]+(focus[1]-pos[1])*f[1]+(focus[2]-pos[2])*f[2];
+  // Raised or lowered with its aim (a pedestal), never under the ground.
+  const lift=Math.max(0.05-pos[1],s.cameraLift??0);pos=[pos[0],pos[1]+lift,pos[2]];aim=[aim[0],aim[1]+lift,aim[2]];
+  const depthL=(focus[0]-pos[0])*f[0]+(focus[1]-pos[1])*f[1]+(focus[2]-pos[2])*f[2];void depth;
   return {position:pos,target:aim,fov,roll:rollOf(s)*Math.PI/180,shift:[-fr.x/2,-fr.y/2],fisheye:fisheyeOf(s,c.f),
-   focusDistance:Math.max(0.05,depth),focalMm:c.f,aperture:c.N,backdrop:backdropM(s),focus,atNearest:free<floor};
+   focusDistance:Math.max(0.05,depthL),focalMm:c.f,aperture:c.N,backdrop:backdropM(s),focus,atNearest:free<floor};
  }
  // The 2D canvas's own centre point (an older scene): focus on whatever it was moved onto (a prop, the ground, the far background).
  const fz=focusDepth(s,anchor,W,H),dist=(p:[number,number,number])=>Math.hypot(p[0]-position[0],p[1]-position[1],p[2]-position[2]);
@@ -122,7 +130,7 @@ export function wideFrameRect(cam:Pick<Camera3D,"shift">,frameAspect:number,vw:n
  return {w:fw/vw,h:fh/vh,x:0.5+cam.shift[0]*fw/vw,y:0.5+cam.shift[1]*fh/vh};
 }
 /** The clay look of the asset pack, for the 3D figures, and the dark set they stand in (colours live here: TSX holds no hex values). */
-export const SCENE_COLORS={clay:"#d9dadd",hair:"#8a8d93",dark:"#2b2d31",glass:"#3c4048",tail:"#c4453f",ground:"#17181b",sky:"#0b0b0c",wall:"#25272b",window:"#6d7480",sea:"#2a3340",horizon:"#202227",foliage:"#9fa3a8",bark:"#7c7f84",selected:"#1d4ed8",black:"#000000",grid:"rgba(255,255,255,0.13)",edge:"rgba(0,0,0,0.12)",haze:"#3a3d43"} as const;
+export const SCENE_COLORS={clay:"#d9dadd",hair:"#8a8d93",dark:"#2b2d31",glass:"#3c4048",tail:"#c4453f",ground:"#17181b",sky:"#0b0b0c",wall:"#25272b",window:"#6d7480",sea:"#2a3340",horizon:"#202227",foliage:"#9fa3a8",bark:"#7c7f84",selected:"#1d4ed8",black:"#000000",grid:"rgba(255,255,255,0.13)",edge:"rgba(0,0,0,0.12)",haze:"#3a3d43",closeUp:"#34d399"} as const;
 /**
  * The frame's centre point from a point on the subject (the inverse of centerOnSubject): `lateral` stage units sideways, `height` as a share of its height.
  * Used when the user drags the centre point in the 3D view.

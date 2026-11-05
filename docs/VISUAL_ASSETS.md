@@ -21,6 +21,7 @@
 - **Characters only:** the man, the woman and the pets (cat, dog, horse) have images.
   - Each is a matrix of five heights (top, high, eye level, low, bottom, the camera's stops in `VERTICAL_STOPS`) times five sides (front, 3/4, side, rear 3/4, back). The other side is the mirror.
   - Eye level is the original pack (the cat is the `animal-*` family). The other heights are `<family>-<height>-<side>` (`human-high-3q`).
+  - **The top row is the plan view:** from overhead every side shows the family's straight-down picture (`human-top`, `woman-top`, `animal-top`, `dog-top`, `horse-top`), turned in its plane to the way the character faces (`spin` in `spriteFor`). Every plan view is drawn with the head toward the bottom edge.
 - **Everything else is a cube:** objects, vehicles, buildings, trees and any other animal.
   - It's drawn as vector geometry, not an image: a real box of the thing's size, width × height × depth in metres.
   - In the frame it's CSS planes (`boxFaces` in `lib/frame-css.ts`) with clay shading; in the small diagrams it's an SVG box or footprint.
@@ -29,8 +30,9 @@
   - **Colours:** several cubes each get their own tint.
 - **Generated** by `scripts/generate-visual-assets.ts` from the same side's eye-level image (plus the style anchor), so design, facing and style match the pack. The dog and the horse start from the cat's style.
   - A generated image faces the way its eye-level reference does unless `NATIVE` in `lib/sprites.ts` says otherwise; check new ones by eye.
-  - **Done:** the man's full matrix, and most of the woman's.
-  - **Still to generate (OpenAI credits ran out):** the rest of the woman, the cat's heights, and all of the dog and horse.
+  - **Done:** the man's and the woman's full matrices (the man's side column regenerated as true profiles), except the woman's bottom-back. The dog's and the horse's eye-level sides and plan views. The cat's high side. Dog and horse side pictures face right (`NATIVE`).
+  - **Still to generate (OpenAI credits ran out):** the woman's bottom-back, and the cat's, dog's and horse's high, low and bottom rows. Run `scripts/generate-visual-assets.ts` for the missing ids, then `scripts/visual-hd.ts` and `scripts/visual-manifest.ts`.
+  - **The head in each person picture** is measured by `scripts/visual-head.ts` (its top, its neck, its middle across) and recorded in the manifest (`head`).
   - **Missing images** fall back to the same side at the next height toward eye level (`spriteFor`).
 - **Removed:** the bottle, car, building and tree images (they're cubes now).
 
@@ -44,11 +46,13 @@
   - The CSS perspective distance is the focal length in pixels, so a wide lens close up stretches depth and a long lens flattens it.
   - The ground grid and the room and studio walls are drawn in perspective.
   - Each character is its pack image for the height stop and side the camera sees it from, measured where the camera aims. Everything else is a box of its real size. Both are blurred by their distance from the focus (thin-lens circle of confusion).
+  - **No jump between angles:** each picture faces the camera squarely, tilted to the camera's real height, and is sized to how tall the character really looks from there. Up to a ۳/۴ shot a person's picture is placed by its face: the measured face sits where the camera aims and the head keeps its real size, whichever height's picture is drawn (from below the legs are drawn long and the head small). A full-length shot places it by its body so the feet stay on the ground; between, it blends with the zoom (`closeShare`). The camera's distance in a close shot doesn't depend on the angle either.
   - **The place:** open places show a wide mountain range edge to edge along the horizon, with its base on it; the mountains show the lens and the aperture best. The background's distance is Whoush's estimate from the brief (`environmentDistance`), else cues in its words (against a wall, in the distance), else the place's usual distance. It isn't user-adjustable.
   - **Fisheye:** an ordinary lens keeps straight lines straight at every focal length, as the photo will. A fisheye is opt-in: the «لنز چشم‌ماهی» toggle under the lens, or a brief that asks for one ("fisheye", «فیش‌آی», «چشم ماهی»). The picture then bulges from the centre, more on a wider lens, and the provider prompt says so.
   - **Sharp at any lens:** every 3D element (image planes, box faces, walls, mountains) is sized to about its size on screen (`crispPlane`), because the browser rasterizes a 3D-transformed element at its own pixel size and then stretches it. Extreme close-ups are limited only by the images' own 640 px.
   - **Limits (every control stays in control):**
     - **Zoom:** the tightest zoom keeps the camera at least 30 cm from the focus (12 cm for a small product), outside the dominant subject and over a figure's head from above. It also never blows a character up past 3× its sharpest image (`zoomLimits`). A new lens or angle that breaks this pulls the zoom back.
+    - **Extreme close-up of a character:** the zoom goes on past that, down to the eyes or the mouth (the «لب‌ها» focus detail). The frame stops at the whole head (its height × `HEAD_ROOM`). Tighter, it stays there and a green border on the face shows the real crop, growing and shrinking with the zoom (`closeUp`). No extra images are needed.
     - **Props:** drag as far past either edge as the other (a third of the frame), never behind the lens, and stop before the background (`propReach3D`). Their sliders use the same range.
     - **Focus dot:** stays inside the frame.
   - **HD characters:** `scripts/visual-hd.ts` exports each character image as a WebP of up to 1536 px from its raw generation, trimmed exactly like the 640 px PNG. The frame uses it when a character is drawn larger than its PNG. Re-run it, then `scripts/visual-manifest.ts`, after generating.

@@ -4,7 +4,7 @@ import type {Staging} from "../lib/creative-plan";
 import {VERTICAL_STOPS,snapSide,snapVertical,verticalIndex} from "../lib/staging";
 import {sideOf,spriteFor} from "../lib/sprites";
 import {VISUALS} from "../lib/visual-assets";
-import {blurPx,cssView,fish,focusWorld,gridBands,groundAt,pickPivot,propSprites,standee,toScreen,unfish,type V3} from "../lib/frame-css";
+import {blurPx,closeUp,cropOnSubject,cssView,fish,focusWorld,gridBands,groundAt,pickPivot,propSprites,standee,toScreen,unfish,zoomLimits,type V3} from "../lib/frame-css";
 
 const man={kind:"person" as const,label:"مرد",x:0,z:-0.25,y:0,main:true};
 const base:Staging={subject:"person",cameraAngle:"eye_level",shotSize:"full",props:[man],lights:[]};
@@ -289,4 +289,44 @@ test("changing the angle never changes the zoom, the lens, the aperture or the f
   const s={...s0,cameraAngle:a},v=cssView(s,s,"16:9",1000,562.5),f=focusWorld(v);
   assert.ok(Math.abs(f[1]-1.75*0.88)<1e-9&&Math.abs(f[0])<1e-9,a);
  }
+});
+
+test("no jump between angles: up to a ۳/۴ shot a person's face stays where the camera aims and keeps its size at every height stop",()=>{
+ for(const label of ["مرد","زن"])for(const shotScale of [0.12,0.2,0.5,0.75]){
+  const seen=[-55,-25,0,35].map(el=>{const p={...man,label},s:Staging={...base,cameraElevation:el,shotScale,props:[p]},v=cssView(s,s,"3:4",300,400);
+   const sp=propSprites(v,[p],s,s)[0],hd=VISUALS[sp.id].head!,q=sp.quad!,at=(u:number,w:number)=>toScreen(v,q[0].map((c,i)=>c+(q[1][i]-c)*u+(q[3][i]-c)*w) as V3)!;
+   const f=at(hd.x,(hd.top+hd.neck)/2),t=at(hd.x,hd.top),n=at(hd.x,hd.neck);return {f,head:Math.hypot(t[0]-n[0],t[1]-n[1])};});
+  for(const x of seen){assert.ok(Math.hypot(x.f[0]-150,x.f[1]-200)<2,label+" "+shotScale+": the face at the frame's centre ("+x.f.map(Math.round)+")");
+   assert.ok(Math.abs(x.head/seen[2].head-1)<0.05,label+" "+shotScale+": head "+x.head.toFixed(0)+" vs "+seen[2].head.toFixed(0));}
+ }
+ // From overhead, the plan view is placed at the head: the head is still at the centre.
+ const s:Staging={...base,cameraElevation:80,shotScale:0.2},v=cssView(s,s,"3:4",300,400),q=propSprites(v,[man],s,s)[0].quad!;
+ const c=toScreen(v,q[0].map((x,i)=>(x+q[2][i])/2) as V3)!;assert.ok(Math.hypot(c[0]-150,c[1]-200)<2);
+});
+
+test("the overhead plan view turns with the way the person faces; pets face as drawn",()=>{
+ const p={kind:"person" as const,label:"مرد",x:0,z:0};
+ assert.equal(spriteFor(p,"top",0).spin||0,0);assert.equal(spriteFor(p,"top",90).spin,-90);
+ const dog={kind:"animal" as const,label:"سگ",x:0,z:0},horse={...dog,label:"اسب"};
+ // Their side pictures face right as drawn: a pet turned toward frame right is drawn as is, toward frame left mirrored.
+ for(const pet of [dog,horse]){assert.equal(spriteFor(pet,"eye",90).mirror,false);assert.equal(spriteFor(pet,"eye",-90).mirror,true);assert.equal(spriteFor(pet,"top",0).id,(pet.label==="سگ"?"dog":"horse")+"-top");}
+});
+
+test("an extreme close-up past what the frame can draw: the frame holds its tightest and a guide marks the real crop on the face",()=>{
+ const tight={...base,shotScale:0.04,focusDetail:"eyes" as const},[lo]=zoomLimits(tight,tight,"3:4");assert.ok(lo>0,"the frame has a tightest zoom");
+ const r=closeUp(tight,tight,"3:4",300,400);assert.ok(r.guide&&r.guide.length===4);
+ assert.equal(r.draw.focusDetail,"face","the drawn frame holds the whole face");
+ const xs=r.guide!.map(p=>p[0]),ys=r.guide!.map(p=>p[1]);
+ assert.ok(Math.min(...xs)>0&&Math.max(...xs)<300&&Math.min(...ys)>0&&Math.max(...ys)<400,"the guide lies within the frame");
+ assert.ok(Math.max(...xs)-Math.min(...xs)<150,"it is smaller than the frame");
+ // At the frame's own tightest, no guide.
+ assert.equal(closeUp(r.draw,tight,"3:4",300,400).guide,undefined);
+ // A product never gets one.
+ const box={kind:"object" as const,label:"جعبه",x:0,z:-0.25,y:0,main:true};assert.equal(closeUp({...tight,props:[box]},tight,"3:4",300,400).guide,undefined);
+});
+
+test("the camera-distance diagram: what the frame covers on the subject; a lowered camera covers a lower part",()=>{
+ const s={...base,shotSize:"medium" as const},c=cropOnSubject(s,s,"3:4")!;
+ assert.ok(c.top>1.6&&c.bottom>0.6&&c.bottom<1.4&&c.left<0&&c.right>0,JSON.stringify(c));
+ const low=cropOnSubject({...s,cameraLift:-0.6},s,"3:4")!;assert.ok(low.top<c.top-0.4&&low.bottom<c.bottom-0.4);
 });

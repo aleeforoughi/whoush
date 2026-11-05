@@ -20,7 +20,8 @@ const STYLE="Isolated single object, 3D render in a soft matte clay style with a
  */
 export const ANCHOR="person-side";
 export const ASSETS:{id:string;ref?:string;prompt:string;size:"1024x1024"|"1024x1536"|"1536x1024";
- /** Cut to its solid shape (no soft shadow) and made exactly square: a face that must have equal sides. */square?:boolean}[]=[
+ /** Cut to its solid shape (no soft shadow) and made exactly square: a face that must have equal sides. */square?:boolean;
+ /** A third reference showing only how steep the view is (the family's straight-down picture). */steepRef?:string}[]=[
  {id:"person-side",size:"1024x1536",prompt:"A stylized faceless mannequin person standing upright, seen exactly from the side (profile, facing right), full body from head to feet: a smooth sphere head, a rounded capsule torso with the arm resting along the side, two straight rounded legs together. Neutral pose."},
  {id:"person-front",ref:"person-side",size:"1024x1536",prompt:"A stylized faceless mannequin person standing upright, seen exactly from the front, full body from head to feet: a smooth sphere head, a rounded capsule torso with arms resting along the sides, two straight rounded legs slightly apart. Neutral pose, symmetrical."},
  {id:"person-3q",ref:"person-front",size:"1024x1536",prompt:"The same faceless mannequin person standing upright, full body from head to feet, seen in a THREE-QUARTER view: the body turned 45 degrees so its front faces toward the viewer's RIGHT (we see the front and the left side of the body), arms resting along the sides, legs together. Neutral pose."},
@@ -69,11 +70,16 @@ export const ASSETS:{id:string;ref?:string;prompt:string;size:"1024x1024"|"1024x
  * Ids: `<family>-<height>-<side>` (`human-high-3q`), or `<family>-<height>-round` for the things that look the same all round (`tree-low-round`).
  */
 const HEIGHTS={
- top:"seen from a BIRD'S-EYE VIEW: the camera is high above it, about 80 degrees up, looking almost straight DOWN at it. Very strong downward perspective: we mostly see its top, and the rest of it is steeply foreshortened below.",
+ top:"seen from almost DIRECTLY OVERHEAD: the camera is high above, about 80 degrees up, looking nearly straight down at it. We mostly see its TOP (the top of the head and the shoulders, or the back), large and near; the rest of the body is steeply foreshortened beneath it, the legs and feet only just showing at the bottom, small and far. Not a high three-quarter view: almost a plan view.",
  high:"seen from a HIGH ANGLE: the camera is above it, about 35 degrees above, looking DOWN at it. Show this downward perspective clearly: we see more of its top, and its lower parts are foreshortened and smaller.",
  low:"seen from a LOW ANGLE: the camera is below its middle, about 25 degrees below, looking UP at it. Show this upward perspective clearly: its lower parts look larger and closer, we see a little of its undersides, and its top is foreshortened and smaller.",
  bottom:"seen from a dramatic WORM'S-EYE VIEW: the camera lies on the ground right in front of it, looking steeply UP at it (about 55 degrees). Extreme upward perspective: the parts touching the ground are huge in the foreground and we see their undersides, everything converges strongly upward and its top is tiny and far away."
 } as const;
+/**
+ * People in profile drift toward three-quarters from above or below; their side view is spelled out: a strict 90° profile, the front toward the left
+ * (as their eye-level side pictures face).
+ */
+const PERSON_SIDE="in a STRICT 90-DEGREE PROFILE (a pure side view, not three-quarters): we see only ONE side of the body, the face in pure profile on the silhouette, one arm, the two legs overlapping one behind the other; its front (face, chest, toes) points straight toward the LEFT edge";
 const SIDES={front:"seen from the FRONT, symmetrical",["3q"]:"in a FRONT THREE-QUARTER view, turned exactly the same way as the second reference",side:"in exact PROFILE, facing exactly the same way as the second reference",
  ["3q-back"]:"in a REAR THREE-QUARTER view, turned exactly the same way as the second reference",back:"seen from BEHIND, symmetrical"} as const;
 type Side=keyof typeof SIDES;
@@ -89,6 +95,9 @@ const ANGLED:{family:string;what:string;size:(typeof ASSETS)[number]["size"];eye
  {family:"horse",what:"The same stylized horse as the second reference (simple smooth rounded forms, a smooth rounded mane and tail), standing on all four legs,",size:"1536x1024",
   eye:{front:"horse-front",["3q"]:"horse-3q",side:"horse-side",["3q-back"]:"horse-3q-back",back:"horse-back"}}
 ];
+/** The dog's and the horse's straight-down plan views (the top of the matrix, turned by the frame): head toward the bottom edge, like the cat's. */
+const PLAN=(pet:string)=>({id:pet+"-top",ref:pet+"-side",steepRef:"animal-top",size:"1024x1024" as const,
+ prompt:"The same "+pet+" as the second reference seen exactly from DIRECTLY ABOVE (a top-down plan view): its back and the top of its head, its head toward the BOTTOM edge of the image, its legs hidden under its body; simple smooth rounded forms."});
 /** The other pets beside the cat: a dog and a horse, eye level from every side, in the cat's style (each view from the dog's or horse's side view). */
 for(const [pet,looks] of [["dog","a stylized medium-sized DOG standing on all four legs, simple smooth rounded forms like the reference cat, rounded floppy ears, a short tail, a rounded snout, no face details"],
  ["horse","a stylized HORSE standing on all four legs, simple smooth rounded forms like the reference cat, a smooth rounded mane and tail, no saddle, no face details"]] as const)ASSETS.push(
@@ -97,6 +106,7 @@ for(const [pet,looks] of [["dog","a stylized medium-sized DOG standing on all fo
  {id:pet+"-3q",ref:pet+"-side",size:"1536x1024",prompt:"The same "+pet+" as the second reference in a FRONT THREE-QUARTER view: turned 45 degrees so its head and chest point toward the viewer's RIGHT (we see its front and its left side)."},
  {id:pet+"-3q-back",ref:pet+"-side",size:"1536x1024",prompt:"The same "+pet+" as the second reference in a REAR THREE-QUARTER view: we see its back and its right side, its head turned away toward the upper RIGHT."},
  {id:pet+"-back",ref:pet+"-side",size:"1024x1024",prompt:"The same "+pet+" as the second reference seen exactly from BEHIND (symmetrical): its back, its rear legs and its tail; its head hidden behind its body."});
+ASSETS.push(PLAN("dog"),PLAN("horse"));
 /**
  * Anything but a character (a product, a car, a tree, a place alone) in «بوم»'s camera and lighting diagrams: one smooth, minimal clay cube, in a
  * three-quarter view from the side and showing only its top from above (beta).
@@ -106,10 +116,12 @@ ASSETS.push({id:"cube-top",ref:"cube-3q",size:"1024x1024",square:true,prompt:"Th
 /** The people's worm's-eye view in plainer words (the image model refused one with the generic wording): a toy-like figure seen from the ground. */
 const PEOPLE=new Set(["human","woman"]);
 const PERSON_BOTTOM="seen from a WORM'S-EYE VIEW: the camera stands on the ground a few steps in front of it and looks up at it. Strong upward perspective: its shoes are large in the foreground, the figure tapers upward and its head is small. A plain, neutral, toy-like mannequin figure.";
-for(const f of ANGLED)for(const h of Object.keys(HEIGHTS) as (keyof typeof HEIGHTS)[]){
+// From overhead every side is the same picture turned, so the top row reuses each character's straight-down plan view (`<family>-top`, turned by the
+// frame): the matrix generates high, low and bottom per side.
+for(const f of ANGLED)for(const h of (Object.keys(HEIGHTS) as (keyof typeof HEIGHTS)[]).filter(x=>x!=="top")){
  const sides=Object.entries(f.eye) as [Side,string][],round=sides.length===1;
  for(const [side,ref] of sides)ASSETS.push({id:f.family+"-"+h+"-"+(round?"round":side),ref,size:f.size,
-  prompt:f.what+" "+(round?"":SIDES[side]+", ")+(h==="bottom"&&PEOPLE.has(f.family)?PERSON_BOTTOM:HEIGHTS[h])+" Keep exactly its design, proportions, colours and level of simplification."});
+  prompt:f.what+" "+(round?"":(side==="side"&&PEOPLE.has(f.family)?PERSON_SIDE:SIDES[side])+", ")+(h==="bottom"&&PEOPLE.has(f.family)?PERSON_BOTTOM:HEIGHTS[h])+" Keep exactly its design, proportions, colours and level of simplification."});
 }
 const OUT=path.join(process.cwd(),"public","visuals"),RAW=path.join(OUT,"raw");
 
@@ -126,9 +138,11 @@ async function generate(a:(typeof ASSETS)[number]):Promise<Buffer>{
   const form=new FormData();
   for(const [k,v] of Object.entries(common))form.append(k,v);
   form.append("input_fidelity","high");
-  form.append("prompt",REF_PREFIX+(a.ref&&a.ref!==ANCHOR?"(the second reference is the same family; when this is another view of the same object, keep its exact design) ":"")+a.prompt+" "+STYLE);
+  form.append("prompt",REF_PREFIX+(a.ref&&a.ref!==ANCHOR?"(the second reference is the same family; when this is another view of the same object, keep its exact design) ":"")+(a.steepRef?"(the third reference only shows how steeply from above the camera looks: match that steepness, not its pose or which way it faces) ":"")+a.prompt+" "+STYLE);
   form.append("image[]",await readRaw(ANCHOR),ANCHOR+".png");
   if(a.ref&&a.ref!==ANCHOR)form.append("image[]",await readRaw(a.ref),a.ref+".png");
+  // A third picture showing only how steep the view is (the family's straight-down plan view): its angle, never its design or its way.
+  if(a.steepRef)form.append("image[]",await readRaw(a.steepRef),a.steepRef+".png");
   res=await fetch("https://api.openai.com/v1/images/edits",{method:"POST",headers:{Authorization:"Bearer "+process.env.OPENAI_API_KEY},body:form});
  }
  const body=await res.json() as {data?:{b64_json?:string}[];error?:{message?:string}};
