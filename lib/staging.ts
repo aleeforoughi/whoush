@@ -65,12 +65,12 @@ export function placementEn(f?:{x:number;y:number}):string{
 /** The arranged scene in Persian, for the plan's hard constraints (what the user set in the diagrams). */
 export function describeStagingFa(s:Staging):string{
  const lights=s.lights.map(l=>LIGHT_ROLE_FA[l.role]+": "+LIGHT_SOURCE_FA[l.source]+"، "+LIGHT_QUALITY_FA[l.quality]+"، "+LIGHT_DIRECTION_FA[l.direction]+"، ارتفاع "+LIGHT_HEIGHT_FA[l.height]+"، "+l.colorTemperatureK+" کلوین"+(l.intensity!==undefined?"، شدت "+intensityFa(l.intensity):"")+(l.colorHex?"، رنگ "+l.colorHex:""));
- return "صحنهٔ تنظیم‌شده: زاویهٔ دوربین «"+CAMERA_ANGLE_FA[s.cameraAngle]+"»"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+" درجه)":"")+(Math.abs(s.cameraAzimuth??0)>=1?"، دوربین "+orbitFa(s.cameraAzimuth!):"")+(s.cameraRoll?"، زاویهٔ کج (داچ) "+Math.abs(Math.round(s.cameraRoll))+" درجه":"")+(s.shotStyle==="ots"?"، نمای روی شانه":s.shotStyle==="pov"?"، نمای دید سوژه":"")+(s.focusDetail?"، تمرکز روی "+FOCUS_DETAIL_FA[s.focusDetail]:"")+"، کادر «"+SHOT_SIZE_FA[s.shotSize]+"»"+(s.shotScale!==undefined?" (زوم "+zoomFactor(s)+"×)":"")+(s.subject?"، سوژه: "+SUBJECT_FA[s.subject]:"")+"، جای سوژه: "+placementFa(s.framing)+(s.props?.length?"؛ "+describeLayoutFa(s.props):"")+"؛ "+lights.join("؛ ");
+ return "صحنهٔ تنظیم‌شده: زاویهٔ دوربین «"+CAMERA_ANGLE_FA[s.cameraAngle]+"»"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+" درجه)":"")+(Math.abs(s.cameraAzimuth??0)>=1?"، دوربین "+orbitFa(s.cameraAzimuth!):"")+(s.cameraRoll?"، زاویهٔ کج (داچ) "+Math.abs(Math.round(s.cameraRoll))+" درجه":"")+(s.shotStyle==="ots"?"، نمای روی شانه":s.shotStyle==="pov"?"، نمای دید سوژه":"")+focusFa(s)+(s.focusDetail?"، تمرکز روی "+FOCUS_DETAIL_FA[s.focusDetail]:"")+"، کادر «"+SHOT_SIZE_FA[s.shotSize]+"»"+(s.shotScale!==undefined?" (زوم "+zoomFactor(s)+"×)":"")+(s.subject?"، سوژه: "+SUBJECT_FA[s.subject]:"")+"، جای سوژه: "+placementFa(s.framing)+(s.props?.length?"؛ "+describeLayoutFa(s.props):"")+"؛ "+lights.join("؛ ");
 }
 /** The arranged scene in English, appended to the provider-facing media prompt. */
 export function describeStagingEn(s:Staging):string{
  const lights=s.lights.map(l=>l.role+" light: "+l.quality+" "+l.source.replace("_"," ")+" from "+DIR_EN[l.direction]+(l.angle!==undefined?" ("+Math.round(l.angle)+"° in top view)":"")+", "+LIGHT_HEIGHT_EN[l.height]+", "+l.colorTemperatureK+"K"+(l.intensity!==undefined?", "+Math.round(l.intensity*100)+"% strength":"")+(l.colorHex?" "+l.colorHex+" gel":""));
- return "Staging: "+ANGLE_EN[s.cameraAngle]+" camera"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+"° from eye level)":"")+(orbitEn(s.cameraAzimuth??0)?", "+orbitEn(s.cameraAzimuth??0):"")+(s.cameraRoll?", Dutch angle tilted "+Math.abs(Math.round(s.cameraRoll))+"° "+(s.cameraRoll>0?"clockwise":"counter-clockwise"):"")+(s.shotStyle==="ots"?", over-the-shoulder shot":s.shotStyle==="pov"?", point-of-view shot through the subject's eyes":"")+(s.focusDetail?", framed on the main subject's "+(s.focusDetail==="feet"?"feet and shoes":s.focusDetail):"")+", "+SHOT_EN[s.shotSize]+(s.shotScale!==undefined?" ("+zoomFactor(s)+"x of a full shot)":"")+", "+placementEn(s.framing)+"; "+lights.join("; ")+"."+(s.props?.length?" "+describeLayoutEn(s.props):"");
+ return "Staging: "+ANGLE_EN[s.cameraAngle]+" camera"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+"° from eye level)":"")+(orbitEn(s.cameraAzimuth??0)?", "+orbitEn(s.cameraAzimuth??0):"")+(s.cameraRoll?", Dutch angle tilted "+Math.abs(Math.round(s.cameraRoll))+"° "+(s.cameraRoll>0?"clockwise":"counter-clockwise"):"")+(s.shotStyle==="ots"?", over-the-shoulder shot":s.shotStyle==="pov"?", point-of-view shot through the subject's eyes":"")+focusEn(s)+(s.focusDetail?", framed on the main subject's "+(s.focusDetail==="feet"?"feet and shoes":s.focusDetail):"")+", "+SHOT_EN[s.shotSize]+(s.shotScale!==undefined?" ("+zoomFactor(s)+"x of a full shot)":"")+", "+placementEn(s.framing)+"; "+lights.join("; ")+"."+(s.props?.length?" "+describeLayoutEn(s.props):"");
 }
 /** The subject a brief is about, from its words: a person, an animal, a vehicle, a product or object, or an environment when there is no single main subject. */
 export function detectSubject(normalizedText:string,hasCharacter=false):NonNullable<Staging["subject"]>{
@@ -313,10 +313,36 @@ export const backdropFactor=(s:Staging)=>clampN(physicalCamera(s).f/REF_FOCAL,0.
  * Depth-of-field blur at depth z (or the far backdrop), as a share of the frame's height: the thin-lens circle of confusion, f²/(N(d−f)) · |x−d|/x on a
  * 24 mm sensor. The centre point's depth is sharp; f/1.8 at 85 mm melts the background, f/8 at 24 mm keeps everything sharp, a macro distance blurs all but a sliver.
  */
-export function blurAt(s:Staging,z:number|"backdrop"):number{
- const c=physicalCamera(s),f=c.f,dmm=c.d*1000,x=(z==="backdrop"?c.d+BACKDROP_M:distanceTo(c,z))*1000;
+export function blurAt(s:Staging,z:number|"backdrop",focusZ?:number|"backdrop"):number{
+ const c=physicalCamera(s),f=c.f,x=(z==="backdrop"?c.d+BACKDROP_M:distanceTo(c,z))*1000;
+ // The focus plane: the main subject, or wherever the centre point was moved (focusDepth).
+ const dmm=(focusZ===undefined?c.d:focusZ==="backdrop"?c.d+BACKDROP_M:distanceTo(c,focusZ))*1000;
  const coc=(f*f)/(c.N*Math.max(1,dmm-f))*Math.abs(x-dmm)/x;
  return clampN(coc/SENSOR_H_MM,0,0.08);
+}
+/** Where the user put the focus (the centre point moved off the main subject), in words for the provider and for Whoush; empty on the main subject. */
+function focusTarget(s:Staging){
+ if(!s.focusPoint)return undefined;
+ const {W,H}=frameSize("16:9"),z=focusDepth(s,undefined,W,H);
+ if(z===undefined)return undefined;
+ if(z==="backdrop")return {en:"the far background",fa:"پس‌زمینهٔ دور"};
+ const p=(s.props??[]).find(x=>x.z===z&&!x.main);
+ return p?{en:"the "+p.kind,fa:p.label}:{en:"that spot on the ground",fa:"همان نقطه روی زمین"};
+}
+const focusEn=(s:Staging)=>{const t=focusTarget(s);return t?", focus set on "+t.en+" (the main subject may be soft)":"";};
+const focusFa=(s:Staging)=>{const t=focusTarget(s);return t?"، فوکوس روی "+t.fa:"";};
+/**
+ * The depth the camera focuses on: the main subject, unless the user moved the centre point; then whatever sits there: the frontmost prop under it, else
+ * the ground at that spot, else (above the horizon) the far backdrop.
+ */
+export function focusDepth(s:Staging,anchor:Staging|undefined,W:number,H:number):number|"backdrop"|undefined{
+ if(!s.focusPoint)return undefined;
+ const cam=frameCamera(s,anchor,W,H),[fx,fy]=cam.F;
+ const hit=(s.props??[]).filter(p=>{const v=propInView(p,W,H,cam.unitH),lf=lensSizeFactor(s,p.z),h=v.h*lf,w=propWidth(p.kind,h),top=v.groundY-(v.groundY-v.y)*lf-h;
+  return fx>=v.x-w/2&&fx<=v.x+w/2&&fy>=top&&fy<=v.groundY;}).sort((a,b)=>a.z-b.z)[0];
+ if(hit)return hit.z;
+ if(fy<=H*0.5)return "backdrop";
+ return groundFromView(fx,fy,W,H).z;
 }
 /**
  * Where the horizon goes as the camera tilts up or down to keep the subject framed (as a share of the frame's height; negative is up): looking down from

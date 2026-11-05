@@ -4,7 +4,7 @@ import {Box,ChevronDown,Lock,LockOpen,Plus,RotateCcw,Trash2,Undo2,X} from "lucid
 import {Button,Icon} from "@aleeforoughi/feather-react";
 import {FOCUS_DETAILS,LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
- SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,rollOf,lensSizeFactor,backdropFactor,blurAt,horizonShift,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
+ SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,rollOf,lensSizeFactor,backdropFactor,blurAt,horizonShift,focusDepth,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 import {fa} from "@/lib/format";
 
@@ -571,14 +571,18 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
  const cam=frameCamera({...staging,framing:fr},anchor,W,H),{unitH,k}=cam,horizon=H*0.5;
  // The lens's perspective: a prop's size against the main subject follows the focal length (lib/staging.ts, lensSizeFactor); its place on the ground does not,
  // so dragging stays exact.
- const at=(p:SceneProp)=>{const v=propInView(p,W,H,unitH),lf=lensSizeFactor(staging,p.z);return {x:v.x,ground:v.groundY,y:v.groundY-(v.groundY-v.y)*lf,h:v.h*lf};};
+ // Measured against the scene as it is right now (a prop being dragged included), so nothing jumps in size while it moves.
+ const live:Staging={...staging,props:base};
+ const at=(p:SceneProp)=>{const v=propInView(p,W,H,unitH),lf=lensSizeFactor(live,p.z);return {x:v.x,ground:v.groundY,y:v.groundY-(v.groundY-v.y)*lf,h:v.h*lf};};
  // Screen = roll(base + k·world): the Dutch angle rolls the whole picture about the frame's centre.
  const world="rotate("+cam.rot+" "+W/2+" "+H/2+") matrix("+k+" 0 0 "+k+" "+cam.base.join(" ")+")";
  // The backdrop: the horizon moves as the camera tilts to keep the subject framed; a longer lens magnifies the far landscape, a wider one shows more of it.
  const backdrop="rotate("+cam.rot+" "+W/2+" "+H/2+") translate(0 "+horizonShift(staging)*H+") matrix("+k+" 0 0 "+k+" "+cam.base.join(" ")+")";
  const bf=backdropFactor(staging);
  // Depth of field, in the scaled world's own units (a blur of n screen units is n/k there).
- const blurStd=(z:number|"backdrop")=>{const v=blurAt(staging,z)*H;return v>0.06?v/k:0;};
+ // Focus follows the centre point: on the main subject, or on whatever sits where the user moved it.
+ const focusZ=focusDepth({...live,framing:fr},anchor,W,H);
+ const blurStd=(z:number|"backdrop")=>{const v=blurAt(live,z,focusZ)*H;return v>0.06?v/k:0;};
  const onX=Math.abs(Math.abs(fr.x)-THIRD)<0.03,onY=Math.abs(Math.abs(fr.y)-THIRD)<0.03;
  const unit=()=>{const b=svg.current!.getBoundingClientRect();return {sx:(W+4)/b.width,sy:(H+4)/b.height};};
  const commit=(v:{x:number;y:number})=>onFraming?.(v.x===0&&v.y===0?undefined:v);
@@ -617,9 +621,11 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
    <g transform={backdrop} className="pointer-events-none" filter={blurStd("backdrop")>0?"url(#"+clip+"-bd)":undefined}>
     <rect x={-W*4} y={horizon} width={W*9} height={H*4} fill={"url(#"+clip+"g)"}/>
     <line x1={-W*4} x2={W*5} y1={horizon} y2={horizon} stroke="currentColor" strokeOpacity=".3" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
-    {/* The environment is the fixed backdrop behind every prop, in the same world: it zooms with the scene and never moves on its own. */}
-    {/* Orbiting the camera turns the backdrop: it slides past, wrapping around once per full turn. */}
-    {[-1,0,1].map(n=><Asset key={n} id="env-mountains" x={W*0.5+(-wrap180(staging.cameraAzimuth??0)/180*W*1.2+n*W*2.4)*bf} y={horizon+1} h={H*0.32*bf} opacity={0.7}/>)}
+    {/* The environment is the fixed backdrop behind every prop, in the same world: it zooms with the scene and never moves on its own; it scales with the
+        lens (a long lens magnifies it) and blurs with the focus, which makes the depth of field easy to read. Orbiting the camera slides it past. */}
+    {/* A wide range: the mountains stretched and repeated edge to edge along the horizon, so they fill the background at any lens and orbit. */}
+    {(()=>{const mh=H*0.3*bf,v=VISUALS["env-mountains"],mw=(v?mh*v.width/v.height:mh*1.7)*2.2,slide=-wrap180(staging.cameraAzimuth??0)/180*W*1.2*bf;
+     return [-3,-2,-1,0,1,2,3].map(n=><Asset key={n} id="env-mountains" x={W*0.5+slide+n*mw*0.9} y={horizon+1} h={mh} sx={2.2} mirror={n%2!==0} opacity={0.7}/>);})()}
    </g>
    <g transform={world}>
     {order.map(({p,i})=>{const a=at(p),sp=sprite(p),w=spriteW(sp,a.h),on=sel===i;

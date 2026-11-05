@@ -391,3 +391,18 @@ test("the frame is a lo-fi previz from one physical camera: lens perspective, de
  const rolled=at({cameraRoll:20,cameraAngle:"dutch"}),mv={...rolled,...moveFocusPoint(rolled,s,W,H,W*0.3,H*0.4)};
  assert.deepEqual(frameCamera(mv,s,W,H).toScreen(10,20).map(n=>Math.round(n*1000)),frameCamera(rolled,s,W,H).toScreen(10,20).map(n=>Math.round(n*1000)),"moving the centre point never moves a rolled picture");
 });
+
+test("focus follows the centre point: on a prop it is sharp and the subject softens; above the horizon the background is sharp; the prompt says so",async()=>{
+ const {blurAt,focusDepth,frameSize,frameCamera,moveFocusPoint,propInView,describeStagingEn}=await import("../lib/staging");
+ const woman={kind:"person" as const,label:"زن",x:-0.3,z:-0.25,y:0,main:true},car={kind:"vehicle" as const,label:"ماشین",x:0.5,z:0.5,y:0};
+ const s:Staging={...base,shotSize:"full",lensMm:85,apertureF:1.8,props:[woman,car]};
+ const {W,H}=frameSize("16:9"),c=frameCamera(s,s,W,H),v=propInView(car,W,H,c.unitH),[sx,sy]=c.toScreen(v.x,v.groundY-v.h*0.3);
+ const onCar={...s,...moveFocusPoint(s,s,W,H,sx,sy)};
+ assert.equal(focusDepth(onCar,s,W,H),0.5,"the car is under the centre point");
+ const fz=focusDepth(onCar,s,W,H);
+ assert.ok(blurAt(onCar,0.5,fz)<0.001&&blurAt(onCar,-0.25,fz)>0.003,"the car sharp, the woman soft");
+ assert.match(describeStagingEn(onCar),/focus set on the vehicle/);
+ const [hx,hy]=c.toScreen(W*0.1,H*0.2),sky={...s,...moveFocusPoint(s,s,W,H,hx,hy)};
+ assert.equal(focusDepth(sky,s,W,H),"backdrop");
+ assert.equal(focusDepth(s,s,W,H),undefined,"no centre point moved: the main subject");
+});
