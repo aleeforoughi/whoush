@@ -153,13 +153,14 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  // Collapsed by default: «بوم» is advanced settings. The card shows the scene in one line; opening it shows the canvas and its controls.
  // Collapsed by default. A focused follow-up (one part, e.g. the camera's distance) shows just that part's controls in the collapsed card, live; expanding shows
  // every setting (frame, camera, lighting...), and collapsing goes back to just that part.
- const [open,setOpen]=useState(false),bodyId=useId(),focused=Boolean(focus?.length);
+ const bodyId=useId(),focused=Boolean(focus?.length);
  // Expanded, the frame, the camera and the lighting are sub-sections and only one is open at a time (opening one closes the other): the frame at first,
  // or, for a follow-up about one part, that part.
  const subOf=(sec?:CanvasSection):"frame"|"camera"|"light"=>sec==="light"?"light":sec==="angle"||sec==="distance"||sec==="lens"?"camera":"frame";
- const [openSub,setOpenSub]=useState<"frame"|"camera"|"light"|null>(()=>focus?.length?subOf(focus[0]):"frame");
+ const [openSub,setOpenSub]=useState<"frame"|"camera"|"light"|null>(()=>focus?.length?subOf(focus[0]):null);
  const toggleSub=(x:"frame"|"camera"|"light")=>setOpenSub(o=>o===x?null:x);
- const full=open,show=(sec:CanvasSection)=>full||!focused||Boolean(focus?.includes(sec));
+ // Every part is always reachable: the card itself doesn't open or close, its sub-sections do.
+ const show=(sec:CanvasSection)=>Boolean(sec);
  const frameOpen=openSub==="frame",camOpen=openSub==="camera",lightOpen=openSub==="light";
  // A press anywhere outside the frame and its controls (elsewhere in the canvas, or outside it) deselects the prop: the frame is selected again. Not while
  // the selection is locked.
@@ -189,21 +190,19 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
 
  return <>
  <div role="group" aria-label="بوم" className="@container flex min-w-0 flex-col gap-3">
-  {/* One card holds everything: the header, then (collapsed) the snapshots or a focused follow-up's part, or (expanded) every setting, so the layout never splits. */}
+  {/* One card holds everything: its title, the preview, then its sub-sections (frame, camera, lighting), so the layout never splits. The card itself never
+      opens or closes; its sub-sections do, one at a time. */}
   <div className="flex min-w-0 flex-col gap-3 rounded-card border border-line-secondary bg-surface-subtle p-2">
-  <button type="button" aria-expanded={open} aria-controls={bodyId} onClick={()=>setOpen(o=>!o)}
-   aria-label={"بوم، تنظیمات پیشرفته: "+CAMERA_ANGLE_FA[draft.cameraAngle]+"، "+SHOT_SIZE_FA[draft.shotSize]+"، "+(draft.lights.length===1?"یک نور":fa(draft.lights.length)+" نور")+(changed?"، تغییر کرده":"")}
-   className={"flex w-full flex-col gap-3 rounded-card p-3 text-start motion-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring "+(open?"bg-surface-selected":"hover:bg-surface-hover")}>
+  <div className="flex w-full flex-col gap-3 p-3 pb-0 text-start">
    <span className="flex items-center gap-2 px-1">
-    <Icon icon={Box} size={16} aria-hidden="true" className={"size-4 shrink-0 "+(open?"text-primary":"text-fg-secondary")}/>
-    <span className="type-label text-fg-primary">بوم</span><span className="type-caption text-fg-secondary">{full||!focused?"تنظیمات پیشرفته":"تنظیم "+focus!.map(f=>CANVAS_SECTION_FA[f]).join(" و ")}</span>
+    <Icon icon={Box} size={16} aria-hidden="true" className="size-4 shrink-0 text-fg-secondary"/>
+    <span className="type-label text-fg-primary">بوم</span><span className="type-caption text-fg-secondary">تنظیمات پیشرفته</span>
     {changed&&<span className="rounded-control bg-surface-selected px-2 py-0.5 type-caption text-fg-primary">تغییر کرده</span>}
-    <Icon icon={ChevronDown} size={16} aria-hidden="true" className={"ms-auto size-4 shrink-0 text-fg-secondary transition-transform motion-reduce:transition-none "+(open?"rotate-180":"")}/>
    </span>
-   {/* Collapsed: just the frame, exactly the photo's crop as the frame simulates it, and the details of the frame, the camera and the lighting, one under
-       another, right-aligned: under it on a phone; where the card is wide, beside it (to its left). A scene with no character (no frame) shows the camera and
-       the lighting as small tiles instead. */}
-   {!open&&!focused&&(show("frame")&&frameShown?(()=>{const {W,H}=frameSize(aspect),showCam=show("angle")||show("distance")||show("lens");
+   {/* The preview while the frame's own section is closed: just the frame, exactly the photo's crop as the frame simulates it, and the details of the frame,
+       the camera and the lighting, one under another, right-aligned: under it on a phone; where the card is wide, beside it (to its left). A scene with no
+       character (no frame) shows the camera and the lighting as small tiles instead. */}
+   {!frameOpen&&(show("frame")&&frameShown?(()=>{const {W,H}=frameSize(aspect),showCam=show("angle")||show("distance")||show("lens");
     return <span className="flex flex-col gap-2 @lg:flex-row @lg:items-start @lg:gap-5">
      <span ref={setSnapEl} className="dark relative block shrink-0 overflow-hidden rounded-card border border-line-secondary bg-background" style={{aspectRatio:String(W/H),width:"min(100%, "+Math.round(Math.min(240*W/H,360))+"px)"}}>
       {FRAME_RENDERER==="css"&&snapOnScreen?<FrameScene staging={draft} anchor={anchor} aspect={aspect}/>:null}
@@ -216,13 +215,13 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
      {(show("angle")||show("distance")||show("lens"))&&<SnapTile c={cap.camera} icon={Camera}><CameraView staging={draft} anchor={anchor} aspect={aspect} editable={false} onCamera={()=>{}}/></SnapTile>}
      {show("light")&&<SnapTile c={cap.light} icon={Lightbulb}><LightView staging={draft} editable={false} selected={-1} onSelect={()=>{}} onLight={()=>{}}/></SnapTile>}
     </span>)}
-  </button>
-  <div id={bodyId} hidden={!open&&!focused} className="flex min-w-0 flex-col gap-3">
+  </div>
+  <div id={bodyId} className="flex min-w-0 flex-col gap-3">
   {/* The sections (frame, camera, lighting), each set apart by a divider and room above and below it. */}
   <div className="flex min-w-0 flex-col divide-y divide-line-secondary/40 [&>*]:py-2.5 [&>*:first-child]:pt-1 [&>*:last-child]:pb-1">
    {show("frame")&&frameShown&&<div ref={el=>{frameArea.current=el;setFrameEl(el);}}><SubSection title="تنظیمات کادر" icon={Frame} open={frameOpen} onToggle={()=>toggleSub("frame")}><Viewport {...cap.frame}>
     <FrameView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={i=>{setPropSel(i);setCenterSel(false);}} centerSel={centerSel} onSelectCenter={()=>{setCenterSel(true);setPropSel(null);}} onProp={(i,x,z)=>setProp(i,{x,z})} onZoom={setDistance} locked={locked} onLock={setLocked} onBack={()=>{setPropSel(null);setCenterSel(false);setLocked(false);}}
-     onFocus={f=>{if(f)set(f);else resetFocus();}} onAngle={c=>{if(c.elevation!==undefined)setElevation(c.elevation);if(c.azimuth!==undefined)orbitTo(c.azimuth);}} three={(FRAME_RENDERER==="css"||webgl)&&onScreen&&(open||focused)&&!fullscreen} onFullscreen={FRAME_FULLSCREEN?()=>{setCenterSel(false);setFullscreen(true);}:undefined}/>
+     onFocus={f=>{if(f)set(f);else resetFocus();}} onAngle={c=>{if(c.elevation!==undefined)setElevation(c.elevation);if(c.azimuth!==undefined)orbitTo(c.azimuth);}} three={(FRAME_RENDERER==="css"||webgl)&&onScreen&&!fullscreen} onFullscreen={FRAME_FULLSCREEN?()=>{setCenterSel(false);setFullscreen(true);}:undefined}/>
     {FRAME_FULLSCREEN&&fullscreen&&<FrameFullscreen staging={draft} anchor={anchor} aspect={aspect} sel={propSel} onSelect={i=>{setPropSel(i);setCenterSel(false);setLocked(false);}}
      onProp={(i,x,z)=>setProp(i,{x,z})} onFraming={f=>set({framing:f})} distance={distanceOf(draft)} onZoom={setDistance} onClose={()=>setFullscreen(false)}
      inspector={i=>props[i]?<PropInspector prop={withFrameCuts(draft,anchor,aspect).props![i]} tag={propTags(props,true)[i]} reach={reachOf(props[i],draft,anchor,aspect)} onChange={p=>setProp(i,p)}/>:null}/>}
@@ -315,7 +314,6 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
      onRemove={()=>{const i=lightSel;setDraft(d=>({...d,lights:d.lights.filter((_,j)=>j!==i)}));setLightSel(0);}}
      onAdd={draft.lights.length<4?()=>{setDraft(d=>({...d,lights:[...d.lights,{role:"fill",direction:"front_right",height:"eye",quality:"soft",source:"softbox",colorTemperatureK:5600}]}));setLightSel(draft.lights.length);}:undefined}/></div>}
    </SubSection></div>}
-   {!full&&<Button type="button" variant="ghost" size="sm" className="self-center" onClick={()=>setOpen(true)}><Icon icon={ChevronDown} aria-hidden="true"/>همهٔ تنظیمات بوم</Button>}
   </div>
   </div>
   {!editable&&<ul className="flex flex-col gap-1">{draft.lights.map((l,i)=><LightRow key={i} l={l}/>)}</ul>}
