@@ -426,7 +426,7 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
        onSelect?.(i);setMove({i,px:e.clientX,py:e.clientY,x0:p.x,z0:p.z,x:p.x,z:p.z});}:undefined}
       className={editable?(move?.i===i?"cursor-grabbing outline-none":"cursor-grab outline-none"):""}>
       {p.y>0.05&&<ellipse cx={a.x} cy={a.ground} rx={w*0.35} ry={Math.max(1,a.h*0.04)} fill="currentColor" fillOpacity=".18"/>}
-      <rect x={a.x-Math.max(w,12/k)/2} y={a.y-Math.max(a.h,12/k)} width={Math.max(w,12/k)} height={Math.max(a.h,12/k)} fill="transparent"/>
+      <rect x={a.x-Math.max(w,18/k)/2} y={a.y-Math.max(a.h,18/k)} width={Math.max(w,18/k)} height={Math.max(a.h,18/k)} fill="transparent"/>
       {(()=>{const sp=sprite(p);return <Asset id={sp.id} x={a.x} y={a.y} h={a.h} mirror={sp.mirror} sx={sp.sx}/>;})()}
       {on&&<rect x={a.x-w/2-1} y={a.y-a.h-1} width={w+2} height={a.h+2} rx={2} fill="none" className="stroke-primary" strokeWidth={1} vectorEffect="non-scaling-stroke" strokeDasharray="3 2"/>}
      </g>;})}
@@ -445,13 +445,14 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
  if(!tag)return svgEl;
  return <div className="relative mx-auto w-full" style={{maxWidth:maxW+"px"}}>
   {svgEl}
-  {/* Tag text, then (on its right) the lock in a small button: outline when unlocked, filled blue with a white lock when locked. */}
+  {/* Tag text, then (on its right) the lock in a small button: outline when unlocked, filled blue with a white lock when locked. On touch screens the
+      button is larger and its tap area reaches about 44px around it (an invisible ::before), so it is easy to hit with a finger. */}
   <div dir="rtl" className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
    style={{right:((W+2-tag.x)/(W+4)*100)+"%",top:((tag.y+2)/(H+4)*100)+"%"}}>
    {onLock&&<button type="button" aria-pressed={locked} aria-label={(locked?"باز کردن قفل انتخاب ":"قفل کردن انتخاب ")+tag.text} onClick={()=>onLock(!locked)}
-    className={"pointer-events-auto flex size-5 items-center justify-center rounded-[4px] border border-primary motion-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring "+(locked?"bg-primary text-primary-foreground":"bg-transparent text-primary")}>
-    <Icon icon={locked?Lock:LockOpen} size={16} aria-hidden="true" className={"size-3! "+(locked?"[&_rect]:fill-current":"")}/></button>}
-   <bdi className="whitespace-nowrap text-[11px] font-medium leading-none text-primary">{tag.text}</bdi>
+    className={"pointer-events-auto relative flex size-6 items-center justify-center rounded-[4px] before:absolute before:-inset-2.5 before:content-[''] pointer-coarse:size-7 border border-primary motion-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring "+(locked?"bg-primary text-primary-foreground":"bg-transparent text-primary")}>
+    <Icon icon={locked?Lock:LockOpen} size={16} aria-hidden="true" className={"size-3.5! "+(locked?"[&_rect]:fill-current":"")}/></button>}
+   <bdi className="whitespace-nowrap text-xs font-medium leading-none text-primary pointer-coarse:text-[13px]">{tag.text}</bdi>
   </div>
  </div>;
 }
