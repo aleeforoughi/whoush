@@ -871,3 +871,30 @@ export function applyStagingCues(s:Staging,normalizedText:string):Staging{
   // The frame is centred by default: only the user's own words (or the canvas) move the subject off centre.
   ...(side?{framing:{x:side,y:0}}:{}),lights:s.lights.map((l,i)=>i===ki?key:l)};
 }
+
+// ---- the scene the user arranged, first in the image prompt ----
+/** A colour's everyday name from its hue (for the image model, which reads names better than hex codes). */
+function colorNameEn(hex:string):string{
+ const [r,g,b]=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255),mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;if(d<0.1)return "white";
+ const h=((mx===r?((g-b)/d)%6:mx===g?(b-r)/d+2:(r-g)/d+4)*60+360)%360;
+ return h<15||h>=340?"red":h<40?"orange":h<70?"yellow":h<170?"green":h<200?"cyan":h<255?"blue":h<290?"violet":"magenta";
+}
+/** How the subject is turned to the camera, in plain words (the orbit read as what the photo shows). */
+function viewEn(az:number):string{const a=Math.abs(wrap180(az));return a<22.5?"the subject faces the camera":a<67.5?"three-quarter view of the subject":a<=112.5?"side profile view of the subject":a<=157.5?"three-quarter back view of the subject":"the subject seen from behind";}
+/** Each shot size by what the frame shows (the image model follows that better than the shot's name). */
+const FRAMING_EN:Record<Staging["shotSize"],string>={extreme_close_up:"Extreme close-up: only the face's detail (the eyes or the mouth) fills the frame",
+ close_up:"Tight close-up: the face fills most of the frame, cropped at the shoulders",medium_close_up:"Medium close-up: head and chest, cropped mid-chest",
+ medium:"Medium shot: from the waist up",medium_full:"Medium full shot: from the knees up",full:"Full-length shot: the whole body from head to feet in frame",
+ wide:"Wide shot: the whole subject small in its surroundings",extreme_wide:"Extreme wide shot: a tiny subject in a vast place"};
+/** The angle as plain photographic words, from the exact elevation. */
+function angleEn(s:Staging):string{const e=elevationOf(s);return e<=-40?"worm's-eye view from the ground looking steeply up":e<=-10?"low-angle shot looking up at the subject":e<10?"eye-level shot":e<60?"high-angle shot looking down at the subject":"overhead bird's-eye view looking straight down";}
+/**
+ * The user's own arrangement as a short, plain directive that opens the image prompt, so the model reads the camera, the framing and any coloured light
+ * before the rest (appended after a long description, it was outweighed by it and ignored). The full scene still follows at the end.
+ */
+export function sceneLeadEn(s:Staging):string{
+ const parts=[angleEn(s)+".",viewEn(s.cameraAzimuth??0)+".",FRAMING_EN[s.shotSize]+"."];
+ if(rollOf(s))parts.push("Dutch angle, the frame tilted "+Math.abs(Math.round(rollOf(s)))+"°.");
+ for(const l of s.lights)if(l.colorHex)parts.push(l.role[0].toUpperCase()+l.role.slice(1)+" light: "+tintEn(tintOf(l))+" "+colorNameEn(l.colorHex)+" coloured light ("+l.colorHex+") from the "+DIR_EN[l.direction]+".");
+ return "Camera and light, exactly as arranged: "+parts.map(x=>x[0].toUpperCase()+x.slice(1)).join(" ");
+}

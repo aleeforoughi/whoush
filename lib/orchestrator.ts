@@ -9,7 +9,7 @@ import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./
 import {displayTag,inferAttachmentRoles,isGenerationTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
 import {providerForModelId} from "./llm-routing";
 import {replyScriptFor} from "./finglish";
-import {applyStagingCues,applyTypedMappings,lensFor,describeStagingEn,describeStagingFa,detectProps,detectSubject,expandMappings,mapReferences,tidyProps,typedMappings} from "./staging";
+import {applyStagingCues,applyTypedMappings,lensFor,describeStagingEn,describeStagingFa,sceneLeadEn,detectProps,detectSubject,expandMappings,mapReferences,tidyProps,typedMappings} from "./staging";
 import {findGif,type ChatGif} from "./giphy";
 import {describeFocus} from "./frame-css";
 import {detectMediaKind,suggestModel} from "./router";
@@ -277,8 +277,11 @@ export const getPrivateMediaPrompt=(turnId:string):string|undefined=>store().get
 export function deriveTurnWithStaging(turnId:string,staging:Staging,aspect?:string):string|undefined{
  const base=store().get(turnId);if(base===undefined)return undefined;
  // The lens follows the adjusted scene (Whoush's choice for what it now shows), so the camera direction never contradicts it.
+ // The user's camera and light open the prompt in plain words (the model weighs the start; a long description before them outweighed them), and the
+ // full scene follows at the end; the planner's own text sits between, cut to fit.
+ const lead=sceneLeadEn(staging)+" ";
  const extra=" User-adjusted scene (overrides any earlier camera, framing or lighting direction): "+describeStagingEn(staging)+describeFocus(staging,undefined,aspect??"16:9").en+" "+lensFor(staging).en+(aspect?" Aspect ratio "+aspect+".":"");
- const id=randomUUID();keepPrompt(id,(base.slice(0,Math.max(0,3000-extra.length))+extra).slice(0,3000));
+ const id=randomUUID();keepPrompt(id,(lead+base.slice(0,Math.max(0,3000-extra.length-lead.length))+extra).slice(0,3000));
  return id;
 }
 function keepPrompt(turnId:string,prompt:string){const m=store();m.set(turnId,prompt);while(m.size>MAX_PROMPTS)m.delete(m.keys().next().value as string);}

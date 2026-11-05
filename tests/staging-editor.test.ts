@@ -434,3 +434,11 @@ test("a coloured light's tint: how strong its colour is reaches the drawing, Who
  assert.match(describeStagingEn(s),/a bright, neon-like #ff5a5f colour gel/);assert.match(describeStagingFa(s),/رنگ #ff5a5f \(روشن\)/);
  assert.ok(describeStagingChangesFa(s,{...s,lights:[{...l,tint:0.9}]}).some(x=>x.includes("شدت رنگ روشن ← پررنگ")));
 });
+
+test("the arranged scene opens the image prompt in plain words: angle, view, framing and coloured light first",async()=>{
+ const {sceneLeadEn}=await import("../lib/staging");
+ const l={role:"key" as const,direction:"front_left" as const,height:"high" as const,quality:"soft" as const,source:"softbox" as const,colorTemperatureK:5600,colorHex:"#ff1744",tint:0.9};
+ const lead=sceneLeadEn({...base,cameraAngle:"low",cameraElevation:-25,cameraAzimuth:90,shotSize:"close_up",lights:[l]});
+ assert.match(lead,/^Camera and light, exactly as arranged: Low-angle shot looking up at the subject\. Side profile view of the subject\. Tight close-up: the face fills most of the frame/);
+ assert.match(lead,/Key light: a deep, strongly saturated red coloured light \(#ff1744\) from the front-left\./);
+});
