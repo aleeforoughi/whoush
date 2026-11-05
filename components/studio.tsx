@@ -31,8 +31,9 @@ import {fa} from "@/lib/format";
 import {STORAGE_FULL_FA,getProject,listAssets,saveAsset,saveProject} from "@/lib/project-store";
 import {MAX_MESSAGES,assetToAttachment,attachmentToAsset,autoTitle,rerunSource,uniqueById,answerBrief,historyFor,toggleReaction,generationTagsIn,referencedGenerations,toGenerationRef,withGenerationTags,type GifSnapshot,type ProposalSnapshot,type Project,type StoredMessage} from "@/lib/projects";
 import {MAX_GENERATION_REFS,type ReactionEmoji,type Staging} from "@/lib/creative-plan";
-import {LIGHT_SOURCE_FA,describeStagingChangesFa,followUpFocus,lightTags,propTags} from "@/lib/staging";
+import {LIGHT_SOURCE_FA,describeStagingChangesFa,followUpFocus,lightTags,propTags,sectionsFromWords} from "@/lib/staging";
 import {normalizePersian} from "@/lib/safety";
+import {isReferenceRequest,type ReferenceRequest} from "@/lib/reference-needs";
 import {STAGE_TEXT,postAgentTurn} from "@/lib/agent-stream";
 import type {TurnStage} from "@/lib/orchestrator-stages";
 import {replyScriptFor} from "@/lib/finglish";
@@ -411,18 +412,33 @@ export function Studio(){
   el.querySelector<HTMLElement>("button")?.focus({preventScroll:true});
  }
  /** A + menu entry adds an empty upload card (title and icon) inside the chat input and moves focus to it; «کاراکترهای من» opens the saved-character dialog. */
+ /** Adds an upload card to the chat input (with its tag reserved), or reports why it cannot; returns the card as added. */
+ function createSlot(slot:UploadSlot):UploadSlot|undefined{
+  const r=addSlot(slots,slot,attachments.length);
+  if(r.full){setProblems([{key:crypto.randomUUID(),name:slot.titleFa,message:SLOTS_FULL_FA}]);return undefined;}
+  // Reserve the tag now so the card can show it (#تصویر-۱) before the upload; the automatic card gets its tag when its file arrives.
+  let added=slot;
+  if(slot.upload){
+   const t=reserveSlotTag(tagsInUse(conversation,slots),slot.upload);
+   if(!t){setProblems([{key:crypto.randomUUID(),name:slot.titleFa,message:ATTACHMENT_ERRORS_FA.tagsExhausted}]);return undefined;}
+   tagCounters.current=bumpTagCounters(tagCounters.current,t);added={...slot,tag:t};r.slots[r.slots.length-1]=added;
+  }
+  setSlots(r.slots);setAnnounce("کارت آپلود "+slot.titleFa+" اضافه شد.");
+  return added;
+ }
+ /**
+  * Whoush asked for photos (a reference request): each angle's «آپلود» makes (or reuses) its card in the chat input, with the role Whoush chose, and opens
+  * the file picker for it; the card in the conversation shows which angles are in.
+  */
+ function uploadForRequest(messageId:string,req:ReferenceRequest,angle:{id:string;titleFa:string}){
+  const id="ref-"+messageId+"-"+angle.id,existing=slots.find(s=>s.id===id);
+  const slot=existing??createSlot({id,titleFa:angle.titleFa,icon:"reference_image",upload:{kind:"image",role:req.role}});
+  if(slot)openSlotPicker(slot);
+ }
  function pickInsert(item:InsertItem){
   const slot=slotFor(item,crypto.randomUUID());
   if(!slot){setCharactersOpen(true);return;}
-  const r=addSlot(slots,slot,attachments.length);
-  if(r.full){setProblems([{key:crypto.randomUUID(),name:item.titleFa,message:SLOTS_FULL_FA}]);return;}
-  // Reserve the tag now so the card can show it (#تصویر-۱) before the upload; the automatic card gets its tag when its file arrives.
-  if(slot.upload){
-   const t=reserveSlotTag(tagsInUse(conversation,slots),slot.upload);
-   if(!t){setProblems([{key:crypto.randomUUID(),name:item.titleFa,message:ATTACHMENT_ERRORS_FA.tagsExhausted}]);return;}
-   tagCounters.current=bumpTagCounters(tagCounters.current,t);r.slots[r.slots.length-1]={...slot,tag:t};
-  }
-  setSlots(r.slots);setAnnounce("کارت آپلود "+slot.titleFa+" اضافه شد.");
+  if(!createSlot(slot))return;
   requestAnimationFrame(()=>document.querySelector<HTMLButtonElement>('[data-slot-id="'+slot.id+'"]')?.focus());
  }
  function onDrop(e:DragEvent){
@@ -451,7 +467,10 @@ export function Studio(){
  }
  function send(e:FormEvent){
   e.preventDefault();const text=draft.trim();if(!text)return;
-  // An answer to Whoush's question goes with the original request (and its files), so the planner sees the whole brief and decides instead of asking again.
+  answer(text);
+ }
+ /** Sends `text`; an answer to Whoush's question goes with the original request (and its files), so the planner sees the whole brief and decides instead of asking again. */
+ function answer(text:string){
   const asked=questionAwaitingAnswer();
   void runTurn(text,asked?[...(asked.attachments??[]).filter(a=>!attachments.some(x=>x.id===a.id)),...attachments]:attachments,[],true,asked?answerBrief(asked.brief??asked.text,text):undefined);
  }
@@ -499,7 +518,7 @@ export function Studio(){
    setThinking({stage:"reading",script:replyScriptFor(sentText)});
    const r=await postAgentTurn(JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(toWireAttachment)}:{}),...(generations.length?{generations}:{})}),stage=>setThinking(t=>t&&{...t,stage}));
    if(!r.ok){
-    const errorBody=await r.json().catch(()=>({})) as {error?:string;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"]};
+    const errorBody=await r.json().catch(()=>({})) as {error?:string;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"];references?:unknown};
     if(r.status===422&&errorBody.error==="no_compatible_model"){
      const message=typeof errorBody.message==="string"?errorBody.message:"مدل سازگاری برای این درخواست پیدا نشد.";
      setMessages(m=>[...m,agentItem({role:"agent",text:message,kind:"no_model",snapshot:{message,...(errorBody.plan?{plan:errorBody.plan}:{})}})]);setPreview("مدل سازگار پیدا نشد");
@@ -507,7 +526,8 @@ export function Studio(){
      return;
     }
     if(r.status===422&&errorBody.error==="needs_input"&&typeof errorBody.question==="string"){
-     setMessages(m=>[...m,agentItem({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"",kind:"question",snapshot:{question:errorBody.question!}})]);whoushReacts(errorBody.reaction);
+     const references=isReferenceRequest(errorBody.references)?errorBody.references:undefined;
+     setMessages(m=>[...m,agentItem({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"",kind:"question",snapshot:{question:errorBody.question!,...(references?{references}:{})}})]);whoushReacts(errorBody.reaction);
      adoptProject(firstText,characterId);
      return;
     }
@@ -562,6 +582,12 @@ export function Studio(){
    setMessages(m=>[...m,item({role:"agent",text:current.messageFa,kind:"job",snapshot:{state:current.state,messageFa:current.messageFa,...(genTag?{tag:genTag}:{})}})]);setProposal(null);setLiveId(null);touch();
   }catch(err){setError(err instanceof Error?err.message:"خطای ناشناخته");}
   finally{setBusy(false);}
+ }
+ /** A focus saved before the camera was split into angle, distance and lens («camera»): read again from the user's words when they name the part. */
+ function refineFocus(focus:string[]|undefined,userText:string|undefined){
+  if(!focus?.includes("camera")||!userText)return focus;
+  const words=sectionsFromWords(normalizePersian(userText));
+  return words.length?words:focus;
  }
  /** Whether there is a preview to show: a generation has started (or the opened project has one). */
  const hasPreview=job!==null;
@@ -675,7 +701,7 @@ export function Studio(){
         {m.kind==="job"&&<PreviewCard tag={m.snapshot.tag} state={m.snapshot.state} messageFa={m.snapshot.messageFa}
          output={m.snapshot.messageFa===job?.messageFa?job?.outputs?.find(o=>isOwnedOutputUrl(o.url,window.location.origin)):undefined} video={m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false} onOpen={()=>openPreview(m.snapshot)}/>}
         {/* «بوم» is adjustable on every generation: on the live one it feeds «بساز» directly; on an older one its card offers a revision with that scene. */}
-        {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan&&<PlanStory plan={m.snapshot.plan} focus={m.kind==="proposal"?m.snapshot.focus:undefined}
+        {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan&&<PlanStory plan={m.snapshot.plan} focus={m.kind==="proposal"?refineFocus(m.snapshot.focus,messages.slice(0,i).reverse().find(x=>x.role==="user")?.text):undefined}
          onStagingChange={m.kind==="proposal"?(s,aspect,changed)=>{
           if(proposal&&m.id===liveId)setSceneEdit(changed?{id:m.id,staging:s,aspect}:null);
           else setPastEdits(p=>{const n={...p};if(changed)n[m.id]={staging:s,aspect};else delete n[m.id];return n;});
@@ -687,7 +713,10 @@ export function Studio(){
           onBuildScene={pastEdits[m.id]&&m.snapshot.tag&&m.snapshot.plan.staging?()=>buildScene(m.id,m.snapshot.tag!,m.snapshot.plan.staging!,m.snapshot.plan.camera?.aspectRatio):undefined} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>)}
         {m.kind==="no_model"&&<NoModelCard result={m.snapshot}/>}
         {/* The question is always the last item of the agent's message; it waits for an answer until something is sent after it. */}
-        {m.kind==="question"&&<AgentQuestion question={m.snapshot.question} waiting={i===messages.length-1&&!busy} onAnswer={()=>promptRef.current?.focus()}/>}
+        {m.kind==="question"&&<AgentQuestion question={m.snapshot.question} waiting={i===messages.length-1&&!busy} onAnswer={()=>promptRef.current?.focus()}
+         references={m.snapshot.references} uploaded={m.snapshot.references?Object.fromEntries(m.snapshot.references.angles.map(a=>[a.id,Boolean(slots.find(s=>s.id==="ref-"+m.id+"-"+a.id)?.attachmentId)])):undefined}
+         onUpload={m.snapshot.references?a=>uploadForRequest(m.id,m.snapshot.references!,a):undefined}
+         onContinue={m.snapshot.references&&i===messages.length-1&&!busy?()=>answer(replyScriptFor(m.text)==="finglish"?"aksa ro gozashtam":"عکس‌ها رو گذاشتم"):undefined}/>}
         {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan?.clarifyingQuestionFa&&<AgentQuestion question={m.snapshot.plan.clarifyingQuestionFa} waiting={i===messages.length-1&&!busy} onAnswer={()=>promptRef.current?.focus()}/>}
         {reactions}
         <div className="-mt-2">{actions}</div>

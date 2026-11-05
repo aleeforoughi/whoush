@@ -14,6 +14,7 @@ import {findGif,type ChatGif} from "./giphy";
 import {detectMediaKind,suggestModel} from "./router";
 import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
 import {SKILLS,SKILL_REGISTRY_VERSION} from "./skills";
+import {detectReferenceNeeds,type ReferenceRequest} from "./reference-needs";
 import type {GenerationProposal,MediaRequirements,SuggestedModel} from "./types";
 export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;now?:()=>Date;
  /** Progress for the chat's live status: called as each real stage of the turn starts (never invented, never with private details). */
@@ -29,7 +30,8 @@ export type OrchestratorResult=
  |{status:"unsupported";turnId:string;plan:PublicCreativePlan;message:string;suggestedModel?:SuggestedModel}
  |{status:"restricted";decision:"block"|"review";category:SafetyCategory;message:string}
  /** Whoush needs one critical answer before it can offer a generation: no plan card, no price, only the question. */
- |{status:"needs_input";turnId:string;message:string;question:string;reaction?:ReactionEmoji};
+ |{status:"needs_input";turnId:string;message:string;question:string;reaction?:ReactionEmoji;
+  /** The photos Whoush needs to keep something only a photo can (lib/reference-needs.ts): the card shows an upload slot per angle. */references?:ReferenceRequest};
 /**
  * Whoush's own lines when no planner reply is usable (deterministic planner, or a reply that failed a check): everyday spoken Persian, or Finglish for a Finglish
  * brief, in Whoush's voice. A question's setup carries no emoji (docs/CREATIVE_SKILLS.md, Whoush voice).
@@ -319,7 +321,20 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // A role is optional: media without one gets Whoush's best guess from the words of the brief (no media analysis), before skills resolve.
  // Inferred roles drive the same skills, constraints, kind override and requirements as chosen ones; `voice_clone` is never inferred.
  const given=parsed.attachments??[],roles=new Map(inferAttachmentRoles(parsed.text,given).map(r=>[r.tag,r]));
- const files:Array<Omit<(typeof given)[number],"role">&{role?:AttachmentRole;roleSource?:RoleSource}>=given.map(f=>{const r=roles.get(f.tag);return r?{...f,role:r.role,roleSource:r.roleSource}:f;});
+ const files0:Array<Omit<(typeof given)[number],"role">&{role?:AttachmentRole;roleSource?:RoleSource}>=given.map(f=>{const r=roles.get(f.tag);return r?{...f,role:r.role,roleSource:r.roleSource}:f;});
+ // Something only a photo can keep (the user's tattoos, logo, product, face, outfit): its photos get the right role (a user's own choice stays), and without
+ // any photo Whoush asks for exactly the ones it needs, once (an answer without photos goes ahead without them).
+ const need=detectReferenceNeeds(normalizePersian(parsed.text))[0];
+ // A general reference («عکس رفرنس») is resolved by the brief's words; for a detail like a tattoo it stays the general reference it already is.
+ const fits=(f:{role?:AttachmentRole})=>Boolean(need)&&(f.role===need!.role||(need!.role==="reference"&&f.role==="general"));
+ const needPhotos=need?files0.filter(f=>f.kind==="image"&&(fits(f)||!f.role||f.roleSource==="inferred")):[];
+ // Asked only when the message brought no photo at all (a photo the user gave another role is theirs to decide).
+ if(need&&!files0.some(f=>f.kind==="image")&&!parsed.answersQuestion){
+  const ask=replyScriptFor(parsed.text)==="finglish"?need.askFinglish:need.askFa;
+  return {status:"needs_input",turnId:randomUUID(),message:ask,question:need.askFa,references:{need:need.id,titleFa:need.titleFa,role:need.role,angles:need.angles.map(a=>({id:a.id,titleFa:a.titleFa}))}};
+ }
+ const needTags=new Set(needPhotos.map(f=>f.tag));
+ const files=files0.map(f=>needTags.has(f.tag)&&need&&!fits(f)?{...f,role:need.role==="reference"?"general":need.role,roleSource:"inferred" as RoleSource}:f);
  // Text attachments are user text: they get the same preflight before any planner sees them.
  for(const f of files){
   if(!f.textExcerpt)continue;
@@ -429,12 +444,18 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // misread), what the brief says explicitly (angle, shot size, side, lighting words) wins over the planner's choice, and the resulting scene is written into
  // the provider prompt as the deciding direction, so the output follows what the canvas shows.
  if(plan.staging&&!parsed.stagingOverride){
-  plan.staging=applyStagingCues({...plan.staging,props:mapReferences(applyTypedMappings(tidyProps(plan.staging.props),typed),refs)},normalizePersian(parsed.text));
+  plan.staging=applyStagingCues({...plan.staging,props:mapReferences(applyTypedMappings(tidyProps(plan.staging.props),typed),refs.map(r=>need&&needTags.has(r.tag)?{...r,mapsTo:need.mapsTo}:r))},normalizePersian(parsed.text));
   // Whoush picks the lens for the scene it built (the same rule as for an arranged one), so the plan, the canvas and the build agree.
   const lens=lensFor(plan.staging);
   if(plan.camera)plan.camera={...plan.camera,focalLengthMm:lens.focalLengthMm,aperture:lens.aperture,iso:lens.iso,focus:lens.fa};
   if(plan.shot)plan.shot={...plan.shot,lens:lens.focalLengthMm+"mm "+lens.aperture};
   const en=" Scene (must match): "+describeStagingEn(plan.staging)+" "+lens.en;
+  plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
+ }
+ // Keeping it is a hard rule, naming the photos (the provider-facing text names them by description).
+ if(need&&needTags.size){
+  const shown=[...needTags].map(displayTag).join("، "),fa=need.keepFa(shown),en=" "+need.keepEn([...needTags].map(displayTag).join(", "));
+  if(!plan.hardConstraints.includes(fa))plan.hardConstraints=[...plan.hardConstraints,fa];
   plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
  }
  if(parsed.aspectOverride&&plan.camera&&plan.camera.aspectRatio!==parsed.aspectOverride){

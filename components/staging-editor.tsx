@@ -122,7 +122,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
    </span>
    {!open&&<span className="grid grid-cols-1 gap-2">
     {show("frame")&&<Snap c={cap.frame}><FrameView staging={draft} anchor={anchor} aspect={aspect}/></Snap>}
-    {show("camera")&&<Snap c={cap.camera}><CameraView staging={draft} anchor={anchor} aspect={aspect} editable={false} onCamera={()=>{}}/></Snap>}
+    {(show("angle")||show("distance")||show("lens"))&&<Snap c={cap.camera}><CameraView staging={draft} anchor={anchor} aspect={aspect} editable={false} onCamera={()=>{}}/></Snap>}
     {show("light")&&<Snap c={cap.light}><LightView staging={draft} editable={false} selected={-1} onSelect={()=>{}} onLight={()=>{}}/></Snap>}
    </span>}
   </button>
@@ -151,7 +151,8 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     </>}
    </Viewport>
    </div>}
-   {show("camera")&&<div><Viewport {...cap.camera}>
+   {(show("angle")||show("distance")||show("lens"))&&<div><Viewport {...cap.camera}>
+    {show("angle")&&<>
     {/* The two camera views side by side, each its own tile: from the side (height and distance) and from above (the orbit), synced through one scene. */}
     <div className="grid grid-cols-2 gap-2">
      <Tile label="زاویه دوربین / عمودی">
@@ -172,13 +173,16 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     {editable&&<div className="flex flex-wrap justify-center gap-1" role="radiogroup" aria-label="نوع نما">
      {([[undefined,"معمولی"],["ots","روی شانه (OTS)"],["pov","دید سوژه (POV)"]] as const).map(([v,l])=><Chip key={l} role="radio" on={draft.shotStyle===v}
       onClick={()=>setDraft(d=>{const {shotStyle:_s,...rest}=d;void _s;return v?{...rest,shotStyle:v}:rest;})}>{l}</Chip>)}</div>}
+    </>}
+    {show("distance")&&<>
     {/* The camera's distance on its own tile, after the angles: drag the camera nearer or farther (the frame's zoom follows), or use the slider. */}
     <Tile label="فاصله دوربین">
      <DistanceView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onDistance={v=>{aim();setDistanceOnly(v);}}/>
     </Tile>
     {editable&&<SliderRow label="فاصلهٔ دوربین (همون زوم کادر)" ends={["نزدیک","دور"]} valueText={SHOT_SIZE_FA[draft.shotSize]+" · زوم "+fa(zoomFactor(draft))+"×"} min={0} max={1} step={0.001} value={distanceOf(draft)} onChange={setDistance}/>}
+    </>}
     {/* Lens and aperture: Whoush's pick for the scene (lib/staging.ts, lensFor) until the user moves a slider; bokeh is the aperture opened wide. */}
-    {editable&&(()=>{const l=lensFor(draft),auto=(on:boolean)=>on?" · خودکار":"";
+    {editable&&show("lens")&&(()=>{const l=lensFor(draft),auto=(on:boolean)=>on?" · خودکار":"";
      return <>
       {/* Right after the distance: Whoush Autopilot (on: Whoush keeps the lens and aperture right for the scene; off: fully manual). The bokeh toggle is
           off the canvas for now (the aperture slider still sets the background blur). */}

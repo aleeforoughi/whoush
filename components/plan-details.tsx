@@ -1,14 +1,15 @@
 "use client";
 import {useState,type ReactNode} from "react";
-import {Aperture,Camera,CircleHelp,Clapperboard,Film,Focus,Frame,Gauge,Lightbulb,ListChecks,Move,Paperclip,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Thermometer,Timer,type LucideIcon} from "lucide-react";
-import {Accordion,AccordionContent,AccordionItem,AccordionTrigger,Badge,Icon} from "@aleeforoughi/feather-react";
+import {Aperture,Camera,CircleCheck,CircleHelp,Clapperboard,ImagePlus,Image as ImageIcon,Film,Focus,Frame,Gauge,Lightbulb,ListChecks,Move,Paperclip,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Thermometer,Timer,type LucideIcon} from "lucide-react";
+import {Accordion,AccordionContent,AccordionItem,AccordionTrigger,Badge,Button,Icon} from "@aleeforoughi/feather-react";
+import type {ReferenceRequest} from "@/lib/reference-needs";
 import {StagingEditor} from "@/components/staging-editor";
 import type {Staging} from "@/lib/creative-plan";
 import {STYLE_LABEL_FA,type PublicCreativePlan} from "@/lib/creative-plan";
 import {CHARACTER_VIEWS} from "@/lib/characters";
 import {displayTag} from "@/lib/attachments";
 import {fa} from "@/lib/format";
-import {lensFor} from "@/lib/staging";
+import {expandFocus,lensFor} from "@/lib/staging";
 
 const latin=(v:string|number)=><bdi dir="ltr">{v}</bdi>;
 const text=(v:string)=><span dir="auto">{v}</span>;
@@ -68,7 +69,7 @@ function Line({icon,label,children}:{icon:LucideIcon;label:string;children:React
  */
 export function PlanStory({plan,onStagingChange,focus}:{plan:PublicCreativePlan;
  /** A follow-up about one or two parts of the scene: «بوم» shows just those parts (expandable to all), and the rest of the plan folds under «جزئیات برنامه». */
- focus?:readonly ("frame"|"camera"|"light")[];
+ focus?:readonly string[];
  /** When set (the live generation), «بوم» is adjustable and every change flows to the generation card. */onStagingChange?:(s:Staging,aspect:string,changed:boolean)=>void}){
  const {shot,identityLock,speech,references,staging}=plan;
  // When the user arranges «بوم», Whoush re-picks the lens for that scene (the same choice the build uses): shown here live.
@@ -141,7 +142,7 @@ export function PlanStory({plan,onStagingChange,focus}:{plan:PublicCreativePlan;
    </AccordionItem>
   </Accordion>}
  </>;
- const editor=staging&&<StagingEditor staging={staging} aspectRatio={plan.camera?.aspectRatio} mediaKind={plan.mediaKind} onChange={onArrange} focus={focus}/>;
+ const editor=staging&&<StagingEditor staging={staging} aspectRatio={plan.camera?.aspectRatio} mediaKind={plan.mediaKind} onChange={onArrange} focus={focus?expandFocus(focus):undefined}/>;
  // A focused follow-up: only the part of «بوم» it is about, with the rest of the plan folded away.
  if(focus?.length)return <div className="flex flex-col gap-3">
   {editor}
@@ -162,15 +163,33 @@ export const NEEDS_INPUT_FA="نیاز به پاسخ تو";
  * has been sent since), it is highlighted with a flashing «نیاز به پاسخ تو» badge (a gentle pulse; still under reduced motion) and «پاسخ بده» moves focus to the
  * prompt. Once answered it stays as a quiet record.
  */
-export function AgentQuestion({question,waiting,onAnswer}:{question:string;waiting:boolean;onAnswer:()=>void}){
+/**
+ * Whoush's question, always the last item of its message while it waits («نیاز به پاسخ تو»). When Whoush asked for photos (a reference request: the user's
+ * tattoos, logo, product...), it lists the angles it needs, each with «آپلود» (the photo lands in the chat input as a card with the right role) and a check
+ * once it is in, then «ادامه» sends them with the original request.
+ */
+export function AgentQuestion({question,waiting,onAnswer,references,uploaded,onUpload,onContinue}:{question:string;waiting:boolean;onAnswer:()=>void;
+ references?:ReferenceRequest;uploaded?:Record<string,boolean>;onUpload?:(angle:{id:string;titleFa:string})=>void;onContinue?:()=>void}){
+ const done=references?references.angles.filter(a=>uploaded?.[a.id]).length:0;
  return <div role={waiting?"status":undefined} className={"flex items-start gap-3 rounded-card p-3 "+(waiting?"border border-primary bg-surface-subtle":"bg-surface-subtle")}>
-  <Icon icon={CircleHelp} size={20} aria-hidden="true" className={"mt-0.5 shrink-0 "+(waiting?"text-primary":"text-fg-secondary")}/>
+  <Icon icon={references?ImagePlus:CircleHelp} size={20} aria-hidden="true" className={"mt-0.5 shrink-0 "+(waiting?"text-primary":"text-fg-secondary")}/>
   <div className="flex min-w-0 flex-1 flex-col gap-2">
    {waiting&&<span className="inline-flex w-fit items-center gap-1.5 rounded-control bg-primary px-2.5 py-0.5 type-caption font-medium text-primary-foreground animate-pulse motion-reduce:animate-none">
     <span aria-hidden="true" className="size-1.5 rounded-full bg-current"/>{NEEDS_INPUT_FA}
    </span>}
    <p className="type-body-sm text-fg-primary">{text(question)}</p>
-   {waiting&&<button type="button" onClick={onAnswer} className="w-fit rounded-control type-label text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">پاسخ بده</button>}
+   {references&&<ul className="flex flex-col gap-1.5" aria-label={"عکس‌های لازم: "+references.titleFa}>
+    {references.angles.map(a=><li key={a.id} className="flex items-center gap-2 rounded-control border border-line-secondary px-2.5 py-1.5">
+     <Icon icon={uploaded?.[a.id]?CircleCheck:ImageIcon} size={16} aria-hidden="true" className={"size-4 shrink-0 "+(uploaded?.[a.id]?"text-primary":"text-fg-secondary")}/>
+     <span className="min-w-0 flex-1 type-caption text-fg-primary">{a.titleFa}</span>
+     {waiting&&onUpload&&<Button type="button" size="sm" variant={uploaded?.[a.id]?"ghost":"secondary"} onClick={()=>onUpload(a)}>{uploaded?.[a.id]?"عوض کن":"آپلود"}</Button>}
+    </li>)}
+   </ul>}
+   {references&&waiting&&onContinue&&<div className="flex flex-wrap items-center gap-2">
+    <Button type="button" size="sm" onClick={onContinue} disabled={!done}>ادامه با {fa(done)} عکس</Button>
+    <span className="type-caption text-fg-secondary">هووش خودش نقش عکس‌ها رو تعیین می‌کنه و به {references.titleFa} وصلشون می‌کنه.</span>
+   </div>}
+   {waiting&&!references&&<button type="button" onClick={onAnswer} className="w-fit rounded-control type-label text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">پاسخ بده</button>}
   </div>
  </div>;
 }

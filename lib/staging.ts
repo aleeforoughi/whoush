@@ -391,14 +391,15 @@ const LOOK_ROLES=["character","outfit","hairstyle","makeup"];
  * Maps the user's image references to the props they show: a character, outfit, hairstyle or makeup reference to the person (the main one first, else an
  * animal), an object reference to the object (else a vehicle). Others (environment, frames, motion, sound) describe no prop. Existing mappings are kept.
  */
-export function mapReferences(props:readonly SceneProp[]|undefined,refs:readonly {tag:string;kind:string;role:string}[]):SceneProp[]|undefined{
+export function mapReferences(props:readonly SceneProp[]|undefined,refs:readonly {tag:string;kind:string;role:string;/** Overrides the role's usual prop (a tattoo photo describes the person). */mapsTo?:"person"|"object"}[]):SceneProp[]|undefined{
  if(!props?.length||!refs.length)return props?[...props]:props;
  const out=props.map(p=>({...p}));
  const pick=(ok:(p:SceneProp)=>boolean)=>out.find(p=>p.main&&ok(p))??out.find(ok);
  const taken=new Set(out.flatMap(p=>p.refs??[]));
  for(const r of refs){
   if(r.kind!=="image"||taken.has(r.tag))continue;
-  const t=LOOK_ROLES.includes(r.role)?pick(p=>p.kind==="person")??pick(p=>p.kind==="animal"):r.role==="object"?pick(p=>p.kind==="object")??pick(p=>p.kind==="vehicle"):undefined;
+  const toPerson=r.mapsTo?r.mapsTo==="person":LOOK_ROLES.includes(r.role),toObject=r.mapsTo?r.mapsTo==="object":r.role==="object"||r.role==="graphic";
+  const t=toPerson?pick(p=>p.kind==="person")??pick(p=>p.kind==="animal"):toObject?pick(p=>p.kind==="object")??pick(p=>p.kind==="vehicle"):undefined;
   if(t&&!(t.refs??[]).includes(r.tag)&&(t.refs?.length??0)<4)t.refs=[...(t.refs??[]),r.tag];
  }
  return out;
@@ -531,40 +532,52 @@ export const lightAngleOf=(l:StagingLight)=>l.angle??(l.direction==="top"?undefi
 /** Zoom relative to a full shot, for people: «۱٫۸×» closer, «۰٫۵×» wider. */
 export const zoomFactor=(s:Staging)=>Math.round(SHOT_BODY_FRACTION.full/scaleOf(s)*10)/10;
 
-// ---- which part of «بوم» a message is about (a follow-up that changes one thing shows only that part) ----
-export const CANVAS_SECTIONS=["frame","camera","light"] as const;
+// ---- which part of «بوم» a message is about (a follow-up that changes one thing shows only that part: less is more) ----
+/** The canvas's parts: the frame (crop, layout), the camera's angle (height, orbit, tilt, shot type), its distance (the zoom), the lens and aperture, the light. */
+export const CANVAS_SECTIONS=["frame","angle","distance","lens","light"] as const;
 export type CanvasSection=typeof CANVAS_SECTIONS[number];
-export const CANVAS_SECTION_FA:Record<CanvasSection,string>={frame:"کادر و چیدمان",camera:"دوربین",light:"نورپردازی"};
+export const CANVAS_SECTION_FA:Record<CanvasSection,string>={frame:"کادر و چیدمان",angle:"زاویهٔ دوربین",distance:"فاصلهٔ دوربین",lens:"لنز و دیافراگم",light:"نورپردازی"};
+/** An older saved focus: «camera» meant all of the camera's parts. */
+export const expandFocus=(f:readonly string[]):CanvasSection[]=>[...new Set(f.flatMap(x=>x==="camera"?["angle","distance","lens"] as CanvasSection[]:(CANVAS_SECTIONS as readonly string[]).includes(x)?[x as CanvasSection]:[]))];
 const SECTION_CUES:Record<CanvasSection,string[]>={
- camera:["camera","angle","camera angle","hero view","hero shot","low angle","high angle","from above","from below","overhead","birds eye","worms eye","dutch","pov","over the shoulder","orbit","behind","lens","aperture","bokeh","دوربین","زاویه","زاویهٔ","زاویه‌ی","قهرمانی","از بالا","از پایین","از پشت","نیم رخ","لنز","دیافراگم","داچ","بوکه","دید سوژه","روی شانه"],
- frame:["frame","framing","crop","zoom","zoom in","zoom out","close up","closeup","wide shot","full body","composition","کادر","کراپ","زوم","کلوزآپ","کلوز آپ","نمای باز","نمای بسته","ترکیب بندی","چیدمان","جابه جا","جابجا","نزدیکتر","دورتر","تمام قد"],
+ angle:["hero view","hero shot","hero angle","low angle","high angle","from above","from below","overhead","birds eye","worms eye","dutch","tilt","pov","over the shoulder","orbit","behind","side view","profile","eye level",
+  "قهرمانی","از بالا","از پایین","از پشت","نیم رخ","سه رخ","روبرو","روبه رو","داچ","کج","دید سوژه","روی شانه","هم سطح","بالاتر","پایین تر","پایینتر","بچرخ","بچرخون","چرخش"],
+ distance:["closer","further","farther","zoom","zoom in","zoom out","distance","nearer","back up","step back",
+  "نزدیک","نزدیکتر","نزدیک تر","دور","دورتر","دور تر","زوم","فاصله","عقب تر","جلوتر"],
+ lens:["lens","aperture","bokeh","focal","blur the background","depth of field","لنز","دیافراگم","بوکه","فاصله کانونی","پس زمینه محو","عمق میدان"],
+ frame:["frame","framing","crop","close up","closeup","wide shot","full body","composition","layout","کادر","کراپ","کلوزآپ","کلوز آپ","نمای باز","نمای بسته","ترکیب بندی","چیدمان","جابه جا","جابجا","تمام قد","وسط کادر"],
  light:["light","lighting","lights","shadow","shadows","sunset","golden hour","backlit","backlight","rim light","neon","brighter","darker","نور","نورپردازی","سایه","غروب","ضدنور","نئون","روشن تر","تاریک تر","روشنتر","تاریکتر"]
 };
-/** The parts of «بوم» a message talks about, from its words (normalized text, ZWNJ as a space). */
+/** «camera» or «angle» alone, without saying what about it: the camera's angle. */
+const CAMERA_WORDS=["camera","angle","camera angle","دوربین","زاویه","زاویهٔ","زاویه‌ی","زاویه ی"];
+/**
+ * The parts of «بوم» a message talks about, from its words (normalized text, ZWNJ as a space). The action decides: «زاویه دوربین رو نزدیک‌تر کن» is about
+ * the camera's distance; «camera» or «زاویه» without a specific action is about the angle.
+ */
 export function sectionsFromWords(normalizedText:string):CanvasSection[]{
  const t=" "+normalizedText.toLowerCase().replace(/[\u200c،,.!?؟:;«»"()]/g," ").replace(/\s+/g," ")+" ";
- return CANVAS_SECTIONS.filter(sec=>SECTION_CUES[sec].some(w=>t.includes(" "+w.replace(/\u200c/g," ")+" ")));
+ const has=(w:string)=>t.includes(" "+w.replace(/\u200c/g," ")+" ");
+ const found=CANVAS_SECTIONS.filter(sec=>SECTION_CUES[sec].some(has));
+ if(!found.some(f=>f==="angle"||f==="distance"||f==="lens")&&CAMERA_WORDS.some(has))found.push("angle");
+ return CANVAS_SECTIONS.filter(s=>found.includes(s));
 }
 /** The parts of «بوم» that differ between two scenes (a revision's plan against the generation it revises). */
 export function stagingSections(a:Staging,b:Staging):CanvasSection[]{
- const pick=(s:Staging,keys:(keyof Staging)[])=>JSON.stringify(keys.map(k=>s[k]??null));
- const cam:(keyof Staging)[]=["cameraAngle","cameraElevation","cameraAzimuth","cameraRoll","shotStyle","lensMm","apertureF","autopilot"];
- const frame:(keyof Staging)[]=["shotSize","shotScale","framing","focusPoint","focusDetail","props"];
- const out:CanvasSection[]=[];
- if(pick(a,frame)!==pick(b,frame))out.push("frame");
- if(pick(a,cam)!==pick(b,cam))out.push("camera");
- if(JSON.stringify(a.lights)!==JSON.stringify(b.lights))out.push("light");
- return out;
+ const keys:Record<Exclude<CanvasSection,"light">,(keyof Staging)[]>={
+  frame:["framing","focusPoint","focusDetail","props"],angle:["cameraAngle","cameraElevation","cameraAzimuth","cameraRoll","shotStyle"],
+  distance:["shotSize","shotScale"],lens:["lensMm","apertureF","autopilot"]};
+ const pick=(s:Staging,k:(keyof Staging)[])=>JSON.stringify(k.map(x=>s[x]??null));
+ return CANVAS_SECTIONS.filter(sec=>sec==="light"?JSON.stringify(a.lights)!==JSON.stringify(b.lights):pick(a,keys[sec])!==pick(b,keys[sec]));
 }
 /**
- * The focus of a follow-up's «بوم» widget: the parts its words name, else the parts that changed from the previous scene, when that is one or two parts.
+ * The focus of a follow-up's «بوم» widget: the parts its words name, else the parts that changed from the previous scene, when that is not everything.
  * Undefined (the whole canvas) for a first generation or a change to everything.
  */
 export function followUpFocus(normalizedText:string,previous:Staging|undefined,next:Staging|undefined):CanvasSection[]|undefined{
  if(!previous||!next)return undefined;
  const words=sectionsFromWords(normalizedText);
  const f=words.length?words:stagingSections(previous,next);
- return f.length>0&&f.length<CANVAS_SECTIONS.length?f:undefined;
+ return f.length>0&&f.length<=3?f:undefined;
 }
 
 // ---- reading the brief: what the user said explicitly always wins over a planner's choice ----
