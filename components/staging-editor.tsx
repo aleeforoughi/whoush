@@ -112,12 +112,15 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
   setDraft(d=>{const {focusDetail:_f,focusPoint:_p,pivot:_v,...rest}=d;void _f;void _p;void _v;return {...rest,...(detail?{focusDetail:detail}:{}),props:(d.props??[]).map((p,j)=>{const {main:_m,...q}=p;void _m;return j===i?{...q,main:true}:q;})};});};
  // The camera: height, orbit around the main subject (everything in the frame turns to match) and distance (the same value as the frame's zoom).
  const setElevation=(e:number)=>{aim();setElevationOnly(e);};
- const dropPivot=(d:Staging):Staging=>{const {pivot:_v,...rest}=d;void _v;return rest;};
+ // A new height or side: a focus point the user placed keeps the focus (on a prop it follows the prop around); only its zoom anchor, which belonged to
+ // the old view, goes. Orbiting swings the ground around, so a point on the ground or the far background goes back to the dominant subject.
+ const dropPivot=(d:Staging,orbit=false):Staging=>{if(!d.pivot)return d;const {pivot,...rest}=d;const {a:_a,b:_b,k:_k,...focus}=pivot;void _a;void _b;void _k;
+  return orbit&&(typeof focus.on!=="number"||!focus.rel)?rest:{...rest,pivot:focus};};
  const setElevationOnly=(e:number)=>setDraft(d=>({...dropPivot(d),cameraElevation:e,cameraAngle:d.cameraAngle==="dutch"?"dutch":snapElevation(e)}));
  const orbitTo=(az:number)=>{aim();orbitOnly(az);};
  // A drag of the camera re-centres once, when it starts (not on every move).
  const orbitDrag=(az:number)=>orbitOnly(snapSide(az));
- const orbitOnly=(az:number)=>setDraft(d=>orbitCamera(dropPivot(d),wrap180(az-(d.cameraAzimuth??0))));
+ const orbitOnly=(az:number)=>setDraft(d=>orbitCamera(dropPivot(d,true),wrap180(az-(d.cameraAzimuth??0))));
  const setDistance=(v:number)=>{aim();setDistanceOnly(v);};
  const setDistanceOnly=(v:number)=>setDraft(d=>{const sc=scaleFromSlider(v);return {...d,shotScale:sc,shotSize:nearestShot(sc)};});
  const setProp=(i:number,p:Partial<SceneProp>)=>setDraft(d=>({...d,props:(d.props??[]).map((x,j)=>j===i?{...x,...p}:x)}));
@@ -200,7 +203,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     {/* The two camera views side by side, each its own tile: from the side (height and distance) and from above (the orbit), synced through one scene. */}
     <div className="grid grid-cols-2 gap-2">
      <Tile label="زاویه دوربین / عمودی">
-      <CameraView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onStart={aim} onCamera={c=>{setDraft(d=>{const n=c.flip?orbitCamera(dropPivot(d),180):dropPivot(d);
+      <CameraView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onStart={aim} onCamera={c=>{setDraft(d=>{const n=c.flip?orbitCamera(dropPivot(d,true),180):dropPivot(d);
        const e=snapVertical(c.elevation);return {...n,cameraElevation:e,cameraAngle:n.cameraAngle==="dutch"?"dutch":snapElevation(e)};});}}/>
      </Tile>
      <Tile label="زاویه دوربین / افقی">

@@ -212,3 +212,22 @@ test("the brief asks for a fisheye: the lens turns fisheye and the provider is t
  assert.match(lensFor(s).en,/fisheye/);
  assert.equal(applyStagingCues(base,"پرتره ساده").fisheye,undefined);
 });
+
+test("the focus stays locked on the dominant subject through moves, crops and angle changes; a placed point follows its prop; the camera never moves for it",async()=>{
+ const {propWorld}=await import("../lib/scene3d");
+ const tree={kind:"tree" as const,label:"درخت",x:0.6,z:1,y:0},s0:Staging={...base,props:[man,tree],lensMm:50,apertureF:1.8,autopilot:false};
+ const face=(s:Staging)=>{const w=propWorld(s.props![0],s,s0).pos;return [w[0],w[1]+1.75*0.88,w[2]];};
+ const off=(s:Staging)=>{const f=focusWorld(cssView(s,s0,"16:9",1000,562.5)),c=face(s);return Math.hypot(f[0]-c[0],f[1]-c[1],f[2]-c[2]);};
+ const moved={...s0,props:[{...man,x:0.4,z:0.3},tree]};
+ for(const s of [s0,moved,{...s0,framing:{x:0.4,y:-0.2}},{...s0,cameraAngle:"high" as const,cameraElevation:35}])assert.ok(off(s)<1e-9);
+ assert.deepEqual(cssView(moved,s0,"16:9",1000,562.5).pos,cssView(s0,s0,"16:9",1000,562.5).pos,"moving the dominant subject does not move the camera");
+ const pivot=pickPivot(s0,s0,"16:9",0.75,0.3);assert.equal(pivot.on,1);
+ const s1={...s0,pivot},s2={...s1,props:[man,{...tree,x:0.2,z:0.5}]},v1=cssView(s1,s0,"16:9",1000,562.5),v2=cssView(s2,s0,"16:9",1000,562.5);
+ assert.deepEqual(v1.pos,v2.pos,"moving the prop under the placed point does not move the camera");
+ const t=propWorld(s2.props![1],s2,s0).pos,f=focusWorld(v2);
+ assert.ok(Math.abs(f[0]-t[0]-pivot.rel![0])<1e-9&&Math.abs(f[2]-t[2]-pivot.rel![2])<1e-9,"the focus follows the tree");
+ // A new angle: the placed point keeps the focus (its zoom anchor goes).
+ const {a:_a,b:_b,k:_k,...focusOnly}=pivot;void _a;void _b;void _k;
+ const v3=cssView({...s1,pivot:focusOnly,cameraAngle:"high",cameraElevation:35},s0,"16:9",1000,562.5);
+ assert.ok(Math.hypot(...focusWorld(v3).map((n,i)=>n-focusWorld(v1)[i]))<1e-9);
+});

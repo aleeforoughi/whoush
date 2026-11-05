@@ -286,10 +286,12 @@ export function pickPivot(s:Staging,anchor:Staging|undefined,aspect:string,fx:nu
  const depth=hit?hit.depth:gDepth<far?gDepth:far,P=add(v.eye,mul(dir,depth));
  const st=stageFromWorld(P[0],P[2],s,anchor),camDist=Math.hypot(...sub(v.cam.target as V3,v.eye));
  // Kept at full precision: the camera is rebuilt from it on every move of the dot, so any rounding would shake the whole picture as the dot moves.
- return {x:st.x,y:P[1],z:st.z,a,b,k:Math.hypot(...sub(P,v.eye))/Math.max(0.05,camDist),on:hit?hit.i:gDepth<far?"ground":"backdrop"};
+ // On a prop: where on it, so the focus follows it when it moves.
+ const rel=hit?sub(P,propWorld((s.props??[])[hit.i],s,anchor,s.props??[]).pos as V3):undefined;
+ return {x:st.x,y:P[1],z:st.z,a,b,k:Math.hypot(...sub(P,v.eye))/Math.max(0.05,camDist),on:hit?hit.i:gDepth<far?"ground":"backdrop",...(rel?{rel}:{})};
 }
 /** Where the focus point is in the world (the aim point when none was placed). */
-export const focusWorld=(v:CssView):V3=>(v.cam.pivot??v.cam.target) as V3;
+export const focusWorld=(v:CssView):V3=>(v.cam.focus??v.cam.target) as V3;
 
 /**
  * The horizon on screen, as a curve (straight through a pinhole, bowed through a fisheye): the ground below it, the sky above with a lighter band down

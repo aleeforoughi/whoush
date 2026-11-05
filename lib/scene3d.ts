@@ -43,7 +43,7 @@ export type Camera3D={
  /** Barrel distortion for ultra-wide and fisheye lenses (0 none, 1 strong), from about 15 mm down. */fisheye:number;
  /** Depth of field: where the focus is (metres from the camera), the lens and the aperture. */focusDistance:number;focalMm:number;aperture:number;
  /** The background's distance behind the subject, metres (a room's wall, mountains...). */backdrop:number;
- /** The focus point the user placed, in the world (unset: the aim point is the focus). */pivot?:[number,number,number];
+ /** Where the camera focuses, in the world: the point the user placed, else the dominant subject (unset: the aim point). */focus?:[number,number,number];
 };
 /**
  * The camera, as the 2D canvas and the prompt see it: the lens and aperture (Whoush's or the user's), the distance solved from the shot size (on the frame's
@@ -66,19 +66,31 @@ export function camera3D(s:Staging,anchor:Staging|undefined,aspect:string):Camer
  const position:[number,number,number]=[target[0],target[1]+d*Math.sin(e),target[2]+d*Math.cos(e)];
  const fov=2*Math.atan((sensorV/2)/c.f)*180/Math.PI;
  const fr=s.framing??{x:0,y:0};
- // A focus point the user placed: the camera keeps its direction and stands on the line through that point, its distance scaled with the shot's, so
- // placing it changes nothing and a zoom dollies toward it (it stays where it is in the frame). It focuses there.
- if(s.pivot){
-  const pv=s.pivot,o=worldOrigin(s,anchor),P:[number,number,number]=[(pv.x-o.x)*X_M,pv.y,-(pv.z-o.z)*METERS_PER_Z];
-  const f:[number,number,number]=[0,-Math.sin(e),-Math.cos(e)],r:[number,number,number]=[1,0,0],u:[number,number,number]=[0,Math.cos(e),-Math.sin(e)];
+ const f:[number,number,number]=[0,-Math.sin(e),-Math.cos(e)];
+ // A focus point the user placed and its zoom anchor: the camera keeps its direction and stands on the line through that point, its distance scaled
+ // with the shot's, so placing it changes nothing and a zoom dollies toward it (it stays where it is in the frame). Without the anchor (the camera's
+ // angle changed since), the camera frames as usual and only the focus stays on the point.
+ let pos=position,aim=target;
+ const pv=s.pivot;
+ if(pv&&pv.a!==undefined&&pv.b!==undefined&&pv.k!==undefined){
+  const o=worldOrigin(s,anchor),P0:[number,number,number]=[(pv.x-o.x)*X_M,pv.y,-(pv.z-o.z)*METERS_PER_Z];
+  const r:[number,number,number]=[1,0,0],u:[number,number,number]=[0,Math.cos(e),-Math.sin(e)];
   const ray=[f[0]+r[0]*pv.a+u[0]*pv.b,f[1]+r[1]*pv.a+u[1]*pv.b,f[2]+r[2]*pv.a+u[2]*pv.b],len=Math.hypot(...ray),t=pv.k*d;
-  const pos:[number,number,number]=[P[0]-ray[0]/len*t,P[1]-ray[1]/len*t,P[2]-ray[2]/len*t];
-  const aimAt:[number,number,number]=[pos[0]+f[0]*d,pos[1]+f[1]*d,pos[2]+f[2]*d];
-  const depth=(P[0]-pos[0])*f[0]+(P[1]-pos[1])*f[1]+(P[2]-pos[2])*f[2];
-  return {position:pos,target:aimAt,fov,roll:rollOf(s)*Math.PI/180,shift:[-fr.x/2,-fr.y/2],fisheye:fisheyeOf(s,c.f),
-   focusDistance:Math.max(0.05,depth),focalMm:c.f,aperture:c.N,backdrop:backdropM(s),pivot:P};
+  pos=[P0[0]-ray[0]/len*t,P0[1]-ray[1]/len*t,P0[2]-ray[2]/len*t];aim=[pos[0]+f[0]*d,pos[1]+f[1]*d,pos[2]+f[2]*d];
  }
- // Focus: on the centre point, or on whatever the user moved it onto (a prop, the ground, the far background).
+ // What the camera focuses on, locked through every re-frame, angle change and prop move (the camera never moves for it): the point the user placed,
+ // following the prop it sits on; else the dominant subject where it stands now (its face, or the detail the brief names).
+ let focus:[number,number,number]|undefined;
+ if(pv){const prop=typeof pv.on==="number"?(s.props??[])[pv.on]:undefined;
+  if(prop&&pv.rel){const w=propWorld(prop,s,anchor).pos;focus=[w[0]+pv.rel[0],w[1]+pv.rel[1],w[2]+pv.rel[2]];}
+  else{const o=worldOrigin(s,anchor);focus=[(pv.x-o.x)*X_M,pv.y,-(pv.z-o.z)*METERS_PER_Z];}}
+ else if(m&&!s.focusPoint){const w=propWorld(m,s,anchor).pos,h=propSize(m).h;focus=[w[0],w[1]+h*(m.kind==="person"?DETAIL_HEIGHT[s.focusDetail??"face"]:0.5),w[2]];}
+ if(focus){
+  const depth=(focus[0]-pos[0])*f[0]+(focus[1]-pos[1])*f[1]+(focus[2]-pos[2])*f[2];
+  return {position:pos,target:aim,fov,roll:rollOf(s)*Math.PI/180,shift:[-fr.x/2,-fr.y/2],fisheye:fisheyeOf(s,c.f),
+   focusDistance:Math.max(0.05,depth),focalMm:c.f,aperture:c.N,backdrop:backdropM(s),focus};
+ }
+ // The 2D canvas's own centre point (an older scene): focus on whatever it was moved onto (a prop, the ground, the far background).
  const fz=focusDepth(s,anchor,W,H),dist=(p:[number,number,number])=>Math.hypot(p[0]-position[0],p[1]-position[1],p[2]-position[2]);
  const focusOn=fz===undefined?dist(target):fz==="backdrop"?d+backdropM(s):(()=>{const p=(s.props??[]).find(x=>x.z===fz);
   if(!p)return dist([target[0],0,-(fz-worldOrigin(s,anchor).z)*METERS_PER_Z]);const w=propWorld(p,s,anchor).pos;return dist([w[0],w[1]+propSize(p).h*0.6,w[2]]);})();

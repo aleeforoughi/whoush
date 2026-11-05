@@ -161,8 +161,10 @@ export const StagingSchema=z.object({subject:z.enum(SUBJECTS).optional(),cameraA
   * metres), its direction from the camera (the tangents of its angle right and up of the lens axis) and its distance against the shot's (so a zoom dollies
   * toward it and it stays put). Placing it never moves the camera. `on` is what it sits on: a prop (its index), the ground or the far background.
   */
- pivot:z.object({x:z.number().min(-200).max(200),y:z.number().min(-10).max(500),z:z.number().min(-2000).max(50),a:z.number().min(-5).max(5),b:z.number().min(-5).max(5),
-  k:z.number().min(0.01).max(2000),on:z.union([z.number().int().min(0).max(10),z.enum(["ground","backdrop"])])}).optional(),
+ pivot:z.object({x:z.number().min(-200).max(200),y:z.number().min(-10).max(500),z:z.number().min(-2000).max(50),
+  /** The zoom anchor (unset once the camera's angle changed: then only the focus stays on the point). */a:z.number().min(-5).max(5).optional(),b:z.number().min(-5).max(5).optional(),
+  k:z.number().min(0.01).max(2000).optional(),on:z.union([z.number().int().min(0).max(10),z.enum(["ground","backdrop"])]),
+  /** On a prop: the point's offset from the prop's ground point, metres, so the focus follows the prop when it moves. */rel:z.array(z.number().min(-500).max(500)).length(3).optional()}).optional(),
  props:z.array(PropSchema).max(MAX_PROPS).optional(),lights:z.array(LightSchema).min(1).max(4)});
 export type Staging=z.infer<typeof StagingSchema>;
 export type StagingLight=Staging["lights"][number];
