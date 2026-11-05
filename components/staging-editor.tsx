@@ -159,6 +159,8 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  const webgl=useWebGL(),[fullscreen,setFullscreen]=useState(false);
  // One WebGL view per open, visible frame (browsers allow only a few at once): hidden or scrolled-away cards draw nothing in 3D.
  const frameArea=useRef<HTMLDivElement|null>(null),[frameEl,setFrameEl]=useState<HTMLDivElement|null>(null),onScreen=useOnScreen(frameEl);
+ // The collapsed card's frame snapshot: the real frame, drawn only while it is on screen (a long chat holds many cards).
+ const [snapEl,setSnapEl]=useState<HTMLSpanElement|null>(null),snapOnScreen=useOnScreen(snapEl);
  /** Back to Whoush's own choice: the centre point on the dominant subject where it stands now, with Whoush's original framing (the crop pan). */
  const resetFocus=()=>{
   setFocusProps(draft.props);
@@ -181,17 +183,27 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
   <div className="flex min-w-0 flex-col gap-3 rounded-card border border-line-secondary bg-surface-subtle p-2">
   <button type="button" aria-expanded={open} aria-controls={bodyId} onClick={()=>setOpen(o=>!o)}
    aria-label={"بوم، تنظیمات پیشرفته: "+CAMERA_ANGLE_FA[draft.cameraAngle]+"، "+SHOT_SIZE_FA[draft.shotSize]+"، "+(draft.lights.length===1?"یک نور":fa(draft.lights.length)+" نور")+(changed?"، تغییر کرده":"")}
-   className="flex w-full flex-col gap-2 rounded-control p-1 text-start motion-hover hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+   className="flex w-full flex-col gap-3 rounded-card p-3 text-start motion-hover hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
    <span className="flex items-center gap-2 px-1">
     <Icon icon={Box} size={16} aria-hidden="true" className="size-4 shrink-0 text-fg-secondary"/>
     <span className="type-label text-fg-primary">بوم</span><span className="type-caption text-fg-secondary">{full||!focused?"تنظیمات پیشرفته":"تنظیم "+focus!.map(f=>CANVAS_SECTION_FA[f]).join(" و ")}</span>
     {changed&&<span className="rounded-control bg-surface-selected px-2 py-0.5 type-caption text-fg-primary">تغییر کرده</span>}
     <Icon icon={ChevronDown} size={16} aria-hidden="true" className={"ms-auto size-4 shrink-0 text-fg-secondary transition-transform motion-reduce:transition-none "+(open?"rotate-180":"")}/>
    </span>
-   {!open&&!focused&&<span className="grid grid-cols-1 gap-2">
-    {show("frame")&&frameShown&&<Snap c={cap.frame}><FrameView staging={draft} anchor={anchor} aspect={aspect}/></Snap>}
-    {(show("angle")||show("distance")||show("lens"))&&<Snap c={cap.camera}><CameraView staging={draft} anchor={anchor} aspect={aspect} editable={false} onCamera={()=>{}}/></Snap>}
-    {show("light")&&<Snap c={cap.light}><LightView staging={draft} editable={false} selected={-1} onSelect={()=>{}} onLight={()=>{}}/></Snap>}
+   {/* Collapsed: the frame large on top, exactly the photo's crop as the frame simulates it, its details under it; then the camera and the lighting
+       side by side, smaller, each with its details. Every snapshot has the same rounded border. */}
+   {!open&&!focused&&<span className="flex flex-col gap-3">
+    {show("frame")&&frameShown&&(()=>{const {W,H}=frameSize(aspect);
+     return <span className="flex flex-col gap-1.5">
+      <span ref={setSnapEl} className="dark relative block overflow-hidden rounded-card border border-line-secondary bg-background" style={{aspectRatio:String(W/H),width:"min(100%, "+Math.round(Math.min(220*W/H,300))+"px)"}}>
+       {FRAME_RENDERER==="css"&&snapOnScreen?<FrameScene staging={draft} anchor={anchor} aspect={aspect}/>:null}
+      </span>
+      <SnapCaption c={cap.frame}/>
+     </span>;})()}
+    {((show("angle")||show("distance")||show("lens"))||show("light"))&&<span className="flex flex-wrap gap-3">
+     {(show("angle")||show("distance")||show("lens"))&&<SnapTile c={cap.camera}><CameraView staging={draft} anchor={anchor} aspect={aspect} editable={false} onCamera={()=>{}}/></SnapTile>}
+     {show("light")&&<SnapTile c={cap.light}><LightView staging={draft} editable={false} selected={-1} onSelect={()=>{}} onLight={()=>{}}/></SnapTile>}
+    </span>}
    </span>}
   </button>
   <div id={bodyId} hidden={!open&&!focused} className="flex min-w-0 flex-col gap-3">
@@ -328,6 +340,20 @@ function Dominant({tags,props,main,detail,mediaKind,confirmed,editable,onConfirm
  * One collapsed snapshot, as a row of the vertical list: the same view drawing (same component, same scene) in the same dark tile as the open canvas, with the
  * same caption (title pill and value) beside it.
  */
+/** A snapshot's details: its title in a small pill, then its value. */
+function SnapCaption({c}:{c:{title:string;value:string}}){
+ return <span className="flex min-w-0 flex-col items-start gap-1 px-0.5">
+  <span className="rounded-control bg-surface-hover px-2 py-0.5 type-caption text-fg-secondary">{c.title}</span>
+  <span className="type-label text-fg-primary">{c.value}</span>
+ </span>;
+}
+/** A smaller snapshot tile (the camera, the lighting): its drawing in a dark tile with the frame's rounded border, its details under it. */
+function SnapTile({c,children}:{c:{title:string;value:string};children:ReactNode}){
+ return <span className="flex w-36 min-w-0 flex-col gap-1.5">
+  <span className="dark flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-card border border-line-secondary bg-background p-2 text-fg-primary [&_svg]:h-full! [&_svg]:max-h-full! [&_svg]:w-auto! [&_svg]:max-w-full! [&_svg]:pointer-events-none">{children}</span>
+  <SnapCaption c={c}/>
+ </span>;
+}
 function Snap({c,children}:{c:{title:string;value:string};children:ReactNode}){
  return <span className="flex min-w-0 items-center gap-3">
   <span className="dark flex h-24 w-40 shrink-0 items-center justify-center overflow-hidden rounded-card bg-background p-1.5 text-fg-primary [&_svg]:h-full! [&_svg]:max-h-full! [&_svg]:w-auto! [&_svg]:max-w-full! [&_svg]:pointer-events-none">{children}</span>

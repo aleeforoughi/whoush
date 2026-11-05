@@ -124,7 +124,7 @@ export default function FrameCSS({staging,anchor,aspect,editable,sel,onSelect,on
  /** A thing as a group of pieces: the group carries its haze, blur and tint, so the pieces join seamlessly. */
  const group=(l:Layer)=><div key={l.key} className="pointer-events-none absolute inset-0"
   style={{opacity:l.opacity,filter:[l.tint??"",blurOf(l.blur??0)].filter(Boolean).join(" ")||undefined}}>{l.tiles.map((t,k)=>piece(l,t,k))}</div>;
- return <div ref={root} className="absolute inset-0 overflow-hidden" style={{background:C.sky,touchAction:"none"}}>
+ return <div ref={root} className="absolute inset-0 overflow-hidden" style={{background:C.sky,touchAction:editable?"none":undefined}}>
   <svg aria-hidden="true" width={0} height={0} className="absolute">
    <defs>{base.map((_,i)=>(tints[i]||sel===i)&&<filter key={i} id={"fc-t"+i} colorInterpolationFilters="sRGB">
     <feFlood style={{floodColor:sel===i?"var(--color-primary)":tints[i]}}/><feComposite in2="SourceAlpha" operator="in"/><feBlend in2="SourceGraphic" mode="multiply"/></filter>)}</defs>
