@@ -36,3 +36,10 @@ export function faDateTime(iso:string):string{
  const p=Object.fromEntries(FULL.formatToParts(d).map(x=>[x.type,x.value]));
  return p.weekday+" "+p.day+" "+p.month+" "+p.year+"، ساعت "+p.hour+":"+p.minute;
 }
+/**
+ * Persian digits in text shown in Persian: every number becomes Persian («۴:۵»، «زوم ۳٫۴×»، «f/۲٫۸»، «۱/۲۵۰»، «۵۶۰۰K»), with the Persian decimal point
+ * and grouping signs. Digits that belong to a word written in Latin letters (a model's name, «H264») stay as they are.
+ */
+export const faText=(s:string)=>s.replace(/(^|[^A-Za-z0-9.,])(\d+(?:[.,]\d+)*)/g,(_,pre:string,num:string)=>pre+num.replace(/\d/g,d=>"۰۱۲۳۴۵۶۷۸۹"[Number(d)]).replace(/\./g,"٫").replace(/,/g,"٬"));
+/** faText for text that may be Persian or English (a planner's words): only a Persian string gets Persian digits. */
+export const faAuto=(s:string)=>/[؀-ۿ]/.test(s)?faText(s):s;

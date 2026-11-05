@@ -1,5 +1,6 @@
 import {test,beforeEach,afterEach} from "node:test";
 import assert from "node:assert/strict";
+import {faText} from "../lib/format";
 import {describeStagingChangesFa,describeStagingEn,describeStagingFa,detectSubject,snapDirection,snapElevation,stepAngle,stepDirection,SUBJECT_ASSETS,LIGHT_ASSETS} from "../lib/staging";
 import {orchestrateCreativeTurn,getPrivateMediaPrompt,type OrchestratorResult} from "../lib/orchestrator";
 import {resetRouterStateForTests} from "../lib/llm-routing";
@@ -35,8 +36,8 @@ const base:Staging={subject:"person",cameraAngle:"eye_level",shotSize:"medium_cl
 const edited:Staging={...base,cameraAngle:"low",shotSize:"full",lights:[{...base.lights[0],direction:"left",colorTemperatureK:3200,quality:"hard"},{role:"rim",direction:"back_right",height:"high",quality:"hard",source:"neon",colorTemperatureK:6500,colorHex:"#4f8cff"}]};
 test("what the user changed is written out for the chat and for Whoush",()=>{
  const lines=describeStagingChangesFa(base,edited,"4:5","9:16");
- assert.deepEqual(lines.slice(0,3),["زاویهٔ دوربین: هم‌سطح چشم (0°) ← زاویهٔ پایین (-25°)","کادر: نزدیک متوسط (زوم 3.4×) ← تمام‌قد (زوم 1×)","نسبت تصویر: 4:5 ← 9:16"]);
- assert.ok(lines[3].startsWith("نور اصلی: جهت جلو، چپ ← از چپ")&&lines[3].includes("5600 ← 3200 کلوین"),lines[3]);
+ assert.deepEqual(lines.slice(0,3),["زاویهٔ دوربین: هم‌سطح چشم (0°) ← زاویهٔ پایین (-25°)","کادر: نزدیک متوسط (زوم 3.4×) ← تمام‌قد (زوم 1×)","نسبت تصویر: 4:5 ← 9:16"].map(faText));
+ assert.ok(lines[3].startsWith("نور اصلی: جهت جلو، چپ ← از چپ")&&lines[3].includes("۵۶۰۰ ← ۳۲۰۰ کلوین"),lines[3]);
  assert.ok(lines[4].startsWith("نور پشت: نقش نور پرکننده ← نور پشت"),lines[4]);
  assert.deepEqual(describeStagingChangesFa(base,base),[]);
  assert.match(describeStagingEn(edited),/^Staging: low angle camera, full shot, centred in frame; key light: hard softbox from left/);
@@ -111,8 +112,8 @@ test("smooth adjustments: exact camera elevation, zoom and light angle; the name
  assert.equal(scaleFromSlider(0),0.04);assert.equal(scaleFromSlider(1),5);assert.ok(Math.abs(sliderFromScale(scaleFromSlider(0.37))-0.37)<0.001);
  const smooth={...base,cameraAngle:"high" as const,cameraElevation:22,shotScale:0.7,lights:[{...base.lights[0],angle:150},base.lights[1]]};
  const lines=describeStagingChangesFa(base,smooth);
- assert.ok(lines[0]==="زاویهٔ دوربین: هم‌سطح چشم (0°) ← زاویهٔ بالا (22°)",lines[0]);assert.ok(lines[1].startsWith("کادر: نزدیک متوسط (زوم 3.4×) ← نزدیک متوسط (زوم "+zoomFactor(smooth)+"×)"),lines[1]);
- assert.ok(lines.some(l=>l.includes("(150°)")),JSON.stringify(lines));
+ assert.ok(lines[0]===faText("زاویهٔ دوربین: هم‌سطح چشم (0°) ← زاویهٔ بالا (22°)"),lines[0]);assert.ok(lines[1].startsWith(faText("کادر: نزدیک متوسط (زوم 3.4×) ← نزدیک متوسط (زوم "+zoomFactor(smooth)+"×)")),lines[1]);
+ assert.ok(lines.some(l=>l.includes("(۱۵۰°)")),JSON.stringify(lines));
  assert.deepEqual(describeStagingChangesFa(smooth,{...smooth,cameraElevation:23}),[],"under two degrees is not a change");
  assert.ok(describeStagingEn(smooth).includes("(22° from eye level)")&&describeStagingEn(smooth).includes("(150° in top view)"));
 });
@@ -311,7 +312,7 @@ test("Dutch angle, shot types, and the user's own lens and aperture (bokeh) reac
  const bokeh=lensFor({...s,apertureF:1.8});assert.equal(bokeh.deep,false);assert.match(bokeh.en,/bokeh/);
  const tilted:Staging={...s,cameraRoll:-20,cameraAngle:"dutch",shotStyle:"ots"};
  assert.match(describeStagingEn(tilted),/Dutch angle tilted 20° counter-clockwise, over-the-shoulder shot/);
- assert.match(describeStagingFa(tilted),/زاویهٔ کج \(داچ\) 20 درجه، نمای روی شانه/);
+ assert.match(describeStagingFa(tilted),/زاویهٔ کج \(داچ\) ۲۰ درجه، نمای روی شانه/);
  const lines=describeStagingChangesFa(s,{...tilted,lensMm:35});
  assert.ok(lines.some(l=>l.startsWith("زاویهٔ کج"))&&lines.some(l=>l.startsWith("نوع نما"))&&lines.some(l=>l.startsWith("لنز")));
  assert.ok(CreativeTurnInputSchema.shape.stagingOverride.safeParse({...tilted,lensMm:35,apertureF:1.8}).success);

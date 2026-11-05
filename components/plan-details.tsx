@@ -8,11 +8,11 @@ import type {Staging} from "@/lib/creative-plan";
 import {STYLE_LABEL_FA,type PublicCreativePlan} from "@/lib/creative-plan";
 import {CHARACTER_VIEWS} from "@/lib/characters";
 import {displayTag} from "@/lib/attachments";
-import {fa} from "@/lib/format";
+import {fa,faText,faAuto} from "@/lib/format";
 import {expandFocus,lensFor} from "@/lib/staging";
 
-const latin=(v:string|number)=><bdi dir="ltr">{v}</bdi>;
-const text=(v:string)=><span dir="auto">{v}</span>;
+const latin=(v:string|number)=><bdi dir="ltr">{faText(String(v))}</bdi>;
+const text=(v:string)=><span dir="auto">{faAuto(v)}</span>;
 const LIP_SYNC:Record<string,string>={needs_audio:"به فایل صوتی نیاز دارد",planned_from_audio:"از روی صدای مرجع برنامه‌ریزی شده",not_requested:"درخواست نشده"};
 const ACCENT:Record<string,string>={tehrani:"تهرانی",original:"اصلی",unspecified:"نامشخص"};
 const VIEW_TITLE:Record<string,string>=Object.fromEntries(CHARACTER_VIEWS.map(v=>[v.id,v.title]));

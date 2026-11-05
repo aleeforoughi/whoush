@@ -8,7 +8,7 @@ import {FOCUS_DETAILS,LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type 
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
  SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,rollOf,lensSizeFactor,backdropFactor,wallDepth,blurAt,horizonShift,focusDepth,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,VERTICAL_STOPS,verticalIndex,snapVertical,SIDE_STEP,snapSide,sideStopFa,isCube,cubeDims,isCharacter,showsFrame,liftFa,type SceneProp} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
-import {fa} from "@/lib/format";
+import {fa,faText} from "@/lib/format";
 import type {FrameRect} from "./scene-3d";
 import FrameCSS from "./frame-css";
 import {ClayBox,ClayFootprint} from "./clay-box";
@@ -31,6 +31,8 @@ const FrameScene=FRAME_RENDERER==="css"?FrameCSS:Scene3D;
 const FRAME_MOVES_PROPS=false;
 /** The full-width frame: how much of the view's height the crop's rectangle takes (the rest shows what lies around it). */
 const FRAME_FILL=0.78;
+/** Beta: the frame's full-screen view (and its button) is off. */
+const FRAME_FULLSCREEN=false;
 let webglOk:boolean|undefined;
 /** Whether this browser can draw WebGL (checked once; the test context is released at once). */
 function hasWebGL():boolean{
@@ -66,7 +68,7 @@ const sameJSON=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 function viewCaptions(s:Staging,aspect:string){
  const n=(s.props??[]).length;
  return {
-  frame:{title:"کادر و چیدمان",value:SHOT_SIZE_FA[s.shotSize]+" · "+aspect+(n?" · "+fa(n)+" پراپ":"")},
+  frame:{title:"کادر و چیدمان",value:SHOT_SIZE_FA[s.shotSize]+" · "+faText(aspect)+(n?" · "+fa(n)+" پراپ":"")},
   camera:{title:"دوربین",value:CAMERA_ANGLE_FA[s.cameraAngle]+" · "+fa(Math.round(elevationOf(s)))+"°"+(Math.abs(s.cameraAzimuth??0)>=1?" · "+orbitFa(s.cameraAzimuth!):"")+" · زوم "+fa(zoomFactor(s))+"×"},
   light:{title:"نورپردازی",value:s.lights.length===1?"یک منبع نور":fa(s.lights.length)+" منبع نور"}
  };
@@ -198,14 +200,14 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
   <div className="flex min-w-0 flex-col gap-3">
    {show("frame")&&frameShown&&<div ref={el=>{frameArea.current=el;setFrameEl(el);}}><Viewport {...cap.frame}>
     <FrameView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={i=>{setPropSel(i);setCenterSel(false);}} centerSel={centerSel} onSelectCenter={()=>{setCenterSel(true);setPropSel(null);}} onProp={(i,x,z)=>setProp(i,{x,z})} onZoom={setDistance} locked={locked} onLock={setLocked} onBack={()=>{setPropSel(null);setCenterSel(false);setLocked(false);}}
-     onFocus={f=>{if(f)set(f);else resetFocus();}} onAngle={c=>{if(c.elevation!==undefined)setElevation(c.elevation);if(c.azimuth!==undefined)orbitTo(c.azimuth);}} three={(FRAME_RENDERER==="css"||webgl)&&onScreen&&(open||focused)&&!fullscreen} onFullscreen={()=>{setCenterSel(false);setFullscreen(true);}}/>
-    {fullscreen&&<FrameFullscreen staging={draft} anchor={anchor} aspect={aspect} sel={propSel} onSelect={i=>{setPropSel(i);setCenterSel(false);setLocked(false);}}
+     onFocus={f=>{if(f)set(f);else resetFocus();}} onAngle={c=>{if(c.elevation!==undefined)setElevation(c.elevation);if(c.azimuth!==undefined)orbitTo(c.azimuth);}} three={(FRAME_RENDERER==="css"||webgl)&&onScreen&&(open||focused)&&!fullscreen} onFullscreen={FRAME_FULLSCREEN?()=>{setCenterSel(false);setFullscreen(true);}:undefined}/>
+    {FRAME_FULLSCREEN&&fullscreen&&<FrameFullscreen staging={draft} anchor={anchor} aspect={aspect} sel={propSel} onSelect={i=>{setPropSel(i);setCenterSel(false);setLocked(false);}}
      onProp={(i,x,z)=>setProp(i,{x,z})} onFraming={f=>set({framing:f})} distance={distanceOf(draft)} onZoom={setDistance} onClose={()=>setFullscreen(false)}
      inspector={i=>props[i]?<PropInspector prop={withFrameCuts(draft,anchor,aspect).props![i]} tag={propTags(props,true)[i]} reach={reachOf(props[i],draft,anchor,aspect)} onChange={p=>setProp(i,p)}/>:null}/>}
     {/* The frame's zoom, always right under it: whatever is selected (a character can fill a close-up, with nothing else to tap). */}
     {editable&&<>
      <input type="range" dir="ltr" min={0} max={1} step={0.001} value={1-distanceOf(draft)} onChange={e=>setDistance(1-Number(e.target.value))}
-      aria-label="زوم (اندازهٔ نما، همون فاصلهٔ دوربین)" aria-valuetext={SHOT_SIZE_FA[draft.shotSize]+"، زوم "+zoomFactor(draft)+"×"} className="h-8 w-full cursor-pointer accent-primary"/>
+      aria-label="زوم (اندازهٔ نما، همون فاصلهٔ دوربین)" aria-valuetext={SHOT_SIZE_FA[draft.shotSize]+"، زوم "+fa(zoomFactor(draft))+"×"} className="h-8 w-full cursor-pointer accent-primary"/>
      <span dir="ltr" className="-mt-2 flex justify-between type-caption text-fg-secondary" aria-hidden="true"><span>باز</span><span>نزدیک</span></span>
     </>}
     {/* The centre point's own settings, while its dot is selected. */}
@@ -216,7 +218,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     {editable&&propSel!==null&&props[propSel]&&<PropInspector prop={withFrameCuts(draft,anchor,aspect).props![propSel]} tag={propTags(props,true)[propSel]} reach={reachOf(props[propSel],draft,anchor,aspect)}
      onChange={p=>setProp(propSel,p)}/>}
     {editable&&(propSel===null||!props[propSel])&&!centerSel&&<>
-     <div className="flex flex-wrap justify-center gap-1">{["16:9","3:2","4:5","1:1","9:16"].map(r=><Chip key={r} on={aspect===r} onClick={()=>setAspect(r)}><bdi>{r}</bdi></Chip>)}</div>
+     <div className="flex flex-wrap justify-center gap-1">{["16:9","3:2","4:5","1:1","9:16"].map(r=><Chip key={r} on={aspect===r} onClick={()=>setAspect(r)}><bdi>{faText(r)}</bdi></Chip>)}</div>
      <SliderRow label="جابه‌جایی کادر، افقی" ends={["چپ","راست"]} valueText={pct(draft.framing?.x??0)} min={-1} max={1} step={0.01} value={draft.framing?.x??0}
       onChange={x=>{const y=draft.framing?.y??0;set({framing:x===0&&y===0?undefined:{x,y}});}}/>
      <SliderRow label="جابه‌جایی کادر، عمودی" ends={["بالا","پایین"]} valueText={pct(draft.framing?.y??0)} min={-1} max={1} step={0.01} value={draft.framing?.y??0}
@@ -453,7 +455,7 @@ function DistanceView({staging,anchor,aspect,editable,onDistance,onLift}:{stagin
    <circle cx={poleX} cy={arrowsY} r={11} fill="var(--color-bg-primary,transparent)" stroke="currentColor" strokeOpacity=".35" strokeWidth={1} vectorEffect="non-scaling-stroke"/>
    <path d={"M"+(poleX-4)+" "+(arrowsY-2)+"L"+poleX+" "+(arrowsY-7)+"L"+(poleX+4)+" "+(arrowsY-2)+"M"+(poleX-4)+" "+(arrowsY+2)+"L"+poleX+" "+(arrowsY+7)+"L"+(poleX+4)+" "+(arrowsY+2)} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
   </g>}
-  <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="فاصلهٔ دوربین" aria-valuetext={SHOT_SIZE_FA[staging.shotSize]+"، زوم "+zoomFactor(staging)+"×"+"، پایه: "+liftFa(lift)}
+  <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="فاصلهٔ دوربین" aria-valuetext={SHOT_SIZE_FA[staging.shotSize]+"، زوم "+fa(zoomFactor(staging))+"×"+"، پایه: "+liftFa(lift)}
    aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(dist*100)} onKeyDown={editable?key:undefined} onPointerDown={editable?e=>begin(e):undefined}
    className={editable?(dragging?"cursor-grabbing":"cursor-grab")+" touch-none outline-none focus-visible:[&>circle]:stroke-primary":""}>
    <circle cx={camX+CAMERA_SIZE/2} cy={camY} r={36} fill="transparent" strokeWidth={2}/>
@@ -518,7 +520,7 @@ function CameraView({staging,anchor,aspect,editable,onCamera,onStart}:{staging:S
   {kind&&sp?<PropFig sp={sp} x={focus[0]} y={ground} h={size} tint={mTint?tint+"-m":undefined}/>:<Cube x={focus[0]} y={ground} h={size}/>}
   <circle cx={target[0]} cy={target[1]} r={2.2} className="fill-primary"/>
   <line x1={cx} y1={cy} x2={target[0]} y2={target[1]} className="stroke-primary" strokeWidth={1.2} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
-  <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="ارتفاع و فاصلهٔ دوربین (۳۶۰ درجه)" aria-valuetext={CAMERA_ANGLE_FA[staging.cameraAngle]+"، "+Math.round(elev)+" درجه، "+orbitFa(staging.cameraAzimuth??0)+"، زوم "+zoomFactor(staging)+"×"}
+  <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="ارتفاع و فاصلهٔ دوربین (۳۶۰ درجه)" aria-valuetext={faText(CAMERA_ANGLE_FA[staging.cameraAngle]+"، "+Math.round(elev)+" درجه، "+orbitFa(staging.cameraAzimuth??0)+"، زوم "+zoomFactor(staging)+"×")}
    aria-valuemin={-60} aria-valuemax={85} aria-valuenow={Math.round(elev)}
    onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);onStart?.();setDragging(true);}:undefined}
    className={editable?(dragging?"cursor-grabbing":"cursor-grab")+" touch-none outline-none focus-visible:[&>circle]:stroke-primary":""}>
@@ -570,7 +572,7 @@ function OrbitView({staging,anchor,aspect,editable,onOrbit,onStart}:{staging:Sta
   {/* The sight line ends at the frame's centre point (sideways of the subject when the user moved it). */}
   <circle cx={target[0]} cy={target[1]} r={2.2} className="fill-primary"/>
   <line x1={cam[0]} y1={cam[1]} x2={target[0]} y2={target[1]} className="stroke-primary" strokeWidth={1.2} strokeDasharray="4 3" vectorEffect="non-scaling-stroke"/>
-  <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="چرخش و فاصلهٔ دوربین دور سوژه" aria-valuetext={orbitFa(az)+"، زوم "+zoomFactor(staging)+"×"}
+  <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="چرخش و فاصلهٔ دوربین دور سوژه" aria-valuetext={faText(orbitFa(az)+"، زوم "+zoomFactor(staging)+"×")}
    aria-valuemin={-180} aria-valuemax={180} aria-valuenow={Math.round(az)}
    onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);onStart?.();setDragging(true);}:undefined}
    className={editable?(dragging?"cursor-grabbing":"cursor-grab")+" touch-none outline-none focus-visible:[&>circle]:stroke-primary":""}>
@@ -880,7 +882,7 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
    {r&&<div className="pointer-events-none absolute" style={over}>
     {svgEl}
     {/* The crop's ratio, small, in its top-left corner. */}
-    <bdi dir="ltr" aria-hidden="true" className="absolute rounded-[4px] bg-background/60 px-1 text-[10px] font-medium leading-4 text-primary" style={{left:(2/(W+4)*100)+"%",top:(2/(H+4)*100)+"%",margin:"4px"}}>{aspect}</bdi>
+    <bdi dir="ltr" aria-hidden="true" className="absolute rounded-[4px] bg-background/60 px-1 text-[10px] font-medium leading-4 text-primary" style={{left:(2/(W+4)*100)+"%",top:(2/(H+4)*100)+"%",margin:"4px"}}>{faText(aspect)}</bdi>
     {/* Tag text, then (on its right) the lock in a small button: outline when unlocked, filled blue with a white lock when locked. On touch screens the
       button is larger and its tap area reaches about 44px around it (an invisible ::before), so it is easy to hit with a finger. */}
   {tag&&(FRAME_MOVES_PROPS||(sel!=null&&base[sel]))&&<div dir="rtl" className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
@@ -1000,7 +1002,7 @@ function FrameFullscreen({staging,anchor,aspect,sel,onSelect,onProp,onFraming,di
      style={{left:pct(rect.x-rect.w/2),top:pct(rect.y-rect.h/2),width:pct(rect.w),height:pct(rect.h)}}>
      {[1,2].map(i=><span key={i}><span className="absolute inset-y-0 border-s border-dashed border-success/40" style={{insetInlineStart:pct(i/3)}}/>
       <span className="absolute inset-x-0 border-t border-dashed border-success/40" style={{top:pct(i/3)}}/></span>)}
-     <span className="absolute -top-7 start-0 rounded-control bg-success px-2 py-0.5 text-xs font-medium text-success-foreground"><bdi>{aspect}</bdi> · کادر</span>
+     <span className="absolute -top-7 start-0 rounded-control bg-success px-2 py-0.5 text-xs font-medium text-success-foreground"><bdi>{faText(aspect)}</bdi> · کادر</span>
     </div>}
     <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-3">
      <p className="max-w-md rounded-control bg-background/70 px-3 py-2 type-caption text-fg-secondary backdrop-blur-sm">
@@ -1045,7 +1047,7 @@ function LightView({staging,editable,selected,onSelect,onLight}:{staging:Staging
    const on=selected===i,deg=Math.atan2(y-C[1],x-C[0])*180/Math.PI;
    const [ox,oy]=top?[x,y-20]:polar(C[0],C[1],R+19,deg),[lx,ly]=top?[x,y+21]:polar(C[0],C[1],R-22,deg);
    const key=(e:KeyboardEvent)=>{const step=e.key==="ArrowRight"||e.key==="ArrowDown"?10:e.key==="ArrowLeft"||e.key==="ArrowUp"?-10:0;if(!step||top)return;e.preventDefault();onSelect(i);onLight(i,(((lightAngleOf(l)??90)+step)%360+360)%360);};
-   return <g key={i} role={editable?"button":undefined} tabIndex={editable?0:undefined} aria-label={lightTags(staging.lights)[i]+"، "+LIGHT_DIRECTION_FA[l.direction]+(l.angle!==undefined?" ("+Math.round(l.angle)+" درجه)":"")} aria-pressed={editable?on:undefined}
+   return <g key={i} role={editable?"button":undefined} tabIndex={editable?0:undefined} aria-label={faText(lightTags(staging.lights)[i]+"، "+LIGHT_DIRECTION_FA[l.direction]+(l.angle!==undefined?" ("+Math.round(l.angle)+" درجه)":""))} aria-pressed={editable?on:undefined}
     onKeyDown={editable?key:undefined} onClick={editable?()=>onSelect(i):undefined}
     onPointerDown={editable&&!top?e=>{onSelect(i);capture(svg.current,e.pointerId);const [px,py]=pt(e);setDrag({i,deg:Math.atan2(py-C[1],px-C[0])*180/Math.PI});}:undefined}
     className={editable?"cursor-grab touch-none outline-none":""}>
@@ -1078,7 +1080,7 @@ const apertureFromSlider=(v:number)=>Math.round(F_RANGE[0]*Math.pow(F_RANGE[1]/F
 function SliderRow({label,valueText,min,max,step,value,onChange,disabled,ends}:{label:string;valueText:string;min:number;max:number;step:number;value:number;onChange:(v:number)=>void;disabled?:boolean;
  /** What the left and right ends mean («چپ», «راست»), shown under the bar. */ends?:[string,string]}){
  return <label className={"flex flex-col gap-1 type-caption text-fg-secondary "+(disabled?"opacity-disabled":"")}>
-  <span className="flex items-center justify-between gap-2"><span>{label}</span><bdi className="text-fg-primary">{valueText}</bdi></span>
+  <span className="flex items-center justify-between gap-2"><span>{label}</span><bdi className="text-fg-primary">{faText(valueText)}</bdi></span>
   {/* Sliders work left to right even in the RTL page (the pattern people know): the minimum is on the left. */}
   <input type="range" dir="ltr" min={min} max={max} step={step} value={Number.isFinite(value)?value:min} disabled={disabled} onChange={e=>{const v=Number(e.target.value);if(Number.isFinite(v))onChange(v);}}
    aria-valuetext={valueText} className="h-8 w-full cursor-pointer accent-primary disabled:cursor-not-allowed"/>

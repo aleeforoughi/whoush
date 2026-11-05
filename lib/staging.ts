@@ -1,4 +1,5 @@
 /** Labels and geometry for the plan diagrams (camera angle, framing, lighting). Pure: no React, safe on the server and in tests. */
+import {faText} from "./format";
 import {PROP_X_RANGE,PROP_Z_RANGE,type Staging,type StagingLight} from "./creative-plan";
 import {VISUALS} from "./visual-assets";
 import {displayTag,fileTagOf,normalizeMentionText} from "./attachments";
@@ -65,7 +66,7 @@ export function placementEn(f?:{x:number;y:number}):string{
 /** The arranged scene in Persian, for the plan's hard constraints (what the user set in the diagrams). */
 export function describeStagingFa(s:Staging):string{
  const lights=s.lights.map(l=>LIGHT_ROLE_FA[l.role]+": "+LIGHT_SOURCE_FA[l.source]+"، "+LIGHT_QUALITY_FA[l.quality]+"، "+LIGHT_DIRECTION_FA[l.direction]+"، ارتفاع "+LIGHT_HEIGHT_FA[l.height]+"، "+l.colorTemperatureK+" کلوین"+(l.intensity!==undefined?"، شدت "+intensityFa(l.intensity):"")+(l.colorHex?"، رنگ "+l.colorHex:""));
- return "صحنهٔ تنظیم‌شده: زاویهٔ دوربین «"+CAMERA_ANGLE_FA[s.cameraAngle]+"»"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+" درجه)":"")+(Math.abs(s.cameraAzimuth??0)>=1?"، دوربین "+orbitFa(s.cameraAzimuth!):"")+(Math.abs(s.cameraLift??0)>=0.05?"، دوربین "+fa2(Math.round(Math.abs(s.cameraLift!)*100))+" سانتی‌متر "+(s.cameraLift!>0?"بالاتر":"پایین‌تر"):"")+(s.cameraRoll?"، زاویهٔ کج (داچ) "+Math.abs(Math.round(s.cameraRoll))+" درجه":"")+(s.shotStyle==="ots"?"، نمای روی شانه":s.shotStyle==="pov"?"، نمای دید سوژه":"")+focusFa(s)+(s.focusDetail?"، تمرکز روی "+FOCUS_DETAIL_FA[s.focusDetail]:"")+"، کادر «"+SHOT_SIZE_FA[s.shotSize]+"»"+(s.shotScale!==undefined?" (زوم "+zoomFactor(s)+"×)":"")+(s.subject?"، سوژه: "+SUBJECT_FA[s.subject]:"")+"، جای سوژه: "+placementFa(s.framing)+(s.props?.length?"؛ "+describeLayoutFa(s.props):"")+"؛ "+lights.join("؛ ");
+ return faText("صحنهٔ تنظیم‌شده: زاویهٔ دوربین «"+CAMERA_ANGLE_FA[s.cameraAngle]+"»"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+" درجه)":"")+(Math.abs(s.cameraAzimuth??0)>=1?"، دوربین "+orbitFa(s.cameraAzimuth!):"")+(Math.abs(s.cameraLift??0)>=0.05?"، دوربین "+fa2(Math.round(Math.abs(s.cameraLift!)*100))+" سانتی‌متر "+(s.cameraLift!>0?"بالاتر":"پایین‌تر"):"")+(s.cameraRoll?"، زاویهٔ کج (داچ) "+Math.abs(Math.round(s.cameraRoll))+" درجه":"")+(s.shotStyle==="ots"?"، نمای روی شانه":s.shotStyle==="pov"?"، نمای دید سوژه":"")+focusFa(s)+(s.focusDetail?"، تمرکز روی "+FOCUS_DETAIL_FA[s.focusDetail]:"")+"، کادر «"+SHOT_SIZE_FA[s.shotSize]+"»"+(s.shotScale!==undefined?" (زوم "+zoomFactor(s)+"×)":"")+(s.subject?"، سوژه: "+SUBJECT_FA[s.subject]:"")+"، جای سوژه: "+placementFa(s.framing)+(s.props?.length?"؛ "+describeLayoutFa(s.props):"")+"؛ "+lights.join("؛ "));
 }
 /** The arranged scene in English, appended to the provider-facing media prompt. */
 export function describeStagingEn(s:Staging):string{
@@ -183,7 +184,7 @@ export function describeStagingChangesFa(before:Staging,after:Staging,aspectBefo
   if((a.colorHex??"")!==(b.colorHex??""))d.push("ژل "+arrow(a.colorHex??"بدون ژل",b.colorHex??"بدون ژل"));
   if(d.length)out.push(LIGHT_ROLE_FA[b.role]+": "+d.join("، "));
  }
- return out;
+ return out.map(faText);
 }
 /** The colour-temperature slider's track: the colour of light from 1500 K (left) to 12000 K (right). */
 export const TEMPERATURE_GRADIENT="linear-gradient(to right,"+[1500,2700,4000,5600,7500,12000].map(kelvinToHex).join(",")+")";
@@ -703,7 +704,7 @@ export function lensFor(s:Staging):LensChoice{
  const deep=ap>=5.6;
  const apText="f/"+(ap<4||!Number.isInteger(ap)?ap.toFixed(1):String(ap));
  const n=(x:number)=>String(x).replace(/\d/g,d=>"۰۱۲۳۴۵۶۷۸۹"[Number(d)]);
- const fa=why+": لنز "+(s.fisheye?"چشم‌ماهی ":"")+(macro?"ماکرو ":"")+n(f)+" میلی‌متری با دیافراگم "+apText+(deep?(together?" تا همهٔ سوژه‌ها واضح بمانند":" تا همه‌چیز واضح بماند"):" برای پس‌زمینهٔ محو (بوکه)")+(steep?"؛ زاویهٔ تند دوربین، لنز بازتر":"")+(lowLight?"؛ نور کم، دیافراگم بازتر و ISO "+n(iso):"")+(detail?"؛ فوکوس روی "+FOCUS_DETAIL_FA[detail]:"");
+ const fa=faText(why+": لنز "+(s.fisheye?"چشم‌ماهی ":"")+(macro?"ماکرو ":"")+n(f)+" میلی‌متری با دیافراگم "+apText+(deep?(together?" تا همهٔ سوژه‌ها واضح بمانند":" تا همه‌چیز واضح بماند"):" برای پس‌زمینهٔ محو (بوکه)")+(steep?"؛ زاویهٔ تند دوربین، لنز بازتر":"")+(lowLight?"؛ نور کم، دیافراگم بازتر و ISO "+n(iso):"")+(detail?"؛ فوکوس روی "+FOCUS_DETAIL_FA[detail]:""));
  const en="Lens: "+f+"mm"+(macro?" macro":"")+(s.fisheye?" fisheye (strong barrel distortion: the picture bulges from the centre and straight lines bow)":"")+" at "+apText+(deep?", deep focus"+(together?" keeping every subject sharp":""):", shallow depth of field with soft bokeh")+(steep?", wide for the steep perspective":"")+(lowLight?", low light: ISO "+iso:"")+(detail?", focus on the subject's "+(detail==="feet"?"feet and shoes":detail)+"":"")+".";
  return {focalLengthMm:f,aperture:apText,apertureF:ap,iso,macro,deep,fa,en,auto:{lens:!userLens,aperture:!userAp}};
 }
