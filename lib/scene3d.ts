@@ -54,7 +54,10 @@ export function camera3D(s:Staging,anchor:Staging|undefined,aspect:string):Camer
  let target:[number,number,number]=[0,subjectH*0.5,0];
  if(s.focusPoint&&m){const {height,lateral}=centerOnSubject(s,anchor,aspect),w=propWorld(m,s,anchor).pos;target=[w[0]+lateral*X_M,w[1]+height*subjectH,w[2]];}
  else if(am){const w=propWorld(am,s,anchor).pos,h=propSize(am).h;target=[w[0],w[1]+h*(am.kind==="person"?DETAIL_HEIGHT[s.focusDetail??"face"]:0.5),w[2]];}
- const e=elevationOf(s)*Math.PI/180;
+ let e=elevationOf(s)*Math.PI/180;
+ // A camera never goes under the ground: looking up from below (a worm's-eye view), once a wider shot would put it underground it stays on the ground
+ // and backs away along it, so zooming out keeps working and the angle up eases off smoothly (a real camera lying on the floor).
+ const minY=0.05;if(target[1]+d*Math.sin(e)<minY&&d>0)e=-Math.asin(Math.min(1,Math.max(0,(target[1]-minY)/d)));
  const position:[number,number,number]=[target[0],target[1]+d*Math.sin(e),target[2]+d*Math.cos(e)];
  const fov=2*Math.atan((sensorV/2)/c.f)*180/Math.PI;
  const fr=s.framing??{x:0,y:0};
@@ -93,7 +96,7 @@ export function wideFrameRect(cam:Pick<Camera3D,"shift">,frameAspect:number,vw:n
  return {w:fw/vw,h:fh/vh,x:0.5+cam.shift[0]*fw/vw,y:0.5+cam.shift[1]*fh/vh};
 }
 /** The clay look of the asset pack, for the 3D figures, and the dark set they stand in (colours live here: TSX holds no hex values). */
-export const SCENE_COLORS={clay:"#d9dadd",hair:"#8a8d93",dark:"#2b2d31",glass:"#3c4048",tail:"#c4453f",ground:"#17181b",sky:"#0b0b0c",wall:"#25272b",window:"#6d7480",sea:"#2a3340",horizon:"#202227",foliage:"#9fa3a8",bark:"#7c7f84",selected:"#1d4ed8",black:"#000000",grid:"rgba(255,255,255,0.13)",edge:"rgba(0,0,0,0.12)"} as const;
+export const SCENE_COLORS={clay:"#d9dadd",hair:"#8a8d93",dark:"#2b2d31",glass:"#3c4048",tail:"#c4453f",ground:"#17181b",sky:"#0b0b0c",wall:"#25272b",window:"#6d7480",sea:"#2a3340",horizon:"#202227",foliage:"#9fa3a8",bark:"#7c7f84",selected:"#1d4ed8",black:"#000000",grid:"rgba(255,255,255,0.13)",edge:"rgba(0,0,0,0.12)",haze:"#3a3d43"} as const;
 /**
  * The frame's centre point from a point on the subject (the inverse of centerOnSubject): `lateral` stage units sideways, `height` as a share of its height.
  * Used when the user drags the centre point in the 3D view.

@@ -61,7 +61,9 @@ test("CSS frame: the main subject shows the height stop chosen, at every distanc
   const want=VERTICAL_STOPS.find(x=>x.angle===a)!.id;
   assert.equal(sp.length,1,a+" "+shot);
   // The image shows that height (or the nearest one toward eye level when the pack lacks it).
-  assert.ok(sp[0].stop===want||!VISUALS["human-"+want+"-front"],a+" "+shot+" → "+sp[0].id);
+  // A wide worm's-eye shot puts the camera on the ground, backed away: it sees the figure flatter, from low.
+  const ok=sp[0].stop===want||!VISUALS["human-"+want+"-front"]||(a==="worms_eye"&&shot==="wide"&&sp[0].stop==="low");
+  assert.ok(ok,a+" "+shot+" → "+sp[0].id);
  }
 });
 
@@ -167,15 +169,37 @@ test("aperture: the ground blurs band by band with distance, and the horizon as 
  assert.ok(blurPx(deep,1e5)<blurPx(v,1e5)/10,"stopped down on a wide lens, the background stays sharp");
 });
 
-test("sharp at any lens: every 3D element is sized to about its size on screen, so the browser never blows up a small texture",async()=>{
- const {crispPlane}=await import("../lib/frame-css");
+test("sharp at any lens: each piece is drawn at about the px it covers on screen (no texture blown up), and pieces meet the picture's corners",()=>{
+ // Where a piece's own corner (x, y) lands on screen, through its matrix3d.
+ const map=(tf:string,x:number,y:number)=>{const m=tf.slice(9,-1).split(",").map(Number),W=m[3]*x+m[7]*y+m[15];return [(m[0]*x+m[4]*y+m[12])/W,(m[1]*x+m[5]*y+m[13])/W];};
  for(const lens of [12,35,85,200]){
-  const s={...base,shotSize:"medium_close_up" as const,lensMm:lens,autopilot:false},v=cssView(s,undefined,"16:9",800,450);
-  const sp=propSprites(v,s.props!,s)[0],p=sp.quad!.map(q=>toScreen(v,q)!);
-  const onScreen=Math.hypot(p[3][0]-p[0][0],p[3][1]-p[0][1]);
-  // Never magnified: the element has at least as many px as it covers (within the fisheye's bulge).
-  assert.ok(sp.h>=onScreen*0.85,lens+"mm: element "+sp.h.toFixed(0)+"px for "+onScreen.toFixed(0)+"px on screen");
+  const s={...base,shotSize:"medium_close_up" as const,lensMm:lens,autopilot:false},v=cssView(s,undefined,"16:9",800,450),sp=propSprites(v,s.props!,s)[0];
+  assert.ok(sp.tiles.length>=1&&(lens<15?sp.tiles.length>1:sp.tiles.length===1),lens+"mm: "+sp.tiles.length+" pieces");
+  for(const t of sp.tiles){
+   const o=map(t.transform,0,0),r=map(t.transform,t.w,0),d=map(t.transform,0,t.h);
+   const sx=Math.hypot(r[0]-o[0],r[1]-o[1])/t.w,sy=Math.hypot(d[0]-o[0],d[1]-o[1])/t.h;
+   assert.ok(sx<=1.05&&sy<=1.05,lens+"mm: never stretched up ("+sx.toFixed(2)+", "+sy.toFixed(2)+")");
+  }
+  // The whole picture's top-left corner lands where the plane's corner does.
+  if(lens>=15){const t=sp.tiles[0],c=toScreen(v,sp.quad![0])!,o=map(t.transform,0,0);assert.ok(Math.hypot(o[0]-c[0],o[1]-c[1])<0.5);}
  }
- const v=cssView(base,undefined,"16:9",800,450),c=crispPlane(v,[0,1,-1],[0.0001,0,0],[0,-0.0001,0],10,10);
- assert.ok(c.w>=2&&c.w<=4096);
+});
+
+test("zooming out from a worm's-eye view: the camera stays on the ground and backs away, so the subject keeps getting smaller",()=>{
+ let prev=Infinity;
+ for(const sc of [0.4,0.8,1.2,1.8,2.5,3.5,5]){
+  const s={...base,cameraAngle:"worms_eye" as const,shotScale:sc},v=cssView(s,s,"3:4",600,800);
+  assert.ok(v.pos[1]>=0.049,"never under the ground");
+  const head=toScreen(v,[0,1.75,0])!,feet=toScreen(v,[0,0,0]),size=feet?feet[1]-head[1]:Infinity;
+  assert.ok(size<=prev+1e-6,"zoom "+sc+": "+size.toFixed(0)+" after "+prev.toFixed(0));prev=size;
+ }
+});
+
+test("dragging the focus point never shakes the picture: each move re-picks it from the scene as it is, and the camera never moves",()=>{
+ const far={kind:"person" as const,label:"زن",x:0.5,z:1.5,y:0};
+ let s:Staging={...base,props:[man,far],lensMm:35,autopilot:false};
+ const v0=cssView(s,s,"16:9",1000,562.5),f0=toScreen(v0,[0,0,0])!;let worst=0;
+ for(let i=0;i<=60;i++){s={...s,pivot:pickPivot(s,s,"16:9",0.3+0.4*i/60,0.3+0.2*Math.sin(i/5))};
+  const f=toScreen(cssView(s,s,"16:9",1000,562.5),[0,0,0])!;worst=Math.max(worst,Math.hypot(f[0]-f0[0],f[1]-f0[1]));}
+ assert.ok(worst<0.01,"the main subject's feet moved "+worst.toFixed(3)+" px");
 });

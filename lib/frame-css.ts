@@ -87,7 +87,7 @@ export function billboard(v:CssView,p:V3,mpp:number,mirror=false,minDepth=0.3,/*
  * along that line; the camera's own up when it looks almost straight down at it). CSS perspective then draws it as a real rectilinear lens would:
  * stretched toward the frame's edges by a wide lens close up, leaning in when the camera tilts. `above` is the share of the picture above `at`.
  */
-export function standee(v:CssView,at:V3,wpx:number,hpx:number,mppX:number,mppY:number,mirror:boolean,above:number,/** The height the picture was drawn from, degrees. */drawnFrom:number):{transform:string;w:number;h:number;depth:number;quad:V3[]}|undefined{
+export function standee(v:CssView,at:V3,wpx:number,hpx:number,mppX:number,mppY:number,mirror:boolean,above:number,/** The height the picture was drawn from, degrees. */drawnFrom:number):{o:V3;ex:V3;ey:V3;depth:number;quad:V3[]}|undefined{
  // Square to the line of sight across the ground, tilted by the height the picture shows (not the exact line to the camera): an eye-level picture
  // stands straight up, so a level camera keeps verticals vertical; only a tilted camera makes them lean.
  const ray=sub(at,v.pos),flat=Math.hypot(ray[0],ray[2]),e=drawnFrom*Math.PI/180;
@@ -100,27 +100,43 @@ export function standee(v:CssView,at:V3,wpx:number,hpx:number,mppX:number,mppY:n
  if(quad.some(q=>toCam(v,q)[2]<0.05))return undefined;
  const depth=toCam(v,at)[2];
  if(!(depth>0.05))return undefined;
- const c=crispPlane(v,o,ex,ey,wpx,hpx);return {transform:c.transform,w:c.w,h:c.h,depth,quad};
+ return {o,ex,ey,depth,quad};
+}
+// ---- drawing a flat thing: an exact projective map from its corners on screen, in tiles under a fisheye ----
+/** One piece of a flat thing on screen: a `w`×`h` px element mapped by `transform` (from the view's top-left), showing its picture at `bw`×`bh` px offset by `bx`, `by`. */
+export type Tile={transform:string;w:number;h:number;bx:number;by:number;bw:number;bh:number};
+const n9=(x:number)=>Number.isFinite(x)?Number(x.toPrecision(9)):0;
+/** The projective map of a `tw`×`th` rectangle onto a quad on screen (its corners clockwise from the top-left), as a CSS matrix3d (Heckbert's square-to-quad). */
+export function quadMatrix(tw:number,th:number,q:[number,number][]):string|undefined{
+ const [[x0,y0],[x1,y1],[x2,y2],[x3,y3]]=q,dx1=x1-x2,dx2=x3-x2,dx3=x0-x1+x2-x3,dy1=y1-y2,dy2=y3-y2,dy3=y0-y1+y2-y3,den=dx1*dy2-dx2*dy1;
+ if(Math.abs(den)<1e-12)return undefined;
+ const g=(dx3*dy2-dx2*dy3)/den,h=(dx1*dy3-dx3*dy1)/den;
+ // The map must stay in front of the eye over the whole rectangle (its homogeneous weight positive at every corner).
+ if([1,1+g,1+g+h,1+h].some(wt=>wt<=1e-6))return undefined;
+ const a=x1-x0+g*x1,b=x3-x0+h*x3,d=y1-y0+g*y1,e=y3-y0+h*y3;
+ return "matrix3d("+[a/tw,d/tw,0,g/tw,b/th,e/th,0,h/th,0,0,1,0,x0,y0,0,1].map(n9).join(",")+")";
 }
 /**
- * A plane drawn crisp: its element is sized to about its size on screen. A browser rasterizes a 3D-transformed element at its own pixel size and then
- * stretches it, so a small element blown up by a long lens (or close to the camera) turns soft and blocky. `wpx`×`hpx` local px span the plane through
- * `ex`, `ey` (metres per local px); the result spans the same plane with as many px as it covers on screen (never fewer than 2 or more than 4096 across).
- * `scale` is the screen px per element px it ends up with (about 1), for blurs given in screen px.
+ * A flat thing in the scene (`wpx`×`hpx` px spanning the plane from `o` along `ex`, `ey`, metres per px) as pieces on screen: one exact projective map,
+ * or, through a fisheye, a grid of small ones that follow the bulge. Each piece is sized to the px it covers on screen, so it is drawn as sharp as it is
+ * seen at any focal length and any pixel density (no raster filter, nothing stretched). Undefined when it reaches behind the camera.
  */
-export function crispPlane(v:CssView,o:V3,ex:V3,ey:V3,wpx:number,hpx:number):{transform:string;w:number;h:number;scale:number}{
- const corners=[o,add(o,mul(ex,wpx)),add(add(o,mul(ex,wpx)),mul(ey,hpx)),add(o,mul(ey,hpx))].map(c=>toScreenRaw(v,c));
- let k=1;
- if(corners.every(Boolean)){const [a,b,c,d]=corners as [number,number][],len=(p:[number,number],q:[number,number])=>Math.hypot(p[0]-q[0],p[1]-q[1]);
-  k=Math.max(len(a,b),len(d,c))/wpx;k=Math.max(k,Math.max(len(a,d),len(b,c))/hpx);}
- k=Math.min(4096/Math.max(wpx,hpx),Math.max(2/Math.min(wpx,hpx),k));
- return {transform:plane(v,o,mul(ex,1/k),mul(ey,1/k)),w:wpx*k,h:hpx*k,scale:1};
-}
-/** A CSS matrix3d for a flat plane: local px (x, y) maps to the world point o + x·ex + y·ey (metres). */
-export function plane(v:CssView,o:V3,ex:V3,ey:V3):string{
- const lin=(e:V3):V3=>[dot(e,v.r)*v.s,-dot(e,v.u)*v.s,-dot(e,v.f)*v.s];
- const c=toCam(v,o),A:V3=[c[0]*v.s,-c[1]*v.s,v.D-c[2]*v.s],a=lin(ex),b=lin(ey),nz=norm(cross(a,b));
- return "matrix3d("+[...a,0,...b,0,...nz,0,...A,1].map(n3).join(",")+")";
+export function tilesFor(v:CssView,o:V3,ex:V3,ey:V3,wpx:number,hpx:number,split=true):Tile[]|undefined{
+ const at=(x:number,y:number)=>toScreen(v,add(add(o,mul(ex,x)),mul(ey,y)));
+ const c=[at(0,0),at(wpx,0),at(wpx,hpx),at(0,hpx)];if(c.some(p=>!p))return undefined;
+ const len=(p:[number,number],q:[number,number])=>Math.hypot(p[0]-q[0],p[1]-q[1]),[c0,c1,c2,c3]=c as [number,number][];
+ const sw=Math.max(len(c0,c1),len(c3,c2),1e-3),sh=Math.max(len(c0,c3),len(c1,c2),1e-3);
+ const nx=split&&v.fish>0?Math.min(12,Math.max(1,Math.ceil(sw/70))):1,ny=split&&v.fish>0?Math.min(12,Math.max(1,Math.ceil(sh/70))):1;
+ // Neighbouring pieces overlap by under a pixel so no seam shows between them.
+ const ox=nx>1?0.7*wpx/sw:0,oy=ny>1?0.7*hpx/sh:0,out:Tile[]=[];
+ for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){
+  const x0=Math.max(0,wpx*i/nx-ox),x1=Math.min(wpx,wpx*(i+1)/nx+ox),y0=Math.max(0,hpx*j/ny-oy),y1=Math.min(hpx,hpx*(j+1)/ny+oy);
+  const q=[at(x0,y0),at(x1,y0),at(x1,y1),at(x0,y1)];if(q.some(p=>!p))return undefined;
+  const [q0,q1,q2,q3]=q as [number,number][],k=Math.min(4096/Math.max(x1-x0,y1-y0),Math.max(len(q0,q1)/(x1-x0),len(q3,q2)/(x1-x0),len(q0,q3)/(y1-y0),len(q1,q2)/(y1-y0),1e-3));
+  const tw=Math.max(1,(x1-x0)*k),th=Math.max(1,(y1-y0)*k),m=quadMatrix(tw,th,q as [number,number][]);if(!m)return undefined;
+  out.push({transform:m,w:tw,h:th,bx:x0*k,by:y0*k,bw:wpx*k,bh:hpx*k});
+ }
+ return out;
 }
 /** How far toward the camera a wall or floor may come at height y and stay in front of it (world z), so no plane passes behind the eye. */
 export function nearZ(v:CssView,y:number,margin=0.3):number{
@@ -141,10 +157,11 @@ export function viewOf(v:CssView,centre:V3,facing:number):{stop:VerticalStop;app
  const d=sub(v.eye,centre),el=Math.atan2(d[1],Math.hypot(d[0],d[2]))*180/Math.PI,bearing=Math.atan2(d[0],d[2])*180/Math.PI;
  return {stop:VERTICAL_STOPS[verticalIndex(el)].id,apparent:wrap180(facing-bearing),elevation:el};
 }
-export type PropSprite={i:number;id:string;src:string;w:number;h:number;transform:string;depth:number;
+export type PropSprite={i:number;id:string;src:string;
+ /** The image's pieces on screen (empty for a cube, whose faces carry theirs). */tiles:Tile[];depth:number;
  /** Its outline in the world (an image's corners, or each visible face's), for picking what is under a point. */quad?:V3[];quads?:V3[][];
  /** A cube (anything but a character): its faces instead of an image. */faces?:BoxFace[];
- /** The blur, px in the image's own pixels (CSS blurs before projecting). */blur:number;side:SpriteSide;stop:VerticalStop;
+ /** The lens's blur, screen px. */blur:number;side:SpriteSide;stop:VerticalStop;
  /** The ground point under it (its lift included) and a point just above it, world. */ground:V3;top:V3};
 /**
  * A thing standing at `ground` (world, its lift included), `h` metres tall, turned `facing`: the pack's image for the height and side the camera sees it
@@ -160,8 +177,9 @@ export function thingSprite(v:CssView,p:Pick<SceneProp,"kind"|"label">,ground:V3
  // Placed by its middle; a camera so close that its middle is beside or behind the lens (a worm's-eye close-up) places it by the point it looks at.
  const lookAt:V3=[ground[0],ground[1]+h*look,ground[2]],mppX=mpp*sx;
  const st=standee(v,centre,a.width,a.height,mppX,mpp,sp.mirror,0.5,stopDeg)??standee(v,lookAt,a.width,a.height,mppX,mpp,sp.mirror,1-look,stopDeg);if(!st)return undefined;
- // The element is about as many px as it covers on screen, so the lens's blur (screen px) applies as it is.
- return {id:sp.id,src:a.src,w:st.w,h:st.h,transform:st.transform,depth:st.depth,blur:blurPx(v,st.depth),side:sp.side,stop:sp.height,quad:st.quad};
+ const tiles=tilesFor(v,st.o,st.ex,st.ey,a.width,a.height);if(!tiles)return undefined;
+ // Drawn at the px it covers on screen, so the lens's blur (screen px) applies as it is.
+ return {id:sp.id,src:a.src,tiles,depth:st.depth,blur:blurPx(v,st.depth),side:sp.side,stop:sp.height,quad:st.quad};
 }
 /**
  * Each prop as the camera sees it (lib/scene3d.ts places and sizes it). The angle is measured where the camera aims (the face of a person by default), so
@@ -174,7 +192,7 @@ export function propSprites(v:CssView,props:readonly SceneProp[],s:Staging,ancho
  return props.flatMap((p,i):PropSprite[]=>{
   const g=propWorld(p,s,anchor,props).pos as V3,size=sizeOf(p);
   if(isCube(p)){const b=boxFaces(v,g,cubeDims(p),facingOf(p));if(!b)return [];
-   return [{i,id:"box",src:"",w:0,h:0,transform:"",depth:supportOf(p,props)?b.depth-0.01:b.depth,blur:b.blur,side:"front" as SpriteSide,stop:"eye" as VerticalStop,faces:b.faces,
+   return [{i,id:"box",src:"",tiles:[],depth:supportOf(p,props)?b.depth-0.01:b.depth,blur:b.blur,side:"front" as SpriteSide,stop:"eye" as VerticalStop,faces:b.faces,
     quads:b.faces.map(f=>f.quad),ground:g,top:[g[0],g[1]+size.h*1.05,g[2]] as V3}];}
   const t=thingSprite(v,p,g,size,facingOf(p),m&&p.kind===m.kind?aim:0.5);
   // Something resting on another (a phone on a desk) is drawn after it.
@@ -191,23 +209,24 @@ export function stageAt(v:CssView,sx:number,sy:number,lift:number,s:Staging,anch
  * `step` metres out to `reach`, only in front of the camera, in bands by distance so each band blurs with the lens like everything else at that
  * distance. Crisp at any zoom; a wide lens close up runs it steeply to the horizon.
  */
-export function gridBands(v:CssView,step=1,reach=50):{blur:number;fade:number;lines:{x1:number;y1:number;x2:number;y2:number}[]}[]{
+export function gridBands(v:CssView,step=1,reach=50):{blur:number;fade:number;lines:[number,number][][]}[]{
  const zN=nearZ(v,0),cx=Math.round(v.pos[0]/step)*step,zFar=zN-reach*2;
  // Band edges along the ground (world z), doubling with distance from the camera.
  const edges=[zN];for(let d=1;v.pos[2]-d>zFar;d*=1.8)if(v.pos[2]-d<zN)edges.push(v.pos[2]-d);edges.push(zFar);
  const bands=edges.slice(1).map((z1,i)=>{const z0=edges[i],mid:V3=[v.pos[0],0,(z0+z1)/2],dep=Math.max(0.1,toCam(v,mid)[2]);
-  return {z0,z1,blur:blurPx(v,dep),fade:Math.min(1,dep/reach),lines:[] as {x1:number;y1:number;x2:number;y2:number}[]};});
- const seg=(a:V3,b:V3,band:(typeof bands)[number])=>{const p=toScreenRaw(v,a),q=toScreenRaw(v,b);if(p&&q)band.lines.push({x1:p[0],y1:p[1],x2:q[0],y2:q[1]});};
+  return {z0,z1,blur:blurPx(v,dep),fade:Math.min(1,dep/reach),lines:[] as [number,number][][]};});
+ // Straight through a pinhole (two ends), bowed through a fisheye (sampled along it).
+ const n=v.fish>0?16:1;
+ const seg=(a:V3,b:V3,band:(typeof bands)[number])=>{const pts:[number,number][]=[];
+  for(let i=0;i<=n;i++){const p=toScreen(v,add(a,mul(sub(b,a),i/n)));if(!p)return;pts.push(p);}band.lines.push(pts);};
  for(const band of bands){
   for(let x=cx-reach;x<=cx+reach;x+=step)seg([x,0,band.z0],[x,0,band.z1],band);
   for(let z=Math.floor(band.z0/step)*step;z>band.z1;z-=step)seg([cx-reach,0,z],[cx+reach,0,z],band);
  }
  return bands.map(({blur,fade,lines})=>({blur,fade,lines}));
 }
-/** Where a world point lands before the roll (for drawing inside the rolled layer). */
-function toScreenRaw(v:CssView,p:V3):[number,number]|undefined{const c=toCam(v,p);if(c[2]<0.02)return undefined;return [v.pp[0]+v.D*c[0]/c[2],v.pp[1]-v.D*c[1]/c[2]];}
 // ---- the cube: everything but the characters, drawn as a real box of its exact size (vector, no image) ----
-export type BoxFace={key:string;transform:string;w:number;h:number;quad:V3[];
+export type BoxFace={key:string;tiles:Tile[];quad:V3[];
  /** Clay shading, 0 to 1 (the light comes from above and to the upper left of the camera, as on the pack's images). */shade:number};
 /**
  * A box w×h×d metres standing at `ground` (world, its lift included), turned `facing` (its front toward frame right for positive angles): the faces the
@@ -230,10 +249,11 @@ export function boxFaces(v:CssView,ground:V3,dims:{w:number;h:number;d:number},f
  for(const [key,n,o,ex,ey,lw,lh] of faces){
   const centre=add(add(o,mul(ex,lw/2)),mul(ey,lh/2));
   if(dot(n,sub(v.pos,centre))<=1e-6)continue;
-  const corners=[o,add(o,mul(ex,lw)),add(o,mul(ey,lh)),add(add(o,mul(ex,lw)),mul(ey,lh))];
+  // Its corners in order around the face (for picking).
+  const corners=[o,add(o,mul(ex,lw)),add(add(o,mul(ex,lw)),mul(ey,lh)),add(o,mul(ey,lh))];
   if(corners.some(p=>toCam(v,p)[2]<0.05))return undefined;
-  const c=crispPlane(v,o,mul(ex,1/K),mul(ey,1/K),lw*K,lh*K);
-  out.push({key,transform:c.transform,w:c.w,h:c.h,shade:0.6+0.4*Math.max(0,dot(n,L)),quad:corners});
+  const tiles=tilesFor(v,o,mul(ex,1/K),mul(ey,1/K),lw*K,lh*K);if(!tiles)return undefined;
+  out.push({key,tiles,shade:0.6+0.4*Math.max(0,dot(n,L)),quad:corners});
  }
  const depth=toCam(v,c)[2];
  return depth>0.05?{faces:out,depth,blur:blurPx(v,depth)}:undefined;
@@ -265,8 +285,26 @@ export function pickPivot(s:Staging,anchor:Staging|undefined,aspect:string,fx:nu
  const g=groundAt(v,pt[0],pt[1],0),gDepth=g?toCam(v,g)[2]:Infinity,far=v.cam.backdrop+toCam(v,v.cam.target as V3)[2];
  const depth=hit?hit.depth:gDepth<far?gDepth:far,P=add(v.eye,mul(dir,depth));
  const st=stageFromWorld(P[0],P[2],s,anchor),camDist=Math.hypot(...sub(v.cam.target as V3,v.eye));
- const round=(n:number,k=1000)=>Math.round(n*k)/k;
- return {x:round(st.x),y:round(P[1]),z:round(st.z),a:round(a,1e5),b:round(b,1e5),k:round(Math.hypot(...sub(P,v.eye))/Math.max(0.05,camDist)),on:hit?hit.i:gDepth<far?"ground":"backdrop"};
+ // Kept at full precision: the camera is rebuilt from it on every move of the dot, so any rounding would shake the whole picture as the dot moves.
+ return {x:st.x,y:P[1],z:st.z,a,b,k:Math.hypot(...sub(P,v.eye))/Math.max(0.05,camDist),on:hit?hit.i:gDepth<far?"ground":"backdrop"};
 }
 /** Where the focus point is in the world (the aim point when none was placed). */
 export const focusWorld=(v:CssView):V3=>(v.cam.pivot??v.cam.target) as V3;
+
+/**
+ * The horizon on screen, as a curve (straight through a pinhole, bowed through a fisheye): the ground below it, the sky above with a lighter band down
+ * to it. Paths in the view's px.
+ */
+export function horizonPaths(v:CssView):{ground:string;band:string;bandTop:[number,number];bandBottom:[number,number];
+ /** The haze along the horizon: a soft light band just above it (over the far place's bases) and below it (the far ground fading into it): each its path and its gradient's ends. */
+ hazeUp:[string,[number,number],[number,number]];hazeDown:[string,[number,number],[number,number]]}{
+ const hz=Math.max(-v.h*3,Math.min(v.h*4,horizonY(v))),n=v.fish>0?48:2,line=(y:number)=>Array.from({length:n+1},(_,i)=>{const [x,yy]=rot(v,-v.w*1.5+i/n*v.w*4,y);return fish(v,x,yy);});
+ const hl=line(hz),up=line(hz-v.h*0.35),far=v.h*6;
+ const corner=(x:number,y:number)=>fish(v,...rot(v,x,y));
+ const path=(pts:[number,number][])=>"M"+pts.map(p=>p[0].toFixed(1)+" "+p[1].toFixed(1)).join("L")+"Z";
+ const hu=line(hz-v.h*0.07),hd=line(hz+v.h*0.22);
+ return {ground:path([...hl,corner(v.w*2.5,far),corner(-v.w*1.5,far)]),band:path([...up,...hl.slice().reverse()]),
+  bandTop:corner(v.w/2,hz-v.h*0.35),bandBottom:corner(v.w/2,hz),
+  hazeUp:[path([...hu,...hl.slice().reverse()]),corner(v.w/2,hz-v.h*0.07),corner(v.w/2,hz)],
+  hazeDown:[path([...hl,...hd.slice().reverse()]),corner(v.w/2,hz),corner(v.w/2,hz+v.h*0.22)]};
+}
