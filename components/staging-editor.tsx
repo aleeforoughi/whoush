@@ -404,7 +404,7 @@ function OrbitView({staging,anchor,aspect,editable,onOrbit,onStart}:{staging:Sta
  const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false),tint=useId();
  const VW=220,VH=210,C:[number,number]=[110,105],U=44;
  // Angle only: the camera stays at one distance here (the distance has its own tile).
- const az=staging.cameraAzimuth??0,R=58,rad=az*Math.PI/180,c=Math.cos(rad),n=Math.sin(rad);
+ const az=staging.cameraAzimuth??0,R=50,rad=az*Math.PI/180,c=Math.cos(rad),n=Math.sin(rad);
  const props=staging.props??[],m=mainProp(staging);
  const cam:[number,number]=[C[0]+R*n,C[1]+R*c];
  // The camera circles the frame's centre point: it is the circle's centre (C), and the subject stands where it is relative to that point (sideways of it
