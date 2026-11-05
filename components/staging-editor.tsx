@@ -6,7 +6,7 @@ import {Box,Camera,ChevronDown,ChevronLeft,ChevronRight,ChevronUp,Lock,LockOpen,
 import {Button,Dialog,DialogBody,DialogContent,DialogHeader,DialogPortal,DialogTitle,Icon,Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from "@aleeforoughi/feather-react";
 import {FOCUS_DETAILS,LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
- SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,rollOf,lensSizeFactor,backdropFactor,wallDepth,blurAt,horizonShift,focusDepth,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,VERTICAL_STOPS,verticalIndex,snapVertical,SIDE_STEP,snapSide,sideStopFa,isCube,cubeDims,isCharacter,showsFrame,liftFa,type SceneProp} from "@/lib/staging";
+ SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,rollOf,lensSizeFactor,backdropFactor,wallDepth,blurAt,horizonShift,focusDepth,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,VERTICAL_STOPS,verticalIndex,snapVertical,SIDE_STEP,snapSide,sideStopFa,isCube,cubeDims,isCharacter,showsFrame,liftFa,type SceneProp,tintOf,tintFa,kelvinToHex} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 import {fa,faText} from "@/lib/format";
 import type {FrameRect} from "./scene-3d";
@@ -1177,11 +1177,18 @@ function LightInspector({light:l,tag,canRemove,onChange,onRemove,onAdd}:{light:S
     return <Chip key={h} role="radio" on={on} onClick={()=>onChange({height:h,...(l.direction==="top"?{direction:snapDirection(90),angle:90}:{})})}>{LIGHT_HEIGHT_FA[h]}</Chip>;})}</div>
   </div>
   <SliderRow label="شدت نور" ends={["کم","زیاد"]} valueText={intensityFa(intensityOf(l))} min={0} max={1} step={0.01} value={intensityOf(l)} onChange={v=>onChange({intensity:v})}/>
-  <label className="flex flex-col gap-1 type-caption text-fg-secondary">
+  {/* A coloured light: how strong its colour is (its tint) replaces its white's temperature; uncoloured, the temperature. */}
+  {l.colorHex?<label className="flex flex-col gap-1 type-caption text-fg-secondary">
+   <span>شدت رنگ: <bdi>{tintFa(tintOf(l))}</bdi></span>
+   <input type="range" dir="ltr" min={0} max={1} step={0.01} value={tintOf(l)} onChange={e=>onChange({tint:Number(e.target.value)})} aria-valuetext={tintFa(tintOf(l))}
+    className="h-3 w-full cursor-pointer appearance-none rounded-control" style={{background:"linear-gradient(to right, "+kelvinToHex(l.colorTemperatureK)+", "+l.colorHex+")"}}/>
+   <span dir="ltr" className="flex justify-between" aria-hidden="true"><span>کم‌رنگ</span><span>پررنگ</span></span>
+  </label>
+  :<label className="flex flex-col gap-1 type-caption text-fg-secondary">
    <span>دمای رنگ: <bdi>{fa(l.colorTemperatureK)}</bdi> کلوین</span>
    <input type="range" dir="ltr" min={1500} max={12000} step={100} value={l.colorTemperatureK} onChange={e=>onChange({colorTemperatureK:Number(e.target.value),colorHex:undefined})}
     className="h-3 w-full cursor-pointer appearance-none rounded-control" style={{background:TEMPERATURE_GRADIENT}}/>
-  </label>
+  </label>}
   <div className="flex flex-wrap items-center gap-1" role="radiogroup" aria-label="رنگ نور">
    <Chip role="radio" on={!l.colorHex} onClick={()=>onChange({colorHex:undefined})}>بدون رنگ</Chip>
    {GEL_COLORS.map(c=><button key={c} type="button" role="radio" aria-checked={l.colorHex===c} aria-label={"رنگ "+c} onClick={()=>onChange({colorHex:c})}

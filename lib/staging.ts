@@ -41,7 +41,16 @@ export function kelvinToHex(kelvin:number):string{
  return "#"+h(r)+h(g)+h(b);
 }
 /** The colour a light is drawn in: its gel or neon colour when it has one, otherwise its colour temperature. */
-export const lightHex=(l:StagingLight)=>l.colorHex?.toLowerCase()??kelvinToHex(l.colorTemperatureK);
+/** How strong a coloured light's colour is when unset (a clear colour, not fully saturated). */
+export const TINT_DEFAULT=0.7;
+export const tintOf=(l:StagingLight)=>l.tint??TINT_DEFAULT;
+/** Two colours mixed: `k` of the way from `a` to `b`. */
+const mixHex=(a:string,b:string,k:number)=>"#"+[1,3,5].map(i=>Math.round(parseInt(a.slice(i,i+2),16)*(1-k)+parseInt(b.slice(i,i+2),16)*k).toString(16).padStart(2,"0")).join("");
+/** The light's colour as drawn: its white at its temperature, or its colour, mixed in as strongly as its tint says. */
+export const lightHex=(l:StagingLight)=>l.colorHex?mixHex(kelvinToHex(l.colorTemperatureK),l.colorHex.toLowerCase(),0.3+0.7*tintOf(l)):kelvinToHex(l.colorTemperatureK);
+/** A tint in words: how strong the colour is. */
+export const tintFa=(t:number)=>t<0.35?"کم‌رنگ":t<0.7?"متوسط":"پررنگ";
+const tintEn=(t:number)=>t<0.35?"a subtle":t<0.7?"a clear":"a saturated";
 /** A short Persian word for the colour of a light, for the legend: گرم, خنثی, سرد, or رنگی for a gel or neon colour. */
 export function lightToneFa(l:StagingLight):string{
  if(l.colorHex)return "رنگی";
@@ -65,12 +74,12 @@ export function placementEn(f?:{x:number;y:number}):string{
 }
 /** The arranged scene in Persian, for the plan's hard constraints (what the user set in the diagrams). */
 export function describeStagingFa(s:Staging):string{
- const lights=s.lights.map(l=>LIGHT_ROLE_FA[l.role]+": "+LIGHT_SOURCE_FA[l.source]+"، "+LIGHT_QUALITY_FA[l.quality]+"، "+LIGHT_DIRECTION_FA[l.direction]+"، ارتفاع "+LIGHT_HEIGHT_FA[l.height]+"، "+l.colorTemperatureK+" کلوین"+(l.intensity!==undefined?"، شدت "+intensityFa(l.intensity):"")+(l.colorHex?"، رنگ "+l.colorHex:""));
+ const lights=s.lights.map(l=>LIGHT_ROLE_FA[l.role]+": "+LIGHT_SOURCE_FA[l.source]+"، "+LIGHT_QUALITY_FA[l.quality]+"، "+LIGHT_DIRECTION_FA[l.direction]+"، ارتفاع "+LIGHT_HEIGHT_FA[l.height]+"، "+l.colorTemperatureK+" کلوین"+(l.intensity!==undefined?"، شدت "+intensityFa(l.intensity):"")+(l.colorHex?"، رنگ "+l.colorHex+" ("+tintFa(tintOf(l))+")":""));
  return faText("صحنهٔ تنظیم‌شده: زاویهٔ دوربین «"+CAMERA_ANGLE_FA[s.cameraAngle]+"»"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+" درجه)":"")+(Math.abs(s.cameraAzimuth??0)>=1?"، دوربین "+orbitFa(s.cameraAzimuth!):"")+(Math.abs(s.cameraLift??0)>=0.05?"، دوربین "+fa2(Math.round(Math.abs(s.cameraLift!)*100))+" سانتی‌متر "+(s.cameraLift!>0?"بالاتر":"پایین‌تر"):"")+(s.cameraRoll?"، زاویهٔ کج (داچ) "+Math.abs(Math.round(s.cameraRoll))+" درجه":"")+(s.shotStyle==="ots"?"، نمای روی شانه":s.shotStyle==="pov"?"، نمای دید سوژه":"")+focusFa(s)+(s.focusDetail?"، تمرکز روی "+FOCUS_DETAIL_FA[s.focusDetail]:"")+"، کادر «"+SHOT_SIZE_FA[s.shotSize]+"»"+(s.shotScale!==undefined?" (زوم "+zoomFactor(s)+"×)":"")+(s.subject?"، سوژه: "+SUBJECT_FA[s.subject]:"")+"، جای سوژه: "+placementFa(s.framing)+(s.props?.length?"؛ "+describeLayoutFa(s.props):"")+"؛ "+lights.join("؛ "));
 }
 /** The arranged scene in English, appended to the provider-facing media prompt. */
 export function describeStagingEn(s:Staging):string{
- const lights=s.lights.map(l=>l.role+" light: "+l.quality+" "+l.source.replace("_"," ")+" from "+DIR_EN[l.direction]+(l.angle!==undefined?" ("+Math.round(l.angle)+"° in top view)":"")+", "+LIGHT_HEIGHT_EN[l.height]+", "+l.colorTemperatureK+"K"+(l.intensity!==undefined?", "+Math.round(l.intensity*100)+"% strength":"")+(l.colorHex?" "+l.colorHex+" gel":""));
+ const lights=s.lights.map(l=>l.role+" light: "+l.quality+" "+l.source.replace("_"," ")+" from "+DIR_EN[l.direction]+(l.angle!==undefined?" ("+Math.round(l.angle)+"° in top view)":"")+", "+LIGHT_HEIGHT_EN[l.height]+", "+l.colorTemperatureK+"K"+(l.intensity!==undefined?", "+Math.round(l.intensity*100)+"% strength":"")+(l.colorHex?", "+tintEn(tintOf(l))+" "+l.colorHex+" colour gel":""));
  return "Staging: "+ANGLE_EN[s.cameraAngle]+" camera"+(s.cameraElevation!==undefined?" ("+Math.round(s.cameraElevation)+"° from eye level)":"")+(orbitEn(s.cameraAzimuth??0)?", "+orbitEn(s.cameraAzimuth??0):"")+(Math.abs(s.cameraLift??0)>=0.05?", camera "+(s.cameraLift!>0?"raised ":"lowered ")+Math.round(Math.abs(s.cameraLift!)*100)+" cm with its aim (same angle)":"")+(s.cameraRoll?", Dutch angle tilted "+Math.abs(Math.round(s.cameraRoll))+"° "+(s.cameraRoll>0?"clockwise":"counter-clockwise"):"")+(s.shotStyle==="ots"?", over-the-shoulder shot":s.shotStyle==="pov"?", point-of-view shot through the subject's eyes":"")+(s.environment&&s.environment!=="landscape"?", in "+ENVIRONMENT_EN[s.environment]:"")+(s.environmentDistance!==undefined?", the background about "+Math.round(s.environmentDistance)+" m behind the subject":"")+focusEn(s)+(s.focusDetail?", framed on the main subject's "+(s.focusDetail==="feet"?"feet and shoes":s.focusDetail):"")+", "+SHOT_EN[s.shotSize]+(s.shotScale!==undefined?" ("+zoomFactor(s)+"x of a full shot)":"")+", "+placementEn(s.framing)+"; "+lights.join("; ")+"."+(s.props?.length?" "+describeLayoutEn(s.props):"");
 }
 /** The subject a brief is about, from its words: a person, an animal, a vehicle, a product or object, or an environment when there is no single main subject. */
@@ -182,6 +191,7 @@ export function describeStagingChangesFa(before:Staging,after:Staging,aspectBefo
   if(a.quality!==b.quality)d.push(arrow(LIGHT_QUALITY_FA[a.quality],LIGHT_QUALITY_FA[b.quality]));
   if(a.colorTemperatureK!==b.colorTemperatureK)d.push(arrow(String(a.colorTemperatureK),String(b.colorTemperatureK))+" کلوین");
   if((a.colorHex??"")!==(b.colorHex??""))d.push("رنگ نور "+arrow(a.colorHex??"بدون رنگ",b.colorHex??"بدون رنگ"));
+  else if(a.colorHex&&Math.abs(tintOf(a)-tintOf(b))>0.02)d.push("شدت رنگ "+arrow(tintFa(tintOf(a)),tintFa(tintOf(b))));
   if(d.length)out.push(LIGHT_ROLE_FA[b.role]+": "+d.join("، "));
  }
  return out.map(faText);

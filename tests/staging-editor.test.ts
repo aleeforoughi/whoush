@@ -421,3 +421,12 @@ test("the place is detected from the brief and sets the background's distance: a
  assert.ok(backdropFactor(open)>backdropFactor(room),"a long lens magnifies far mountains more than a near wall");
  assert.match(describeStagingEn(room),/in an interior room/);
 });
+
+test("a coloured light's tint: how strong its colour is reaches the drawing, Whoush and the provider",async()=>{
+ const {lightHex,describeStagingEn,describeStagingFa,describeStagingChangesFa}=await import("../lib/staging");
+ const l={role:"key" as const,direction:"left" as const,height:"high" as const,quality:"soft" as const,source:"softbox" as const,colorTemperatureK:5600,colorHex:"#ff5a5f"};
+ assert.equal(lightHex({...l,tint:1}),"#ff5a5f");assert.notEqual(lightHex({...l,tint:0}),"#ff5a5f");
+ const s={...base,lights:[{...l,tint:0.2}]};
+ assert.match(describeStagingEn(s),/a subtle #ff5a5f colour gel/);assert.match(describeStagingFa(s),/رنگ #ff5a5f \(کم‌رنگ\)/);
+ assert.ok(describeStagingChangesFa(s,{...s,lights:[{...l,tint:0.9}]}).some(x=>x.includes("شدت رنگ کم‌رنگ ← پررنگ")));
+});
