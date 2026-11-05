@@ -94,3 +94,12 @@ Slugs cited below are relative to `S = https://ai.byteplus.com/ark/region:ap-sou
 **Not available on 2.x:** `seed`, `camera_fixed`, `frames` and flex pricing.
 
 **Rule:** first frame, first and last frame, and omni reference cannot be mixed in one request.
+
+## Live check, 2026-11-06 (owner's key, dev-live)
+
+- **The key is accepted.** An empty `POST /images/generations` returned 400 `MissingParameter`, so it got past authentication and nothing was generated.
+- **Seedream is not switched on.** One in-app submit of `seedream-5-lite` (`seedream-5-0-260128`) returned 404 `ModelNotOpen`.
+- **The fix is the owner's:** activate each model in the ModelArk console:
+  - Seedream 5.0 Lite and 5.0 Pro
+  - Seedance 2.0 and 2.0 Mini, which also need a balance of at least USD 30 or a resource pack
+- Nothing was billed.

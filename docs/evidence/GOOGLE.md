@@ -75,3 +75,10 @@
 - Limits apply per project, with a spend cap of $10 per rolling 10 minutes on Tier 1.
 
 **Not integrated yet:** it is synchronous with long renders and its name carries an assistant brand. See `docs/PROVIDERS.md`.
+
+## Live check, 2026-11-06 (owner's key, dev-live)
+
+- **The key is valid.** A free `GET /v1beta/models` returned 200. `gemini-3-pro-image`, `gemini-3.1-flash-image` and `gemini-nano-banana-2.1` are all listed.
+- **No image could be made.** Two in-app submits of `nano-banana-2-1`, then one direct call, all returned HTTP 429 `too_many_requests`: "limit: 0 requests per day on Free Tier".
+- **The fix is the owner's:** turn on billing for the key's Google project (a paid tier). Nothing was billed.
+- **The adapter now logs Google's error reason** to the server log. It never logs the prompt or the key.

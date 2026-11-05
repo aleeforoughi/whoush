@@ -36,8 +36,9 @@ export class GoogleMediaProvider implements MediaProvider{
   const body=buildGoogleImageRequest(model,job.prompt,job.configuration); // a mapping error is definite: nothing was sent
   return {providerRequestId:startRun(async()=>{
    const r=await fetch(BASE,{method:"POST",headers:{"x-goog-api-key":key,"Content-Type":"application/json","Api-Revision":"2026-05-20"},body:JSON.stringify(body),cache:"no-store",signal:AbortSignal.timeout(180_000)});
-   const json=await r.json().catch(()=>undefined) as {error?:{code?:string}}|undefined;
-   if(!r.ok)throw new GoogleHttpError(r.status,json?.error?.code??"");
+   const json=await r.json().catch(()=>undefined) as {error?:{code?:string;message?:string}}|undefined;
+   // Google's own reason (quota, billing, region) goes to the server log only: it names no prompt and no key.
+   if(!r.ok){console.warn("[whoush] google error",r.status,json?.error?.code??"",(json?.error?.message??"").slice(0,400));throw new GoogleHttpError(r.status,json?.error?.code??"");}
    const outputs:ProviderOutput[]=[];
    for(const img of googleImages(json)){const s=await storeMedia(img.bytes,img.mime);outputs.push({kind:"image",url:s.url,needsMirroring:true,mime:img.mime});}
    return outputs;

@@ -20,10 +20,11 @@ const unverified = { verified:false, referenceImages:{supported:false,max:0}, as
 const INTONE_RATIOS = ["21:9","16:9","9:16","1:1","4:3","3:4"] as const;
 // Verified from the per-model API reference: soul-image, seedance-2-5-*, genjutsu-replace, genjutsu-motion (paths and input schemas).
 // Intone's facts still come only from the provider's agent platform catalogue (docs/HIGGSFIELD_EVIDENCE.md#mcp-intone): it has no API reference page, so it stays unverified.
-// Nano Banana Pro and Kling 4.0 have no API reference page either: unverified, never submitted live.
+// Kling 4.0 has no API reference page either: unverified, never submitted live. (Nano Banana Pro now comes from Google's own API reference, below.)
 // Genjutsu takes a source video and reference images as public URLs; Whoush has no hosted media yet, so policy blocks it (needs_hosted_media). Its price needs a server-measured source length.
 // Neuron SKUs for soul-image, seedance-2-5-* and genjutsu-* were approved by the owner on 2026-11-04 from provider list prices (docs/HIGGSFIELD_EVIDENCE.md#provider-prices):
 // ceil((provider + $0.05 planner allowance) / $0.128). The other SKUs are illustrative seeds. Fixed integers, FX-independent.
+// The direct-provider SKUs (nano-banana-*, seedream-5-*, seedance-2-0-*, kling-3-0-*) were approved by the owner on 2026-11-06 with the same formula (docs/PROVIDERS.md).
 // Genjutsu 720p is billed per input-video second, so it has one SKU per source-length band.
 const GENJUTSU_720P_SKUS = [{upToSeconds:5,neurons:27},{upToSeconds:10,neurons:54},{upToSeconds:15,neurons:81},{upToSeconds:30,neurons:160}] as const;
 export const MEDIA_CATALOG: readonly MediaModel[] = [

@@ -41,18 +41,17 @@ All are generation only (no reference images yet), with audio off and the price 
 | `kling-3-0-720p-5s` | Kling `/text-to-video/kling-3.0`, 720p, no audio | $0.42 | 4 |
 | `kling-3-0-720p-10s` | the same, 10 s | $0.84 | 7 |
 
-**These SKUs need the owner's approval.** They use the approved formula, but its margin is thin: for example, about 11% on Seedance.
+**Approved by the owner on 2026-11-06** as listed. The margin is thin: for example, about 11% on Seedance.
 
 ## Open owner decisions
 
-1. **Approve or change the SKUs above.**
-2. **BytePlus watermark.** Seedream adds a visible "AI-generated" mark by default, and it is kept. Turning it off is the owner's choice under BytePlus's labeling rules.
-3. **Written permissions before any customer use:**
+1. **BytePlus watermark.** Seedream adds a visible "AI-generated" mark by default, and it is kept. Turning it off is the owner's choice under BytePlus's labeling rules.
+2. **Written permissions before any customer use:**
    - BytePlus: reselling video (Service-Specific Terms §4.2) and the SaaS resale clause (§6.2)
    - Kling: "own use only" (§10.3)
    - Google: available regions only, and 18+ users only
    - Iran is not in the Google or BytePlus region lists. Kling's main terms page could not be read.
-4. **Not integrated yet:**
+3. **Not integrated yet:**
    - Google Omni video: synchronous long renders, and its name carries an assistant brand
    - Veo: only on Google's separate Cloud platform now
    - Kling 4.0: not yet open
