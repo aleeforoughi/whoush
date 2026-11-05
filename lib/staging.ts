@@ -383,6 +383,15 @@ export function propWidth(p:Pick<SceneProp,"kind"|"label">&{size?:SceneProp["siz
  */
 /** Where each detail sits on a standing person, as a share of their height from the ground. */
 export const DETAIL_HEIGHT:Record<NonNullable<Staging["focusDetail"]>,number>={face:0.88,eyes:0.9,mouth:0.855,jewelry:0.78,hands:0.45,feet:0.05};
+/**
+ * Where the camera aims on a person, as a share of its height. Up close, the detail (the face by default). As the shot widens it comes down, as a
+ * photographer reframes, so the head keeps a little room above it (or comes up from a low detail such as the feet, so the body fits), down to the body's
+ * middle for a full-length shot: a «full» shot shows the feet. The focus stays on the detail whatever the shot.
+ */
+export function aimShareOf(s:Staging):number{
+ const d=DETAIL_HEIGHT[s.focusDetail??"face"],sc=scaleOf(s),hi=Math.max(0.5,1.04-sc/2),lo=Math.min(0.5,sc/2-0.04);
+ return Math.min(hi,Math.max(lo,d));
+}
 export const FOCUS_DETAIL_FA:Record<NonNullable<Staging["focusDetail"]>,string>={face:"صورت",eyes:"چشم‌ها",mouth:"لب‌ها",hands:"دست‌ها",feet:"پاها و کفش",jewelry:"جواهر و اکسسوری"};
 // ---- the frame as a lo-fi previz of the output: one physical camera (full-frame sensor, the lens and aperture Whoush or the user chose) ----
 export const SENSOR_H_MM=24,PERSON_M=1.7,METERS_PER_Z=4,REF_FOCAL=35;

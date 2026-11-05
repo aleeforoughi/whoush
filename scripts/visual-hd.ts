@@ -18,7 +18,15 @@ let n=0;
 for(const f of (await readdir(DIR)).filter(f=>f.endsWith(".png")&&CHARACTER.test(f))){
  const id=f.replace(/\.png$/,""),raw=path.join(RAW,f);
  if(!existsSync(raw)){console.log("no raw:",id);continue;}
- const trimmed=await sharp(raw).trim({threshold:1}).toBuffer();
+ // Trimmed to what is really there (a faint shadow or speck, mostly transparent, does not count), as the pack's PNG was.
+ const {data,info}=await sharp(raw).ensureAlpha().extractChannel(3).raw().toBuffer({resolveWithObject:true});
+ let x0=info.width,y0=info.height,x1=-1,y1=-1;
+ for(let y=0;y<info.height;y++)for(let x=0;x<info.width;x++)if(data[y*info.width+x]>96){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;}
+ if(x1<0){console.log("empty raw:",id);continue;}
+ let trimmed=await sharp(raw).extract({left:x0,top:y0,width:x1-x0+1,height:y1-y0+1}).png().toBuffer();
+ // When that still differs from the PNG's shape, the colour trim the pack used.
+ {const [pm,tm]=await Promise.all([sharp(path.join(DIR,f)).metadata(),sharp(trimmed).metadata()]);
+  if(Math.abs(Math.log((pm.width!/pm.height!)/(tm.width!/tm.height!)))>0.015)trimmed=await sharp(raw).trim({threshold:1}).toBuffer();}
  // The HD picture must line up with the PNG exactly (the frame draws either in the same place): a raw that trims to another shape (it was
  // regenerated or refinished since) gets no HD version, and the PNG is used up close.
  const [png,hdm]=await Promise.all([sharp(path.join(DIR,f)).metadata(),sharp(trimmed).metadata()]);

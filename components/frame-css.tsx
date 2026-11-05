@@ -152,11 +152,14 @@ export default function FrameCSS({staging,anchor,aspect,editable,sel,onSelect,on
    <path d={hp.hazeUp[0]} fill="url(#fc-hu)"/><path d={hp.hazeDown[0]} fill="url(#fc-hd)"/>
   </svg>
   {layers.filter(l=>l.depth<HAZE_DEPTH).map(l=>group(l))}
-  {cu?.guide&&<svg aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-visible" width={w} height={h}>
-   {/* Outside the real crop dims a little; its border is the real frame. */}
-   <path fillRule="evenodd" fill={C.black} fillOpacity={0.35} d={"M-1 -1H"+(w+1)+"V"+(h+1)+"H-1Z"+guidePath(cu.guide)}/>
-   <path d={guidePath(cu.guide)} fill="none" stroke={C.closeUp} strokeWidth={2} strokeLinejoin="round"/>
-  </svg>}
+  {cu?.guide&&(()=>{
+   // It fades in as the real crop grows tighter than the frame: just past the frame's tightest it would be a second border almost on the first.
+   const ys=cu.guide.map(p=>p[1]),ratio=(Math.max(...ys)-Math.min(...ys))/v.frameH,op=Math.max(0,Math.min(1,(0.95-ratio)/0.15));
+   return op>0&&<svg aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-visible" width={w} height={h} style={{opacity:op}}>
+    {/* Outside the real crop dims a little; its border is the real frame. */}
+    <path fillRule="evenodd" fill={C.black} fillOpacity={0.35} d={"M-1 -1H"+(w+1)+"V"+(h+1)+"H-1Z"+guidePath(cu.guide)}/>
+    <path d={guidePath(cu.guide)} fill="none" stroke={C.closeUp} strokeWidth={2} strokeLinejoin="round"/>
+   </svg>;})()}
  </div>;
 }
 /** A closed outline through the guide's corners. */

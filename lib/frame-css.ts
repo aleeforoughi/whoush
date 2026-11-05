@@ -26,6 +26,7 @@ export type CssView={cam:Camera3D;
  /** The focal length in px: the CSS perspective distance. */D:number;
  /** Where the optical axis meets the view, px, before the roll (the crop shifts it in the frame; the wide view keeps it centred and moves the frame). */pp:[number,number];
  /** The Dutch roll, degrees clockwise about the view's centre. */roll:number;
+ /** The fisheye's centre and reach (px): the frame's centre and half diagonal (in the wide view, the crop's), so the crop bulges as the photo will. */fc:[number,number];fR:number;
  /** The scale that keeps the aim point on the screen plane (px per metre there). */s:number;
  /** The frame inside a wide view, as fractions of it. */frame?:FrameRect;
  /** The frame's height in px and the sensor side it shows, mm (for the blur). */frameH:number;sensorV:number;
@@ -42,7 +43,8 @@ export function cssView(s:Staging,anchor:Staging|undefined,aspect:string,w:numbe
  const D=(frameH/2)/Math.tan(cam.fov*Math.PI/360);
  const pp:[number,number]=frame?[w/2,h/2]:[w/2-cam.shift[0]*w,h/2-cam.shift[1]*h];
  const depthT=Math.max(0.05,dot(sub(t,pos),f));
- return {cam,eye:cam.position as V3,pos,r,u,f,w,h,D,pp,roll:cam.roll*180/Math.PI,s:D/depthT,frame,frameH,sensorV:H>W?36:24,fish:frame?0:cam.fisheye*0.6};
+ const fc:[number,number]=frame?[frame.x*w,frame.y*h]:[w/2,h/2],fR=frame?Math.hypot(frame.w*w,frame.h*h)/2:Math.hypot(w,h)/2;
+ return {cam,eye:cam.position as V3,pos,r,u,f,w,h,D,pp,roll:cam.roll*180/Math.PI,s:D/depthT,frame,frameH,sensorV:H>W?36:24,fish:cam.fisheye*0.6,fc,fR};
 }
 /** A world point in camera space: [right, up, depth]. */
 export const toCam=(v:CssView,p:V3):V3=>{const d=sub(p,v.pos);return [dot(d,v.r),dot(d,v.u),dot(d,v.f)];};
@@ -58,13 +60,13 @@ const sourceR=(k:number,r:number)=>r*(1+k*r*r)/(1+k);
 /** A point of the distorted picture back to the straight picture (for pointers and the SVG displacement map). */
 export function unfish(v:CssView,x:number,y:number):[number,number]{
  if(!v.fish)return [x,y];
- const cx=v.w/2,cy=v.h/2,R=Math.hypot(cx,cy),dx=(x-cx)/R,dy=(y-cy)/R,r=Math.hypot(dx,dy);if(r<1e-9)return [x,y];
+ const [cx,cy]=v.fc,R=v.fR,dx=(x-cx)/R,dy=(y-cy)/R,r=Math.hypot(dx,dy);if(r<1e-9)return [x,y];
  const q=sourceR(v.fish,r)/r;return [cx+dx*q*R,cy+dy*q*R];
 }
 /** A point of the straight picture to where the fisheye shows it (the inverse, by Newton's method). */
 export function fish(v:CssView,x:number,y:number):[number,number]{
  if(!v.fish)return [x,y];
- const cx=v.w/2,cy=v.h/2,R=Math.hypot(cx,cy),dx=(x-cx)/R,dy=(y-cy)/R,rs=Math.hypot(dx,dy);if(rs<1e-9)return [x,y];
+ const [cx,cy]=v.fc,R=v.fR,dx=(x-cx)/R,dy=(y-cy)/R,rs=Math.hypot(dx,dy);if(rs<1e-9)return [x,y];
  const k=v.fish;let r=rs;for(let i=0;i<8;i++){const g=sourceR(k,r)-rs,dg=(1+3*k*r*r)/(1+k);r-=g/dg;}
  return [cx+dx/rs*r*R,cy+dy/rs*r*R];
 }
@@ -82,6 +84,38 @@ export function billboard(v:CssView,p:V3,mpp:number,mirror=false,minDepth=0.3,/*
  const c=toCam(v,p);if(c[2]<minDepth)return undefined;
  const k=mpp*v.s;
  return {transform:"translate3d("+n3(c[0]*v.s)+"px,"+n3(-c[1]*v.s)+"px,"+n3(v.D-c[2]*v.s)+"px) scale("+n3(k*sx*(mirror?-1:1))+","+n3(k)+")",depth:c[2],px:mpp*v.D/c[2]};
+}
+/**
+ * A picture standing for a character, placed by where the camera sees two of its real points, so it never floats, sinks or jumps at any lens,
+ * distance or height. Its point (ax, ay) (shares of its width and height: the face, or a pet's middle) sits exactly where `A` is seen; it hangs toward
+ * where the camera sees its ground point `G` (or toward where that line leaves the view, when `G` is beside or behind the lens); and it is scaled
+ * uniformly: its bottom exactly on `G` while that is in view, its head at its real size (`mppHead`, metres per pixel at A's distance; a pet: its body,
+ * `mppBody`) once `G` is well out of view, easing between, and never so short that its bottom ends inside the view, where the feet would float. It lies
+ * on a plane parallel to the lens at A's distance, so no part of it reaches beside or behind the lens. Undefined when `A` is not in front of it.
+ */
+export function anchoredStandee(v:CssView,A:V3,G:V3,wpx:number,hpx:number,ax:number,ay:number,mirror:boolean,mppHead:number|undefined,mppBody:number):{o:V3;ex:V3;ey:V3;depth:number;quad:V3[];feetInView:boolean}|undefined{
+ const zA=toCam(v,A)[2];if(!(zA>0.05)||!(ay<1))return undefined;
+ const a=toScreen(v,A);if(!a)return undefined;
+ const zG=toCam(v,G)[2],NEAR=0.06;
+ // Where the body is seen to run: to the ground point, or to where its line comes within a few centimetres of the lens.
+ const P=zG>NEAR?G:add(A,mul(sub(G,A),(zA-NEAR)/(zA-zG))),pp=toScreen(v,P);
+ let u:[number,number]=[0,1],L=Infinity;
+ if(pp){const dx=pp[0]-a[0],dy=pp[1]-a[1],l=Math.hypot(dx,dy);if(l>1e-6){u=[dx/l,dy/l];if(zG>NEAR)L=l;}}
+ // How far the ground point is out of view (a share of the view's height; beside or behind the lens: far), and how much the head's size takes over.
+ const out=zG>NEAR&&pp?Math.max(0,-pp[0],pp[0]-v.w,-pp[1],pp[1]-v.h)/v.h:Infinity,t=Math.min(1,out/0.5),kh=t*t*(3-2*t);
+ const perM=v.D/zA,k2=L/((1-ay)*hpx),kOwn=(mppHead??mppBody)*perM;
+ let k=Number.isFinite(k2)?k2+(kOwn-k2)*kh:kOwn;
+ // Its bottom never ends inside the view (unless on the ground): at least as long as the way out along its line.
+ if(kh>0){let exit=Infinity;for(const [c,lo,hi] of [[0,0,v.w],[1,0,v.h]] as const){const d=u[c];if(Math.abs(d)<1e-9)continue;const tt=((d>0?hi:lo)-a[c])/d;if(tt>0)exit=Math.min(exit,tt);}
+  if(Number.isFinite(exit))k=Math.max(k,Math.min(Number.isFinite(k2)?k2:Infinity,exit*1.02/((1-ay)*hpx)));}
+ // The picture on screen: its down along the body's line, its right square to it (mirrored: flipped), turned and scaled about the anchor.
+ const right:[number,number]=[-u[1]*(mirror?-1:1),u[0]*(mirror?-1:1)];
+ const at=(x:number,y:number):[number,number]=>{const X=k*(x-ax*wpx),Y=k*(y-ay*hpx);return [a[0]+right[0]*X+u[0]*Y,a[1]+right[1]*X+u[1]*Y];};
+ // …placed in the world at A's distance (where the lens sees exactly that).
+ const world=(q:[number,number]):V3=>add(v.pos,mul(rayAt(v,q[0],q[1]),zA));
+ const o=world(at(0,0)),ex=mul(sub(world(at(wpx,0)),o),1/wpx),ey=mul(sub(world(at(0,hpx)),o),1/hpx);
+ const quad=[o,add(o,mul(ex,wpx)),add(add(o,mul(ex,wpx)),mul(ey,hpx)),add(o,mul(ey,hpx))];
+ return {o,ex,ey,depth:zA,quad,feetInView:kh===0};
 }
 /**
  * A picture of a thing as a real plane at `at`: square to the camera's line of sight to it and upright to the world (its up is the world's vertical seen
@@ -203,6 +237,16 @@ export function thingSprite(v:CssView,p:Pick<SceneProp,"kind"|"label">,ground:V3
  const tilt=sp.height==="top"?seenDeg:realDeg;
  // An overhead plan view is placed and turned about its head (`pivot`), so the head stays where the camera aims whichever way the person faces.
  const pv=a.pivot;
+ // Every other picture is anchored by two points: its face (a person) or its middle (a pet) where the camera sees that point, and its bottom on the
+ // ground point as the camera sees it, so it never floats or sinks, at any lens, distance or height. A person up to a ۳/۴ shot keeps the head's real size
+ // instead (the face stays put between the angles' pictures; the feet are out of the frame), blending into the two-point scale toward full length.
+ if(sp.height!=="top"&&familyOf(p)!=="cube"){
+  const anchorAt:V3=head&&ref?faceAt:centre,ax=head?.x??0.5,ay=head?(head.top+head.neck)/2:0.5;
+  const st2=anchoredStandee(v,anchorAt,ground,a.width,a.height,ax,ay,sp.mirror,head&&ref?mppHead:undefined,mpp);
+  if(st2){const tiles=tilesFor(v,st2.o,st2.ex,st2.ey,a.width,a.height);
+   if(tiles){const big=Math.max(...tiles.map(t=>t.bh))>a.height*0.75;
+    return {id:sp.id,src:big&&a.hd?a.hd:a.src,tiles,depth:st2.depth,blur:blurPx(v,st2.depth),side:sp.side,stop:sp.height,quad:st2.quad};}}
+ }
  const st=standee(v,at,a.width,a.height,mppX*m2/mpp,m2,sp.mirror,pv?pv.y:0.5+((head?(head.top+head.neck)/2:0.5)-0.5)*k,tilt,sp.spin,pv?pv.x:0.5+((head?.x??0.5)-0.5)*k)
   ??standee(v,lookAt,a.width,a.height,mppX,mpp,sp.mirror,1-look,seenDeg,sp.spin);if(!st)return undefined;
  const tiles=tilesFor(v,st.o,st.ex,st.ey,a.width,a.height);if(!tiles)return undefined;
@@ -420,6 +464,11 @@ export function cropOnSubject(s:Staging,anchor:Staging|undefined,aspect:string):
  const T=hit(w/2,0),B=hit(w/2,h),L=hit(0,h/2),R=hit(w,h/2);
  return {top:T?T[1]-g[1]:Infinity,bottom:B?B[1]-g[1]:-Infinity,left:L?dot(sub(L,g),side):-Infinity,right:R?dot(sub(R,g),side):Infinity};
 }
+/** Where the camera aims on the main subject: metres above its ground point (the frame's aim, which comes down from the face as the shot widens). */
+export function aimOnSubject(s:Staging,anchor:Staging|undefined,aspect:string):number|undefined{
+ const props=s.props??[],m=props.find(p=>p.main)??props[0];if(!m)return undefined;
+ return camera3D(s,anchor,aspect).target[1]-(propWorld(m,s,anchor,props).pos as V3)[1];
+}
 /** How high above its usual place the camera may be raised, metres (a tall stand or a short crane). */
 export const LIFT_MAX=3;
 /** How far the camera may be lowered (it stays above the ground) or raised, metres, at its current angle and distance. */
@@ -458,4 +507,30 @@ export function closeUp(s:Staging,anchor:Staging|undefined,aspect:string,w:numbe
   const p=toScreen(shown,add(real.pos,mul(d,dot(sub(f,real.pos),n)/den)));if(!p)return {draw};guide.push(p);
  }
  return {draw,guide};
+}
+
+// ---- the focus point in words, for the prompt (the frame shows it; the image model has to be told) ----
+/** Which part of a person a height on it is (a share of its height). */
+const PART:{min:number;en:string;fa:string}[]=[{min:0.82,en:"face",fa:"صورت"},{min:0.62,en:"chest",fa:"سینه"},{min:0.42,en:"waist and hands",fa:"کمر و دست‌ها"},
+ {min:0.15,en:"legs",fa:"پاها"},{min:-Infinity,en:"feet",fa:"کف پاها و کفش"}];
+/**
+ * The focus point the user placed, in words for the image model: on which part of the main subject it sits (another prop, the ground or the background
+ * are already named by the scene's description), and where it is in the frame (thirds), with what that means for the depth of field. Empty while the
+ * focus is Whoush's own (the dominant subject's face or the detail the brief names).
+ */
+export function describeFocus(s:Staging,anchor:Staging|undefined,aspect:string):{en:string;fa:string}{
+ if(!s.pivot&&!s.focusPoint)return {en:"",fa:""};
+ const {W,H}=frameSize(aspect),v=cssView(s,anchor,aspect,1000,1000*H/W),p=toScreen(v,focusWorld(v));if(!p)return {en:"",fa:""};
+ const fx=p[0]/v.w,fy=p[1]/v.h;
+ const col=fx<1/3?0:fx>2/3?2:1,row=fy<1/3?0:fy>2/3?2:1;
+ const en=(row===1&&col===1?"the centre":["upper","middle","lower"][row]+(col===1?" centre":["-left"," "," -right"][col].trim()))+" of the frame";
+ const fa=row===1&&col===1?"وسط کادر":["بالای","وسط","پایین"][row]+(col===1?" کادر":" سمت "+(col===0?"چپ":"راست")+" کادر");
+ const props=s.props??[],m=props.find(q=>q.main)??props[0],on=s.pivot?.on;
+ let partEn="",partFa="";
+ if(m&&typeof on==="number"&&props[on]===m&&isCharacter(m)){
+  const g=propWorld(m,s,anchor,props).pos as V3,share=(focusWorld(v)[1]-g[1])/propSize(m).h,part=PART.find(x=>share>=x.min)!;
+  partEn=" on the main subject's "+part.en;partFa=" روی "+part.fa+(part.fa.endsWith("ه")?"ٔ ":"ِ ")+m.label;
+ }
+ return {en:" Focus point"+partEn+", at the "+en.replace(/^the /,"")+": that plane is in sharp focus; nearer and farther fall off with the aperture.",
+  fa:"نقطهٔ فوکوس"+partFa+"، "+fa};
 }

@@ -11,6 +11,7 @@ import {providerForModelId} from "./llm-routing";
 import {replyScriptFor} from "./finglish";
 import {applyStagingCues,applyTypedMappings,lensFor,describeStagingEn,describeStagingFa,detectProps,detectSubject,expandMappings,mapReferences,tidyProps,typedMappings} from "./staging";
 import {findGif,type ChatGif} from "./giphy";
+import {describeFocus} from "./frame-css";
 import {detectMediaKind,suggestModel} from "./router";
 import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
 import {SKILLS,SKILL_REGISTRY_VERSION} from "./skills";
@@ -276,7 +277,7 @@ export const getPrivateMediaPrompt=(turnId:string):string|undefined=>store().get
 export function deriveTurnWithStaging(turnId:string,staging:Staging,aspect?:string):string|undefined{
  const base=store().get(turnId);if(base===undefined)return undefined;
  // The lens follows the adjusted scene (Whoush's choice for what it now shows), so the camera direction never contradicts it.
- const extra=" User-adjusted scene (overrides any earlier camera, framing or lighting direction): "+describeStagingEn(staging)+" "+lensFor(staging).en+(aspect?" Aspect ratio "+aspect+".":"");
+ const extra=" User-adjusted scene (overrides any earlier camera, framing or lighting direction): "+describeStagingEn(staging)+describeFocus(staging,undefined,aspect??"16:9").en+" "+lensFor(staging).en+(aspect?" Aspect ratio "+aspect+".":"");
  const id=randomUUID();keepPrompt(id,(base.slice(0,Math.max(0,3000-extra.length))+extra).slice(0,3000));
  return id;
 }
@@ -449,7 +450,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   const lens=lensFor(plan.staging);
   if(plan.camera)plan.camera={...plan.camera,focalLengthMm:lens.focalLengthMm,aperture:lens.aperture,iso:lens.iso,focus:lens.fa};
   if(plan.shot)plan.shot={...plan.shot,lens:lens.focalLengthMm+"mm "+lens.aperture};
-  const en=" Scene (must match): "+describeStagingEn(plan.staging)+" "+lens.en;
+  const en=" Scene (must match): "+describeStagingEn(plan.staging)+describeFocus(plan.staging,undefined,plan.camera?.aspectRatio??"16:9").en+" "+lens.en;
   plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
  }
  // Keeping it is a hard rule, naming the photos (the provider-facing text names them by description).
@@ -468,7 +469,8 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   const en=" Aspect ratio "+parsed.aspectOverride+".";plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
  }
  if(parsed.stagingOverride){
-  const o=parsed.stagingOverride,lens=lensFor(o),fa=describeStagingFa(o),en=" "+describeStagingEn(o)+" "+lens.en;
+  const o=parsed.stagingOverride,lens=lensFor(o),asp=parsed.aspectOverride??plan.camera?.aspectRatio??"16:9",focus=describeFocus(o,undefined,asp);
+  const fa=describeStagingFa(o)+(focus.fa?"؛ "+focus.fa:""),en=" "+describeStagingEn(o)+focus.en+" "+lens.en;
   plan.staging=o;
   // Whoush re-picks the lens for the scene the user arranged: focal length and aperture (bokeh or deep focus, macro when it is that close).
   if(plan.camera)plan.camera={...plan.camera,focalLengthMm:lens.focalLengthMm,aperture:lens.aperture,iso:lens.iso,focus:lens.fa};

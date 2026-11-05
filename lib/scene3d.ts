@@ -7,7 +7,7 @@
  */
 import type {Staging} from "./creative-plan";
 import {sizeOf,spanM} from "./sprites";
-import {DETAIL_HEIGHT,METERS_PER_Z,SENSOR_H_MM,backdropM,centerOnSubject,elevationOf,facingOf,focusDepth,frameSize,genderOf,cubeDims,physicalCamera,stackLift,STAGE_X_M,rollOf,scaleOf,type SceneProp} from "./staging";
+import {DETAIL_HEIGHT,aimShareOf,METERS_PER_Z,SENSOR_H_MM,backdropM,centerOnSubject,elevationOf,facingOf,focusDepth,frameSize,genderOf,cubeDims,physicalCamera,stackLift,STAGE_X_M,rollOf,scaleOf,type SceneProp} from "./staging";
 
 /** Metres per stage unit sideways (the stage's ±1 is a 6 m wide set). */
 export const X_M=STAGE_X_M;
@@ -52,6 +52,10 @@ export type Camera3D={
  */
 /** How close the shot is, 0 (full length and wider) to 1 (a ۳/۴ shot and closer): a close shot is framed and drawn by the face, not the whole figure. */
 export function closeShare(s:Staging):number{return Math.max(0,Math.min(1,Math.log(1.1/scaleOf(s))/Math.log(1.1/0.75)));}
+/** The lowest a camera goes: just above the ground (metres). */
+const GROUND_MIN=0.05;
+/** A lens's vertical field of view, degrees, on a sensor `sensorV` mm tall. */
+const fovOf=(f:number,sensorV:number)=>2*Math.atan((sensorV/2)/f)*180/Math.PI;
 export function camera3D(s:Staging,anchor:Staging|undefined,aspect:string):Camera3D{
  const c=physicalCamera(s),{W,H}=frameSize(aspect),portrait=H>W,sensorV=portrait?36:SENSOR_H_MM;
  const m=mainOf(s),subjectH=m?propSize(m).h:1.7;
@@ -63,7 +67,7 @@ export function camera3D(s:Staging,anchor:Staging|undefined,aspect:string):Camer
  const span=m?spanM(sizeOf(m),elevationOf(s),"front")*(1-close)+subjectH*close:subjectH,eRad=elevationOf(s)*Math.PI/180;
  // That distance is to the subject's middle (where its picture stands); the camera aims at its face, which from above is nearer the lens and from below
  // farther. A close-up is about the face itself, so the correction fades in with how much of the body the shot shows.
- const aimShare=m?.kind==="person"?DETAIL_HEIGHT[s.focusDetail??"face"]:0.5,offset=(aimShare-0.5)*subjectH*Math.sin(eRad)*Math.min(1,scaleOf(s))*(1-close);
+ const aimShare=m?.kind==="person"?aimShareOf(s):0.5,offset=(aimShare-0.5)*subjectH*Math.sin(eRad)*Math.min(1,scaleOf(s))*(1-close);
  // Looking down on a whole figure, the camera stays above its head (a full overhead shot cannot be framed tighter than that).
  const floor=m?.kind==="person"&&eRad>0.5?Math.max(0.12,(subjectH*(1-aimShare)+0.15)/Math.sin(eRad)*(1-close)):0.12,free=scaleOf(s)*span*c.f/sensorV-offset;
  const d=Math.max(floor,free);
@@ -72,11 +76,31 @@ export function camera3D(s:Staging,anchor:Staging|undefined,aspect:string):Camer
  const am=mainOf(anchor??s);
  let target:[number,number,number]=[0,subjectH*0.5,0];
  if(s.focusPoint&&m){const {height,lateral}=centerOnSubject(s,anchor,aspect),w=propWorld(m,s,anchor).pos;target=[w[0]+lateral*X_M,w[1]+height*subjectH,w[2]];}
- else if(am){const w=propWorld(am,s,anchor).pos,h=propSize(am).h;target=[w[0],w[1]+h*(am.kind==="person"?DETAIL_HEIGHT[s.focusDetail??"face"]:0.5),w[2]];}
+ else if(am){const w=propWorld(am,s,anchor).pos,h=propSize(am).h;target=[w[0],w[1]+h*(am.kind==="person"?aimShareOf(s):0.5),w[2]];
+  // A person framed by the face (no other detail asked): the aim's height is solved on the real lens so the photo's framing holds, from this height and
+  // this distance. A shot wide enough for the whole body centres it, head to feet, as the lens projects it (from above the head looms, from below the
+  // feet). Tighter, the top of the head sits just under the frame's top. Never above the face, so a close-up stays on it.
+  const detail=s.focusDetail??"face";
+  if(am.kind==="person"&&(detail==="face"||detail==="eyes"||detail==="mouth")){
+   const e0=elevationOf(s)*Math.PI/180,tn=Math.tan(fovOf(c.f,sensorV)*Math.PI/360);
+   const T:[number,number,number]=[w[0],w[1]+h+0.04,w[2]],B:[number,number,number]=[w[0],w[1],w[2]];
+   // Where a point lands (−1 bottom … 1 top of the frame) with the aim at height a: the camera as placed below, the ground easing a worm's-eye angle.
+   const proj=(P:[number,number,number],a:number)=>{let e=e0;if(a+d*Math.sin(e)<GROUND_MIN&&d>0)e=-Math.asin(Math.min(1,Math.max(0,(a-GROUND_MIN)/d)));
+    const u=[0,Math.cos(e),-Math.sin(e)],fw=[0,-Math.sin(e),-Math.cos(e)],pos=[w[0],a+d*Math.sin(e),w[2]+d*Math.cos(e)],r=[P[0]-pos[0],P[1]-pos[1],P[2]-pos[2]],z=r[0]*fw[0]+r[1]*fw[1]+r[2]*fw[2];
+    // A point beside or behind the lens is far off the frame: above it if it is above the camera, below if below (it stays in order).
+    return z>0.02?Math.max(-50,Math.min(50,(r[0]*u[0]+r[1]*u[1]+r[2]*u[2])/z/tn)):r[1]>0?50:-50;};
+   // Both decrease as the aim (and with it the camera) rises.
+   const solve=(fn:(a:number)=>number)=>{let lo=w[1],hi=w[1]+h*1.1;const flo=fn(lo),fhi=fn(hi);
+    if(!(Number.isFinite(flo)&&Number.isFinite(fhi)))return undefined;if(flo<=0)return lo;if(fhi>=0)return hi;
+    for(let i=0;i<30;i++){const mid=(lo+hi)/2,v=fn(mid);if(!Number.isFinite(v))return undefined;if(v>0)lo=mid;else hi=mid;}return (lo+hi)/2;};
+   const HEAD=0.92;let a=solve(x=>proj(T,x)+proj(B,x));
+   if(a!==undefined&&proj(T,a)-proj(B,a)>2*HEAD)a=solve(x=>proj(T,x)-HEAD);
+   if(a!==undefined)target=[w[0],Math.min(a,w[1]+h*DETAIL_HEIGHT[detail]),w[2]];
+  }}
  let e=elevationOf(s)*Math.PI/180;
  // A camera never goes under the ground: looking up from below (a worm's-eye view), once a wider shot would put it underground it stays on the ground
  // and backs away along it, so zooming out keeps working and the angle up eases off smoothly (a real camera lying on the floor).
- const minY=0.05;if(target[1]+d*Math.sin(e)<minY&&d>0)e=-Math.asin(Math.min(1,Math.max(0,(target[1]-minY)/d)));
+ const minY=GROUND_MIN;if(target[1]+d*Math.sin(e)<minY&&d>0)e=-Math.asin(Math.min(1,Math.max(0,(target[1]-minY)/d)));
  const position:[number,number,number]=[target[0],target[1]+d*Math.sin(e),target[2]+d*Math.cos(e)];
  const fov=2*Math.atan((sensorV/2)/c.f)*180/Math.PI;
  const fr=s.framing??{x:0,y:0};

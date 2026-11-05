@@ -233,13 +233,18 @@ test("the focus stays locked on the dominant subject through moves, crops and an
  assert.ok(Math.hypot(...focusWorld(v3).map((n,i)=>n-focusWorld(v1)[i]))<1e-9);
 });
 
-test("the shot size frames the subject the same at every height: the camera comes closer from above instead of the subject shrinking",()=>{
- const height=(a:Staging["cameraAngle"],label:string)=>{const p={...man,label},s={...base,cameraAngle:a,shotSize:"full" as const,props:[p]},v=cssView(s,s,"3:4",600,800);
-  const ys=propSprites(v,[p],s,s)[0].quad!.map(c=>toScreen(v,c)![1]);return Math.max(...ys)-Math.min(...ys);};
- for(const label of ["مرد","زن"]){const eye=height("eye_level",label);
-  for(const a of ["worms_eye","low","high"] as const)assert.ok(Math.abs(height(a,label)/eye-1)<0.12,label+" "+a+": "+height(a,label).toFixed(0)+" vs "+eye.toFixed(0));
-  // Overhead, the camera stays above the head: as full as it can be, never a speck.
-  assert.ok(height("birds_eye",label)>eye*0.4,label+" overhead");}
+test("a full shot shows the whole body as the prompt says, feet on the ground: from low, eye level and high head to feet fit and fill the frame",async()=>{
+ const {DETAIL_HEIGHT}=await import("../lib/staging");
+ for(const label of ["مرد","زن"])for(const a of ["worms_eye","low","eye_level","high"] as const){
+  const p={...man,label},s:Staging={...base,cameraAngle:a,shotSize:"full",props:[p]},v=cssView(s,s,"3:4",600,800),sp=propSprites(v,[p],s,s)[0];
+  const ys=sp.quad!.map(c=>toScreen(v,c)![1]),top=Math.min(...ys),bottom=Math.max(...ys);
+  if(a==="worms_eye"){assert.ok(top>=0&&bottom>=720,label+" "+a+": the head in the frame, the body running to its bottom ("+top.toFixed(0)+"–"+bottom.toFixed(0)+")");continue;}
+  assert.ok(top>=0&&bottom<=800&&bottom-top>=480,label+" "+a+": head to feet in the frame, filling it ("+top.toFixed(0)+"–"+bottom.toFixed(0)+")");
+  // The picture's bottom is exactly on the ground point the camera sees; its face exactly on the real face.
+  const g=toScreen(v,sp.ground)!,hd=VISUALS[sp.id].head!,q=sp.quad!,at=(u:number,w:number)=>toScreen(v,q[0].map((c,i)=>c+(q[1][i]-c)*u+(q[3][i]-c)*w) as V3)!;
+  const feet=at(hd.x,1),face=at(hd.x,(hd.top+hd.neck)/2),real=toScreen(v,[sp.ground[0],sp.ground[1]+1.75*DETAIL_HEIGHT.face*(label==="زن"?1.65/1.75:1),sp.ground[2]])!;
+  assert.ok(Math.hypot(feet[0]-g[0],feet[1]-g[1])<1,label+" "+a+": feet on the ground");assert.ok(Math.hypot(face[0]-real[0],face[1]-real[1])<2,label+" "+a+": face on the real face");
+ }
 });
 
 test("limits: the zoom never takes the camera into the subject, and a prop drags as far past one edge as the other, never behind the lens",async()=>{
@@ -291,19 +296,36 @@ test("changing the angle never changes the zoom, the lens, the aperture or the f
  }
 });
 
-test("no jump between angles: up to a ۳/۴ shot a person's face stays where the camera aims and keeps its size at every height stop",()=>{
- for(const label of ["مرد","زن"])for(const shotScale of [0.12,0.2,0.5,0.75]){
-  const seen=[-55,-25,0,35].map(el=>{const p={...man,label},s:Staging={...base,cameraElevation:el,shotScale,props:[p]},v=cssView(s,s,"3:4",300,400);
-   const sp=propSprites(v,[p],s,s)[0],hd=VISUALS[sp.id].head!,q=sp.quad!,at=(u:number,w:number)=>toScreen(v,q[0].map((c,i)=>c+(q[1][i]-c)*u+(q[3][i]-c)*w) as V3)!;
-   const f=at(hd.x,(hd.top+hd.neck)/2),t=at(hd.x,hd.top),n=at(hd.x,hd.neck);return {f,head:Math.hypot(t[0]-n[0],t[1]-n[1])};});
-  for(const x of seen){assert.ok(Math.hypot(x.f[0]-150,x.f[1]-200)<2,label+" "+shotScale+": the face at the frame's centre ("+x.f.map(Math.round)+")");
-   assert.ok(Math.abs(x.head/seen[2].head-1)<0.05,label+" "+shotScale+": head "+x.head.toFixed(0)+" vs "+seen[2].head.toFixed(0));}
+test("no jump, no float: at every lens, height and zoom the face sits on the real face and the feet on the ground; close up the head keeps its size",async()=>{
+ const {DETAIL_HEIGHT,scaleFromSlider}=await import("../lib/staging");
+ const {propSize}=await import("../lib/scene3d");
+ for(const label of ["مرد","زن"])for(const lensMm of [12,24,50,85])for(const el of [-55,-25,0,35]){
+  let prev:[number,number][]|undefined;
+  for(let sl=0.3;sl<=0.95;sl+=0.005){
+   const p={...man,label},s:Staging={...base,cameraElevation:el,shotScale:scaleFromSlider(sl),lensMm,autopilot:false,props:[p]};
+   const d=closeUp(s,s,"9:16",270,480).draw,v=cssView(d,s,"9:16",270,480),sp=propSprites(v,[p],d,s)[0],hd=VISUALS[sp.id].head!,q=sp.quad!;
+   const at=(u:number,w:number)=>toScreen(v,q[0].map((c,i)=>c+(q[1][i]-c)*u+(q[3][i]-c)*w) as V3)!;
+   const face=at(hd.x,(hd.top+hd.neck)/2),real=toScreen(v,[sp.ground[0],sp.ground[1]+propSize(p).h*DETAIL_HEIGHT.face,sp.ground[2]])!;
+   assert.ok(Math.hypot(face[0]-real[0],face[1]-real[1])<1,label+" "+lensMm+"mm "+el+"° "+sl.toFixed(3)+": the face on the real face");
+   const g=toScreen(v,sp.ground),feet=at(hd.x,1);
+   if(g&&g[0]>=0&&g[0]<=270&&g[1]>=0&&g[1]<=480)assert.ok(Math.hypot(feet[0]-g[0],feet[1]-g[1])<1,label+" "+lensMm+"mm "+el+"° "+sl.toFixed(3)+": the feet on the ground");
+   else assert.ok(!(feet[0]>0&&feet[0]<270&&feet[1]>0&&feet[1]<480),label+" "+lensMm+"mm "+el+"° "+sl.toFixed(3)+": no feet floating in view");
+   // Nothing jumps: what is in view moves little between two near zoom steps.
+   const pts=[0,0.25,0.5,0.75,1].map(w=>at(0.5,w)),inF=(p:[number,number])=>p[0]>=0&&p[0]<=270&&p[1]>=0&&p[1]<=480;
+   if(prev)pts.forEach((pt,i)=>{if(inF(pt)&&inF(prev![i]))assert.ok(Math.hypot(pt[0]-prev![i][0],pt[1]-prev![i][1])<0.06*480,label+" "+lensMm+"mm "+el+"° "+sl.toFixed(3)+": a jump");});
+   prev=pts;
+  }
  }
+ // Close up, the head is the same size from every height (each height's picture is drawn by its face).
+ for(const label of ["مرد","زن"]){const sizes=[-55,-25,0,35].map(el=>{const p={...man,label},s:Staging={...base,cameraElevation:el,shotScale:0.12,props:[p]},v=cssView(s,s,"3:4",300,400);
+  const sp=propSprites(v,[p],s,s)[0],hd=VISUALS[sp.id].head!,q=sp.quad!,at=(u:number,w:number)=>toScreen(v,q[0].map((c,i)=>c+(q[1][i]-c)*u+(q[3][i]-c)*w) as V3)!;
+  const t=at(hd.x,hd.top),n=at(hd.x,hd.neck);return Math.hypot(t[0]-n[0],t[1]-n[1]);});
+  for(const x of sizes)assert.ok(Math.abs(x/sizes[2]-1)<0.05,label+": head "+x.toFixed(0)+" vs "+sizes[2].toFixed(0));}
  // From overhead, the plan view is placed and turned about its head: the head stays at the centre and the picture keeps its size as the person turns.
  for(const shotScale of [0.2,1.1]){const seen=[0,45,90,135,180].map(facing=>{const p={...man,facing},s:Staging={...base,cameraElevation:80,shotScale,props:[p]},v=cssView(s,s,"3:4",300,400);
   const sp=propSprites(v,[p],s,s)[0],a=VISUALS[sp.id],q=sp.quad!,at=(u:number,w:number)=>toScreen(v,q[0].map((c,i)=>c+(q[1][i]-c)*u+(q[3][i]-c)*w) as V3)!;
   const h=at(a.pivot!.x,a.pivot!.y),l=at(0,0.5),r=at(1,0.5);return {h,w:Math.hypot(l[0]-r[0],l[1]-r[1])};});
-  for(const x of seen){assert.ok(Math.hypot(x.h[0]-150,x.h[1]-200)<3,shotScale+": head at "+x.h.map(Math.round));assert.ok(Math.abs(x.w/seen[0].w-1)<0.01);}}
+  for(const x of seen){assert.ok(Math.abs(x.w/seen[0].w-1)<0.01);assert.ok(Math.hypot(x.h[0]-seen[0].h[0],x.h[1]-seen[0].h[1])<2,shotScale+": the head stays put");}}
  // The main subject shows the height chosen even where the camera cannot reach it (a worm's-eye full shot rests on the ground).
  const low:Staging={...base,cameraElevation:-55,shotScale:1.1};assert.equal(propSprites(cssView(low,low,"3:4",300,400),[man],low,low)[0].stop,"bottom");
 });
@@ -333,4 +355,20 @@ test("the camera-distance diagram: what the frame covers on the subject; a lower
  const s={...base,shotSize:"medium" as const},c=cropOnSubject(s,s,"3:4")!;
  assert.ok(c.top>1.6&&c.bottom>0.6&&c.bottom<1.4&&c.left<0&&c.right>0,JSON.stringify(c));
  const low=cropOnSubject({...s,cameraLift:-0.6},s,"3:4")!;assert.ok(low.top<c.top-0.4&&low.bottom<c.bottom-0.4);
+});
+
+test("the prompt carries a moved focus point: the part of the subject it is on and where it is in the frame",async()=>{
+ const {describeFocus}=await import("../lib/frame-css");
+ const s:Staging={...base,shotSize:"medium"};
+ assert.deepEqual(describeFocus(s,s,"3:4"),{en:"",fa:""},"Whoush's own focus needs no words");
+ const high=describeFocus({...s,pivot:pickPivot(s,s,"3:4",0.5,0.15)},s,"3:4"),low=describeFocus({...s,pivot:pickPivot(s,s,"3:4",0.5,0.85)},s,"3:4");
+ assert.match(high.en,/face, at the upper centre of the frame/);assert.match(high.fa,/صورتِ مرد، بالای کادر/);
+ assert.match(low.en,/lower centre of the frame/);assert.doesNotMatch(low.en,/face/);
+});
+
+test("the fisheye shows in the full-width frame too, bulging about the crop",()=>{
+ const s:Staging={...base,shotSize:"full",fisheye:true,lensMm:14,autopilot:false},v=cssView(s,s,"3:4",800,600,true,0.78);
+ assert.ok(v.fish>0,"fisheye on in the wide view");
+ assert.ok(Math.abs(v.fc[0]-v.frame!.x*800)<1e-6&&Math.abs(v.fc[1]-v.frame!.y*600)<1e-6,"centred on the crop");
+ const edge=fish(v,v.fc[0]+v.fR*0.5,v.fc[1]);assert.ok(edge[0]>v.fc[0]+v.fR*0.5+1,"the centre is magnified: a point off it is pushed outward");
 });
