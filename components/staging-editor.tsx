@@ -214,7 +214,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
   </button>
   <div id={bodyId} hidden={!open&&!focused} className="flex min-w-0 flex-col gap-3">
   {/* The sections (frame, camera, lighting), each set apart by a divider and room above and below it. */}
-  <div className="flex min-w-0 flex-col divide-y divide-line-secondary/40 [&>*]:py-5 [&>*:first-child]:pt-1 [&>*:last-child]:pb-1">
+  <div className="flex min-w-0 flex-col divide-y divide-line-secondary/40 [&>*]:py-2.5 [&>*:first-child]:pt-1 [&>*:last-child]:pb-1">
    {show("frame")&&frameShown&&<div ref={el=>{frameArea.current=el;setFrameEl(el);}}><Viewport {...cap.frame}>
     <FrameView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={i=>{setPropSel(i);setCenterSel(false);}} centerSel={centerSel} onSelectCenter={()=>{setCenterSel(true);setPropSel(null);}} onProp={(i,x,z)=>setProp(i,{x,z})} onZoom={setDistance} locked={locked} onLock={setLocked} onBack={()=>{setPropSel(null);setCenterSel(false);setLocked(false);}}
      onFocus={f=>{if(f)set(f);else resetFocus();}} onAngle={c=>{if(c.elevation!==undefined)setElevation(c.elevation);if(c.azimuth!==undefined)orbitTo(c.azimuth);}} three={(FRAME_RENDERER==="css"||webgl)&&onScreen&&(open||focused)&&!fullscreen} onFullscreen={FRAME_FULLSCREEN?()=>{setCenterSel(false);setFullscreen(true);}:undefined}/>
