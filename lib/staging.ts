@@ -326,19 +326,6 @@ export function horizonShift(s:Staging):number{
  const e=elevationOf(s)*Math.PI/180,f=physicalCamera(s).f;
  return clampN(-Math.tan(e)*(f/(SENSOR_H_MM/2))*0.5,-1.4,1.4);
 }
-/**
- * The light on the scene as the camera sees it, for shading the props: the key light's side (−1 left, 1 right), how much it comes from the camera's side
- * (1) or from behind (−1), its colour, strength and hardness, and the overall exposure (0 dark to 1 bright).
- */
-export function lightLook(s:Staging){
- const key=s.lights.find(l=>l.role==="key")??s.lights[0];
- const a=key?lightAngleOf(key):undefined,top=key?.direction==="top";
- const side=a===undefined||top?0:Math.cos(a*Math.PI/180),front=a===undefined?0.3:top?0.2:Math.sin(a*Math.PI/180);
- const total=s.lights.reduce((n,l)=>n+intensityOf(l),0);
- const lowLight=s.lights.length>0&&s.lights.every(l=>l.source==="fire"||l.source==="practical"||l.source==="moon"||l.colorTemperatureK<=2400);
- return {side,front,color:key?lightHex(key):"#ffffff",strength:key?intensityOf(key):0.7,hard:key?.quality==="hard",
-  rim:s.lights.some(l=>l.role==="rim"||(l.angle!==undefined&&Math.sin(l.angle*Math.PI/180)<-0.5)),exposure:clampN(total/1.6-(lowLight?0.25:0),0.2,1)};
-}
 
 /**
  * Moves the frame's centre point to the world point now under screen point (sx, sy) without moving the picture: the crop pan absorbs the change, so the

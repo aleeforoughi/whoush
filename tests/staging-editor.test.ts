@@ -364,8 +364,8 @@ test("a follow-up about one part of the scene opens «بوم» on just that part
  const {expandFocus}=await import("../lib/staging");assert.deepEqual(expandFocus(["camera"]),["angle","distance","lens"],"an older saved focus still opens");
 });
 
-test("the frame is a lo-fi previz from one physical camera: lens perspective, depth of field, horizon tilt, Dutch roll, light",async()=>{
- const {physicalCamera,lensSizeFactor,backdropFactor,blurAt,horizonShift,frameCamera,frameSize,moveFocusPoint,lightLook}=await import("../lib/staging");
+test("the frame is a lo-fi previz from one physical camera: lens perspective, depth of field, horizon tilt, Dutch roll",async()=>{
+ const {physicalCamera,lensSizeFactor,backdropFactor,blurAt,horizonShift,frameCamera,frameSize,moveFocusPoint}=await import("../lib/staging");
  const woman={kind:"person" as const,label:"زن",x:0,z:-0.25,y:0,main:true},tree={kind:"tree" as const,label:"درخت",x:0.5,z:0.75,y:0};
  const s:Staging={...base,shotSize:"medium",props:[woman,tree]};
  const at=(o:Partial<Staging>)=>({...s,...o});
@@ -390,7 +390,4 @@ test("the frame is a lo-fi previz from one physical camera: lens perspective, de
  const [ux,uy]=c.unroll(...([Math.cos(20*Math.PI/180)*10,Math.sin(20*Math.PI/180)*10] as [number,number]));assert.ok(Math.abs(ux-10)<1e-9&&Math.abs(uy)<1e-9,"dragging along the tilted frame is a straight move");
  const rolled=at({cameraRoll:20,cameraAngle:"dutch"}),mv={...rolled,...moveFocusPoint(rolled,s,W,H,W*0.3,H*0.4)};
  assert.deepEqual(frameCamera(mv,s,W,H).toScreen(10,20).map(n=>Math.round(n*1000)),frameCamera(rolled,s,W,H).toScreen(10,20).map(n=>Math.round(n*1000)),"moving the centre point never moves a rolled picture");
- // Light: a key from the right lights the right side; from behind leaves the front dark.
- const L=(angle:number)=>lightLook(at({lights:[{...base.lights[0],role:"key",angle,direction:"right"}]}));
- assert.ok(L(0).side>0.9&&L(180).side<-0.9&&L(270).front<-0.9);
 });

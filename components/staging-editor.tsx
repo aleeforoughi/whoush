@@ -4,7 +4,7 @@ import {Box,ChevronDown,Lock,LockOpen,Plus,RotateCcw,Trash2,Undo2,X} from "lucid
 import {Button,Icon} from "@aleeforoughi/feather-react";
 import {FOCUS_DETAILS,LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
- SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,rollOf,lensSizeFactor,backdropFactor,blurAt,horizonShift,lightLook,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
+ SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,lensFor,centerOnSubject,rollOf,lensSizeFactor,backdropFactor,blurAt,horizonShift,CANVAS_SECTION_FA,type CanvasSection,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 import {fa} from "@/lib/format";
 
@@ -579,7 +579,6 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
  const bf=backdropFactor(staging);
  // Depth of field, in the scaled world's own units (a blur of n screen units is n/k there).
  const blurStd=(z:number|"backdrop")=>{const v=blurAt(staging,z)*H;return v>0.06?v/k:0;};
- const look=lightLook(staging);
  const onX=Math.abs(Math.abs(fr.x)-THIRD)<0.03,onY=Math.abs(Math.abs(fr.y)-THIRD)<0.03;
  const unit=()=>{const b=svg.current!.getBoundingClientRect();return {sx:(W+4)/b.width,sy:(H+4)/b.height};};
  const commit=(v:{x:number;y:number})=>onFraming?.(v.x===0&&v.y===0?undefined:v);
@@ -638,26 +637,13 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
       <rect x={a.x-Math.max(w,18/k)/2} y={a.y-Math.max(a.h,18/k)} width={Math.max(w,18/k)} height={Math.max(a.h,18/k)} fill="transparent"/>
       {tints[i]&&<Tint id={clip+"-t"+i} color={tints[i]!}/>}
       {(()=>{const sp=sprite(p),bs=blurStd(p.z),id=clip+"-p"+i;
-       // The light as the camera sees it: the key's side lit (in its colour), the other side in shadow, harder or softer; a back light leaves the front dark.
-       const lit=look.side>=0,edge=Math.abs(look.side),shade=(look.hard?0.42:0.26)*(0.35+edge*0.65)+Math.max(0,-look.front)*0.3,glow=0.28*look.strength*(0.4+edge*0.6+Math.max(0,look.front)*0.3);
        return <g filter={bs>0?"url(#"+id+"-b)":undefined}>
-        <defs>
-         {bs>0&&<filter id={id+"-b"} x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation={bs}/></filter>}
-         <mask id={id+"-m"} maskUnits="userSpaceOnUse"><Asset id={sp.id} x={a.x} y={a.y} h={a.h} mirror={sp.mirror} sx={sp.sx}/></mask>
-         <linearGradient id={id+"-l"} x1={lit?"0":"1"} y1="0" x2={lit?"1":"0"} y2="0">
-          <stop offset="0" stopColor="black" stopOpacity={shade}/><stop offset=".55" stopColor="black" stopOpacity={shade*0.25}/>
-          <stop offset="1" stopColor={look.color} stopOpacity={glow}/>
-         </linearGradient>
-        </defs>
+        {bs>0&&<defs><filter id={id+"-b"} x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation={bs}/></filter></defs>}
         <Asset id={sp.id} x={a.x} y={a.y} h={a.h} mirror={sp.mirror} sx={sp.sx} tint={tints[i]?clip+"-t"+i:undefined}/>
-        <rect x={a.x-w/2} y={a.y-a.h} width={w} height={a.h} fill={"url(#"+id+"-l)"} mask={"url(#"+id+"-m)"} className="pointer-events-none"/>
        </g>;})()}
       {on&&<rect x={a.x-w/2-1} y={a.y-a.h-1} width={w+2} height={a.h+2} rx={2} fill="none" className="stroke-primary" strokeWidth={1} vectorEffect="non-scaling-stroke" strokeDasharray="3 2"/>}
      </g>;})}
    </g>
-   {/* Exposure: a dim scene (few or weak lights, firelight, moonlight) looks dim; the key light's colour washes the whole picture a little. */}
-   <rect width={W} height={H} fill="black" fillOpacity={(1-look.exposure)*0.5} className="pointer-events-none"/>
-   <rect width={W} height={H} fill={look.color} fillOpacity={0.05*look.strength} className="pointer-events-none"/>
    {editable&&<text x={W-3} y={H-3} direction="rtl" textAnchor="start" fontSize={3.6} fill="currentColor" fillOpacity=".55" className="pointer-events-none" aria-hidden="true">پیش‌نمایش تقریبی</text>}
    {[1,2].map(i=><g key={i} strokeDasharray="3 3" strokeWidth={1} className="pointer-events-none">
     <line vectorEffect="non-scaling-stroke" x1={W*i/3} x2={W*i/3} y1={0} y2={H} className={third(onX,fr.x<0,i)?"stroke-primary":""} stroke={third(onX,fr.x<0,i)?undefined:"currentColor"} strokeOpacity={third(onX,fr.x<0,i)?1:.3}/>
