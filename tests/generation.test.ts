@@ -1,7 +1,8 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
-import {MEDIA_CATALOG,MEDIA_CATALOG_VERSION,assertValidCatalog,findMediaModel,priceFor} from "../lib/catalog";
+import {MEDIA_CATALOG,MEDIA_CATALOG_VERSION,assertValidCatalog,capabilityState,findMediaModel,priceFor} from "../lib/catalog";
+import {SCENE_COMPILER_VERSION} from "../lib/scene-compiler";
 import {bestModelFor,modelIneligibility,recommendMediaModels,suggestModel} from "../lib/router";
 import {buildProposal,NoCompatibleModelError} from "../lib/agent";
 import {generationGate} from "../lib/policy";
@@ -134,7 +135,11 @@ test("mock provider never yields media or charges; terminal state is completed_d
  assert.deepEqual(states,["submitted","running","completed_demo","completed_demo","completed_demo"]);
  const pub=toPublicJob((await pollJob(job.id,"owner-a",deps))!);
  // Provenance: the job keeps the hash of the exact prompt it sent, privately; the public job never shows it.
- assert.match(job.promptSha256??"",/^[0-9a-f]{64}$/);assert.ok(!JSON.stringify(pub).includes(job.promptSha256!)&&!("promptSha256" in pub));
+ const pv=job.provenance!;
+ assert.match(pv.promptSha256,/^[0-9a-f]{64}$/);assert.equal(pv.requestedModelId,"soul-image");assert.equal(pv.endpoint,"mock");
+ assert.equal(pv.catalogVersion,MEDIA_CATALOG_VERSION);assert.equal(pv.compilerVersion,SCENE_COMPILER_VERSION,"an image prompt compiled from the canvas");
+ assert.equal(pv.reportedModelId,undefined,"no provider reported a model: nothing is assumed");
+ assert.ok(!JSON.stringify(pub).includes(pv.promptSha256)&&!("provenance" in pub));
  assert.deepEqual(pub.outputs,[]);assert.equal(pub.chargedNeurons,0);assert.equal(pub.qa.status,"not_applicable");assert.match(pub.messageFa,/هیچ رسانه واقعی/);
  assert.equal(deps.ledger.get(job.id)?.state,"released");
  const mock=new MockMediaProvider(),{providerRequestId}=await mock.submit();
@@ -418,4 +423,21 @@ test("public catalog: Genjutsu is listed unavailable with no price; priced gener
  for(const id of ["genjutsu-replace","genjutsu-motion","intone"]){assert.equal(by(id).available,false,id);assert.equal(by(id).neurons,undefined,id);}
  assert.deepEqual([by("soul-image").neurons,by("seedance-2-5-5s").neurons,by("seedance-2-5-10s").neurons],[2,45,90]);
  assert.ok(!JSON.stringify(j).includes("sourceSecondsSkus"));
+});
+
+test("provenance: a model the provider reports is recorded, and one that differs from the requested model is flagged",async()=>{
+ const mock=new MockMediaProvider(),reporting:MediaProvider={submit:()=>mock.submit(),cancel:id=>mock.cancel(id),
+  status:async id=>({...(await mock.status(id)),reportedModelId:"some-other-model"})};
+ const deps={...fresh(),provider:reporting},{job}=await run(deps);
+ const polled=(await pollJob(job.id,"owner-a",deps))!;
+ assert.equal(polled.provenance?.reportedModelId,"some-other-model");assert.equal(polled.provenance?.modelMismatch,true);
+ assert.ok(!("provenance" in toPublicJob(polled)));
+});
+test("capability states: verified from the API reference, unsupported only there; the agent catalogue is documented but unverified; the rest is unknown",()=>{
+ const m=(id:string)=>findMediaModel(id)!;
+ assert.equal(capabilityState(m("soul-image")),"verified");
+ assert.equal(capabilityState(m("soul-image"),"referenceImages"),"unsupported");
+ assert.equal(capabilityState(m("intone")),"documented_unverified");assert.equal(capabilityState(m("intone"),"lipSync"),"documented_unverified");
+ assert.equal(capabilityState(m("intone"),"startImage"),"unknown","a false flag on an unverified model proves nothing");
+ assert.equal(capabilityState(m("nano-banana-pro-2k")),"unknown");assert.equal(capabilityState(m("nano-banana-pro-2k"),"referenceImages"),"unknown");
 });

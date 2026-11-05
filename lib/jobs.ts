@@ -1,9 +1,9 @@
 import "server-only";
 import {createHash,randomUUID} from "node:crypto";
-import {findMediaModel,type MediaConfiguration} from "./catalog";
+import {findMediaModel,MEDIA_CATALOG_VERSION,type MediaConfiguration} from "./catalog";
 import {ReservationLedger} from "./ledger";
 import {NotCancelableError,providerForMode,type MediaProvider,type ProviderOutput,type ProviderStatus} from "./media-provider";
-import {getPrivateMediaPrompt} from "./orchestrator";
+import {getPrivateMediaPrompt,privatePromptCompilerVersion} from "./orchestrator";
 import {evaluateOutputQA,type OutputQA} from "./output-qa";
 import {claimDevSubmit,devGenerationGate,generationGate,type GenerationMode} from "./policy";
 import {verifyQuote,verifyQuoteSignature,QuoteError,type CharacterRefDigest} from "./quotes";
@@ -17,7 +17,14 @@ export const JOB_TRANSITIONS:Readonly<Record<JobState,readonly JobState[]>>={
 export const isTerminal=(s:JobState)=>JOB_TRANSITIONS[s].length===0;
 export type Job={id:string;ownerId:string;idempotencyKey:string;quoteId:string;turnId:string;modelId:string;mode:GenerationMode;configuration:MediaConfiguration;characterRef?:CharacterRefDigest;
  neurons:number;chargedNeurons:number;state:JobState;providerRequestId?:string;
- /** Private provenance: the SHA-256 of the exact prompt sent, so a result can be traced to it without keeping the prompt on the job. Never public. */promptSha256?:string;outputs:ProviderOutput[];qa:OutputQA;createdAt:string;updatedAt:string};
+ /** Private provenance (docs/CANVAS_TO_IMAGE.md section 8): what was asked for and sent, so every result can be traced. Never public. */provenance?:JobProvenance;outputs:ProviderOutput[];qa:OutputQA;createdAt:string;updatedAt:string};
+/**
+ * What a job asked for and sent: the requested model, the endpoint called, the catalog and prompt-compiler versions, and the SHA-256 of the exact prompt
+ * (so a result is traced to it without keeping the prompt on the job). `reportedModelId` is filled only when a provider reports which model ran; the
+ * documented Higgsfield status response has no such field, so it stays empty there. A reported model that differs from the requested one sets
+ * `modelMismatch`: that result says nothing about the requested model.
+ */
+export type JobProvenance={requestedModelId:string;endpoint:string;catalogVersion:string;compilerVersion?:string;promptSha256:string;reportedModelId?:string;modelMismatch?:boolean};
 export interface JobStore{get(id:string):Job|undefined;byIdempotency(ownerId:string,key:string):Job|undefined;byQuote(quoteId:string):Job|undefined;insert(j:Job):void;save(j:Job):void}
 export class InMemoryJobStore implements JobStore{
  private readonly jobs=new Map<string,Job>();
@@ -60,7 +67,10 @@ export async function executeApprovedQuote(i:{token:string;approved:boolean;idem
  // dev_live (owner-only local testing) accepts the lexical pre-submission check and never charges Neurons; see devLiveTest in lib/policy.ts.
  const prompt=getPrivateMediaPrompt(q.turnId);if(prompt===undefined)throw new QuoteError("unknown_turn");
  const t=now.toISOString();
- const job:Job={id:randomUUID(),ownerId:i.ownerId,idempotencyKey:i.idempotencyKey,quoteId:q.quoteId,turnId:q.turnId,modelId:q.modelId,mode:q.mode,configuration:q.configuration,characterRef:q.characterRef,promptSha256:createHash("sha256").update(prompt).digest("hex"),neurons:q.neurons,chargedNeurons:0,state:"quoted",outputs:[],qa:{status:"not_applicable",checks:[]},createdAt:t,updatedAt:t};
+ const job:Job={id:randomUUID(),ownerId:i.ownerId,idempotencyKey:i.idempotencyKey,quoteId:q.quoteId,turnId:q.turnId,modelId:q.modelId,mode:q.mode,configuration:q.configuration,characterRef:q.characterRef,neurons:q.neurons,chargedNeurons:0,state:"quoted",outputs:[],qa:{status:"not_applicable",checks:[]},createdAt:t,updatedAt:t};
+ const compilerVersion=privatePromptCompilerVersion(q.turnId);
+ job.provenance={requestedModelId:q.modelId,endpoint:q.mode==="demo"?"mock":findMediaModel(q.modelId)?.verifiedApiPath??"unverified",catalogVersion:MEDIA_CATALOG_VERSION,
+  ...(compilerVersion?{compilerVersion}:{}),promptSha256:createHash("sha256").update(prompt).digest("hex")};
  // Everything up to the provider call is synchronous, so a concurrent replay always finds this job.
  store.insert(job);transition(job,"approved",now);
  try{ledger.reserve(job.id,job.ownerId,job.neurons);}catch{transition(job,"released",now);store.save(job);throw new JobError("insufficient_balance");}
@@ -96,6 +106,7 @@ export async function pollJob(id:string,ownerId:string,deps:JobDeps={}):Promise<
  try{s=await provider.status(job.providerRequestId);}catch{return job;} // transient: state unchanged
  const cur=store.get(id)!;if(isTerminal(cur.state))return cur; // another poll finished it while we awaited
  const now=deps.now?.()??new Date();
+ if(s.reportedModelId&&cur.provenance&&!cur.provenance.reportedModelId){cur.provenance={...cur.provenance,reportedModelId:s.reportedModelId,modelMismatch:s.reportedModelId!==cur.provenance.requestedModelId};}
  switch(s.state){
   case "queued":break;
   case "running":if(cur.state==="submitted")transition(cur,"running",now);break;

@@ -7,7 +7,8 @@ import type {MediaModel} from "./types";
 /** Provider outputs are provider-hosted URLs that expire (>= 7 days); mirroring to owned storage is NOT implemented (docs/LAUNCH_GATES.md gate 8). */
 export type ProviderOutput={kind:"image"|"video"|"audio";url:string;needsMirroring:true;mime?:string;width?:number;height?:number;durationSeconds?:number};
 export type ProviderState="queued"|"running"|"completed"|"completed_demo"|"failed"|"nsfw"|"canceled";
-export type ProviderStatus={state:ProviderState;outputs:ProviderOutput[];expiresAt?:string};
+/** `reportedModelId`: the model the provider says ran, only when it reports one (the documented Higgsfield status has no such field). */
+export type ProviderStatus={state:ProviderState;outputs:ProviderOutput[];expiresAt?:string;reportedModelId?:string};
 export type ProviderJob={modelId:string;prompt:string;configuration:MediaConfiguration;idempotencyKey:string};
 export interface MediaProvider{submit(job:ProviderJob):Promise<{providerRequestId:string}>;status(providerRequestId:string):Promise<ProviderStatus>;cancel(providerRequestId:string):Promise<void>}
 export {NotCancelableError};

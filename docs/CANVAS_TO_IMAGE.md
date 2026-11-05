@@ -241,6 +241,11 @@ A second pass is allowed only when all of these hold:
 
 Transport failures, safety rejections and visual mismatches are mapped separately. The existing refund policy applies.
 
+### Status: provenance (2026-11-05)
+
+- **The provider can't tell us which model ran.** The documented Higgsfield status response (`docs/HIGGSFIELD_EVIDENCE.md`, Transport) has no model field, so Whoush cannot learn the actual model from the API. `ProviderStatus.reportedModelId` is filled only by an adapter whose provider documents one. Until then `reportedModelId` stays empty, and nothing is assumed.
+- **Capability states never upgrade evidence.** `capabilityState(model, capability?)` returns `verified` only from the model's API reference. The agent catalogue gives `documented_unverified` at most, and a false flag on an unverified model is `unknown`, never `unsupported`. Eligibility still requires `verified` (`lib/policy.ts`).
+
 ## 9. Relighting and camera edits
 
 **Relighting order:**
@@ -315,7 +320,7 @@ Approve release thresholds before reading the results.
 |---|---|---|---|
 | P0 | **Compiler, first slice** | `lib/scene-compiler.ts`, `lib/orchestrator.ts` | **Done 2026-11-05:** one scene per prompt; the planner's camera and light removed; a canvas change replaces the scene |
 | P0 | Compiler, second slice | `lib/scene-compiler.ts`, `lib/staging.ts`, `lib/jobs.ts` | **Done 2026-11-05:** frame sides for lights; people count; back-view wording; prompt hash on the job. Offscreen props moved to P1 (needs the visibility test) |
-| P0 | Provenance and capability states | `lib/catalog.ts`, `lib/jobs.ts`, `lib/media-provider.ts` | Requested and reported model id, compiler version, prompt hash and seed recorded; four capability states; a mismatched id is flagged |
+| P0 | Provenance and capability states | `lib/catalog.ts`, `lib/jobs.ts`, `lib/media-provider.ts` | **Done 2026-11-05:** each job keeps a private `provenance` (requested model, endpoint called, catalog version, prompt-compiler version, prompt SHA-256, and the reported model with `modelMismatch` when a provider reports one); `capabilityState()` gives the four states. Seeds are not recorded: no verified payload sends one, and the documented status returns none |
 | P0 | Operation and edit policy | `lib/scene-compiler.ts`, `lib/orchestrator.ts`, quote route | **Done 2026-11-05:** `create`, `camera_edit`, `relight_edit` and `content_edit`, read in room terms; each edit's lock opens the prompt; camera with light (or layout) on a photo edit is refused at «بساز» with a Persian reason, before any price |
 | P0 | `submission_unknown` | `lib/jobs.ts` | A timeout during submission never auto-submits another paid job |
 | P1 | Occlusion preflight | `lib/scene3d.ts`, `lib/frame-css.ts` | The table blocking the face returns `COMPOSITION_OCCLUDED` before quoting |
