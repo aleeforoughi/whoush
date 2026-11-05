@@ -133,8 +133,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  // Changing the angle never changes the zoom, the lens, the aperture or the focus: only the camera's height or side moves.
  const setElevationOnly=(e:number)=>setDraft(d=>({...dropPivot(d),cameraElevation:e,cameraAngle:d.cameraAngle==="dutch"?"dutch":snapElevation(e)}));
  const orbitTo=(az:number)=>{aim();orbitOnly(az);};
- // A drag of the camera re-centres once, when it starts (not on every move).
- const orbitDrag=(az:number)=>orbitOnly(snapSide(az));
+ // A drag of the camera re-centres once, when it starts (not on every move); it orbits smoothly and locks to the nearest side on release.
  const orbitOnly=(az:number)=>setDraft(d=>{const delta=wrap180(az-(d.cameraAzimuth??0));return orbitCamera(orbitPivot(dropPivot(d),delta),delta);});
  const setDistance=(v:number)=>{aim();setDistanceOnly(v);};
  // The zoom stays within what this scene allows (the camera never inside or past the subject: lib/frame-css.ts, zoomLimits); a new lens or angle that
@@ -246,11 +245,14 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
         phone, so each is big enough to drag with a finger; side by side where the card is wide. */}
     <div className="grid grid-cols-1 gap-2 @lg:grid-cols-2">
      <Tile label="زاویه دوربین / عمودی">
+      {/* Dragged, the camera moves smoothly along its arc; let go, it locks to the nearest height stop (the frame's pictures are drawn at those). */}
       <CameraView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onStart={aim} onCamera={c=>{setDraft(d=>{const n=c.flip?orbitCamera(orbitPivot(dropPivot(d),180),180):dropPivot(d);
-       const e=snapVertical(c.elevation);return {...n,cameraElevation:e,cameraAngle:n.cameraAngle==="dutch"?"dutch":snapElevation(e)};});}}/>
+       return {...n,cameraElevation:c.elevation,cameraAngle:n.cameraAngle==="dutch"?"dutch":snapElevation(c.elevation)};});}}
+       onEnd={()=>setDraft(d=>{const e=snapVertical(elevationOf(d));return {...d,cameraElevation:e,cameraAngle:d.cameraAngle==="dutch"?"dutch":snapElevation(e)};})}/>
      </Tile>
      <Tile label="زاویه دوربین / افقی">
-      <OrbitView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onStart={aim} onOrbit={c=>orbitDrag(c.azimuth)}/>
+      <OrbitView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onStart={aim} onOrbit={c=>orbitOnly(c.azimuth)}
+       onEnd={()=>setDraft(d=>{const az=d.cameraAzimuth??0,delta=wrap180(snapSide(az)-az);return delta?orbitCamera(orbitPivot(dropPivot(d),delta),delta):d;})}/>
      </Tile>
     </div>
     {/* The height and the orbit snap to the stops the pack is drawn at: five heights, eight sides (lib/staging.ts, VERTICAL_STOPS, SIDE_STEP). */}
@@ -478,7 +480,7 @@ function DistanceView({staging,anchor,aspect,editable,onDistance}:{staging:Stagi
   <g role={editable?"slider":undefined} tabIndex={editable?0:undefined} aria-label="فاصلهٔ دوربین" aria-valuetext={SHOT_SIZE_FA[staging.shotSize]+"، زوم "+fa(zoomFactor(staging))+"×"}
    aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(dist*100)} onKeyDown={editable?key:undefined} onPointerDown={editable?begin:undefined}
    className={editable?(dragging?"cursor-grabbing":"cursor-grab")+" touch-none outline-none focus-visible:[&>circle]:stroke-primary":""}>
-   <circle cx={camX+CAMERA_SIZE/2} cy={camY} r={36} fill="transparent" strokeWidth={2}/>
+   <circle cx={camX+CAMERA_SIZE/2} cy={camY} r={CAMERA_GRAB} fill="transparent" strokeWidth={2}/>
    <CameraGlyph view="side" x={camX} y={camY} rotate={0} tint={tint}/>
   </g>
  </svg>;
@@ -495,7 +497,7 @@ const radiusOf=(v:number,min:number,span:number)=>min+span*Math.max(0,Math.min(1
  * distance (the frame's zoom follows). The subject is drawn the way it faces the camera (its face toward the camera, its back, or side on), like the frame
  * and the top view. Sized so the whole circle stays inside at any distance.
  */
-function CameraView({staging,anchor,aspect,editable,onCamera,onStart}:{staging:Staging;/** A drag begins. */onStart?:()=>void;/** For the sight line: the frame's centre point (see FrameView). */anchor?:Staging;aspect?:string;editable:boolean;onCamera:(c:{elevation:number;flip?:boolean})=>void}){
+function CameraView({staging,anchor,aspect,editable,onCamera,onStart,onEnd}:{staging:Staging;/** A drag begins. */onStart?:()=>void;/** A drag ends (the camera then locks to the nearest stop). */onEnd?:()=>void;/** For the sight line: the frame's centre point (see FrameView). */anchor?:Staging;aspect?:string;editable:boolean;onCamera:(c:{elevation:number;flip?:boolean})=>void}){
  const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false),tint=useId();
  // Which side of the subject the camera is drawn on (1: right). It changes when a drag carries the camera over the top, so nothing jumps.
  const [dragSide,setSide]=useState<1|-1>(1);
@@ -531,7 +533,7 @@ function CameraView({staging,anchor,aspect,editable,onCamera,onStart}:{staging:S
  const move=(e:PointerEvent)=>{if(!dragging)return;const c=at(e);if(!Number.isFinite(c.elevation))return;
   const flip=c.side!==side;if(flip)setSide(c.side);onCamera({elevation:c.elevation,...(flip?{flip}:{})});};
  return <svg ref={svg} viewBox={"0 0 "+VW+" "+VH} className="mx-auto block aspect-[22/21] w-full max-w-sm touch-pan-y select-none text-fg-primary" aria-hidden={!editable}
-  onPointerMove={move} onPointerUp={()=>setDragging(false)} onPointerCancel={()=>setDragging(false)}>
+  onPointerMove={move} onPointerUp={()=>{if(dragging)onEnd?.();setDragging(false);}} onPointerCancel={()=>{if(dragging)onEnd?.();setDragging(false);}}>
   <BlueTint id={tint}/>
   <g transform={"translate("+tx+" "+ty+") scale("+fit+")"}>
   <circle cx={pivot[0]} cy={pivot[1]} r={R} fill="none" stroke="currentColor" strokeOpacity=".4" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
@@ -545,7 +547,7 @@ function CameraView({staging,anchor,aspect,editable,onCamera,onStart}:{staging:S
    onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);onStart?.();setDragging(true);}:undefined}
    className={editable?(dragging?"cursor-grabbing":"cursor-grab")+" touch-none outline-none focus-visible:[&>circle]:stroke-primary":""}>
    {/* A large, finger-sized grab area around the camera (about 50px on a phone), the camera itself drawn blue. */}
-   {(()=>{const away=(aim+180)*Math.PI/180,L=CAMERA_SIZE/2;return <circle cx={cx+Math.cos(away)*L} cy={cy+Math.sin(away)*L} r={36} fill="transparent" strokeWidth={2}/>;})()}
+   {(()=>{const away=(aim+180)*Math.PI/180,L=CAMERA_SIZE/2;return <circle cx={cx+Math.cos(away)*L} cy={cy+Math.sin(away)*L} r={CAMERA_GRAB} fill="transparent" strokeWidth={2}/>;})()}
    <CameraGlyph view="side" x={cx} y={cy} rotate={aim-180+(camLeft?-roll:roll)} flip={camLeft} tint={tint}/>
   </g>
   </g>
@@ -557,7 +559,7 @@ function CameraView({staging,anchor,aspect,editable,onCamera,onStart}:{staging:S
  * and the camera on a circle around it. Drag the camera around for its orbit (front, sides, behind) and in or out for its distance; the frame above turns
  * and zooms to match, live.
  */
-function OrbitView({staging,anchor,aspect,editable,onOrbit,onStart}:{staging:Staging;/** A drag begins. */onStart?:()=>void;anchor?:Staging;aspect?:string;editable:boolean;onOrbit:(c:{azimuth:number})=>void}){
+function OrbitView({staging,anchor,aspect,editable,onOrbit,onStart,onEnd}:{staging:Staging;/** A drag begins. */onStart?:()=>void;/** A drag ends (the camera then locks to the nearest side). */onEnd?:()=>void;anchor?:Staging;aspect?:string;editable:boolean;onOrbit:(c:{azimuth:number})=>void}){
  const svg=useRef<SVGSVGElement>(null),[dragging,setDragging]=useState(false),tint=useId();
  const VW=220,VH=210,C:[number,number]=[110,105],U=44;
  // Angle only: the camera stays at one distance here (the distance has its own tile).
@@ -574,7 +576,7 @@ function OrbitView({staging,anchor,aspect,editable,onOrbit,onStart}:{staging:Sta
   onOrbit({azimuth:snapSide(az+d)});};
  const move=(e:PointerEvent)=>{if(!dragging)return;const v=at(e);if(Number.isFinite(v.azimuth))onOrbit(v);};
  return <svg ref={svg} viewBox={"0 0 "+VW+" "+VH} className="mx-auto block aspect-[22/21] w-full max-w-sm touch-pan-y select-none text-fg-primary" aria-hidden={!editable}
-  onPointerMove={move} onPointerUp={()=>setDragging(false)} onPointerCancel={()=>setDragging(false)}>
+  onPointerMove={move} onPointerUp={()=>{if(dragging)onEnd?.();setDragging(false);}} onPointerCancel={()=>{if(dragging)onEnd?.();setDragging(false);}}>
   <BlueTint id={tint}/>
   <circle cx={C[0]} cy={C[1]} r={R} fill="none" stroke="currentColor" strokeOpacity=".4" strokeWidth={1} strokeDasharray="3 4" vectorEffect="non-scaling-stroke"/>
   {/* Whoush's original camera position, for reference */}
@@ -596,7 +598,7 @@ function OrbitView({staging,anchor,aspect,editable,onOrbit,onStart}:{staging:Sta
    aria-valuemin={-180} aria-valuemax={180} aria-valuenow={Math.round(az)}
    onKeyDown={editable?key:undefined} onPointerDown={editable?e=>{capture(svg.current,e.pointerId);onStart?.();setDragging(true);}:undefined}
    className={editable?(dragging?"cursor-grabbing":"cursor-grab")+" touch-none outline-none focus-visible:[&>circle]:stroke-primary":""}>
-   <circle cx={cam[0]+n*CAMERA_SIZE/2} cy={cam[1]+c*CAMERA_SIZE/2} r={36} fill="transparent" strokeWidth={2}/>
+   <circle cx={cam[0]+n*CAMERA_SIZE/2} cy={cam[1]+c*CAMERA_SIZE/2} r={CAMERA_GRAB} fill="transparent" strokeWidth={2}/>
    <CameraGlyph view="top" x={cam[0]} y={cam[1]} rotate={Math.atan2(target[0]-cam[0],-(target[1]-cam[1]))*180/Math.PI} tint={tint}/>
   </g>
  </svg>;
@@ -604,6 +606,8 @@ function OrbitView({staging,anchor,aspect,editable,onOrbit,onStart}:{staging:Sta
 
 /** The camera's size in both camera views (its longest side, large enough to see and grab with a finger). */
 const CAMERA_SIZE=44;
+/** The invisible grab area around a diagram's camera (drawing units): wide enough for a finger where a phone draws the diagram small. */
+const CAMERA_GRAB=54;
 /**
  * Where the lens is on each camera image, as a share of its width and height: the side image's lens points left with its axis at 64% of the height; the top
  * image's lens points up with its axis at 31% of the width.
