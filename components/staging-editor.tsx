@@ -449,7 +449,7 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   <div dir="rtl" className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
    style={{left:((tag.x+2)/(W+4)*100)+"%",top:((tag.y+2)/(H+4)*100)+"%"}}>
    {onLock&&<button type="button" aria-pressed={locked} aria-label={(locked?"باز کردن قفل انتخاب ":"قفل کردن انتخاب ")+tag.text} onClick={()=>onLock(!locked)}
-    className={"pointer-events-auto flex size-5 items-center justify-center rounded-[2px] border border-primary motion-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring "+(locked?"bg-primary text-primary-foreground":"bg-background/70 text-primary hover:bg-surface-hover")}>
+    className={"pointer-events-auto flex size-5 items-center justify-center rounded-[4px] border border-primary motion-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring "+(locked?"bg-primary text-primary-foreground":"bg-transparent text-primary")}>
     <Icon icon={locked?Lock:LockOpen} size={16} aria-hidden="true" className={"size-3! "+(locked?"[&_rect]:fill-current":"")}/></button>}
    <bdi className="whitespace-nowrap text-[11px] font-medium leading-none text-primary">{tag.text}</bdi>
   </div>
