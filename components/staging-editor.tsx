@@ -220,8 +220,8 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
      {/* The frame's ratio first, then its zoom. */}
      <div className="flex flex-wrap justify-center gap-1">{["16:9","3:2","4:5","1:1","9:16"].map(r=><Chip key={r} on={aspect===r} onClick={()=>setAspect(r)}><bdi>{faText(r)}</bdi></Chip>)}</div>
      <input type="range" dir="ltr" min={0} max={1} step={0.001} value={1-distanceOf(draft)} onChange={e=>setDistance(1-Number(e.target.value))}
-      aria-label="زوم (اندازهٔ نما، همون فاصلهٔ دوربین)" aria-valuetext={SHOT_SIZE_FA[draft.shotSize]+"، زوم "+fa(zoomFactor(draft))+"×"} className="h-8 w-full cursor-pointer accent-primary"/>
-     <span dir="ltr" className="-mt-2 flex justify-between type-caption text-fg-secondary" aria-hidden="true"><span>باز</span><span>نزدیک</span></span>
+      aria-label="زوم (اندازهٔ نما، همون فاصلهٔ دوربین)" aria-valuetext={SHOT_SIZE_FA[draft.shotSize]+"، زوم "+fa(zoomFactor(draft))+"×"} className="h-5 w-full cursor-pointer accent-primary pointer-coarse:h-6"/>
+     <span dir="ltr" className="-mt-3 flex justify-between type-caption text-fg-secondary" aria-hidden="true"><span>باز</span><span>نزدیک</span></span>
     </>}
     {/* The centre point's own settings, while its dot is selected. */}
     {editable&&centerSel&&<div className="flex flex-col items-center gap-2 py-1 text-center">
@@ -1110,8 +1110,8 @@ function SliderRow({label,valueText,min,max,step,value,onChange,disabled,ends}:{
   <span className="flex items-center justify-between gap-2"><span>{label}</span><bdi className="text-fg-primary">{faText(valueText)}</bdi></span>
   {/* Sliders work left to right even in the RTL page (the pattern people know): the minimum is on the left. */}
   <input type="range" dir="ltr" min={min} max={max} step={step} value={Number.isFinite(value)?value:min} disabled={disabled} onChange={e=>{const v=Number(e.target.value);if(Number.isFinite(v))onChange(v);}}
-   aria-valuetext={valueText} className="h-8 w-full cursor-pointer accent-primary disabled:cursor-not-allowed"/>
-  {ends&&<span dir="ltr" className="-mt-1 flex justify-between" aria-hidden="true"><span>{ends[0]}</span><span>{ends[1]}</span></span>}
+   aria-valuetext={valueText} className="h-5 w-full cursor-pointer accent-primary disabled:cursor-not-allowed pointer-coarse:h-6"/>
+  {ends&&<span dir="ltr" className="-mt-0.5 flex justify-between" aria-hidden="true"><span>{ends[0]}</span><span>{ends[1]}</span></span>}
  </label>;
 }
 const pct=(v:number)=>fa(Math.round(v*100));
