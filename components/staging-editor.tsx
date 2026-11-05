@@ -4,7 +4,7 @@ import {Box,ChevronDown,Lock,LockOpen,Plus,RotateCcw,Trash2,X} from "lucide-reac
 import {Button,Icon} from "@aleeforoughi/feather-react";
 import {FOCUS_DETAILS,LIGHT_HEIGHTS,LIGHT_ROLES,LIGHT_SOURCES,type Staging,type StagingLight} from "@/lib/creative-plan";
 import {ANGLE_ORDER,CAMERA_ANGLE_FA,CAMERA_ELEVATION,GEL_COLORS,LIGHT_ANGLE,LIGHT_ASSETS,LIGHT_DIRECTION_FA,LIGHT_HEIGHT_FA,LIGHT_QUALITY_FA,LIGHT_ROLE_FA,LIGHT_SOURCE_FA,PROP_ASSETS,PROP_HEIGHT,
- SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
+ SHOT_BODY_FRACTION,SHOT_SIZE_FA,SUBJECT_FA,TEMPERATURE_GRADIENT,lightHex,placementFa,polar,propPlaceFa,snapDirection,snapElevation,tidyProps,propInView,groundFromView,frameCamera,frameSize,propReach,propWidth,withFrameCuts,orbitCamera,orbitFa,facingOf,FOCUS_DETAIL_FA,ZOOM_RANGE,genderOf,topAssetOf,propTints,moveFocusPoint,intensityOf,intensityFa,facingFa,propTags,lightTags,wrap180,elevationOf,scaleOf,lightAngleOf,nearestShot,scaleFromSlider,sliderFromScale,zoomFactor,type SceneProp} from "@/lib/staging";
 import {VISUALS} from "@/lib/visual-assets";
 import {fa} from "@/lib/format";
 
@@ -42,9 +42,12 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
  const [draft,setDraft]=useState<Staging>(initial),[aspect,setAspect]=useState(aspectRatio??"16:9");
  // The frame shows its own settings (zoom, aspect, crop) until a prop is selected; then only that prop's settings, until it is deselected. Lights select apart.
  const [propSel,setPropSel]=useState<number|null>(null),[lightSel,setLightSel]=useState(0),[locked,setLocked]=useState(false);
- // The zoom's anchor: Whoush's original layout (so dragging never moves the zoom), with the main subject and its detail as now chosen (they can change).
+ // The zoom's centre: the dominant subject where it stands when the camera last moved (zoom, height, orbit) or the dominant subject was chosen. Dragging
+ // props never moves it (so moving one prop moves only that prop); the next camera move re-centres on the dominant subject. The user's crop pan stays on top.
  const mainIdx=(draft.props??[]).findIndex(p=>p.main);
- const anchor:Staging={...initial,focusDetail:draft.focusDetail,props:initial.props?.map((p,i)=>{const {main:_m,...q}=p;void _m;return i===mainIdx?{...q,main:true}:q;})};
+ const [focusProps,setFocusProps]=useState(initial.props);
+ const aim=()=>setFocusProps(draft.props);
+ const anchor:Staging={...initial,focusDetail:draft.focusDetail,props:focusProps?.map((p,i)=>{const {main:_m,...q}=p;void _m;return i===mainIdx?{...q,main:true}:q;})};
  // All three views in one scroll, in this order: framing and layout, camera, lighting; each view's controls right under it.
  const editable=Boolean(onChange);
  const changed=JSON.stringify(draft)!==JSON.stringify(initial)||aspect!==(aspectRatio??"16:9");
@@ -60,15 +63,28 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
  const props=draft.props??[];
  const [confirmed,setConfirmed]=useState(false);
  /** The dominant subject: one prop (the main one) and, for a person, the part the shot is about. */
- const setDominant=(i:number,detail?:Staging["focusDetail"])=>{setConfirmed(true);
-  setDraft(d=>{const {focusDetail:_f,...rest}=d;void _f;return {...rest,...(detail?{focusDetail:detail}:{}),props:(d.props??[]).map((p,j)=>{const {main:_m,...q}=p;void _m;return j===i?{...q,main:true}:q;})};});};
+ const setDominant=(i:number,detail?:Staging["focusDetail"])=>{setConfirmed(true);aim();
+  // A new dominant subject: the centre point goes back onto it.
+  setDraft(d=>{const {focusDetail:_f,focusPoint:_p,...rest}=d;void _f;void _p;return {...rest,...(detail?{focusDetail:detail}:{}),props:(d.props??[]).map((p,j)=>{const {main:_m,...q}=p;void _m;return j===i?{...q,main:true}:q;})};});};
  // The camera: height, orbit around the main subject (everything in the frame turns to match) and distance (the same value as the frame's zoom).
- const setElevation=(e:number)=>setDraft(d=>({...d,cameraElevation:e,cameraAngle:d.cameraAngle==="dutch"?"dutch":snapElevation(e)}));
- const orbitTo=(az:number)=>setDraft(d=>orbitCamera(d,wrap180(az-(d.cameraAzimuth??0))));
- const setDistance=(v:number)=>setDraft(d=>{const sc=scaleFromSlider(v);return {...d,shotScale:sc,shotSize:nearestShot(sc)};});
+ const setElevation=(e:number)=>{aim();setElevationOnly(e);};
+ const setElevationOnly=(e:number)=>setDraft(d=>({...d,cameraElevation:e,cameraAngle:d.cameraAngle==="dutch"?"dutch":snapElevation(e)}));
+ const orbitTo=(az:number)=>{aim();orbitOnly(az);};
+ const orbitOnly=(az:number)=>setDraft(d=>orbitCamera(d,wrap180(az-(d.cameraAzimuth??0))));
+ const setDistance=(v:number)=>{aim();setDistanceOnly(v);};
+ const setDistanceOnly=(v:number)=>setDraft(d=>{const sc=scaleFromSlider(v);return {...d,shotScale:sc,shotSize:nearestShot(sc)};});
  const setProp=(i:number,p:Partial<SceneProp>)=>setDraft(d=>({...d,props:(d.props??[]).map((x,j)=>j===i?{...x,...p}:x)}));
  // Collapsed by default: «بوم» is advanced settings. The card shows the scene in one line; opening it shows the canvas and its controls.
  const [open,setOpen]=useState(false),bodyId=useId();
+ // A press anywhere outside the frame and its controls (elsewhere in the canvas, or outside it) deselects the prop: the frame is selected again. Not while
+ // the selection is locked.
+ const frameArea=useRef<HTMLDivElement>(null);
+ useEffect(()=>{
+  if(propSel===null||locked)return;
+  const off=(e:Event)=>{const t=e.target as Node|null;if(t&&frameArea.current&&!frameArea.current.contains(t))setPropSel(null);};
+  document.addEventListener("pointerdown",off,true);
+  return ()=>document.removeEventListener("pointerdown",off,true);
+ },[propSel,locked]);
  // Collapsed: three live snapshots of the scene as it is now (frame, camera, lighting), read-only; opening it shows the canvas and its controls.
  const cap=viewCaptions(draft,aspect);
 
@@ -92,8 +108,12 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
   </button>
   <div id={bodyId} hidden={!open} className="flex min-w-0 flex-col gap-3">
   <div className="flex min-w-0 flex-col gap-3">
-   <div><Viewport {...cap.frame}>
-    <FrameView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={setPropSel} onProp={(i,x,z)=>setProp(i,{x,z})} onZoom={setDistance} locked={locked} onLock={setLocked}/>
+   <div ref={frameArea}><Viewport {...cap.frame}>
+    <FrameView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={setPropSel} onProp={(i,x,z)=>setProp(i,{x,z})} onZoom={setDistance} locked={locked} onLock={setLocked}
+     onFocus={f=>{if(f){set(f);return;}
+      // Back to the dominant subject without the picture jumping: move the centre point onto the subject's own centre, then drop the custom point.
+      const {W,H}=frameSize(aspect),def=frameCamera({...draft,focusPoint:undefined},anchor,W,H),[sx,sy]=frameCamera(draft,anchor,W,H).toScreen(def.F[0],def.F[1]);
+      const r=moveFocusPoint(draft,anchor,W,H,sx,sy);setDraft(d=>{const {focusPoint:_p,...rest}=d;void _p;return {...rest,framing:r.framing.x===0&&r.framing.y===0?undefined:r.framing};});}}/>
     {editable&&propSel!==null&&props[propSel]&&<PropInspector prop={withFrameCuts(draft,anchor,aspect).props![propSel]} tag={propTags(props,true)[propSel]} reach={propReach(props[propSel],draft,anchor,aspect)}
      onChange={p=>setProp(propSel,p)} onClose={()=>{setPropSel(null);setLocked(false);}}/>}
     {editable&&(propSel===null||!props[propSel])&&<>
@@ -113,8 +133,8 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
     {/* The two camera views side by side, each its own tile: from the side (height and distance) and from above (the orbit), synced through one scene. */}
     <div className="grid grid-cols-2 gap-2">
      <Tile label="زاویه دوربین / عمودی">
-      <CameraView staging={draft} editable={editable} onCamera={c=>setDraft(d=>{const n=c.flip?orbitCamera(d,180):d,sc=scaleFromSlider(c.distance);
-       return {...n,cameraElevation:c.elevation,cameraAngle:n.cameraAngle==="dutch"?"dutch":snapElevation(c.elevation),shotScale:sc,shotSize:nearestShot(sc)};})}/>
+      <CameraView staging={draft} editable={editable} onCamera={c=>{aim();setDraft(d=>{const n=c.flip?orbitCamera(d,180):d,sc=scaleFromSlider(c.distance);
+       return {...n,cameraElevation:c.elevation,cameraAngle:n.cameraAngle==="dutch"?"dutch":snapElevation(c.elevation),shotScale:sc,shotSize:nearestShot(sc)};});}}/>
      </Tile>
      <Tile label="زاویه دوربین / افقی">
       <OrbitView staging={draft} editable={editable} onOrbit={c=>{orbitTo(c.azimuth);setDistance(c.distance);}}/>
@@ -138,7 +158,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange}:{staging:
   </div>
   {!editable&&<ul className="flex flex-col gap-1">{draft.lights.map((l,i)=><LightRow key={i} l={l}/>)}</ul>}
   {editable&&changed&&<div className="flex flex-wrap items-center gap-2">
-   <Button type="button" variant="ghost" size="sm" onClick={()=>{setDraft(initial);setAspect(aspectRatio??"16:9");setPropSel(null);setLightSel(0);setLocked(false);}}><Icon icon={RotateCcw} aria-hidden="true"/>برگرد به پیشنهاد هووش</Button>
+   <Button type="button" variant="ghost" size="sm" onClick={()=>{setDraft(initial);setAspect(aspectRatio??"16:9");setPropSel(null);setLightSel(0);setLocked(false);setFocusProps(initial.props);}}><Icon icon={RotateCcw} aria-hidden="true"/>برگرد به پیشنهاد هووش</Button>
    <p className="type-caption text-fg-secondary">با «بساز» همین صحنه ساخته می‌شه.</p>
   </div>}
   </div>
@@ -414,15 +434,20 @@ const snapAxis=(v:number)=>Math.max(-1,Math.min(1,Math.round(v*100)/100));
  * - Drag the empty background: slides the crop like a crop tool, snapping to the thirds and the centre.
  * - Keyboard: arrow keys move the selected prop (or the crop when the frame itself has focus).
  */
-function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp,onZoom,locked=false,onLock}:{staging:Staging;
+function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp,onZoom,locked=false,onLock,onFocus}:{staging:Staging;
  /** The scene whose main subject anchors the zoom (Whoush's original layout): fixed while props move, so moving the main subject moves only it. */anchor?:Staging;
  aspect:string;editable?:boolean;onFraming?:(f:{x:number;y:number}|undefined)=>void;
  /** The selected prop (null: none, the frame's own settings show). */sel?:number|null;onSelect?:(i:number|null)=>void;onProp?:(i:number,x:number,z:number)=>void;
  /** Pinch to zoom (phones): the new camera distance, 0 closest (the zoom slider's value). */onZoom?:(distance:number)=>void;
- /** The selection is locked (the lock beside its tag): clicks never select anything else, and a drag anywhere moves the locked prop (or the crop). */locked?:boolean;onLock?:(on:boolean)=>void}){
+ /** The selection is locked (the lock beside its tag): clicks never select anything else, and a drag anywhere moves the locked prop (or the crop). */locked?:boolean;onLock?:(on:boolean)=>void;
+ /** The centre-point dot: dragged to a new place (its new centre point and the crop that keeps the picture still), or double-clicked back to the dominant subject. */
+ onFocus?:(f:{focusPoint:{x:number;y:number};framing:{x:number;y:number}}|null)=>void}){
  const clip=useId(),svg=useRef<SVGSVGElement>(null),{W,H}=frameSize(aspect);
  const [drag,setDrag]=useState<{px:number;py:number;x:number;y:number;cur:{x:number;y:number}}|null>(null);
  const [move,setMove]=useState<{i:number;px:number;py:number;x0:number;z0:number;x:number;z:number}|null>(null);
+ const [pivot,setPivot]=useState(false);
+ /** A pointer position in the frame's own coordinates (the viewBox). */
+ const svgPt=(e:PointerEvent):[number,number]=>{const b=svg.current!.getBoundingClientRect();return [(e.clientX-b.left)*(W+4)/b.width-2,(e.clientY-b.top)*(H+4)/b.height-2];};
  const fr=drag?.cur??staging.framing??{x:0,y:0};
  // Pinch: spreading two fingers zooms in (the camera comes closer), pinching zooms out; any one-finger drag stops.
  const pinchFrom=useRef(0);
@@ -459,10 +484,11 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   :{x:W-3,y:3,above:false,text:"#کادر"};
  const svgEl=<svg ref={svg} viewBox={"-2 -2 "+(W+4)+" "+(H+4)} {...(editable&&onZoom?pinch:{})} className="mx-auto block w-full touch-none select-none text-fg-primary" style={{aspectRatio:String((W+4)/(H+4)),maxWidth:Math.round(320*(W+4)/(H+4))+"px"}} aria-hidden={!editable}
   onPointerMove={e=>{
+   if(pivot){const [sx,sy]=svgPt(e);if(Number.isFinite(sx)&&Number.isFinite(sy))onFocus?.(moveFocusPoint({...staging,framing:fr},anchor,W,H,sx,sy));return;}
    const u=unit();
    if(move){const p0=at({...base[move.i],x:move.x0,z:move.z0,y:0});const g=ground(p0.x+(e.clientX-move.px)*u.sx/k,p0.ground+(e.clientY-move.py)*u.sy/k);if(Number.isFinite(g.x)&&Number.isFinite(g.z))setMove({...move,...within({...base[move.i],z:g.z},g)});return;}
    if(drag){const c={x:snapAxis(drag.x+(e.clientX-drag.px)*u.sx/(W/2)),y:snapAxis(drag.y+(e.clientY-drag.py)*u.sy/(H/2))};if(Number.isFinite(c.x)&&Number.isFinite(c.y))setDrag({...drag,cur:c});}}}
-  onPointerUp={()=>{if(move){onProp?.(move.i,move.x,move.z);setMove(null);}if(drag){commit(drag.cur);setDrag(null);}}} onPointerCancel={()=>{setDrag(null);setMove(null);}}>
+  onPointerUp={()=>{setPivot(false);if(move){onProp?.(move.i,move.x,move.z);setMove(null);}if(drag){commit(drag.cur);setDrag(null);}}} onPointerCancel={()=>{setDrag(null);setMove(null);setPivot(false);}}>
   <defs><clipPath id={clip}><rect width={W} height={H} rx={6}/></clipPath>
    <linearGradient id={clip+"g"} x1="0" y1="0" x2="0" y2="1"><stop offset=".5" stopColor="currentColor" stopOpacity="0"/><stop offset="1" stopColor="currentColor" stopOpacity=".14"/></linearGradient></defs>
   <g clipPath={"url(#"+clip+")"}>
@@ -501,6 +527,17 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
     <line vectorEffect="non-scaling-stroke" x1={0} x2={W} y1={H*i/3} y2={H*i/3} className={third(onY,fr.y<0,i)?"stroke-primary":""} stroke={third(onY,fr.y<0,i)?undefined:"currentColor"} strokeOpacity={third(onY,fr.y<0,i)?1:.3}/>
    </g>)}
   </g>
+  {/* The centre point: the zoom pivots around it. On the dominant subject (its face for a person) unless the user moved it; drag to move it (the picture
+      stays still), double-click to bring it back to the dominant subject. A large invisible ring makes it easy to take with a finger. */}
+  {editable&&onFocus&&(()=>{const [dx,dy]=cam.toScreen(cam.F[0],cam.F[1]);if(dx<-1||dx>W+1||dy<-1||dy>H+1)return null;
+   return <g role="slider" tabIndex={0} aria-label={"نقطهٔ مرکز کادر"+(staging.focusPoint?" (جابه‌جا شده؛ دوبار بزن تا برگرده روی سوژهٔ اصلی)":" (روی سوژهٔ اصلی)")}
+    aria-valuetext={staging.focusPoint?"جابه‌جا شده":"روی سوژهٔ اصلی"} className={"touch-none outline-none "+(pivot?"cursor-grabbing":"cursor-move")}
+    onPointerDown={e=>{e.stopPropagation();capture(svg.current,e.pointerId);setPivot(true);}} onDoubleClick={e=>{e.stopPropagation();onFocus(null);}}
+    onKeyDown={e=>{const d={ArrowLeft:[-2,0],ArrowRight:[2,0],ArrowUp:[0,-2],ArrowDown:[0,2]}[e.key as "ArrowLeft"];if(e.key==="Enter"){e.preventDefault();onFocus(null);return;}if(!d)return;e.preventDefault();e.stopPropagation();onFocus(moveFocusPoint({...staging,framing:fr},anchor,W,H,dx+d[0],dy+d[1]));}}>
+    <circle cx={dx} cy={dy} r={10} fill="transparent"/>
+    <circle cx={dx} cy={dy} r={4.2} fill="none" className="stroke-primary" strokeWidth={1.2} vectorEffect="non-scaling-stroke"/>
+    <circle cx={dx} cy={dy} r={1.8} className={staging.focusPoint?"fill-primary":"fill-primary-foreground stroke-primary"} strokeWidth={0.8} vectorEffect="non-scaling-stroke"/>
+   </g>;})()}
   {/* With no prop selected, the frame itself is: a blue outline and its «#کادر» tag, and the controls below are the frame's. */}
   {editable&&(sel==null||!base[sel])
    ?<><rect width={W} height={H} rx={6} fill="none" className="pointer-events-none stroke-primary" strokeWidth={1.6} vectorEffect="non-scaling-stroke"/>

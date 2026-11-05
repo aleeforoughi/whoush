@@ -282,3 +282,20 @@ test("people read apart: a woman from her label gets her own figure; props of th
  const people=[t[0],t[1],t[3],t[4]];assert.ok(people.every(Boolean));assert.equal(new Set(people).size,4,"four people, four colours");
  assert.deepEqual(propTints([P("زن"),P("ماشین","vehicle")]),[undefined,undefined]);
 });
+
+test("the frame's centre point: on the dominant subject's face by default; moving it keeps the picture still; zoom pivots around it",async()=>{
+ const {frameCamera,frameSize,moveFocusPoint,propInView}=await import("../lib/staging");
+ const woman={kind:"person" as const,label:"زن",x:0.4,z:-0.25,y:0,main:true},car={kind:"vehicle" as const,label:"ماشین",x:-0.5,z:0.2,y:0};
+ const s:Staging={...base,shotSize:"close_up",props:[woman,car]};
+ const {W,H}=frameSize("16:9"),cam=frameCamera(s,s,W,H),v=propInView(woman,W,H,cam.unitH);
+ const [hx,hy]=cam.toScreen(v.x,v.y-v.h*0.88);
+ assert.ok(Math.abs(hx-W/2)<0.01&&Math.abs(hy-H/2)<0.5,"close in, the woman's face is the centre of the frame");
+ const moved=moveFocusPoint(s,s,W,H,W*0.3,H*0.5),s2={...s,...moved},cam2=frameCamera(s2,s,W,H);
+ const vc=propInView(car,W,H,cam.unitH);
+ assert.deepEqual(cam2.toScreen(vc.x,vc.groundY).map(n=>Math.round(n*100)),cam.toScreen(vc.x,vc.groundY).map(n=>Math.round(n*100)),"moving the centre point never moves the picture");
+ const [fx,fy]=cam2.toScreen(cam2.F[0],cam2.F[1]);assert.ok(Math.abs(fx-W*0.3)<0.01&&Math.abs(fy-H*0.5)<0.01,"the dot is where it was dropped");
+ const zoomed=frameCamera({...s2,shotScale:0.1},s,W,H),[zx,zy]=zoomed.toScreen(cam2.F[0],cam2.F[1]);
+ assert.ok(Math.abs(zx-W*0.3)<0.01&&Math.abs(zy-H*0.5)<0.01,"zooming keeps the centre point in place");
+ const up=moveFocusPoint(s,s,W,H,W*0.5,H*0.2),s3={...s,...up},[ux,uy]=frameCamera({...s3,shotScale:2},s,W,H).toScreen(frameCamera(s3,s,W,H).F[0],frameCamera(s3,s,W,H).F[1]);
+ assert.ok(Math.abs(ux-W*0.5)<0.01&&Math.abs(uy-H*0.2)<0.01,"also high in the frame, at any zoom");
+});

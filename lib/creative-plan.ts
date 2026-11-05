@@ -140,6 +140,8 @@ export const StagingSchema=z.object({subject:z.enum(SUBJECTS).optional(),cameraA
  /** The exact zoom as the share of a standing person the frame shows (0.05 to 5), set with the zoom bar; `shotSize` is its nearest name. */
  shotScale:z.number().min(0.05).max(5).optional(),
  framing:FramingSchema.optional(),
+ /** The frame's centre point (the zoom pivot) when the user moved it, as a share of the full-shot frame (0 to 1 across and down); unset: the dominant subject. */
+ focusPoint:z.object({x:z.number().min(-2).max(3),y:z.number().min(-2).max(3)}).optional(),
  props:z.array(PropSchema).max(MAX_PROPS).optional(),lights:z.array(LightSchema).min(1).max(4)});
 export type Staging=z.infer<typeof StagingSchema>;
 export type StagingLight=Staging["lights"][number];
