@@ -240,8 +240,9 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
    </div>}
    {(show("angle")||show("distance")||show("lens"))&&<div><Viewport {...cap.camera}>
     {show("angle")&&<>
-    {/* The two camera views side by side, each its own tile: from the side (height and distance) and from above (the orbit), synced through one scene. */}
-    <div className="grid grid-cols-2 gap-2">
+    {/* The two camera views, each its own tile: from the side (height and distance) and from above (the orbit), synced through one scene. Stacked on a
+        phone, so each is big enough to drag with a finger; side by side where the card is wide. */}
+    <div className="grid grid-cols-1 gap-2 @lg:grid-cols-2">
      <Tile label="زاویه دوربین / عمودی">
       <CameraView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onStart={aim} onCamera={c=>{setDraft(d=>{const n=c.flip?orbitCamera(orbitPivot(dropPivot(d),180),180):dropPivot(d);
        const e=snapVertical(c.elevation);return {...n,cameraElevation:e,cameraAngle:n.cameraAngle==="dutch"?"dutch":snapElevation(e)};});}}/>
