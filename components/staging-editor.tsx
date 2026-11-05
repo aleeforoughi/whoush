@@ -154,11 +154,13 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  // Collapsed by default. A focused follow-up (one part, e.g. the camera's distance) shows just that part's controls in the collapsed card, live; expanding shows
  // every setting (frame, camera, lighting...), and collapsing goes back to just that part.
  const [open,setOpen]=useState(false),bodyId=useId(),focused=Boolean(focus?.length);
- // Expanded, the frame is always open; the camera and the lighting are sub-sections, closed until opened (a follow-up about one part opens it).
- const [subOpen,setSubOpen]=useState({camera:false,light:false});
+ // Expanded, the frame, the camera and the lighting are sub-sections and only one is open at a time (opening one closes the other): the frame at first,
+ // or, for a follow-up about one part, that part.
+ const subOf=(sec?:CanvasSection):"frame"|"camera"|"light"=>sec==="light"?"light":sec==="angle"||sec==="distance"||sec==="lens"?"camera":"frame";
+ const [openSub,setOpenSub]=useState<"frame"|"camera"|"light"|null>(()=>focus?.length?subOf(focus[0]):"frame");
+ const toggleSub=(x:"frame"|"camera"|"light")=>setOpenSub(o=>o===x?null:x);
  const full=open,show=(sec:CanvasSection)=>full||!focused||Boolean(focus?.includes(sec));
- // A follow-up about one part (the card not fully open) shows that part open.
- const camOpen=subOpen.camera||(!full&&focused),lightOpen=subOpen.light||(!full&&focused);
+ const frameOpen=openSub==="frame",camOpen=openSub==="camera",lightOpen=openSub==="light";
  // A press anywhere outside the frame and its controls (elsewhere in the canvas, or outside it) deselects the prop: the frame is selected again. Not while
  // the selection is locked.
  // The centre point can be selected too (its dot): its own settings show, and the badge reads «تنظیم مرکز».
@@ -218,7 +220,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
   <div id={bodyId} hidden={!open&&!focused} className="flex min-w-0 flex-col gap-3">
   {/* The sections (frame, camera, lighting), each set apart by a divider and room above and below it. */}
   <div className="flex min-w-0 flex-col divide-y divide-line-secondary/40 [&>*]:py-2.5 [&>*:first-child]:pt-1 [&>*:last-child]:pb-1">
-   {show("frame")&&frameShown&&<div ref={el=>{frameArea.current=el;setFrameEl(el);}}><Viewport {...cap.frame}>
+   {show("frame")&&frameShown&&<div ref={el=>{frameArea.current=el;setFrameEl(el);}}><SubSection title="تنظیمات کادر" icon={Frame} open={frameOpen} onToggle={()=>toggleSub("frame")}><Viewport {...cap.frame}>
     <FrameView staging={draft} anchor={anchor} aspect={aspect} editable={editable} onFraming={f=>set({framing:f})} sel={propSel} onSelect={i=>{setPropSel(i);setCenterSel(false);}} centerSel={centerSel} onSelectCenter={()=>{setCenterSel(true);setPropSel(null);}} onProp={(i,x,z)=>setProp(i,{x,z})} onZoom={setDistance} locked={locked} onLock={setLocked} onBack={()=>{setPropSel(null);setCenterSel(false);setLocked(false);}}
      onFocus={f=>{if(f)set(f);else resetFocus();}} onAngle={c=>{if(c.elevation!==undefined)setElevation(c.elevation);if(c.azimuth!==undefined)orbitTo(c.azimuth);}} three={(FRAME_RENDERER==="css"||webgl)&&onScreen&&(open||focused)&&!fullscreen} onFullscreen={FRAME_FULLSCREEN?()=>{setCenterSel(false);setFullscreen(true);}:undefined}/>
     {FRAME_FULLSCREEN&&fullscreen&&<FrameFullscreen staging={draft} anchor={anchor} aspect={aspect} sel={propSel} onSelect={i=>{setPropSel(i);setCenterSel(false);setLocked(false);}}
@@ -246,9 +248,9 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
       onChange={y=>{const x=draft.framing?.x??0;set({framing:x===0&&y===0?undefined:{x,y}});}}/>
      <p className="text-start type-caption text-fg-secondary">{FRAME_MOVES_PROPS?(props.length?"روی یه پراپ بزن تا تنظیماتش بیاد و بکشیش (بالا عقب، پایین جلو، حتی تا بیرون کادر)؛ ":"")+"پس‌زمینه رو بکشی، کادر جابه‌جا می‌شه.":(props.some(isCharacter)?"روی کاراکتر بزن تا انتخاب بشه؛ ":"")+"کادر رو بکشی، جابه‌جا می‌شه."}</p>
     </>}
-   </Viewport>
+   </Viewport></SubSection>
    </div>}
-   {(show("angle")||show("distance")||show("lens"))&&<div><SubSection title="تنظیمات دوربین" icon={Camera} open={camOpen} onToggle={()=>setSubOpen(o=>({...o,camera:!camOpen}))}><Viewport {...cap.camera}>
+   {(show("angle")||show("distance")||show("lens"))&&<div><SubSection title="تنظیمات دوربین" icon={Camera} open={camOpen} onToggle={()=>toggleSub("camera")}><Viewport {...cap.camera}>
     {show("angle")&&<>
     {/* The two camera views, each its own tile: from the side (height and distance) and from above (the orbit), synced through one scene. Stacked on a
         phone, so each is big enough to drag with a finger; side by side where the card is wide. */}
@@ -304,7 +306,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
        onChange={v=>setManual({apertureF:apertureFromSlider(v)})}/>
      </>;})()}
    </Viewport></SubSection></div>}
-   {show("light")&&<div><SubSection title="تنظیمات نور" icon={Lightbulb} open={lightOpen} onToggle={()=>setSubOpen(o=>({...o,light:!lightOpen}))}>
+   {show("light")&&<div><SubSection title="تنظیمات نور" icon={Lightbulb} open={lightOpen} onToggle={()=>toggleSub("light")}>
     <Viewport {...cap.light}>
      <LightView staging={draft} editable={editable} selected={lightSel} onSelect={setLightSel} onLight={(i,deg)=>setLight(i,{angle:deg,direction:snapDirection(deg)})}/>
     </Viewport>
@@ -703,8 +705,8 @@ function Toggle({label,on,onChange}:{label:string;on:boolean;onChange:(on:boolea
  </button>;
 }
 /**
- * A sub-section of the expanded card (the camera, the lighting): a header row with its icon and title that opens or closes it, closed by
- * default so the card stays short; the frame above it is always open.
+ * A sub-section of the expanded card (the frame, the camera, the lighting): a header row with its icon and title that opens or closes it. Only one is
+ * open at a time, so the card stays short.
  */
 function SubSection({title,icon,open,onToggle,children}:{title:string;/** The section's icon, before its title. */icon:LucideIcon;open:boolean;onToggle:()=>void;children:ReactNode}){
  const id=useId();
