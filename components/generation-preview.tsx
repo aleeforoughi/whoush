@@ -8,7 +8,7 @@ import {displayTag} from "@/lib/attachments";
 import {estimateProgress,isActiveJob,isOwnedOutputUrl,jobStatusFa} from "@/lib/job-progress";
 import {fa} from "@/lib/format";
 
-const STOPPED_FA:Record<string,string>={failed:"ناموفق",canceled:"لغو شد",released:"آزاد شد"};
+const STOPPED_FA:Record<string,string>={failed:"ناموفق",canceled:"لغو شد",released:"آزاد شد",lost:"در دسترس نیست"};
 
 /**
  * The generation box in the preview panel. While the job is queued or running, a transparent blue gradient sweeps across it and, at its foot, the live status

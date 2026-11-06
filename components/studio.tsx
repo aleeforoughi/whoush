@@ -6,7 +6,8 @@ import {ArrowUp,CircleAlert,Clapperboard,Info,LoaderCircle,Mic,Minimize2,PanelLe
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Tabs,TabsContent,TabsList,TabsTrigger,Label,Tooltip,TooltipContent,TooltipTrigger} from "@aleeforoughi/feather-react";
 import {OPEN_PREVIEW_FA,PreviewCard} from "@/components/preview-card";
 import {GenerationPreview} from "@/components/generation-preview";
-import {isOwnedOutputUrl} from "@/lib/job-progress";
+import {isFinalJobState,isOwnedOutputUrl} from "@/lib/job-progress";
+import {followJobUntilDone,jobSnapshot,UNTRACKED_JOB_FA} from "@/lib/job-follow";
 import {NoModelCard,PastProposalCard,ProposalCard} from "@/components/proposal-card";
 import {CharacterDialog} from "@/components/character-dialog";
 import {InsertMenu} from "@/components/insert-menu";
@@ -30,7 +31,7 @@ import {getLocalCharacter,listLocalCharacters} from "@/lib/character-store";
 import {characterCoverage,characterUsability,type CharacterProfile} from "@/lib/characters";
 import {fa} from "@/lib/format";
 import {STORAGE_FULL_FA,getProject,listAssets,saveAsset,saveProject} from "@/lib/project-store";
-import {MAX_MESSAGES,assetToAttachment,attachmentToAsset,autoTitle,rerunSource,uniqueById,answerBrief,historyFor,toggleReaction,generationTagsIn,referencedGenerations,toGenerationRef,withGenerationTags,type GifSnapshot,type ProposalSnapshot,type Project,type StoredMessage} from "@/lib/projects";
+import {MAX_MESSAGES,assetToAttachment,attachmentToAsset,autoTitle,rerunSource,uniqueById,answerBrief,historyFor,toggleReaction,generationTagsIn,referencedGenerations,toGenerationRef,withGenerationTags,type GifSnapshot,type ProposalSnapshot,type JobSnapshot,type Project,type StoredMessage} from "@/lib/projects";
 import {MAX_GENERATION_REFS,type ReactionEmoji,type Staging} from "@/lib/creative-plan";
 import {LIGHT_SOURCE_FA,describeStagingChangesFa,followUpFocus,lightTags,propTags,sectionsFromWords} from "@/lib/staging";
 import {normalizePersian} from "@/lib/safety";
@@ -220,6 +221,20 @@ export function Studio(){
   dirty.current=true;window.clearTimeout(timer.current);
   timer.current=window.setTimeout(()=>void save(),400);
  }
+ /**
+  * Follows one job in the background until it ends (lib/job-follow.ts), so a slow model (Seedream ~2.5 min) is not left showing «running» at 95%. The chat
+  * stays usable meanwhile. Each change updates the job's transcript message (saved with the project) and the preview when it shows this job. Opening another
+  * project stops it; reopening this one follows the job again.
+  */
+ function followJob(messageId:string,start:JobSnapshot){
+  const project=active.current?.id;
+  void followJobUntilDone(start,next=>{
+   setMessages(m=>m.map(x=>x.id===messageId&&x.kind==="job"?{...x,text:next.messageFa,snapshot:next} as TranscriptItem:x));
+   setJob(j=>j&&j.jobId===next.jobId?{...next}:j);
+   if(isFinalJobState(next.state))setPreview(next.messageFa);
+   touch();
+  },()=>active.current?.id===project);
+ }
  /** The first successful turn of a draft creates the project (so there are never empty projects) and puts it in the URL. */
  function adoptProject(firstText:string,characterId:string|null){
   if(active.current)return touch();
@@ -272,9 +287,13 @@ export function Studio(){
    savedAssets.current=new Set(assets.map(a=>a.id));
    tagCounters.current=p.tagCounters;
    active.current={id:p.id,createdAt:p.createdAt,title:p.title,titleSource:p.titleSource,persisted:true};
+   // A job saved mid-generation by an older version has no id to ask about, so it can never finish: show it as unknown rather than at 95% forever.
+   for(const m of restored)if(m.kind==="job"&&!m.snapshot.jobId&&!isFinalJobState(m.snapshot.state))m.snapshot={...m.snapshot,state:"lost",messageFa:UNTRACKED_JOB_FA};
    setProjectId(p.id);setLocal({mode:p.mode,style:p.style});setMessages(withGenerationTags(restored));
    const lastJob=[...restored].reverse().find(m=>m.kind==="job");
    if(lastJob?.kind==="job"){setJob(lastJob.snapshot);setPreview(lastJob.snapshot.messageFa);setPreviewOpen(true);}
+   // A generation that was still running when the project was saved: ask the server again and follow it to its end.
+   for(const m of restored)if(m.kind==="job"&&m.snapshot.jobId&&!isFinalJobState(m.snapshot.state))followJob(m.id,m.snapshot);
    // The character: an explicit ?character= link wins, otherwise the project's own, and either must still be usable.
    const fromUrl=new URLSearchParams(window.location.search).get("character"),wanted=fromUrl??p.characterRef?.id??null;
    const found=wanted?items.find(c=>c.id===wanted):undefined,usable=found&&characterUsability(found);
@@ -581,16 +600,14 @@ export function Studio(){
    const quote=await q.json() as {token:string};
    const execution=await post("/api/generation/execute",{token:quote.token,approved:true,idempotencyKey:crypto.randomUUID()});
    if(!execution.ok)throw new Error("خطا در شروع تولید");
-   let current=await execution.json() as {id:string;state:string;messageFa:string;outputs?:JobView["outputs"];typicalMs?:number};
-   const done=["completed","completed_demo","failed","canceled","released"];
-   const genTag=liveId?(messages.find(m=>m.id===liveId)?.snapshot as ProposalSnapshot|undefined)?.tag:undefined,tagged=genTag?{tag:genTag}:{};
-   setPreview(current.messageFa);setJob({state:current.state,messageFa:current.messageFa,outputs:current.outputs,...(current.typicalMs?{typicalMs:current.typicalMs}:{}),...tagged});setPreviewOpen(true);
-   for(let i=0;i<10&&!done.includes(current.state);i++){
-    await new Promise(r=>setTimeout(r,1500));
-    const poll=await fetch("/api/generation/jobs/"+current.id,{cache:"no-store"});if(!poll.ok)break;
-    current=await poll.json();setPreview(current.messageFa);setJob({state:current.state,messageFa:current.messageFa,outputs:current.outputs,...(current.typicalMs?{typicalMs:current.typicalMs}:{}),...tagged});
-   }
-   setMessages(m=>[...m,item({role:"agent",text:current.messageFa,kind:"job",snapshot:{state:current.state,messageFa:current.messageFa,...(genTag?{tag:genTag}:{})}})]);setProposal(null);setLiveId(null);touch();
+   const current=await execution.json() as {id:string;state:string;messageFa:string;outputs?:JobView["outputs"];typicalMs?:number};
+   const genTag=liveId?(messages.find(m=>m.id===liveId)?.snapshot as ProposalSnapshot|undefined)?.tag:undefined;
+   // The job's message goes into the transcript now (with its id), and is updated in place as the job moves: a project saved or reopened mid-generation
+   // still knows which job to follow, and a finished one keeps its outputs.
+   const snap=jobSnapshot(current,genTag),msg=item({role:"agent",text:current.messageFa,kind:"job",snapshot:snap});
+   setPreview(current.messageFa);setJob(snap);setPreviewOpen(true);
+   setMessages(m=>[...m,msg]);setProposal(null);setLiveId(null);touch();
+   followJob(msg.id,snap);
   }catch(err){setError(err instanceof Error?err.message:"خطای ناشناخته");}
   finally{setBusy(false);}
  }
@@ -604,8 +621,8 @@ export function Studio(){
  const hasPreview=job!==null;
  const showPreview=hasPreview&&previewOpen;
  /** Opens the preview panel, on a given generation's job when a preview card asks (the latest job keeps its live outputs). */
- function openPreview(snapshot?:{state:string;messageFa:string;tag?:string}){
-  if(snapshot&&snapshot.messageFa!==job?.messageFa){setJob({state:snapshot.state,messageFa:snapshot.messageFa,...(snapshot.tag?{tag:snapshot.tag}:{})});setPreview(snapshot.messageFa);}
+ function openPreview(snapshot?:JobSnapshot){
+  if(snapshot&&(snapshot.jobId?snapshot.jobId!==job?.jobId:snapshot.messageFa!==job?.messageFa)){setJob({...snapshot});setPreview(snapshot.messageFa);}
   setPreviewOpen(true);
  }
  function minimizePreview(){setPreviewOpen(false);requestAnimationFrame(()=>promptRef.current?.focus());}
@@ -710,7 +727,7 @@ export function Studio(){
           <span className="sr-only">هووش: </span><TypeOut text={m.text} animate={fresh.has(m.id)}/>
          </p>}
         {m.kind==="job"&&<PreviewCard tag={m.snapshot.tag} state={m.snapshot.state} messageFa={m.snapshot.messageFa}
-         output={m.snapshot.messageFa===job?.messageFa?job?.outputs?.find(o=>isOwnedOutputUrl(o.url,window.location.origin)):undefined} video={m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false} onOpen={()=>openPreview(m.snapshot)}/>}
+         output={(m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined))?.find(o=>isOwnedOutputUrl(o.url,window.location.origin))} video={m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false} onOpen={()=>openPreview(m.snapshot)}/>}
         {/* «بوم» is adjustable on every generation: on the live one it feeds «بساز» directly; on an older one its card offers a revision with that scene. */}
         {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan&&<PlanStory plan={m.snapshot.plan} focus={m.kind==="proposal"?refineFocus(m.snapshot.focus,messages.slice(0,i).reverse().find(x=>x.role==="user")?.text):undefined}
          onStagingChange={m.kind==="proposal"?(s,aspect,changed)=>{

@@ -22,7 +22,13 @@ export type MessageKind="text"|"proposal"|"no_model"|"restricted"|"job"|"questio
 export type ProposalSnapshot={operation:"generate_image"|"generate_video";modelName:string;neurons:number;intentSummaryFa:string;plan:PublicCreativePlan;tag?:string;
  /** A follow-up about one or two parts of the scene: «بوم» opens on just those parts (lib/staging.ts, followUpFocus; «camera» in older saves). */focus?:string[]};
 export type NoModelSnapshot={message:string;plan?:PublicCreativePlan};
-export type JobSnapshot={state:string;messageFa:string;tag?:string};
+/**
+ * A generation's status in the transcript. `jobId` lets a reopened project ask the server again (a job still running is followed to its end); `outputs` are
+ * Whoush-owned media paths only, so a finished job shows its result after a reload; `typicalMs` paces the progress estimate.
+ */
+export type JobSnapshot={state:string;messageFa:string;tag?:string;jobId?:string;outputs?:{kind:"image"|"video";url:string}[];typicalMs?:number};
+const OWNED_MEDIA_PATH=/^\/api\/generation\/media\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const isJobOutputs=(v:unknown)=>Array.isArray(v)&&v.length<=4&&v.every(o=>isObject(o)&&(o.kind==="image"||o.kind==="video")&&typeof o.url==="string"&&OWNED_MEDIA_PATH.test(o.url));
 /**
  * `generationTags`: generations a user message referred to with a card (older projects), shown with it and sent again on a rerun. `brief`: what was actually sent
  * when the message answered Whoush's question (the original request plus the answer); a rerun sends it again.
@@ -132,7 +138,9 @@ function checkMessage(m:unknown,i:number){
     if(!isObject(r)||typeof r.need!=="string"||!findReferenceNeed(r.need)||typeof r.titleFa!=="string"||typeof r.role!=="string"||!Array.isArray(r.angles)||r.angles.length>6
      ||!r.angles.every(a=>isObject(a)&&typeof (a as Record<string,unknown>).id==="string"&&typeof (a as Record<string,unknown>).titleFa==="string"))bad("سؤال");}
    break;
-  case "job":if(!isObject(s)||typeof s.state!=="string"||typeof s.messageFa!=="string"||(s.tag!==undefined&&!(typeof s.tag==="string"&&isGenerationTag(s.tag))))bad("وضعیت تولید");break;
+  case "job":if(!isObject(s)||typeof s.state!=="string"||typeof s.messageFa!=="string"||(s.tag!==undefined&&!(typeof s.tag==="string"&&isGenerationTag(s.tag)))
+   ||(s.jobId!==undefined&&!(typeof s.jobId==="string"&&/^[0-9a-f-]{36}$/.test(s.jobId)))||(s.outputs!==undefined&&!isJobOutputs(s.outputs))
+   ||(s.typicalMs!==undefined&&!(Number.isSafeInteger(s.typicalMs)&&(s.typicalMs as number)>0&&(s.typicalMs as number)<=3_600_000)))bad("وضعیت تولید");break;
   default:bad("نوع پیام");
  }
 }
