@@ -58,8 +58,10 @@ export function GenerationGallery({items,focus,placeholder}:{items:GalleryItem[]
   const root=list.current;if(!root)return;
   let frame=0,idle=0;
   const pick=()=>{
-   const box=root.getBoundingClientRect();
-   for(const id of order.current){
+   const box=root.getBoundingClientRect(),atEnd=root.scrollTop+root.clientHeight>=root.scrollHeight-2;
+   // At the very end the last generations cannot reach the top, so the last one in view is the current one.
+   const ids=atEnd?[...order.current].reverse():order.current;
+   for(const id of ids){
     const r=cards.current.get(id)?.getBoundingClientRect();if(!r)continue;
     const seen=Math.min(r.bottom,box.bottom)-Math.max(r.top,box.top);
     if(seen>=0.4*Math.min(r.height,box.height))return id;
@@ -84,12 +86,13 @@ export function GenerationGallery({items,focus,placeholder}:{items:GalleryItem[]
   {/* The thumbnail strip: at the end side (left, in Persian), thumbnails only, centred vertically; it scrolls when they do not fit. */}
   {items.length>1&&<nav aria-label="تولیدهای این گفت‌وگو" className="order-last flex w-[4.75rem] shrink-0 flex-col">
    <div ref={strip} className="scrollbar-right flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
-    <div className="flex min-h-full flex-col justify-center gap-2 py-1">
+    <div className="flex min-h-full flex-col justify-center gap-2 p-1">
     {items.map(it=>{
      const out=it.job.outputs?.find(o=>isOwnedOutputUrl(o.url)),on=it.id===current,tag=it.job.tag?displayTag(it.job.tag):"";
      return <button key={it.id} ref={register("thumbs",it.id)} type="button" onClick={()=>jump(it.id)} aria-current={on||undefined}
       aria-label={"نمایش "+(tag||"تولید")}
-      className={"flex shrink-0 items-center justify-center rounded-control p-1 motion-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring "+(on?"bg-surface-hover ring-2 ring-primary":"hover:bg-surface-hover")}>
+      // The selection ring and the focus outline are drawn inside the button (in its padding), so the strip's scroll area never clips them.
+      className={"flex shrink-0 items-center justify-center rounded-control p-1 motion-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring "+(on?"bg-surface-hover ring-2 ring-inset ring-primary":"hover:bg-surface-hover")}>
       <span className="flex w-full items-center justify-center overflow-hidden rounded-control bg-surface-subtle text-fg-secondary">
        {out?.kind==="image"
         // eslint-disable-next-line @next/next/no-img-element -- a Whoush-owned output thumbnail
@@ -104,7 +107,7 @@ export function GenerationGallery({items,focus,placeholder}:{items:GalleryItem[]
     </div>
    </div>
   </nav>}
-  <div ref={list} className="scrollbar-right flex min-h-0 min-w-0 flex-1 snap-y snap-proximity flex-col gap-8 overflow-y-auto overscroll-contain pb-[30vh]">
+  <div ref={list} className="scrollbar-right flex min-h-0 min-w-0 flex-1 snap-y snap-proximity flex-col gap-8 overflow-y-auto overscroll-contain pb-2">
    {items.map(it=><section key={it.id} ref={register("cards",it.id)} data-gallery-id={it.id} aria-label={it.job.tag?displayTag(it.job.tag):"تولید"}
     className="flex shrink-0 scroll-mt-1 snap-start flex-col gap-2">
     {(it.job.tag||it.model)&&<p className="flex items-center gap-2 type-label text-fg-secondary">
