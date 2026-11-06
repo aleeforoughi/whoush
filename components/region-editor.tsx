@@ -75,7 +75,9 @@ export function RegionEditor({tag,photoUrl,onClose,onDone}:{tag:string;photoUrl:
  }
  const dist=(a:{x:number;y:number},b:{x:number;y:number})=>Math.hypot(a.x-b.x,a.y-b.y);
  function down(e:React.PointerEvent<HTMLDivElement>){
-  e.currentTarget.setPointerCapture(e.pointerId);pointers.current.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  // Capture keeps a stroke going past the photo's edge; a browser that refuses it (an unknown pointer) still paints.
+  try{e.currentTarget.setPointerCapture(e.pointerId);}catch{/* no capture */}
+  pointers.current.set(e.pointerId,{x:e.clientX,y:e.clientY});
   const pts=[...pointers.current.values()];
   if(pts.length===2){cancelStroke();pan.current=null;pinch.current={d:dist(pts[0],pts[1]),mx:(pts[0].x+pts[1].x)/2,my:(pts[0].y+pts[1].y)/2,view:viewRef.current};return;}
   if(pts.length===1){if(hand||e.button===1)pan.current={x:e.clientX,y:e.clientY,view:viewRef.current};else startStroke(e.clientX,e.clientY);}
@@ -153,7 +155,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone}:{tag:string;photoUrl:
     <div className="relative" style={{transform:`translate(${view.x}px,${view.y}px) scale(${view.s})`,transformOrigin:"center"}}>
      {/* eslint-disable-next-line @next/next/no-img-element -- a local blob: URL */}
      <img src={photoUrl} alt="" draggable={false} onLoad={e=>setNatural({w:e.currentTarget.naturalWidth,h:e.currentTarget.naturalHeight})}
-      className="pointer-events-none block h-auto max-h-[calc(100dvh-15rem)] w-auto max-w-[calc(100vw-1rem)]"/>
+      className="pointer-events-none block h-auto max-h-[calc(100dvh_-_3.5rem_-_min(16rem,32dvh)_-_1rem)] w-auto max-w-[calc(100vw-1rem)]"/>
      {natural&&REGION_COLORS.map((c,slot)=><canvas key={c.name} width={natural.w} height={natural.h} ref={el=>{layers.current[slot]=el;}} aria-hidden="true"
       className="pointer-events-none absolute inset-0 size-full" style={{opacity:.55}}/>)}
      {/* Pins: each region's tag where it was first painted, the same size on screen at any zoom; the tag picks the region, its ✕ deletes it. */}
@@ -184,13 +186,13 @@ export function RegionEditor({tag,photoUrl,onClose,onDone}:{tag:string;photoUrl:
     <button type="button" onClick={redo} disabled={!steps.r} aria-label="دوباره انجام بده" title="دوباره انجام بده" className="flex size-10 items-center justify-center rounded-[8px] text-fg-primary motion-hover hover:bg-white/10 disabled:opacity-40"><Icon icon={Redo2} aria-hidden="true"/></button>
    </div>
   </div>
-  {/* The bottom sheet: one comment per region. Thumb-reachable on a phone. */}
-  <div className="flex max-h-[45dvh] shrink-0 flex-col gap-2 overflow-y-auto border-t border-line-primary bg-surface-subtle p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+  {/* The bottom sheet: one comment per region, newest first. Its height never changes (it scrolls inside), so adding a region never moves the photo. */}
+  <div className="flex h-[min(16rem,32dvh)] shrink-0 flex-col gap-2 overflow-y-auto border-t border-line-primary bg-surface-subtle p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
    {!regions.length&&<p className="type-caption text-fg-secondary">{BRUSH_HINT_FA}</p>}
    {regions.length>0&&focus===null&&regions.length<MAX_REGIONS&&<p className="type-caption text-fg-secondary">{CONTINUE_FA}</p>}
    {missing&&regions.some(r=>!r.note.trim())&&<p role="alert" className="type-caption text-error">{BRUSH_MISSING_NOTE_FA}</p>}
    <ul className="flex flex-col gap-2">
-    {regions.map(r=><li key={r.slot} onClick={()=>pick(r.slot)} className={"flex items-start gap-2 rounded-control border p-2 "+(focus===r.slot?"border-primary bg-background":"border-line-primary")}>
+    {[...regions].reverse().map(r=><li key={r.slot} onClick={()=>pick(r.slot)} className={"flex items-start gap-2 rounded-control border p-2 "+(focus===r.slot?"border-primary bg-background":"border-line-primary")}>
      <div className="flex min-w-0 flex-1 flex-col gap-1">
       <bdi className="w-fit rounded-[4px] px-1.5 py-0.5 type-caption font-medium" style={{background:REGION_COLORS[r.slot].css,color:REGION_COLORS[r.slot].ink,boxShadow:NEON_SHADOW}}>{regionTagFa(r.n)}</bdi>
       <textarea ref={el=>{if(el)notes.current.set(r.slot,el);else notes.current.delete(r.slot);}} value={r.note} rows={1} maxLength={MAX_NOTE} placeholder={BRUSH_NOTE_PLACEHOLDER_FA}
