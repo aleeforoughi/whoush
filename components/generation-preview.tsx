@@ -29,17 +29,18 @@ export function GenerationPreview({job,kind="image",model,placeholder}:{job:JobV
  const percent=estimateProgress(job.state,elapsed,kind,job.typicalMs);
  // Only a Whoush-owned output is shown (launch gate 8); a provider URL keeps the placeholder.
  const first=job.outputs?.[0],output=first&&typeof window!=="undefined"&&isOwnedOutputUrl(first.url,window.location.origin)?first:undefined;
- const stopped=STOPPED_FA[job.state];
+ const stopped=STOPPED_FA[job.state],shown=output&&!active?output:undefined;
  const status=jobStatusFa(job.state,kind,model);
  return <div className="flex flex-col gap-3">
-  <div className="relative flex min-h-48 flex-col overflow-hidden rounded-card border border-line-secondary bg-surface-subtle md:aspect-video">
+  {/* While generating or without an output: a 16:9 stage. With an output: the frame follows the media, so the whole image or video shows at its own ratio. */}
+  <div className={"relative flex flex-col overflow-hidden rounded-card border border-line-secondary bg-surface-subtle "+(shown?"":"min-h-48 md:aspect-video")}>
    {active&&<div aria-hidden="true" className="whoush-generating pointer-events-none absolute inset-0"/>}
-   <div className="relative flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-    {output&&!active
-     ?(output.kind==="video"
-      ?<video src={output.url} controls playsInline preload="metadata" aria-label={"ویدیوی "+(job.tag?displayTag(job.tag):"ساخته‌شده")} className="max-h-full w-full rounded-control bg-background object-contain"/>
-      // eslint-disable-next-line @next/next/no-img-element -- a provider output URL shown in the preview
-      :<img src={output.url} alt={"تصویر "+(job.tag?displayTag(job.tag):"ساخته‌شده")} className="max-h-full w-full rounded-control object-contain"/>)
+   <div className={"relative flex flex-1 flex-col items-center justify-center gap-3 text-center "+(shown?"p-2":"p-8")}>
+    {shown
+     ?(shown.kind==="video"
+      ?<video src={shown.url} controls playsInline preload="metadata" aria-label={"ویدیوی "+(job.tag?displayTag(job.tag):"ساخته‌شده")} className="block h-auto max-h-[min(75dvh,56rem)] w-full rounded-control bg-background object-contain"/>
+      // eslint-disable-next-line @next/next/no-img-element -- a Whoush-owned output shown in the preview
+      :<img src={shown.url} alt={"تصویر "+(job.tag?displayTag(job.tag):"ساخته‌شده")} className="block h-auto max-h-[min(75dvh,56rem)] w-auto max-w-full rounded-control"/>)
      :<>
       <Icon icon={kind==="video"?Clapperboard:ImageIcon} size={32} aria-hidden="true" className={active?"text-primary":"text-fg-secondary"}/>
       <p className="type-body text-fg-primary">{active?status:job.messageFa}</p>
