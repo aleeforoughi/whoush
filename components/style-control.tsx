@@ -18,11 +18,13 @@ export function useStyleSetting():[GenerationStyle|null,(s:GenerationStyle|null)
  return [style,write];
 }
 
+/** The pill's text while no style is chosen (owner wording, 2026-11-06). */
+export const AUTO_STYLE_PILL_FA="سبک اتوماتیک";
 /** «سبک» beside the build mode: a neutral secondary pill showing only the current style; clicking it opens a radio menu (خودکار · واقع‌گرایانه · سه‌بعدی · کارتونی). */
 export function StyleControl({value,onChange}:{value:GenerationStyle|null;onChange:(s:GenerationStyle|null)=>void}){
  return <DropdownMenu>
-  <DropdownMenuTrigger render={<Button type="button" variant="outline" aria-label={"سبک: "+styleLabelFa(value)+"، برای تغییر کلیک کن"} aria-haspopup="menu"/>}>
-   <Icon icon={ICONS[value??AUTO]} aria-hidden="true"/>{value?styleLabelFa(value):"سبک: "+AUTO_STYLE_FA.titleFa}<Icon icon={ChevronDown} aria-hidden="true"/>
+  <DropdownMenuTrigger render={<Button type="button" variant="outline" aria-label={(value?"سبک: "+styleLabelFa(value):AUTO_STYLE_PILL_FA)+"، برای تغییر کلیک کن"} aria-haspopup="menu"/>}>
+   <Icon icon={ICONS[value??AUTO]} aria-hidden="true"/>{value?styleLabelFa(value):AUTO_STYLE_PILL_FA}<Icon icon={ChevronDown} aria-hidden="true"/>
   </DropdownMenuTrigger>
   <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-64">
    <DropdownMenuGroup>
