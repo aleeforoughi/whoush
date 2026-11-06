@@ -1,6 +1,6 @@
 "use client";
 import {ImageActionStack} from "@/components/edit-image-button";
-import {useEffect,useState} from "react";
+import {useEffect,useState,type CSSProperties} from "react";
 import {Clapperboard,Image as ImageIcon} from "lucide-react";
 import {Badge,Icon} from "@aleeforoughi/feather-react";
 import {ShareActions} from "@/components/share-actions";
@@ -35,6 +35,23 @@ export function useJobLive(job:JobView,kind:"image"|"video"="image",model?:strin
   status:liveStatusFa({state:job.state,elapsedMs:elapsed,kind,model,typicalMs:job.typicalMs,lines:job.progressFa,facts:job.progressFacts})};
 }
 
+/**
+ * A working generation, minimal (owner, 2026-11-07): the estimated percentage, large, in the centre, with the live status line under it, and a ring on the
+ * frame's border that fills with blue as it grows. The same in the preview panel and the chat card; `compact` is the card's size. The parent is the frame:
+ * `relative`, rounded, `overflow-hidden`.
+ */
+export function GenerationProgress({status,percent,compact=false}:{status:string;percent:number;compact?:boolean}){
+ return <>
+  <span aria-hidden="true" className="whoush-generating pointer-events-none absolute inset-0"/>
+  <span aria-hidden="true" className="whoush-progress-ring" style={{"--whoush-progress":percent+"%"} as CSSProperties}/>
+  <span role="progressbar" aria-label="پیشرفت تخمینی ساخت" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-valuetext={"حدود "+fa(percent)+" درصد (تخمینی)"}
+   className={"relative flex flex-col items-center justify-center text-center "+(compact?"gap-1 px-4":"gap-2 px-8")}>
+   <span className={"text-fg-primary tabular-nums "+(compact?"type-heading-1":"type-display")}>{fa(percent)}٪</span>
+   <span aria-live="polite" className={"max-w-sm text-fg-secondary "+(compact?"line-clamp-2 type-caption":"type-body-sm")}>{status}</span>
+  </span>
+ </>;
+}
+
 export function GenerationPreview({job,kind="image",model,placeholder,onEdit,onView}:{job:JobView;kind?:"image"|"video";model?:string;placeholder:string;
  /** Full screen (the viewer). */onView?:()=>void;
  /** «ادیت» on a finished image (components/edit-image-button.tsx). */onEdit?:()=>void}){
@@ -47,8 +64,8 @@ export function GenerationPreview({job,kind="image",model,placeholder,onEdit,onV
  return <div className="flex flex-col gap-3">
   {/* While generating or without an output: a 16:9 stage. With an output: the frame follows the media, so the whole image or video shows at its own ratio. */}
   <div className={"relative flex flex-col overflow-hidden rounded-card border border-line-secondary bg-surface-subtle "+(shown?"":"min-h-48 md:aspect-video")}>
-   {active&&<div aria-hidden="true" className="whoush-generating pointer-events-none absolute inset-0"/>}
-   <div className={"relative flex flex-1 flex-col items-center justify-center gap-3 text-center "+(shown?"p-2":"p-8")}>
+   {active&&percent!==null&&!shown&&<div className="relative flex flex-1 flex-col items-center justify-center p-8"><GenerationProgress status={status} percent={percent}/></div>}
+   {!(active&&percent!==null&&!shown)&&<div className={"relative flex flex-1 flex-col items-center justify-center gap-3 text-center "+(shown?"p-2":"p-8")}>
     {shown
      ?(shown.kind==="video"
       ?<video src={shown.url} controls playsInline preload="metadata" aria-label={"ویدیوی "+(job.tag?displayTag(job.tag):"ساخته‌شده")} className="block h-auto max-h-[min(75dvh,56rem)] w-full rounded-control bg-background object-contain"/>
@@ -61,16 +78,6 @@ export function GenerationPreview({job,kind="image",model,placeholder,onEdit,onV
       <p className="type-body text-fg-primary">{active?status:job.messageFa}</p>
       {!active&&!stopped&&<p className="type-caption text-fg-secondary">{placeholder}</p>}
      </>}
-   </div>
-   {percent!==null&&active&&<div className="relative flex flex-col gap-2 border-t border-line-tertiary bg-background/60 px-4 py-3">
-    <div className="flex items-center justify-between gap-3">
-     <span aria-live="polite" className="min-w-0 truncate type-body-sm text-fg-primary">{status}{job.tag&&<span className="text-fg-secondary"> · <bdi>{displayTag(job.tag)}</bdi></span>}</span>
-     <span className="shrink-0 type-label text-fg-primary tabular-nums">{fa(percent)}٪ <span className="type-caption text-fg-secondary">(تخمینی)</span></span>
-    </div>
-    <div role="progressbar" aria-label="پیشرفت تخمینی ساخت" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-valuetext={"حدود "+fa(percent)+" درصد (تخمینی)"}
-     className="h-1.5 w-full overflow-hidden rounded-control bg-surface-hover">
-     <div className="h-full rounded-control bg-primary transition-[width] duration-500 ease-out motion-reduce:transition-none" style={{width:percent+"%"}}/>
-    </div>
    </div>}
   </div>
   {stopped&&<div className="flex flex-wrap items-center gap-2"><Badge variant="destructive">{stopped}</Badge><span className="type-body-sm text-fg-secondary">{job.messageFa}</span></div>}

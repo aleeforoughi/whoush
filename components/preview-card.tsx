@@ -4,7 +4,7 @@ import {Brush,Clapperboard,Download,Image as ImageIcon,Maximize2} from "lucide-r
 import {Badge,Button,Icon} from "@aleeforoughi/feather-react";
 import {displayTag} from "@/lib/attachments";
 import {jobStateFa} from "@/lib/projects";
-import {useJobLive} from "@/components/generation-preview";
+import {GenerationProgress,useJobLive} from "@/components/generation-preview";
 import type {JobView} from "@/lib/studio-types";
 
 export const OPEN_PREVIEW_FA="نمایش",CLOSE_PREVIEW_FA="بستن نمایش",BACK_TO_CHAT_FA="بازگشت به چت";
@@ -22,6 +22,8 @@ export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,o
  /** «ویرایش با قلم» on a finished image. */onEdit?:()=>void}){
  const label=OPEN_PREVIEW_FA+(tag?" "+displayTag(tag):"");
  const live=useJobLive(job??{state,messageFa},video?"video":"image",model),line=live.active?live.status:messageFa;
+ // While it works (no output yet): the same sweep and progress foot as the preview panel (owner, 2026-11-07).
+ const working=live.active&&!output&&live.percent!==null;
  // The placeholder keeps a 16:9 frame; a real output sets its own frame, so the whole image or video shows at its own ratio (never cropped to fill).
  // A narrower output sits at the start (right, in Persian), at most 300px tall, with no letterbox around it.
  const frame="relative flex w-full items-center overflow-hidden rounded-control text-fg-secondary",media=frame+(output?" justify-start":" aspect-video justify-center bg-surface-hover");
@@ -29,6 +31,10 @@ export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,o
   {output?.kind==="video"
    ?<span className="relative block w-fit max-w-full">{onView&&<button type="button" onClick={onView} aria-label={"نمایش تمام‌صفحه"+(tag?" "+displayTag(tag):"")} title="نمایش تمام‌صفحه"
      className="absolute start-1.5 top-1.5 z-10 flex size-7 items-center justify-center rounded-[4px] bg-background/85 text-fg-primary shadow-sm backdrop-blur-sm hover:bg-background"><Icon icon={Maximize2} size={16} aria-hidden="true"/></button>}<video src={output.url} controls playsInline preload="metadata" aria-label={"ویدیوی "+(tag?displayTag(tag):"پیش‌نمایش")} className="block h-auto max-h-[300px] w-auto max-w-full rounded-control bg-background"/></span>
+   :working
+    ?<button type="button" onClick={onOpen} aria-label={label} className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-control bg-surface-hover motion-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+     <GenerationProgress compact status={live.status} percent={live.percent!}/>
+    </button>
    :<span className="group relative block w-fit max-w-full"><button type="button" onClick={output&&onView?onView:onOpen} aria-label={output&&onView?"نمایش تمام‌صفحه"+(tag?" "+displayTag(tag):""):label} className={media+" motion-hover not-disabled:hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"}>
     {output
      // eslint-disable-next-line @next/next/no-img-element -- a provider output URL shown as the card's preview
@@ -47,7 +53,7 @@ export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,o
      <span className="type-label text-fg-primary">پیش‌نمایش{tag?" "+displayTag(tag):""}</span>
      <Badge variant="outline">{jobStateFa(state)}</Badge>
     </span>
-    <span aria-live={live.active?"polite":undefined} className="line-clamp-2 type-caption text-fg-secondary">{line}</span>
+    {!working&&<span aria-live={live.active?"polite":undefined} className="line-clamp-2 type-caption text-fg-secondary">{line}</span>}
    </span>
    <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-control text-fg-secondary group-hover/preview:text-fg-primary"><Icon icon={Maximize2} size={16} className="size-4"/></span>
   </button>

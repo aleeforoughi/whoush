@@ -61,6 +61,19 @@ bdi,
   .whoush-generating { animation: none; background-position: 50% 0; }
 }
 
+/* Generation progress around the frame (owner, 2026-11-07): a ring on the frame's border that fills with blue, clockwise from the top, as the estimate
+   grows. A conic gradient shown only on a 3px border ring (mask), so it follows any frame size and its rounded corners; the fill eases between updates. */
+@property --whoush-progress { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
+.whoush-progress-ring {
+  --whoush-progress: 0%;
+  position: absolute; inset: 0; pointer-events: none; border-radius: inherit; padding: 3px;
+  background: conic-gradient(from 0deg, var(--primary) var(--whoush-progress), color-mix(in oklab, var(--color-line-tertiary) 70%, transparent) var(--whoush-progress));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  transition: --whoush-progress 600ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) { .whoush-progress-ring { transition: none; } }
+
 /* Scrollbars: minimal, quiet and the same everywhere. One size for every scroll area on every platform: a 10px lane with a 4px rounded thumb, no track,
    no arrows. Hidden until the area is hovered or being scrolled (components/providers.tsx marks a scrolling element with data-scrolling). Feather's
    ScrollArea below uses the same lane and thumb. Candidate to move into Feather. */
