@@ -26,6 +26,7 @@ import {inspectReferences} from "./reference-inspect";
 import {faPlain} from "./format";
 import {EDIT_CARD_FA,EDIT_CARD_FINGLISH,wantsBrushEdit} from "./edit-card";
 import {safeReview} from "./upload-review";
+import {rememberRegionEdit} from "./region-restore";
 import {MEDIA_ROUTE} from "./media-store";
 import {reviewAvailable,reviewPlan,promptWithFixes,type PlanReviewer} from "./plan-review";
 import {findMediaModel} from "./catalog";
@@ -742,6 +743,9 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  }
  keepPrompt(turnId,plan.mediaPrompt,content);
  if(uploads.length&&kind==="image")refStore().set(turnId,uploads);
+ // A brush edit: after generation, everything outside the edited areas is restored from the source photo exactly (lib/region-restore.ts).
+ const firstPainted=painted[0];
+ if(firstPainted&&kind==="image")rememberRegionEdit(turnId,{sourceId:safeReview(firstPainted.reviewId)!.mediaId,guideId:safeReview(firstPainted.regionEdit!.guideReviewId)!.mediaId});
  if(research){
   if(usedAsImages&&refCount)refStore().set(turnId,research.references);
   const notes=[...research.notesFa,...(refCount&&!usedAsImages?[kind==="video"?"برای ویدیو، مرجع‌ها فعلاً در نوشتن صحنه به کار رفتن، نه به‌عنوان تصویر.":"مدل‌های پیشنهادی مرجع تصویری نمی‌گیرن؛ مرجع‌ها در نوشتن صحنه به کار رفتن."]:[])];

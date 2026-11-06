@@ -19,18 +19,26 @@ export const RETRY_REVIEW_FA="دوباره بررسی کن";
 export const WAITING_FA="یه لحظه، عکس‌هات در حال بررسی ایمنی‌ان. تموم شد، خودم ادامه می‌دم.";
 const MAX_SIDE=2048;
 
-/** The photo as Whoush checks and uses it: at most 2048 px on its longer side, JPEG. A photo the browser cannot draw goes as it is when its type is accepted. */
+/**
+ * The photo as Whoush checks and uses it. Quality first (owner, 2026-11-06: edits must not get pixelated; measured live, a needless JPEG re-encode here cut
+ * sharpness by a third before the model ever saw the photo): a JPEG, PNG or WebP of at most 2048 px on its longer side is sent byte for byte as it is. Only a
+ * larger photo (or another type) is redrawn, at 2048 px with high-quality smoothing, as a high-quality JPEG.
+ */
 export async function shrinkForReview(blob:Blob):Promise<Blob>{
+ const accepted=/^image\/(jpeg|png|webp)$/.test(blob.type);
  try{
   const bmp=await createImageBitmap(blob,{imageOrientation:"from-image"});
-  const k=Math.min(1,MAX_SIDE/Math.max(bmp.width,bmp.height)),w=Math.max(1,Math.round(bmp.width*k)),h=Math.max(1,Math.round(bmp.height*k));
+  const long=Math.max(bmp.width,bmp.height);
+  if(accepted&&long<=MAX_SIDE&&blob.size<=11*1024*1024){bmp.close();return blob;}
+  const k=Math.min(1,MAX_SIDE/long),w=Math.max(1,Math.round(bmp.width*k)),h=Math.max(1,Math.round(bmp.height*k));
   const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;
   const ctx=canvas.getContext("2d");if(!ctx){bmp.close();throw new Error("no canvas");}
+  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";
   ctx.fillStyle="#fff";ctx.fillRect(0,0,w,h);ctx.drawImage(bmp,0,0,w,h);bmp.close();
-  const out=await new Promise<Blob|null>(res=>canvas.toBlob(res,"image/jpeg",0.9));
+  const out=await new Promise<Blob|null>(res=>canvas.toBlob(res,"image/jpeg",0.95));
   if(out)return out;
  }catch{/* fall through: send the original if its type is accepted */}
- if(/^image\/(jpeg|png|webp)$/.test(blob.type))return blob;
+ if(accepted)return blob;
  throw new Error("unreadable");
 }
 

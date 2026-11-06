@@ -1,3 +1,4 @@
+import {restoreTurnOutputs} from "./region-restore";
 import "server-only";
 import {createHash,randomUUID} from "node:crypto";
 import {findMediaModel,MEDIA_CATALOG_VERSION,type MediaConfiguration} from "./catalog";
@@ -153,7 +154,10 @@ export async function pollJob(id:string,ownerId:string,deps:JobDeps={}):Promise<
    if(cur.mode==="demo")break;
    if(cur.state==="submitted")transition(cur,"running",now);
    const ok=s.outputs.length>0&&s.outputs.every(o=>httpsUrl(o.url));
-   finish(cur,ledger,ok?"completed":"failed",now,ok?s.outputs:[]);break;
+   // A brush edit's image is restored outside its edited areas before it is shown (lib/region-restore.ts); a failure keeps the model's image.
+   const outputs=ok?await restoreTurnOutputs(cur.turnId,s.outputs):[];
+   const latest=store.get(id)!;if(isTerminal(latest.state))return latest;
+   finish(latest,ledger,ok?"completed":"failed",now,outputs);break;
   }
   case "failed":case "nsfw":finish(cur,ledger,"failed",now);break;
   case "canceled":finish(cur,ledger,"canceled",now);break;
