@@ -264,7 +264,9 @@ const wordsRe=(l:readonly string[])=>new RegExp("(?<![\\p{L}\\p{N}])(?:"+l.map(w
 /** First match wins, in this order. Keywords are matched as whole words on the normalized text. */
 const INFER_RULES={
  image:[
-  ["edit_reference",wordsRe(["ویرایش","ادیت","حذف کن","پاک کن","جایگزین","عوض کن","تغییر بده","رتوش","edit","remove","replace","retouch"])],
+  // Retouch, makeup and beautify requests on a photo edit that photo in place (owner, 2026-11-06: influencers' everyday edits).
+  ["edit_reference",wordsRe(["ویرایش","ادیت","حذف کن","پاک کن","جایگزین","عوض کن","تغییر بده","رتوش","روتوش","روتوشش","روتوش کن","زیباتر کن","زیباترش کن","خوشگل تر کن","خوشگلترش کن","خوشگلم کن",
+   "آرایش کن","آرایشش کن","آرایشم کن","میکاپ کن","میکاپش کن","لاغرتر کن","لاغرترم کن","صاف کن","صافش کن","پولیش کن","edit","remove","replace","retouch","touch up","beautify","polish","slim"])],
   ["end_frame",wordsRe(["فریم آخر","آخر ویدیو","تهش","پایان ویدیو","ختم بشه به","ختم بشه","ختم شود","ختم شه","تموم بشه","برسه","برسد","تمام بشه","end frame","last frame","ending"])],
   ["start_frame",wordsRe(["شروع کن","شروع کن از","شروع از","شروع بشه","start from","starts from","متحرکش کن","زنده‌اش کن","جون بده","انیمیت","متحرک کن","تبدیل به ویدیو","animate","bring to life","make it move"])],
   ["outfit",wordsRe(["لباس","مانتو","کت","شلوار","پیراهن","دامن","کفش","پوشش","ست لباس","استایل لباس","outfit","dress","clothes","wardrobe"])],

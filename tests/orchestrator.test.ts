@@ -31,9 +31,14 @@ test("all 25 skills are reachable from table-driven contexts",()=>{
   ["audiographer",{...base,hasAudioReference:true}],["visual_designer",{prompt:"poster",kind:"image"}],["creative_copywriter",{prompt:"caption",kind:"image"}],
   ["social_media",{prompt:"instagram reels",kind:"video"}],["iranian_culture",{prompt:"نوروز",kind:"image"}],["iranian_geography",{prompt:"شیراز",kind:"image"}],
   ["persian_lip_sync_phonetics",{prompt:"lip sync",kind:"video"}],["tehrani_accent",{prompt:"x",kind:"video",accent:"tehrani"}],["character_creation",{...base,characterRef:{id:"char-12345678",angles:["front"],version:1}}],
-  ["whoush_voice",base],["persian_colloquial",base],["finglish_writing",{prompt:"salam, ye aks az shab mikham",kind:"image"}]
+  ["whoush_voice",base],["persian_colloquial",base],["finglish_writing",{prompt:"salam, ye aks az shab mikham",kind:"image"}],
+  ["makeup_artist",{prompt:"آرایش ملایم با رژ لب نود",kind:"image"}],["beauty_retoucher",{prompt:"روتوش طبیعی پوست",kind:"image"}],["anatomy_specialist",{prompt:"کمر لاغرتر",kind:"image"}],
+  ["beauty_fashion",{prompt:"عکس بیوتی",kind:"image"}],["fashion_trends",{prompt:"لباس ترند پاییز",kind:"image"}],["wardrobe_stylist",{prompt:"یه مانتو شیک",kind:"image"}],
+  ["hairstylist",{prompt:"مدل مو فر",kind:"image"}],["model_director",{prompt:"ژست مدلینگ",kind:"image"}],["body_language",{prompt:"زبان بدن با اعتماد به نفس",kind:"image"}],
+  ["marketing_psychologist",{prompt:"عکس تبلیغاتی برای برند",kind:"image"}],["social_media_marketing",{prompt:"کاور ریلز اینستاگرام",kind:"image"}],["influencer_marketing",{prompt:"پست اینفلوئنسر با محصول",kind:"image"}],
+  ["tiktok_viral",{prompt:"یه ویدیو برای تیک تاک",kind:"video"}],["instagram_viral",{prompt:"کاور ریلز اینستاگرام",kind:"image"}]
  ];
- assert.equal(Object.keys(SKILLS).length,25);
+ assert.equal(Object.keys(SKILLS).length,39);
  assert.deepEqual(new Set(table.map(t=>t[0])),new Set(Object.keys(SKILLS)));
  for(const [id,ctx] of table)assert.ok(resolveCreativeSkills(ctx).includes(id),id);
 });

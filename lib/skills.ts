@@ -2,6 +2,8 @@
 import {isFinglish} from "./finglish";
 import {normalizePersian} from "./safety";
 import {ADVANCED_SKILLS} from "./advanced-skills";
+import {BEAUTY_SKILLS} from "./beauty-skills";
+import {MARKETING_SKILLS} from "./marketing-skills";
 import type {MediaKind} from "./types";
 import type {AttachmentRole} from "./attachments";
 type Skill={title:string;objective:string;checks:readonly string[]};
@@ -21,10 +23,12 @@ export const SKILLS={
  creative_copywriter:{title:"Professional Creative Copywriter",objective:"Write catchy, effective, culturally authentic nonpolitical Persian/English copy and brand messaging.",checks:["Hook, slogan, CTA and tone reflect the audience and product.","No misleading advertising, fake claims or misattributed poetry.","Proofread Persian idioms, spelling, rhymes and brevity."]},
  qa:{title:"Professional Media QA",objective:"Evaluate deliverables against the brief and technical constraints; never approve uninspected results.",checks:["Object count, identity, anatomy, geometry, text accuracy, consistency and violations.","Resolution, duration, frame-rate and colorimetry only when actual media measured.","Check originality, provider policy, safe content and explicit user acceptance."]},
  iranian_geography:{title:"Iran Geography, Cities, Idioms, Local Languages, Poems and Celebrities Specialist",objective:"Represent nonpolitical Iranian regions, everyday language, landmarks, art and celebrities accurately.",checks:["Validate distinctive city architecture, local names and era details.","Do not invent poem attribution, dialect fluency or celebrity facts.","Political figures are forbidden under Whoush policy regardless of regional significance."]},
- ...ADVANCED_SKILLS
+ ...ADVANCED_SKILLS,
+ ...BEAUTY_SKILLS,
+ ...MARKETING_SKILLS
 } as const satisfies Record<string,Skill>;
 export type SkillId=keyof typeof SKILLS;
-export const SKILL_REGISTRY_VERSION="1.2.0";
+export const SKILL_REGISTRY_VERSION="1.3.0";
 export type SkillContext={prompt:string;kind:MediaKind;task?:"generate"|"edit"|"character";hasAudioReference?:boolean;hasSpeechAudio?:boolean;speechLanguage?:"fa"|"other"|"unknown";accent?:"tehrani"|"original"|"unspecified";hasCharacterReference?:boolean;characterRef?:{id:string;angles:readonly string[];version:number};visualStyle?:"photoreal"|"stylized"|"auto";
  /** Roles of the attached media: a character image brings character_creation, a graphic brings visual_designer, music brings audiographer. */
  attachmentRoles?:readonly AttachmentRole[]};
@@ -56,6 +60,38 @@ export function resolveCreativeSkills(context:SkillContext):SkillId[]{
  if(has(p,["instagram","tiktok","twitter","social media","reels","viral","story","اینستاگرام","تیک تاک","توییتر","ریلز","استوری","ترند","وایرال"]))ids.add("social_media");
  if(has(p,["iran","iranian","persian culture","ایران","ایرانی","فرهنگ ایرانی","نوروز","یلدا","تهران","سنتی","محلی"]))ids.add("iranian_culture");
  if(has(p,["tehran","shiraz","isfahan","iran","celebrity","persian poem","شهر","تهران","شیراز","اصفهان","تبریز","مشهد","شعر","حافظ","سعدی","لهجه","گویش","خواننده","بازیگر","سلبریتی","جغرافیا"]))ids.add("iranian_geography");
+ // Beauty, fashion and modeling (owner, 2026-11-06): influencers, models and bloggers. Each specialist joins when its words or a matching photo role appear.
+ const roles=context.attachmentRoles??[];
+ const makeup=roles.includes("makeup")||has(p,["آرایش","میکاپ","رژ","رژ لب","رژلب","سایه چشم","خط چشم","ریمل","کانتور","کرم پودر","رژگونه","هایلایتر","makeup","make up","lipstick","eyeshadow","eyeliner","mascara","contour","blush","glam","foundation"]);
+ const retouch=has(p,["روتوش","رتوش","روتوش کن","زیباتر","زیباترش","خوشگل تر","خوشگلتر","خوشگلم کن","صاف تر","پوست","جوش","لک","چین و چروک","زیر چشم","پولیش","retouch","touch up","beautify","beauty retouch","smooth skin","skin","blemish","blemishes","polish","glow"]);
+ const body=has(p,["بدن","اندام","لاغر","لاغرتر","کمر","فرم صورت","بینی","فک","گونه","قد","چانه","body","slim","slimmer","waist","jawline","nose","face shape","cheekbones","posture"]);
+ const fashion=has(p,["بیوتی","فشن","مد","مدلینگ","بلاگر","اینفلوئنسر","اینفلوئنسری","لوک بوک","مراقبت پوست","اسکین کر","beauty","fashion","editorial","lookbook","influencer","blogger","skincare","ootd","outfit of the day","grwm"]);
+ const trends=has(p,["ترند","مد روز","مد سال","trend","trends","trendy","this season","fashion week"]);
+ const wardrobe=roles.includes("outfit")||has(p,["لباس","استایل","ست","مانتو","کت","دامن","شلوار","کفش","اکسسوری","کیف","outfit","wardrobe","dress","styling","accessories"]);
+ const hair=roles.includes("hairstyle")||has(p,["مو","موهام","موهاش","مدل مو","رنگ مو","کوتاهی مو","شینیون","براشینگ","فر","hair","hairstyle","haircut","hair color","bangs","curls","updo"]);
+ const posing=has(p,["ژست","پوز","مدلینگ","عکاسی فشن","فیگور","pose","posing","model shoot","modeling","photoshoot"]);
+ if(makeup)ids.add("makeup_artist");
+ if(retouch||(makeup&&roles.includes("edit_reference")))ids.add("beauty_retoucher");
+ if(body||retouch)ids.add("anatomy_specialist");
+ if(fashion||makeup||trends)ids.add("beauty_fashion");
+ if(trends||(fashion&&wardrobe))ids.add("fashion_trends");
+ if(wardrobe)ids.add("wardrobe_stylist");
+ if(hair)ids.add("hairstylist");
+ if(posing||fashion)ids.add("model_director");
+ const people=has(p,["زبان بدن","حالت بدن","ژست","پوز","حرکت دست","نگاه","لبخند","حالت چهره","body language","gesture","gestures","expression","eye contact","smile"])||posing;
+ const market=has(p,["تبلیغ","تبلیغاتی","کمپین","برند","فروش","محصول","مشتری","مخاطب","معرفی محصول","ad","ads","advert","advertising","campaign","brand","marketing","sales","product","promo","promotion"]);
+ const social=has(p,["اینستاگرام","اینستا","تیک تاک","ریلز","استوری","پست","کاور","فالوور","پیج","instagram","insta","tiktok","reels","reel","story","stories","post","carousel","followers","youtube shorts"]);
+ const influence=has(p,["اینفلوئنسر","بلاگر","اینفلوئنسری","همکاری با برند","تبلیغ پیج","پیج شخصی","influencer","blogger","creator","ugc","brand deal","sponsored","collab"]);
+ if(people||fashion||makeup)ids.add("body_language");
+ if(market||influence)ids.add("marketing_psychologist");
+ if(social||influence)ids.add("social_media_marketing");
+ if(influence||(fashion&&social))ids.add("influencer_marketing");
+ const tiktok=has(p,["تیک تاک","تیکتاک","tiktok","tik tok"]),insta=has(p,["اینستاگرام","اینستا","ریلز","استوری","کاروسل","instagram","insta","reels","reel","story","stories","carousel"]);
+ const viral=has(p,["وایرال","ویروسی","ترند","پربازدید","viral","trend","trending","go viral"]);
+ if(tiktok||(viral&&!insta&&context.kind==="video"))ids.add("tiktok_viral");
+ if(insta||(viral&&!tiktok))ids.add("instagram_viral");
+ // A retouch or beautify request on a photo is a photo edit.
+ if(context.kind==="image"&&(retouch||body)&&roles.includes("edit_reference"))ids.add("photo_editor");
  return [...ids];
 }
 /** Server-only prompt construction contract. Never return this content through customer APIs. */

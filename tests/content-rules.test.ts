@@ -38,7 +38,9 @@ test("beauty influencers, models and bloggers (owner, 2026-11-06): everyday beau
  for(const t of ["یه عکس پرتره با رژ لب قرمز و آرایش ملایم","nude lipstick and soft glam makeup","nude nails with a gold ring","wine red lips, editorial beauty shot","a champagne gold evening gown on a runway",
   "blood red nails close-up","عکس فشن با لباس مجلسی بلند","یه عکس تبلیغاتی برای کرم مرطوب‌کننده","عکس بیوتی کلوزآپ از چشم با ریمل و خط چشم","مدل با پیراهن تابستونی توی کافه",
   "یه ویدیو از روتین مراقبت پوست صبحگاهی","outfit of the day photo for instagram","یه عکس از موهای فر با نور طلایی","hijab fashion editorial in a garden","یه عکس از یه بلاگر با کیف و عینک آفتابی",
-  "Soft natural light, nude-tone makeup, wine-red lip, champagne satin dress, no political banners"])
+  "Soft natural light, nude-tone makeup, wine-red lip, champagne satin dress, no political banners",
+  // Planner wording seen live on 2026-11-06 (a retouch was refused): colour adjectives are colours.
+  "nude-toned lipstick","nude-colored lips","sheer nude gloss","invisible to the naked eye"])
   assert.equal(decide(t.replace("no political banners","")),"allow",t);
  assert.equal(decide("a glass of red wine on the table"),"alcohol","a drink is still a drink");
  assert.equal(decide("nude photo"),"sexualized_content","nudity is still nudity");

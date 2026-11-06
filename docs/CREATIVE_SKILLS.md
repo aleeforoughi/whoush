@@ -12,6 +12,8 @@ This is a reusable skill instruction library, not retrained model weights or a s
 - `qa`: pre-plan and post-generation checks; no claiming actual quality without inspecting rendered assets.
 
 ## Conditional routing (all selected automatically)
+
+Registry v1.3.0 (owner, 2026-11-06): 14 beauty, fashion, body-language and marketing specialists were added for influencers, models and bloggers (`lib/beauty-skills.ts`, `lib/marketing-skills.ts`, `tests/beauty-skills.test.ts`).
 | Trigger | Skill IDs | Concrete contribution |
 |---|---|---|
 | Any new image | `photographer` | Camera/lens distance, f-stop, shutter, ISO, WB, DOF, framing, light ratios and direction, shadows, realistic textures |
@@ -19,6 +21,16 @@ This is a reusable skill instruction library, not retrained model weights or a s
 | Image edit or local replacement | `photo_editor` | Masks, localized retouch, shadow consistency, preserve original face/body/framing/color except edits requested |
 | Video edit, trim, masks | `video_editor` | Preserve FPS, PTS, cut timing, original motion/audio, edges, transparency, blur and grade |
 | Audio reference or sound brief | `audiographer` | Sound direction, audio sync, ambiance, capture technique. No unapproved audio generation |
+| Makeup words or a makeup photo | `makeup_artist` | Looks matched to skin tone and undertone, precise placement, makeup on real skin texture; a makeup edit changes the makeup only |
+| Retouch, beautify, skin words | `beauty_retoucher` (+ `anatomy_specialist`; `photo_editor` when editing a photo) | In-place edit, natural by default: keep pores, moles and identity, framing and light; more only when asked |
+| Face or body refinement words | `anatomy_specialist` | Believable proportions and hands, subtle healthy refinements, no warped background, never sexualizing changes |
+| Beauty, fashion, influencer words | `beauty_fashion`, `model_director`, `body_language` | Beauty and fashion formats and light, modest-friendly styling, honest product shots; flattering natural poses and gestures |
+| Trend words, or fashion with an outfit | `fashion_trends` | Trends by visual language; never "trending now" without a dated source |
+| Outfit words or an outfit photo | `wardrobe_stylist` | Fit, drape, colour coordination, accessories; a supplied outfit stays exact |
+| Hair words or a hairstyle photo | `hairstylist` | Cut for the face shape, real colour and strands, scarf-compatible styling, own hairline kept |
+| Ad, brand, campaign or product words | `marketing_psychologist` | One message, one action, honest levers only: no fake urgency, no exploiting insecurities |
+| Social platform words | `social_media_marketing`, `instagram_viral`, `tiktok_viral` | Hooks, formats, safe areas, Persian captions; evergreen viral patterns; never invented trends or analytics |
+| Influencer, creator, sponsored words | `influencer_marketing` | Authentic personal brand, natural product use, honest disclosure |
 | Logo, poster, banner, typography | `visual_designer` | Grids, typographic hierarchy, Persian font suitability, color harmony, text QA |
 | Tagline, caption, copy | `creative_copywriter` | Advertising hook, authentic local slang, proofread Farsi, brand tone |
 | Instagram, TikTok, X, Reels, trends | `social_media` | Platform formats, hooks, captions, safe areas; current trend claims require dated verified data |

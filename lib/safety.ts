@@ -57,7 +57,9 @@ const SEXUALIZED=[
  "lingerie","bikini","see through clothing","transparent clothing","striptease","strip club","fetish","onlyfans",
  "برهنه","نیمه برهنه","لخت","عریان","سکسی","سکس","پورن","پورنو","شهوانی","تحریک آمیز","ژست سکسی",
  "ژست اغواگر","لباس زیر","سوتین","بیکینی","مایو دو تکه","لباس بدن نما",
- "لباس شفاف","رقص برهنه","استریپ"
+ "لباس شفاف","رقص برهنه","استریپ",
+ // Body edits that sexualize (owner, 2026-11-06): slimming and posture are fine; enlarging breasts or hips is not.
+ "بزرگ کردن سینه","سینه بزرگتر","سینه هاش بزرگتر","بزرگ کردن باسن","باسن بزرگتر","breast enlargement","bigger breasts","bigger chest","bigger butt","butt lift"
 ];
 const MINOR_SEXUALIZATION=["child pornography","nude child","sexualized minor","کودک برهنه","برهنه بچه","سکس کودک"];
 /** Violence and blood. A battle or an epic scene without injury is fine; blood orange and blood moon are not blood. */
@@ -78,7 +80,7 @@ const DRUGS=["مواد مخدر","مخدر","حشیش","تریاک","هروئی�
 const FASHION_COLOURS=["wine red","wine color","wine colour","wine colored","wine coloured","wine lipstick","wine lips","burgundy wine","champagne gold","champagne color",
  "champagne colour","champagne dress","champagne gown","champagne pink","champagne blonde","champagne hair","champagne tone","champagne shimmer","champagne eyeshadow"];
 const DRINK_COLOUR=/\b(?:wine|champagne|burgundy) (?:red|reds|color|colour|colored|coloured|gold|pink|blonde|beige|dress|gown|satin|silk|velvet|sequins?|tones?|shimmer|lips?|lipstick|gloss|eyeshadow|hair|heels|shoes|bag|nails?|blouse|skirt|top|suit|shade|shades)\b/g;
-const NUDE_BEAUTY=/\bnude (?:lipstick|lip|lips|makeup|make up|color|colour|colors|colours|nails?|nail polish|polish|manicure|heels|shoes|pumps|sandals|tones?|shades?|palette|eyeshadow|blush|gloss|liner|look|dress|gown|beige|pink|brown|bag|tights|stockings|foundation)\b/g;
+const NUDE_BEAUTY=/\bnude (?:toned|tinted|colored|coloured|hued|shaded|lipstick|lip|lips|makeup|make up|color|colour|colors|colours|nails?|nail polish|polish|manicure|heels|shoes|pumps|sandals|tones?|shades?|palette|eyeshadow|blush|gloss|liner|look|dress|gown|beige|pink|brown|bag|tights|stockings|foundation)\b/g;
 const AMBIGUOUS_REGULATED=["قمار","سیگار","religious parody"];
 const AMBIGUOUS_POLITICAL=["روحانی","انقلاب ایران","revolution"];
 const SENSITIVE_LANGUAGE=["فحش","فحاشی","فحاش","کصکش","fuck","motherfucker"];
@@ -135,7 +137,7 @@ export function evaluateTextSafety(raw:string):SafetyResult {
  if(matches(text,DRUGS)||f("drugs"))return refused("block","drugs","drugs");
  if(matches(text,REGULATED_CONTENT)||f("regulated"))return refused("block","regulated_content","drugs");
  // Nude cosmetic color words are not necessarily nudity.
- const contextual=without(text.replace(NUDE_BEAUTY," ok "),["nude lipstick","nude makeup","nude color","رنگ نود","رژ نود","آرایش نود"]);
+ const contextual=without(text.replace(NUDE_BEAUTY," ok "),["nude lipstick","nude makeup","nude color","naked eye","to the naked eye","رنگ نود","رژ نود","آرایش نود"]);
  if(matches(contextual,SEXUALIZED)||FINGLISH.sexual.some(t=>containsFinglish(normalizeFinglish(contextual),t)))return refused("block","sexualized_content","sexual");
  if(matches(text,AMBIGUOUS_REGULATED)||f("ambiguousRegulated"))return refused("review","regulated_content","drugs");
  if(matches(text,AMBIGUOUS_POLITICAL)||f("ambiguousPolitical"))return refused("review","ambiguous_politics","iran_politics");
