@@ -85,3 +85,10 @@
 - **Second run, 2026-11-06:** still 429, "limit: 0 requests per day on Free Tier", after the owner enabled billing.
   - Billing may take time to apply, or it may be on a different Google Cloud project from the one that owns this key.
   - The new server log line showed Google's reason as intended.
+- **Third run, 2026-11-06: first successful image.** The owner replaced the key with one from a paid project. `GET /models` returned 200.
+- **One in-app dev-live run of `nano-banana-2-1` completed end to end:**
+  - Persian request, then planner, then quote (1 Neuron, `dev_live`), then `POST /v1beta/interactions`.
+  - Then the base64 image was stored by Whoush (`/api/generation/media/<id>`) and the job completed. 0 Neurons charged.
+  - About 20 seconds from submit to completion.
+  - Output: a 1264×848 JPEG, the 3:2 ratio from the brief at 1K, with no visible mark (Google's SynthID is invisible).
+  - It followed the Persian brief closely: a waisted estekan on a saucer, with sugar cubes, steam and morning window light.
