@@ -82,7 +82,7 @@ export function GenerationGallery({items,focus,placeholder}:{items:GalleryItem[]
  const register=(which:"cards"|"thumbs",id:string)=>(el:HTMLElement|null)=>{const map=(which==="cards"?cards:thumbs).current;if(el)map.set(id,el);else map.delete(id);};
  return <div className="flex min-h-0 flex-1 gap-3 p-4 lg:p-6">
   {items.length>1&&<nav aria-label="تولیدهای این گفت‌وگو" className="flex w-16 shrink-0 flex-col">
-   <div ref={strip} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain pb-2 [scrollbar-width:thin]">
+   <div ref={strip} className="scrollbar-right flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain pb-2">
     {items.map(it=>{
      const out=it.job.outputs?.find(o=>isOwnedOutputUrl(o.url)),on=it.id===current,tag=it.job.tag?displayTag(it.job.tag):"";
      return <button key={it.id} ref={register("thumbs",it.id)} type="button" onClick={()=>jump(it.id)} aria-current={on||undefined}
@@ -102,7 +102,7 @@ export function GenerationGallery({items,focus,placeholder}:{items:GalleryItem[]
     })}
    </div>
   </nav>}
-  <div ref={list} className="flex min-h-0 min-w-0 flex-1 snap-y snap-proximity flex-col gap-8 overflow-y-auto overscroll-contain pb-[30vh] [scrollbar-width:thin]">
+  <div ref={list} className="scrollbar-right flex min-h-0 min-w-0 flex-1 snap-y snap-proximity flex-col gap-8 overflow-y-auto overscroll-contain pb-[30vh]">
    {items.map(it=><section key={it.id} ref={register("cards",it.id)} data-gallery-id={it.id} aria-label={it.job.tag?displayTag(it.job.tag):"تولید"}
     className="flex shrink-0 scroll-mt-1 snap-start flex-col gap-2">
     {(it.job.tag||it.model)&&<p className="flex items-center gap-2 type-label text-fg-secondary">

@@ -112,7 +112,7 @@ export function AssetsGallery(){
  const viewerItems:ViewerItem[]=shown.map(a=>({id:a.id,kind:a.kind,mime:a.mime,bytes:a.bytes,name:a.name,tag:a.tag,role:a.role,width:a.width,height:a.height,durationSeconds:a.durationSeconds,projectId:a.projectId,url:urls.get(a.id),blob:a.blob}));
  const openIndex=openId===null?-1:shown.findIndex(a=>a.id===openId);
  return <RailShell current="assets" onNewChat={()=>router.push("/studio")}>
-  <main id="main" className="min-h-0 flex-1 overflow-y-auto">
+  <main id="main" className="scrollbar-right min-h-0 flex-1 overflow-y-auto">
    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 lg:p-6">
     <div className="flex flex-col gap-1">
      <h1 className="font-heading type-headline text-fg-primary">دارایی‌ها</h1>

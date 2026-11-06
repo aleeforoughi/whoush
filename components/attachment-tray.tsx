@@ -13,7 +13,7 @@ export const ATTACHMENT_NOTE="فایل‌ها فقط در همین مرورگر 
  */
 export function AttachmentTray({items,cards=items.length,problems,reading,onDismiss}:{items:LocalAttachment[];cards?:number;problems:AttachmentProblem[];reading:boolean;onDismiss:(key:string)=>void}){
  if(!cards&&!items.length&&!problems.length&&!reading)return null;
- return <div className="flex max-h-[45dvh] flex-col gap-2 overflow-y-auto">
+ return <div className="scrollbar-right flex max-h-[45dvh] flex-col gap-2 overflow-y-auto">
   {problems.map(p=><Alert key={p.key} variant="destructive" role="alert" className="flex items-center gap-2">
    <Icon icon={CircleAlert} aria-hidden="true"/>
    <AlertDescription className="min-w-0 flex-1 break-words"><bdi>{p.name}</bdi>: {p.message}</AlertDescription>

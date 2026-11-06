@@ -765,7 +765,7 @@ export function Studio(){
      <AlertDescription>{error}</AlertDescription>
     </Alert></div>}
     {/* The chip tray and the composer scroll together under the chat, so on a short screen the prompt and the send button stay reachable. */}
-    <div className="flex max-h-[64dvh] min-h-0 shrink-0 flex-col overflow-y-auto border-t border-line-tertiary bg-surface-base">
+    <div className="scrollbar-right flex max-h-[64dvh] min-h-0 shrink-0 flex-col overflow-y-auto border-t border-line-tertiary bg-surface-base">
     <form ref={formRef} onSubmit={e=>void send(e)} className="mx-auto flex w-full max-w-3xl shrink-0 flex-col gap-3 bg-surface-base p-4">
      <AttachmentTray items={attachments} cards={cards.length} problems={problems} reading={reading} onDismiss={key=>setProblems(list=>list.filter(p=>p.key!==key))}/>
      <input ref={fileInput} type="file" multiple hidden accept={ATTACHMENT_ACCEPT} data-testid="attachment-input" onChange={e=>{const files=Array.from(e.target.files??[]),upload=pendingUpload.current,slot=pendingSlot.current;pendingUpload.current=undefined;pendingSlot.current=undefined;e.target.value="";e.target.multiple=true;const card=slot?slots.find(x=>x.id===slot):undefined;if(card)void fillSlot(card,files);else void addFiles(files,upload);}}/>

@@ -3,6 +3,7 @@ import {useEffect,useId,useImperativeHandle,useLayoutEffect,useRef,useState,type
 import {Badge,Card} from "@aleeforoughi/feather-react";
 import {ATTACHMENT_KINDS,displayTag,insertMention,isMediaKind,isPropTag,mentionTrigger,propMatchesQuery,propMention,roleLabelFa,tagMatchesQuery,type LocalAttachment} from "@/lib/attachments";
 import {editorSegments,removeBadge,type EditorSegment} from "@/lib/mention-editor";
+import {enterAction,isTouchOnly} from "@/lib/composer-keys";
 
 /** One entry of the `#` picker: a file or a generation of this chat, with a short badge («تصویر», «تولید») and an optional caption (role, intent). */
 export type MentionOption={id:string;tag:string;badgeFa:string;captionFa?:string};
@@ -80,8 +81,8 @@ function renderSegments(root:HTMLElement,segments:readonly EditorSegment[]){
  * English, either digit set, hyphen or not). Choosing one inserts its badge. A typed tag becomes a badge once the caret moves past it (a space); an unknown tag or an
  * ordinary hashtag (`#نوروز`) stays text. Backspace and Delete remove a badge as one unit; the × removes it with the pointer.
  * The value is plain text: a badge counts as its canonical tag (`#تصویر-۱`). The field looks like one input: the container owns the border, radius and focus ring.
- * `startAction` (the «+» menu) and `endAction` (send) are pinned to the bottom corners; the text reserves both with padding. Ctrl/Cmd+Enter calls
- * `onSubmitShortcut`, but never while the mention list is open (there Enter and Tab insert a mention).
+ * `startAction` (the «+» menu) and `endAction` (send) are pinned to the bottom corners; the text reserves both with padding. Enter (and Ctrl/Cmd+Enter)
+ * calls `onSubmitShortcut` and Shift+Enter starts a new line, but never while the mention list is open (there Enter and Tab insert a mention).
  */
 export function MentionTextarea({id,value,onValueChange,options,handleRef,startAction,endAction,top,onSubmitShortcut,onPaste,placeholder,maxLength,labelledBy,describedBy,startPad="ps-14"}:{
  id?:string;value:string;onValueChange:(v:string)=>void;options:readonly MentionOption[];handleRef:RefObject<MentionEditorHandle|null>;startAction?:ReactNode;endAction?:ReactNode;
@@ -202,7 +203,8 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
     onKeyDown={(e:KeyboardEvent<HTMLDivElement>)=>{
      if(e.nativeEvent.isComposing)return;
      if(!open){
-      if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)&&onSubmitShortcut){e.preventDefault();onSubmitShortcut();}
+      // Enter sends, Shift+Enter starts a new line (the browser's own line break), Ctrl/Cmd+Enter sends (lib/composer-keys.ts).
+      if(onSubmitShortcut&&enterAction({key:e.key,shiftKey:e.shiftKey,ctrlKey:e.ctrlKey,metaKey:e.metaKey,altKey:e.altKey,isComposing:e.nativeEvent.isComposing},isTouchOnly())==="send"){e.preventDefault();onSubmitShortcut();}
       return;
      }
      if(e.key==="ArrowDown"){e.preventDefault();setActive((current+1)%matches.length);}

@@ -119,3 +119,19 @@ bdi,
     transition: none;
   }
 }
+
+/* Vertical scrollbars always on the right, as on most of the web, also in this Persian (RTL) app. Browsers put an RTL element's scrollbar on the
+   left; a scroll container marked .scrollbar-right scrolls in LTR (scrollbar on the right) while its children stay RTL. Use it only on containers whose
+   content is wrapped in child elements (never on a text field: its own text would turn LTR). */
+html[dir="rtl"] .scrollbar-right {
+  direction: ltr;
+}
+html[dir="rtl"] .scrollbar-right > * {
+  direction: rtl;
+}
+/* Feather's ScrollArea pins its vertical bar to the inline end (left in RTL): keep it on the right. */
+html[dir="rtl"] [data-slot="scroll-area-scrollbar"][data-orientation="vertical"] {
+  inset-inline-end: auto !important;
+  right: 0 !important;
+  left: auto !important;
+}
