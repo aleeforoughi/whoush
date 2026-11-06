@@ -5,7 +5,7 @@ import {useRouter,useSearchParams} from "next/navigation";
 import {ArrowUp,ChevronLeft,CircleAlert,Clapperboard,Eye,Info,LoaderCircle,MessageCircle,Mic,Smile,Upload as UploadIcon,UserRound,X} from "lucide-react";
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Tabs,TabsContent,TabsList,TabsTrigger,Label,Tooltip,TooltipContent,TooltipTrigger} from "@aleeforoughi/feather-react";
 import {BACK_TO_CHAT_FA,CLOSE_PREVIEW_FA,OPEN_PREVIEW_FA,PreviewCard} from "@/components/preview-card";
-import {GenerationGallery,galleryFocusOn,type GalleryFocus,type GalleryItem} from "@/components/generation-gallery";
+import {GalleryThumbs,GenerationGallery,galleryFocusOn,type GalleryFocus,type GalleryItem} from "@/components/generation-gallery";
 import {isFinalJobState,isOwnedOutputUrl} from "@/lib/job-progress";
 import {followJobUntilDone,jobSnapshot,UNTRACKED_JOB_FA} from "@/lib/job-follow";
 import {NoModelCard,PastProposalCard,ProposalCard} from "@/components/proposal-card";
@@ -671,6 +671,10 @@ export function Studio(){
     </Tabs>
    </section>
    {/* End side: agent panel */}
+   {/* Desktop, preview closed: the thumbnail strip stays at the far edge; picking one opens the preview on that generation. */}
+   {!showPreview&&galleryItems.length>0&&<div className="surface-preview hidden border-s border-line-tertiary px-2 py-4 md:order-last md:flex">
+    <GalleryThumbs items={galleryItems} current={galleryFocus?.id??galleryItems.at(-1)!.id} onPick={id=>{const m=messages.find(x=>x.id===id);if(m?.kind==="job")openPreview(m.snapshot,id);}}/>
+   </div>}
    <section aria-label="دستیار هووش" className={(showPreview?"hidden md:flex":"flex")+" relative min-h-0 flex-1 flex-col border-line-tertiary md:min-w-0 md:basis-[22rem] md:transition-[flex-grow] md:duration-300 md:ease-out motion-reduce:transition-none lg:basis-[26rem] "+(showPreview?"md:grow-0 md:border-e":"md:grow")}
     onDragEnter={e=>{if(!hasFiles(e))return;e.preventDefault();dragDepth.current+=1;setDragging(true);}}
     onDragOver={e=>{if(hasFiles(e))e.preventDefault();}}

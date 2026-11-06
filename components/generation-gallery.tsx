@@ -1,5 +1,5 @@
 "use client";
-import {useEffect,useRef,useState} from "react";
+import {useEffect,useRef,useState,type Ref} from "react";
 import {Clapperboard,Image as ImageIcon,LoaderCircle} from "lucide-react";
 import {Icon} from "@aleeforoughi/feather-react";
 import {GenerationPreview} from "@/components/generation-preview";
@@ -83,13 +83,33 @@ export function GenerationGallery({items,focus,placeholder}:{items:GalleryItem[]
 
  const register=(which:"cards"|"thumbs",id:string)=>(el:HTMLElement|null)=>{const map=(which==="cards"?cards:thumbs).current;if(el)map.set(id,el);else map.delete(id);};
  return <div className="flex min-h-0 flex-1 gap-3 p-4 lg:p-6">
-  {/* The thumbnail strip: at the end side (left, in Persian), thumbnails only, centred vertically; it scrolls when they do not fit. */}
-  {items.length>1&&<nav aria-label="تولیدهای این گفت‌وگو" className="order-last flex w-[4.75rem] shrink-0 flex-col">
-   <div ref={strip} className="scrollbar-right flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
-    <div className="flex min-h-full flex-col justify-center gap-2 p-1">
+  {/* The thumbnail strip: at the end side (left, in Persian). */}
+  <GalleryThumbs items={items} current={current} onPick={jump} stripRef={strip} thumbRef={id=>register("thumbs",id)} className="order-last"/>
+  <div ref={list} className="scrollbar-right flex min-h-0 min-w-0 flex-1 snap-y snap-proximity flex-col gap-8 overflow-y-auto overscroll-contain pb-2">
+   {items.map(it=><section key={it.id} ref={register("cards",it.id)} data-gallery-id={it.id} aria-label={it.job.tag?displayTag(it.job.tag):"تولید"}
+    className="flex shrink-0 scroll-mt-1 snap-start flex-col gap-2">
+    {(it.job.tag||it.model)&&<p className="flex items-center gap-2 type-label text-fg-secondary">
+     {it.job.tag&&<bdi className="text-fg-primary">{displayTag(it.job.tag)}</bdi>}{it.model&&<span>· {it.model}</span>}
+    </p>}
+    <GenerationPreview job={it.job} kind={it.kind} model={it.model} placeholder={placeholder}/>
+   </section>)}
+  </div>
+ </div>;
+}
+
+/**
+ * The vertical strip of generation thumbnails: thumbnails only (each button is labelled with its tag), centred vertically, scrolling when they do not fit.
+ * Used beside the open gallery, and on its own at the edge of the studio while the preview is closed (a pick then opens the preview on that generation).
+ */
+export function GalleryThumbs({items,current,onPick,stripRef,thumbRef,className=""}:{items:GalleryItem[];current:string|null;onPick:(id:string)=>void;
+ stripRef?:Ref<HTMLDivElement>;thumbRef?:(id:string)=>(el:HTMLElement|null)=>void;className?:string}){
+ if(items.length===0)return null;
+ return <nav aria-label="تولیدهای این گفت‌وگو" className={"flex w-[4.75rem] shrink-0 flex-col "+className}>
+  <div ref={stripRef} className="scrollbar-right flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+   <div className="flex min-h-full flex-col justify-center gap-2 p-1">
     {items.map(it=>{
      const out=it.job.outputs?.find(o=>isOwnedOutputUrl(o.url)),on=it.id===current,tag=it.job.tag?displayTag(it.job.tag):"";
-     return <button key={it.id} ref={register("thumbs",it.id)} type="button" onClick={()=>jump(it.id)} aria-current={on||undefined}
+     return <button key={it.id} ref={thumbRef?.(it.id)} type="button" onClick={()=>onPick(it.id)} aria-current={on||undefined}
       aria-label={"نمایش "+(tag||"تولید")}
       // The selection ring and the focus outline are drawn inside the button (in its padding), so the strip's scroll area never clips them.
       className={"flex shrink-0 items-center justify-center rounded-control p-1 motion-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring "+(on?"bg-surface-hover ring-2 ring-inset ring-primary":"hover:bg-surface-hover")}>
@@ -104,17 +124,8 @@ export function GenerationGallery({items,focus,placeholder}:{items:GalleryItem[]
       </span>
      </button>;
     })}
-    </div>
    </div>
-  </nav>}
-  <div ref={list} className="scrollbar-right flex min-h-0 min-w-0 flex-1 snap-y snap-proximity flex-col gap-8 overflow-y-auto overscroll-contain pb-2">
-   {items.map(it=><section key={it.id} ref={register("cards",it.id)} data-gallery-id={it.id} aria-label={it.job.tag?displayTag(it.job.tag):"تولید"}
-    className="flex shrink-0 scroll-mt-1 snap-start flex-col gap-2">
-    {(it.job.tag||it.model)&&<p className="flex items-center gap-2 type-label text-fg-secondary">
-     {it.job.tag&&<bdi className="text-fg-primary">{displayTag(it.job.tag)}</bdi>}{it.model&&<span>· {it.model}</span>}
-    </p>}
-    <GenerationPreview job={it.job} kind={it.kind} model={it.model} placeholder={placeholder}/>
-   </section>)}
   </div>
- </div>;
+ </nav>;
 }
+
