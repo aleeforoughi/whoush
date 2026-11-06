@@ -64,3 +64,19 @@ test("a plain edit request with uploaded photos opens one edit card per photo; a
  const named=await orchestrateCreativeTurn({text:"#تصویر-۲ رو ادیت کن",attachments:[photo(),photo({tag:"image2",sha256:"d".repeat(64)})]});
  assert.ok(named.status==="needs_input"&&named.editCards?.map(c=>c.tag).join()==="image2","only the one named");
 });
+
+test("edit or reference: «only change her shoes» on a photo opens the edit card with the shoes painted and commented; a new scene with the photo goes on as a reference",async()=>{
+ const src=await ok();
+ const asEdit=async()=>({mode:"edit" as const,regions:[{noteFa:"یه کفش پاشنه‌بلند قرمز",box:[.38,.82,.62,.98]}]});
+ const r=await orchestrateCreativeTurn({text:"فقط کفشاشو عوض کن، یه کفش قرمز پاشنه‌بلند",attachments:[photo({reviewId:src.reviewId})]},{locateEdit:asEdit});
+ assert.ok(r.status==="needs_input",JSON.stringify(r).slice(0,300));
+ const card=r.status==="needs_input"?r.editCards?.[0]:undefined;
+ assert.equal(card?.tag,"image1");assert.equal(card?.suggested?.[0].note,"یه کفش پاشنه‌بلند قرمز");assert.deepEqual(card?.suggested?.[0].boxes,[[.38,.82,.62,.98]]);
+ const asReference=async()=>({mode:"reference" as const,regions:[]});
+ const ref=await orchestrateCreativeTurn({text:"این مدل رو با همین کفش توی یه کافه بذار",attachments:[photo({reviewId:src.reviewId,role:"character"})]},{locateEdit:asReference});
+ assert.ok(ref.status!=="needs_input"||!ref.editCards,"a reference goes on to a new picture");
+ const down=await orchestrateCreativeTurn({text:"فقط کفشاشو عوض کن",attachments:[photo({reviewId:src.reviewId})]},{locateEdit:async()=>{throw new Error("down");}});
+ assert.ok(down.status!=="needs_input"||!down.editCards?.[0]?.suggested,"no check: no invented areas");
+ const unsafe=await orchestrateCreativeTurn({text:"فقط دستشو عوض کن",attachments:[photo({reviewId:src.reviewId})]},{locateEdit:async()=>({mode:"edit" as const,regions:[{noteFa:"یه لیوان شراب بذار دستش",box:[.1,.1,.3,.3]}]})});
+ assert.ok(unsafe.status!=="needs_input"||!unsafe.editCards?.[0]?.suggested,"a suggestion that breaks the rules is never offered");
+});

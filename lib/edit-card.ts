@@ -36,3 +36,18 @@ export function wantsEditCard(text:string):boolean{
  const filler=new Set([...FILLER,...EDIT_WORDS].map(w=>normalizePersian(w)));
  return t.split(" ").filter(w=>w&&!filler.has(w)&&!/^[0-9۰-۹]+$/.test(w)).length===0;
 }
+
+/** Words that change something in a picture: a request with one of them and a photo may be an edit of that photo (the vision check decides). */
+const CHANGE=["عوض","عوضش","تغییر","تغییرش","جایگزین","بردار","برش دار","حذف","پاک","رنگ","رنگش","اضافه کن","بذار","بزار","بکن","کن","بشه","کنید","فقط",
+ "change","replace","swap","remove","delete","add","make","turn","recolor","fix","only","just"];
+const NEW_PICTURE=["یه عکس جدید","یه ویدیو","ویدیو بساز","ویدیو","فیلم","متحرک","یه صحنه","تو یه","توی یه","کنار","جلوی","new photo","new image","video","animate","a scene","in a","on a"];
+/** Whether a message with a photo might edit that photo (worth asking the vision check); a clear new-picture request is not. */
+export function mightEditPhoto(text:string):boolean{
+ const t=normalizePersian(text);
+ if(NEW_PICTURE.some(w=>(" "+t+" ").includes(" "+normalizePersian(w)+" ")))return false;
+ return has(t,CHANGE);
+}
+/** An edit card may come with regions Whoush painted itself: each with its comment and its boxes (0..1 of the photo). */
+export type SuggestedEdit={note:string;boxes:[number,number,number,number][]};
+export const SUGGESTED_FA="این قسمت‌ها رو برات علامت زدم و توضیح هر کدوم رو نوشتم. اگه درسته «ادیت» رو بزن و ثبت کن، یا تغییرش بده.";
+export const SUGGESTED_FINGLISH="In ghesmata ro barat alamat zadam o tozih-e har kodoom ro neveshtam. Age doroste «edit» ro bezan o sabt kon, ya taghiresh bede.";

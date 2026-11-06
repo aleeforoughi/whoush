@@ -22,17 +22,19 @@ import {SKILLS,SKILL_REGISTRY_VERSION} from "./skills";
 import {detectReferenceNeeds,type ReferenceRequest} from "./reference-needs";
 import type {GenerationProposal,MediaRequirements,ProposalResearch,SuggestedModel,UnsupportedReason} from "./types";
 import {researchReferences,type ResearchReference,type ResearchResult,type TurnReference} from "./research";
-import {inspectReferences} from "./reference-inspect";
+import {inspectReferences,locateEdit,type EditLocation} from "./reference-inspect";
 import {faPlain} from "./format";
 import {continuesWork} from "./follow-up";
-import {EDIT_CARDS_FA,EDIT_CARD_FA,EDIT_CARD_FINGLISH,wantsEditCard} from "./edit-card";
+import {EDIT_CARDS_FA,EDIT_CARD_FA,EDIT_CARD_FINGLISH,SUGGESTED_FA,SUGGESTED_FINGLISH,mightEditPhoto,wantsEditCard,type SuggestedEdit} from "./edit-card";
 import {safeReview} from "./upload-review";
 import {rememberRegionEdit} from "./region-restore";
-import {MEDIA_ROUTE} from "./media-store";
+import {MEDIA_ROUTE,readMedia} from "./media-store";
 import {reviewAvailable,reviewPlan,promptWithFixes,type PlanReviewer} from "./plan-review";
 import {findMediaModel} from "./catalog";
 import type {ResearchPlan} from "./creative-plan";
 export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;now?:()=>Date;
+ /** Edit or reference, with the areas to change (a private vision check by default; tests pass a stub). */
+ locateEdit?:(text:string,img:{bytes:Uint8Array;mime:import("./media-store").StoredMime})=>Promise<EditLocation>;
  /** Progress for the chat's live status: called as each real stage of the turn starts (never invented, never with private details). */
  onStage?:(stage:TurnStage)=>void;
  /** Finds a chat GIF for a mood (GIPHY by default; tests pass a stub). */
@@ -56,7 +58,7 @@ export type OrchestratorResult=
  |{status:"needs_input";turnId:string;message:string;question:string;reaction?:ReactionEmoji;
   /** The photos Whoush needs to keep something only a photo can (lib/reference-needs.ts): the card shows an upload slot per angle. */references?:ReferenceRequest;
   /** One-tap answers («عکس»، «ویدیو»، «هر دو»): each sends its reply as the user's answer. */choices?:QuestionChoice[];
-  /** The edit cards (lib/edit-card.ts): the photos or generations to open full screen for «ادیت», one card each. */editCards?:{tag:string}[]};
+  /** The edit cards (lib/edit-card.ts): the photos or generations to open full screen for «ادیت», one card each, maybe with regions Whoush painted itself. */editCards?:{tag:string;suggested?:SuggestedEdit[]}[]};
 /**
  * Whoush's own lines when no planner reply is usable (deterministic planner, or a reply that failed a check): everyday spoken Persian, or Finglish for a Finglish
  * brief, in Whoush's voice. A question's setup carries no emoji (docs/CREATIVE_SKILLS.md, Whoush voice).
@@ -417,6 +419,18 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   const named=[...imgs.filter(f=>mentioned.includes(f.tag)).map(f=>f.tag),...gens.filter(g=>mentioned.includes(g.tag)).map(g=>g.tag)];
   const targets=named.length?named:imgs.length?imgs.map(f=>f.tag):gens.length===1?[gens[0].tag]:[];
   if(targets.length)return {status:"needs_input",turnId:askTurn,message:finglish?EDIT_CARD_FINGLISH:targets.length>1?EDIT_CARDS_FA:EDIT_CARD_FA,question:targets.length>1?EDIT_CARDS_FA:EDIT_CARD_FA,editCards:targets.map(tag=>({tag}))};
+ }
+ // Edit or reference (owner, 2026-11-06): a photo with a request that changes something in it is asked to the vision check. An edit gets its card with
+ // the areas already painted and commented, to confirm or change; a reference goes on to a new picture. A check that cannot run changes nothing here.
+ const checkedPhotos=files0.filter(f=>f.kind==="image"&&!f.regionEdit&&safeReview(f.reviewId));
+ if(!parsed.answersQuestion&&checkedPhotos.length===1&&!files0.some(f=>f.regionEdit)&&mightEditPhoto(parsed.text)){
+  const photo=checkedPhotos[0],stored=await readMedia(safeReview(photo.reviewId)!.mediaId).catch(()=>undefined);
+  const loc=stored?await (deps.locateEdit??locateEdit)(parsed.text,{bytes:new Uint8Array(stored.bytes),mime:stored.mime}).catch(()=>undefined):undefined;
+  const regions=loc?.mode==="edit"?loc.regions.filter(r=>r.noteFa.trim()&&r.box[2]>r.box[0]&&r.box[3]>r.box[1]):[];
+  if(regions.length&&regions.every(r=>evaluateTextSafety(r.noteFa).decision==="allow")){
+   const suggested:SuggestedEdit[]=regions.map(r=>({note:r.noteFa.trim().slice(0,300),boxes:[[r.box[0],r.box[1],r.box[2],r.box[3]]]}));
+   return {status:"needs_input",turnId:askTurn,message:finglish?SUGGESTED_FINGLISH:SUGGESTED_FA,question:SUGGESTED_FA,editCards:[{tag:photo.tag,suggested}]};
+  }
  }
  // Photo or video (owner, 2026-11-06): what this message says wins; then a file that only a video can use; then the generation it changes; then what the
  // user said earlier in this chat. When nothing says, Whoush asks once, before any planning (an answer that still says nothing gets a photo).

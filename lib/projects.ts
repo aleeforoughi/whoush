@@ -1,5 +1,6 @@
 /** Chat history as projects and the assets page: the pure data model. Browser-local only (see lib/project-store.ts); safe in the browser and on the server. */
 import {isQuestionChoices,type QuestionChoice} from "./media-intent";
+import type {SuggestedEdit} from "./edit-card";
 import {findReferenceNeed,type ReferenceRequest} from "./reference-needs";
 import {ATTACHMENT_KIND_IDS,ATTACHMENT_ROLE_IDS,MAX_ATTACHMENTS,displayTag,isGenerationTag,nextGenerationTag,splitMentions,tagPrefix,type AttachmentKind,type AttachmentRole,type AttachmentSpeech,type LocalAttachment,type TagCounters} from "./attachments";
 import {GENERATION_STYLES,MAX_GENERATION_REFS,MAX_GENERATION_SUMMARY_CHARS,MAX_HISTORY_CHARS,MAX_HISTORY_TURNS,REACTION_EMOJIS,STYLE_LABEL_FA,type GenerationRef,type GenerationStyle,type HistoryTurn,type PublicCreativePlan,type ReactionEmoji} from "./creative-plan";
@@ -44,7 +45,7 @@ export type GifSnapshot={id:string;url:string;stillUrl:string;width:number;heigh
 export type QuestionSnapshot={question:string;/** Photos Whoush asked for (one upload slot per angle). */references?:ReferenceRequest;
  /** One-tap answers («عکس»، «ویدیو»، «هر دو»). */choices?:QuestionChoice[];
  /** The edit card: the photo or generation to open for «ادیت» (lib/edit-card.ts). */editCard?:{tag:string};
- /** One card per picture to edit. */editCards?:{tag:string}[]};
+ /** One card per picture to edit, maybe with the areas Whoush painted itself. */editCards?:{tag:string;suggested?:SuggestedEdit[]}[]};
 export type StoredMessage=MessageBase&(
  |{kind?:"text";snapshot?:undefined}
  /** A refusal, with the safe ideas Whoush offered (one tap each). */
@@ -115,6 +116,12 @@ const isCount=(v:unknown)=>typeof v==="number"&&Number.isInteger(v)&&v>=0&&v<=99
 const strings=(v:unknown,max=100)=>Array.isArray(v)&&v.length<=max&&v.every(x=>typeof x==="string"&&x.length<=1000);
 const bad=(what:string):never=>{throw new Error("پروژهٔ ذخیره‌شده نامعتبر است: "+what);};
 /** Only the plan fields PlanDetails reads; a damaged local record must not crash the transcript. */
+/** Areas Whoush painted on an edit card: up to five, each a comment and boxes inside the photo (0..1). */
+function isSuggested(v:unknown):boolean{
+ if(v===undefined)return true;
+ return Array.isArray(v)&&v.length<=5&&v.every(r=>isObject(r)&&typeof (r as {note?:unknown}).note==="string"&&Array.isArray((r as {boxes?:unknown}).boxes)
+  &&((r as {boxes:unknown[]}).boxes).length<=5&&((r as {boxes:unknown[]}).boxes).every(b=>Array.isArray(b)&&b.length===4&&b.every(n=>typeof n==="number"&&n>=0&&n<=1)));
+}
 function isPlan(p:unknown):p is PublicCreativePlan{
  if(!isObject(p))return false;
  const c=p.continuity;
@@ -143,7 +150,7 @@ function checkMessage(m:unknown,i:number){
   case "gif":if(!isObject(s)||typeof s.id!=="string"||typeof s.title!=="string"||!isGiphyMedia(s.url)||!isGiphyMedia(s.stillUrl)||!(Number(s.width)>0&&Number(s.height)>0))bad("گیف");break;
   case "question":if(!isObject(s)||typeof s.question!=="string"||s.question.length<1||s.question.length>1000||(s.choices!==undefined&&!isQuestionChoices(s.choices))
    ||(s.editCard!==undefined&&!(isObject(s.editCard)&&typeof (s.editCard as {tag?:unknown}).tag==="string"&&((s.editCard as {tag:string}).tag.length<=40)))
-   ||(s.editCards!==undefined&&!(Array.isArray(s.editCards)&&s.editCards.length<=10&&s.editCards.every(c=>isObject(c)&&typeof (c as {tag?:unknown}).tag==="string"&&(c as {tag:string}).tag.length<=40))))bad("سؤال");
+   ||(s.editCards!==undefined&&!(Array.isArray(s.editCards)&&s.editCards.length<=10&&s.editCards.every(c=>isObject(c)&&typeof (c as {tag?:unknown}).tag==="string"&&(c as {tag:string}).tag.length<=40&&isSuggested((c as {suggested?:unknown}).suggested)))))bad("سؤال");
    else if(s.references!==undefined){const r=s.references as Record<string,unknown>;
     if(!isObject(r)||typeof r.need!=="string"||!findReferenceNeed(r.need)||typeof r.titleFa!=="string"||typeof r.role!=="string"||!Array.isArray(r.angles)||r.angles.length>6
      ||!r.angles.every(a=>isObject(a)&&typeof (a as Record<string,unknown>).id==="string"&&typeof (a as Record<string,unknown>).titleFa==="string"))bad("سؤال");}

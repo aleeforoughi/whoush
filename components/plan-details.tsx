@@ -8,7 +8,7 @@ import type {Staging} from "@/lib/creative-plan";
 import {STYLE_LABEL_FA,type PublicCreativePlan} from "@/lib/creative-plan";
 import {CHARACTER_VIEWS} from "@/lib/characters";
 import {displayTag} from "@/lib/attachments";
-import {EDIT_CARD_OPEN_FA} from "@/lib/edit-card";
+import {EDIT_CARD_OPEN_FA,type SuggestedEdit} from "@/lib/edit-card";
 import {NEON_SHADOW,REGION_COLORS,regionTagFa} from "@/lib/region-edit";
 import {fa,faText,faAuto} from "@/lib/format";
 import type {QuestionChoice} from "@/lib/media-intent";
@@ -194,7 +194,7 @@ const CHOICE_ICON:Record<string,LucideIcon>={image:ImageIcon,video:Clapperboard,
  * once it is in, then «ادامه» sends them with the original request.
  */
 export function AgentQuestion({question,waiting,onAnswer,references,uploaded,onUpload,onContinue,choices,onChoose,editCards,onEdit}:{question:string;waiting:boolean;onAnswer:()=>void;
- /** The edit cards (lib/edit-card.ts): one per picture to open full screen for «ادیت». */editCards?:readonly {tag:string;thumbUrl?:string}[];onEdit?:(tag:string)=>void;
+ /** The edit cards (lib/edit-card.ts): one per picture to open full screen for «ادیت», maybe with the areas Whoush painted. */editCards?:readonly {tag:string;thumbUrl?:string;suggested?:readonly SuggestedEdit[]}[];onEdit?:(tag:string,suggested?:readonly SuggestedEdit[])=>void;
  references?:ReferenceRequest;uploaded?:Record<string,boolean>;onUpload?:(angle:{id:string;titleFa:string})=>void;onContinue?:()=>void;
  /** One-tap answers («عکس»، «ویدیو»، «هر دو»): each sends its reply as the user's answer. */choices?:readonly QuestionChoice[];onChoose?:(reply:string)=>void}){
  const done=references?references.angles.filter(a=>uploaded?.[a.id]).length:0;
@@ -220,13 +220,22 @@ export function AgentQuestion({question,waiting,onAnswer,references,uploaded,onU
     <span className="type-caption text-fg-secondary">هووش خودش نقش عکس‌ها رو تعیین می‌کنه و به {references.titleFa} وصلشون می‌کنه.</span>
    </div>}
    {/* One interactive card per picture: its thumbnail, its #, and the blue «ادیت» that opens it full screen for brush and comments. */}
-   {editCards&&editCards.length>0&&<ul className="flex flex-col gap-2">{editCards.map(c=><li key={c.tag} className="flex items-center gap-3 rounded-control border border-line-secondary p-2">
-    {c.thumbUrl
-     // eslint-disable-next-line @next/next/no-img-element -- a local or owned image
-     ?<img src={c.thumbUrl} alt="" className="size-16 shrink-0 rounded-control object-cover"/>
-     :<span className="flex size-16 shrink-0 items-center justify-center rounded-control bg-surface-hover"><Icon icon={ImageIcon} size={20} aria-hidden="true"/></span>}
-    <bdi className="min-w-0 flex-1 type-label text-fg-primary">{displayTag(c.tag)}</bdi>
-    {onEdit&&<Button type="button" size="sm" onClick={()=>onEdit(c.tag)} aria-label={EDIT_CARD_OPEN_FA+" "+displayTag(c.tag)}><Icon icon={Brush} aria-hidden="true"/>{EDIT_CARD_OPEN_FA}</Button>}
+   {editCards&&editCards.length>0&&<ul className="flex flex-col gap-2">{editCards.map(c=><li key={c.tag} className="flex flex-col gap-2 rounded-control border border-line-secondary p-2">
+    <div className="flex items-center gap-3">
+     {/* The photo, with the areas Whoush painted drawn over it in their colours (the same as the editor). */}
+     <span className={"relative shrink-0 overflow-hidden rounded-control bg-surface-hover "+(c.suggested?.length?"w-28":"size-16")}>
+      {c.thumbUrl
+       // eslint-disable-next-line @next/next/no-img-element -- a local or owned image
+       ?<img src={c.thumbUrl} alt="" className={c.suggested?.length?"block h-auto w-full":"size-16 object-cover"}/>
+       :<span className="flex size-16 items-center justify-center"><Icon icon={ImageIcon} size={20} aria-hidden="true"/></span>}
+      {c.thumbUrl&&c.suggested?.map((sg,i)=>sg.boxes.map((b,k)=><span key={i+"-"+k} aria-hidden="true" className="absolute rounded-[50%]"
+       style={{left:b[0]*100+"%",top:b[1]*100+"%",width:(b[2]-b[0])*100+"%",height:(b[3]-b[1])*100+"%",background:REGION_COLORS[i%REGION_COLORS.length].css,opacity:.5}}/>))}
+     </span>
+     <bdi className="min-w-0 flex-1 type-label text-fg-primary">{displayTag(c.tag)}</bdi>
+     {onEdit&&<Button type="button" size="sm" onClick={()=>onEdit(c.tag,c.suggested)} aria-label={EDIT_CARD_OPEN_FA+" "+displayTag(c.tag)}><Icon icon={Brush} aria-hidden="true"/>{EDIT_CARD_OPEN_FA}</Button>}
+    </div>
+    {c.suggested&&c.suggested.length>0&&<ul className="flex flex-col gap-1">{c.suggested.map((sg,i)=><li key={i} className="flex items-start gap-2 type-body-sm text-fg-primary">
+     <RegionChip n={i+1} color={REGION_COLORS[i%REGION_COLORS.length].name}/><span className="min-w-0 break-words">{sg.note}</span></li>)}</ul>}
    </li>)}</ul>}
    {waiting&&!references&&!choices&&!editCards?.length&&<button type="button" onClick={onAnswer} className="inline-flex w-fit items-center gap-1.5 rounded-control type-label text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><Icon icon={MessageCircle} size={16} aria-hidden="true" className="size-4 shrink-0"/>پاسخ بده</button>}
   </div>

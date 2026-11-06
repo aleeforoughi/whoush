@@ -34,6 +34,7 @@ import {REVIEW_FAILED_FA,WAITING_FA,photoReviewEnabled,reviewPhoto,reviewStopFa,
 import {PhotoReviewOverlay,ReviewRing} from "@/components/photo-review-badge";
 import {RegionEditor} from "@/components/region-editor";
 import {renderGuide,type Region} from "@/lib/region-edit";
+import type {SuggestedEdit} from "@/lib/edit-card";
 import {STORAGE_FULL_FA,getProject,listAssets,saveAsset,saveProject} from "@/lib/project-store";
 import {MAX_MESSAGES,assetToAttachment,attachmentToAsset,autoTitle,rerunSource,uniqueById,answerBrief,historyFor,toggleReaction,generationTagsIn,referencedGenerations,toGenerationRef,withGenerationTags,type GifSnapshot,type ProposalSnapshot,type JobSnapshot,type Project,type StoredMessage} from "@/lib/projects";
 import {MAX_GENERATION_REFS,type ReactionEmoji,type Staging} from "@/lib/creative-plan";
@@ -169,7 +170,7 @@ export function Studio(){
  const reviewJobs=useRef(new Map<string,Promise<PhotoReview>>());
  const [waitingFor,setWaitingFor]=useState<LocalAttachment[]|null>(null);
  // «ویرایش با قلم» (lib/region-edit.ts): the photo open in the full-screen editor, and whether it came from the chat box.
- const [editing,setEditing]=useState<{a:LocalAttachment;fromTray:boolean}|null>(null);
+ const [editing,setEditing]=useState<{a:LocalAttachment;fromTray:boolean;suggested?:readonly SuggestedEdit[]}|null>(null);
  useEffect(()=>{let alive=true;void photoReviewEnabled().then(on=>{if(alive)setReviewOn(on);});return()=>{alive=false;};},[]);
  const savedAssets=useRef(new Set<string>());
  const latest=useRef({messages,mode,style,character:null as CharacterProfile|null});
@@ -507,15 +508,15 @@ export function Studio(){
  /** The marked copy of a photo, as its own checkable photo (same tag, its own id). */
  const guideOf=(a:LocalAttachment):LocalAttachment|undefined=>a.regionEdit?{...a,id:a.regionEdit.guideId,regionEdit:undefined}:undefined;
  /** Opens a photo of this chat (in the chat box or sent) in the full-screen editor; it is checked meanwhile, so it is ready when the edit goes. */
- function editAttachment(a:LocalAttachment,fromTray:boolean){
+ function editAttachment(a:LocalAttachment,fromTray:boolean,suggested?:readonly SuggestedEdit[]){
   if(a.kind!=="image"||!a.previewUrl||!blobs.current.get(a.id)){setError("این عکس دیگه توی این مرورگر نیست؛ دوباره اضافه‌ش کن.");return;}
-  setEditing({a:{...a,regionEdit:undefined},fromTray});if(reviewOn)void checkPhoto(a);
+  setEditing({a:{...a,regionEdit:undefined},fromTray,...(suggested?.length?{suggested}:{})});if(reviewOn)void checkPhoto(a);
  }
  /** Opens a generated image in the editor: it joins the chat as a new photo (#تصویر-n), checked like any photo. */
- async function editGeneration(tag:string){
+ async function editGeneration(tag:string,suggested?:readonly SuggestedEdit[]){
   // One copy per generation: a second «ادیت» opens the copy made the first time (same #, already checked).
   const copy=[...attachments,...[...messages].reverse().flatMap(m=>m.attachments??[])].find(a=>a.fromGeneration===tag&&a.previewUrl&&blobs.current.has(a.id));
-  if(copy){setEditing({a:{...copy,regionEdit:undefined},fromTray:false});if(reviewOn)void checkPhoto(copy);return;}
+  if(copy){setEditing({a:{...copy,regionEdit:undefined},fromTray:false,...(suggested?.length?{suggested}:{})});if(reviewOn)void checkPhoto(copy);return;}
   const snap=messages.find(m=>m.kind==="job"&&m.snapshot.tag===tag)?.snapshot as {outputs?:{kind:string;url:string}[]}|undefined;
   const url=snap?.outputs?.find(o=>o.kind==="image"&&isOwnedOutputUrl(o.url,window.location.origin))?.url;
   if(!url){setError("تصویر این تولید هنوز آماده نیست.");return;}
@@ -526,7 +527,7 @@ export function Studio(){
    if(!newTag||!read.previewUrl){setError(ATTACHMENT_ERRORS_FA.tagsExhausted);return;}
    tagCounters.current=bumpTagCounters(tagCounters.current,newTag);
    const a:LocalAttachment={...read,tag:newTag,fromGeneration:tag};urls.current.add(read.previewUrl);blobs.current.set(a.id,blob);
-   setEditing({a,fromTray:false});if(reviewOn)void checkPhoto(a);
+   setEditing({a,fromTray:false,...(suggested?.length?{suggested}:{})});if(reviewOn)void checkPhoto(a);
   }catch{setError("تصویر این تولید باز نشد. دوباره امتحان کن.");}
  }
  /** A photo or generation of this chat by its tag, for the edit card: its thumbnail, and opening it in the editor. */
@@ -534,10 +535,10 @@ export function Studio(){
   if(isGenerationTag(tag))return (messages.find(m=>m.kind==="job"&&m.snapshot.tag===tag)?.snapshot as {outputs?:{kind:string;url:string}[]}|undefined)?.outputs?.find(o=>o.kind==="image")?.url;
   return [...attachments,...messages.flatMap(m=>m.attachments??[])].find(a=>a.tag===tag)?.previewUrl;
  }
- async function openEditFor(tag:string){
-  if(isGenerationTag(tag))return editGeneration(tag);
+ async function openEditFor(tag:string,suggested?:readonly SuggestedEdit[]){
+  if(isGenerationTag(tag))return editGeneration(tag,suggested);
   const inTray=attachments.find(a=>a.tag===tag),sent=[...messages].reverse().flatMap(m=>m.attachments??[]).find(a=>a.tag===tag);
-  if(inTray)editAttachment(inTray,true);else if(sent)editAttachment(sent,false);
+  if(inTray)editAttachment(inTray,true,suggested);else if(sent)editAttachment(sent,false,suggested);
  }
  /** The editor is done: the marked copy is made and checked, and the edit goes straight to Whoush (as the answer, when Whoush asked for it). */
  async function applyEdit({masks,regions}:{masks:HTMLCanvasElement[];regions:Region[]}){
@@ -765,7 +766,8 @@ export function Studio(){
     }
     if(r.status===422&&errorBody.error==="needs_input"&&typeof errorBody.question==="string"){
      const references=isReferenceRequest(errorBody.references)?errorBody.references:undefined,choices=isQuestionChoices(errorBody.choices)?errorBody.choices:undefined;
-     const editCards=Array.isArray(errorBody.editCards)?errorBody.editCards.flatMap(c=>c&&typeof (c as {tag?:unknown}).tag==="string"?[{tag:(c as {tag:string}).tag}]:[]).slice(0,10):[];
+     const editCards=Array.isArray(errorBody.editCards)?errorBody.editCards.flatMap(c=>{const x=c as {tag?:unknown;suggested?:unknown};
+      return typeof x.tag==="string"?[{tag:x.tag,...(Array.isArray(x.suggested)?{suggested:(x.suggested as SuggestedEdit[]).slice(0,5)}:{})}]:[];}).slice(0,10):[];
      setMessages(m=>[...m,agentItem({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"",kind:"question",snapshot:{question:errorBody.question!,...(references?{references}:{}),...(choices?{choices}:{}),...(editCards.length?{editCards}:{})}})]);whoushReacts(errorBody.reaction);
      adoptProject(firstText,characterId);
      return;
@@ -992,7 +994,8 @@ export function Studio(){
         {/* The question is always the last item of the agent's message; it waits for an answer until something is sent after it. */}
         {m.kind==="question"&&<AgentQuestion question={m.snapshot.question} waiting={i===messages.length-1&&!busy} onAnswer={()=>promptRef.current?.focus()}
          choices={m.snapshot.choices} onChoose={reply=>answer(reply)}
-         editCards={(m.snapshot.editCards??(m.snapshot.editCard?[m.snapshot.editCard]:[])).map(c=>({tag:c.tag,thumbUrl:thumbFor(c.tag)}))} onEdit={tag=>void openEditFor(tag)}
+         editCards={(m.snapshot.editCards??(m.snapshot.editCard?[m.snapshot.editCard]:[])).map((c:{tag:string;suggested?:SuggestedEdit[]})=>({tag:c.tag,thumbUrl:thumbFor(c.tag),...(c.suggested?{suggested:c.suggested}:{})}))}
+         onEdit={(tag,suggested)=>void openEditFor(tag,suggested)}
          references={m.snapshot.references} uploaded={m.snapshot.references?Object.fromEntries(m.snapshot.references.angles.map(a=>[a.id,Boolean(slots.find(s=>s.id==="ref-"+m.id+"-"+a.id)?.attachmentId)])):undefined}
          onUpload={m.snapshot.references?a=>uploadForRequest(m.id,m.snapshot.references!,a):undefined}
          onContinue={m.snapshot.references&&i===messages.length-1&&!busy?()=>answer(replyScriptFor(m.text)==="finglish"?"aksa ro gozashtam":"عکس‌ها رو گذاشتم"):undefined}/>}
@@ -1001,7 +1004,7 @@ export function Studio(){
         <div className="-mt-2">{actions}</div>
        </div>;
       })}
-      {editing&&editing.a.previewUrl&&<RegionEditor tag={editing.a.tag} photoUrl={editing.a.previewUrl} onClose={()=>setEditing(null)} onDone={r=>void applyEdit(r)}/>}
+      {editing&&editing.a.previewUrl&&<RegionEditor tag={editing.a.tag} photoUrl={editing.a.previewUrl} suggested={editing.suggested} onClose={()=>setEditing(null)} onDone={r=>void applyEdit(r)}/>}
       {waitingFor&&<div role="status" aria-live="polite" className="flex max-w-prose flex-col gap-2 rounded-card bg-surface-subtle p-3">
        <span className="type-body text-fg-primary">{WAITING_FA}</span>
        <ul className="flex flex-wrap gap-2">{waitingFor.map(a=>{const r=reviews[a.id];return <li key={a.id} className="relative size-16 overflow-hidden rounded-control bg-surface-hover">
