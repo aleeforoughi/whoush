@@ -7,8 +7,8 @@ import {enterAction,isTouchOnly} from "@/lib/composer-keys";
 
 /** One entry of the `#` picker: a file or a generation of this chat, with a short badge («تصویر», «تولید») and an optional caption (role, intent). */
 export type MentionOption={id:string;tag:string;badgeFa:string;captionFa?:string};
-/** A conversation file as a picker entry: its kind, and for media its role or «انتخاب خودکار هووش». */
-export const attachmentOption=(a:Pick<LocalAttachment,"id"|"tag"|"kind"|"role">):MentionOption=>({id:a.id,tag:a.tag,badgeFa:ATTACHMENT_KINDS[a.kind].labelFa,...(isMediaKind(a.kind)?{captionFa:a.role?roleLabelFa(a.role,a.kind):"انتخاب خودکار هووش"}:{})});
+/** A conversation file as a picker entry: its kind, and for media its role or «انتخاب اتوماتیک هووش». */
+export const attachmentOption=(a:Pick<LocalAttachment,"id"|"tag"|"kind"|"role">):MentionOption=>({id:a.id,tag:a.tag,badgeFa:ATTACHMENT_KINDS[a.kind].labelFa,...(isMediaKind(a.kind)?{captionFa:a.role?roleLabelFa(a.role,a.kind):"انتخاب اتوماتیک هووش"}:{})});
 /** What the studio can do with the prompt: focus it, or put a tag badge at the caret (at the end when the prompt is not focused). */
 export type MentionEditorHandle={focus:()=>void;insertTag:(tag:string)=>void;/** Inserts plain text (an emoji) at the caret, or at the end when the prompt is not focused. */insertText:(text:string)=>void};
 const NAV_KEYS=["ArrowUp","ArrowDown","Enter","Tab","Escape"];

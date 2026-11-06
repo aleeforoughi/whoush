@@ -8,7 +8,7 @@ import {roleIconKey,type InsertIconKey} from "@/lib/insert-menu";
 import {faBytes,faDuration} from "@/lib/format";
 
 const AUTO_ROLE="auto";
-export const CARD_AUTO_ROLE_FA="خودکار";
+export const CARD_AUTO_ROLE_FA="اتوماتیک";
 /**
  * The shared card geometry, so an empty upload card and the file card that replaces it are the same size: 12rem wide, a 16:9 media area on top (the upload button
  * with the category when empty, the thumbnail when filled), a 1.75rem tag row and a 2.25rem role row (the height of a compact `sm` menu: role icon at the start, role name, a small delete button at the end; the icon and the delete
@@ -60,7 +60,7 @@ function CardMedia({item:a,onPreview}:{item:LocalAttachment;onPreview:()=>void})
  * audio also gets language and accent.
  */
 export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention}:{item:LocalAttachment;onChange:(patch:AttachmentPatch)=>void;onRemove:()=>void;onPreview:()=>void;onMention:()=>void}){
- // On the narrow card the no-role option reads «خودکار» (the full «انتخاب خودکار هووش» would be cut off beside the delete button); the menu items are unchanged otherwise.
+ // On the narrow card the no-role option reads «اتوماتیک» (the full «انتخاب اتوماتیک هووش» would be cut off beside the delete button); the menu items are unchanged otherwise.
  const media=isMediaKind(a.kind),roles=[{value:AUTO_ROLE,label:CARD_AUTO_ROLE_FA},...rolesFor(a.kind).map(r=>({value:r.id,label:r.labelFa}))];
  const lip=a.role==="lip_sync"?a.speech:undefined;
  const set=(patch:Partial<AttachmentSpeech>)=>a.speech&&onChange({speech:{...a.speech,...patch}});
@@ -96,7 +96,7 @@ export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention}:{i
 
 /**
  * A file in a sent message, as the same card the user built in the chat input (same size, thumbnail, tag and role row with its icon), read-only: the thumbnail
- * opens the viewer, the tag inserts itself into the prompt, and there is no delete button or role menu. A file with no role reads «خودکار»; a lip-sync audio
+ * opens the viewer, the tag inserts itself into the prompt, and there is no delete button or role menu. A file with no role reads «اتوماتیک»; a lip-sync audio
  * adds its language and accent.
  */
 export function SentAttachmentCard({item:a,onPreview,onMention}:{item:LocalAttachment;onPreview:()=>void;onMention:()=>void}){

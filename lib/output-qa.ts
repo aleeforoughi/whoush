@@ -4,7 +4,7 @@ import type {ProviderOutput} from "./media-provider";
 export type QACheck={id:string;labelFa:string;result:"pass"|"fail"|"unverified";noteFa?:string};
 export type OutputQA={status:"pending_inspection"|"failed_checks"|"not_applicable";checks:QACheck[]};
 export const ALLOWED_OUTPUT_MIME=["image/png","image/jpeg","image/webp","video/mp4","video/webm","video/quicktime"] as const;
-const NEEDS_HUMAN="نیازمند بازبینی انسانی یا چندوجهی است؛ به‌صورت خودکار تأیید نشده.";
+const NEEDS_HUMAN="نیازمند بازبینی انسانی یا چندوجهی است؛ به‌صورت اتوماتیک تأیید نشده.";
 const ratio=(a:string)=>{const [w,h]=a.split(":").map(Number);return w/h;};
 /** Metadata-only checks. Identity, continuity, lip sync and text accuracy are NEVER passed automatically. Provider-reported completion is not a quality claim. */
 export function evaluateOutputQA(job:{mode:GenerationMode;configuration:MediaConfiguration},outputs:readonly ProviderOutput[]):OutputQA{
