@@ -3,14 +3,14 @@
 Work in repo `aleeforoughi/whoush`. Start by reading `docs/CLAUDE_HANDOFF.md`, `docs/IMPLEMENTATION_PLAN.md`, `docs/ARCHITECTURE.md`, `docs/NEURON_PRICING.md`, `docs/LAUNCH_GATES.md`. Read code before changing it. Preserve everything already working and avoid unnecessary rewrites.
 
 ## Contract
-- Product: Persian-first, Runway-inspired chat + visual workspace. Higgsfield ONLY for image/video generation. Private auto-routed LLM(s) ONLY for chat, creative planning, prompt improvement and orchestration.
+- Product: Persian-first, Runway-inspired chat + visual workspace. Image/video generation ONLY through approved direct provider APIs: Google (Gemini API: Nano Banana, Veo), ByteDance (BytePlus ModelArk: Seedream, Seedance), Kling (official API), and Higgsfield (owner decision 2026-11-05, `docs/PROVIDERS.md`). No resellers or middle platforms. Private auto-routed LLM(s) ONLY for chat, creative planning, prompt improvement and orchestration.
 - No LLM vendor names or manual LLM selector in customer UI or consumer API responses. Internally track reasoning usage, model IDs and costs.
-- User MAY explicitly request a Higgsfield media model in chat. If eligible, honor it. Otherwise recommend 1-3 compatible media models, clearly distinguishing recommendation and available alternates.
+- User MAY explicitly request a media model in chat. If eligible, honor it. Otherwise recommend 1-3 compatible media models, clearly distinguishing recommendation and available alternates.
 - Image/video SKU prices are **fixed INTEGER Neuron amounts** independent of FX; package prices are fixed toman; package Neuron awards vary with validated free-market USD sell rate. Bonus tiers: 0,2,4,6,8,10% for 2m/5m/10m/20m/50m/100m toman. Gifts INCLUDED in total, all Neuron values integers.
 - No frontend access to provider keys, provider USD costs, Neuron USD valuation, internal LLM routing.
-- Do not enable Higgsfield/LLM services for ineligible end-users. Obtain written API/business-model and regional permissions before production. Never use proxy/VPN routing to evade restrictions.
+- Do not enable media/LLM provider services for ineligible end-users. Obtain written API/business-model and regional permissions before production. Never use proxy/VPN routing to evade restrictions.
 - No charges without backend-validated immutable quote and valid budget authorization. No double charges, no invented generation success.
-- Do not make up Higgsfield paths, model IDs, capabilities, pricing or webhooks. Consult current documented per-model schema, record evidence and version.
+- Do not make up any provider's paths, model IDs, capabilities, pricing or webhooks. Consult current documented per-model schema, record evidence and version.
 - Do not permit payment until authentication, durable quotes, approved FX, and immutable ledger are verified.
 - No ungrounded claims of passing tests. Run and report actual commands/results.
 

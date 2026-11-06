@@ -29,6 +29,13 @@ test("generation progress is an estimate: it eases to 95% while running and reac
  assert.equal(run(0),12);assert.ok(run(5_000)<run(15_000)&&run(15_000)<run(60_000),"rises with time");
  assert.equal(run(10*60_000),95,"never 100 while running");
  assert.ok(run(TYPICAL_MS.image,"video")<run(TYPICAL_MS.image,"image"),"video is paced slower");
+ // An even pace up to the typical time: half way in time is about half way on the bar, not most of it (the old curve was ~80% at the typical time).
+ const nb=(ms:number)=>estimateProgress("running",ms,"image",20_000)!,sd=(ms:number)=>estimateProgress("running",ms,"image",150_000)!;
+ assert.equal(nb(10_000),49);assert.equal(nb(20_000),85,"85% at the measured time");
+ assert.ok(sd(75_000)>=45&&sd(75_000)<=50,"a slow model is not ahead of itself half way");
+ assert.ok(sd(20_000)<nb(20_000),"each model is paced by its own measured time");
+ assert.ok(nb(40_000)>85&&nb(40_000)<95&&nb(10*60_000)===95,"past the typical time it slows, never 100");
+ for(let ms=0,prev=0;ms<=300_000;ms+=1_000){const v=sd(ms);assert.ok(v>=prev,"never goes backwards");prev=v;}
  assert.equal(estimateProgress("completed_demo",0),100);assert.equal(estimateProgress("failed",5000),null);
  assert.ok(isActiveJob("queued")&&isActiveJob("running")&&!isActiveJob("completed")&&!isActiveJob("canceled"));
 });

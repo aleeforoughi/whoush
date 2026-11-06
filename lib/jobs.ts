@@ -4,6 +4,7 @@ import {findMediaModel,MEDIA_CATALOG_VERSION,type MediaConfiguration} from "./ca
 import {ReservationLedger} from "./ledger";
 import {NotCancelableError,providerForMode,SubmissionUnknownError,type MediaProvider,type ProviderOutput,type ProviderStatus} from "./media-provider";
 import {getPrivateMediaPrompt,privatePromptCompilerVersion} from "./orchestrator";
+import {isStoredMediaUrl} from "./media-store";
 import {evaluateOutputQA,type OutputQA} from "./output-qa";
 import {claimDevSubmit,devGenerationGate,generationGate,type GenerationMode} from "./policy";
 import {verifyQuote,verifyQuoteSignature,QuoteError,type CharacterRefDigest} from "./quotes";
@@ -103,7 +104,7 @@ function finish(job:Job,ledger:ReservationLedger,to:"completed"|"completed_demo"
  else if(to==="completed"){ledger.settle(job.id);job.chargedNeurons=job.neurons;job.outputs=outputs;job.qa=evaluateOutputQA(job,outputs);} // settle only with verified output
  else{ledger.release(job.id);job.chargedNeurons=0;}
 }
-const httpsUrl=(u:string)=>{try{return new URL(u).protocol==="https:";}catch{return false;}};
+const httpsUrl=(u:string)=>{if(isStoredMediaUrl(u))return true;try{return new URL(u).protocol==="https:";}catch{return false;}}; // a provider https link, or Whoush's own stored copy
 /** How many times an unknown submission is resent, and the shortest wait between tries (doubling: 2 s, 4 s, 8 s…). Then it waits for the owner. */
 export const RECONCILE_MAX_ATTEMPTS=6;
 const RECONCILE_BASE_MS=2000;
@@ -118,6 +119,8 @@ async function reconcile(job:Job,ledger:ReservationLedger,provider:MediaProvider
  if(now.getTime()-new Date(u.lastAttemptAt).getTime()<RECONCILE_BASE_MS*2**(u.attempts-1))return;
  const model=findMediaModel(job.modelId);
  if(!model||(job.mode==="live"&&!generationGate(model).live)||(job.mode==="dev_live"&&!devGenerationGate(model).live))return; // gate closed: keep waiting
+ // A provider without idempotency could make (and bill) a second job: the job waits for the owner instead (docs/evidence/BYTEPLUS.md, GOOGLE.md).
+ if(provider.resendSafe&&!provider.resendSafe(job.modelId))return;
  job.unknownSubmission={...u,attempts:u.attempts+1,lastAttemptAt:now.toISOString()};
  try{
   const r=await provider.submit({modelId:job.modelId,prompt:u.prompt,configuration:job.configuration,idempotencyKey:job.id});
@@ -174,6 +177,7 @@ const MSG:Record<JobState,string>={
 /** Consumer projection: no provider ids/keys/costs/evidence/turn or quote internals. Output URLs only for completed live jobs. */
 const DEV_COMPLETED_FA="تست توسعه: خروجی واقعی ساخته شد و هیچ نورونی کسر نشد. خروجی باید بازبینی شود.";
 export function toPublicJob(j:Job){
- return {id:j.id,state:j.state,mode:j.mode,modelId:j.modelId,neurons:j.neurons,chargedNeurons:j.chargedNeurons,
+ const typical=findMediaModel(j.modelId)?.typicalSeconds;
+ return {id:j.id,state:j.state,mode:j.mode,modelId:j.modelId,neurons:j.neurons,chargedNeurons:j.chargedNeurons,...(typical?{typicalMs:typical*1000}:{}),
   outputs:j.state==="completed"?j.outputs.map(o=>({kind:o.kind,url:o.url})):[],qa:j.qa,messageFa:j.mode==="dev_live"&&j.state==="completed"?DEV_COMPLETED_FA:MSG[j.state]};
 }

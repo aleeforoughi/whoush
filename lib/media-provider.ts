@@ -3,20 +3,24 @@ import {randomUUID} from "node:crypto";
 import {findMediaModel,type MediaConfiguration} from "./catalog";
 import {cancelHiggsfield,getHiggsfieldStatus,HiggsfieldHttpError,NotCancelableError,submitHiggsfieldVerifiedPath,type HiggsfieldStatus} from "./higgsfield";
 import {devGenerationGate,generationGate,type GenerationMode} from "./policy";
-import type {MediaModel} from "./types";
+import type {MediaModel,MediaProviderId} from "./types";
 /** Provider outputs are provider-hosted URLs that expire (>= 7 days); mirroring to owned storage is NOT implemented (docs/LAUNCH_GATES.md gate 8). */
 export type ProviderOutput={kind:"image"|"video"|"audio";url:string;needsMirroring:true;mime?:string;width?:number;height?:number;durationSeconds?:number};
 export type ProviderState="queued"|"running"|"completed"|"completed_demo"|"failed"|"nsfw"|"canceled";
 /** `reportedModelId`: the model the provider says ran, only when it reports one (the documented Higgsfield status has no such field). */
 export type ProviderStatus={state:ProviderState;outputs:ProviderOutput[];expiresAt?:string;reportedModelId?:string};
 export type ProviderJob={modelId:string;prompt:string;configuration:MediaConfiguration;idempotencyKey:string};
-export interface MediaProvider{submit(job:ProviderJob):Promise<{providerRequestId:string}>;status(providerRequestId:string):Promise<ProviderStatus>;cancel(providerRequestId:string):Promise<void>}
-export {NotCancelableError};
 /**
- * A submission whose outcome is unknown: the request may have reached the provider (a timeout, a dropped connection, a 5xx, an unreadable 2xx).
- * It is never treated as "not sent": the job keeps its reservation and is reconciled by resending the same request with the same idempotency key.
+ * `resendSafe(modelId)`: whether resending the same request after an unclear outcome is safe, because the provider honors an idempotency key (Higgsfield).
+ * Absent means safe. Providers with no idempotency (Google, BytePlus, docs/evidence) answer false, and an unknown submission then waits for the owner.
  */
-export class SubmissionUnknownError extends Error{constructor(readonly reason:string){super("Submission outcome unknown: "+reason);this.name="SubmissionUnknownError";}}
+export interface MediaProvider{submit(job:ProviderJob):Promise<{providerRequestId:string}>;status(providerRequestId:string):Promise<ProviderStatus>;cancel(providerRequestId:string):Promise<void>;resendSafe?(modelId:string):boolean}
+export {NotCancelableError};
+import {SubmissionUnknownError} from "./provider-errors";
+import {BytePlusMediaProvider} from "./providers/byteplus";
+import {GoogleMediaProvider} from "./providers/google";
+import {KlingMediaProvider} from "./providers/kling";
+export {SubmissionUnknownError};
 /** Deterministic, offline: queued -> running -> completed_demo over polls. It never returns media URLs. */
 export class MockMediaProvider implements MediaProvider{
  private readonly polls=new Map<string,number>();
@@ -86,4 +90,27 @@ export class HiggsfieldMediaProvider implements MediaProvider{
 }
 const g=globalThis as {__whoushMockProvider?:MediaProvider};
 export const sharedMockProvider=():MediaProvider=>(g.__whoushMockProvider??=new MockMediaProvider());
-export const providerForMode=(mode:GenerationMode):MediaProvider=>mode==="demo"?sharedMockProvider():new HiggsfieldMediaProvider(mode);
+/** Each direct provider's adapter (docs/PROVIDERS.md). One is added only with its API evidence recorded; a model whose provider has none is never submitted. */
+export type AdapterFactory=(mode:"live"|"dev_live")=>MediaProvider;
+const adapters=():Partial<Record<MediaProviderId,AdapterFactory>>=>((globalThis as {__whoushAdapters?:Partial<Record<MediaProviderId,AdapterFactory>>}).__whoushAdapters??={higgsfield:m=>new HiggsfieldMediaProvider(m),google:()=>new GoogleMediaProvider(),byteplus:()=>new BytePlusMediaProvider(),kling:()=>new KlingMediaProvider()});
+export function registerAdapter(p:MediaProviderId,f:AdapterFactory){adapters()[p]=f;}
+/**
+ * A provider request id names its provider, so status and cancel reach the same API later: «google:…», «byteplus:…», «kling:…». Higgsfield ids keep their
+ * original form (no prefix), so jobs created before other providers existed still resolve.
+ */
+const PREFIXED=/^(google|byteplus|kling):(.+)$/s;
+export const tagRequestId=(p:MediaProviderId,id:string)=>p==="higgsfield"?id:p+":"+id;
+export function splitRequestId(id:string):{provider:MediaProviderId;id:string}{const m=PREFIXED.exec(id);return m?{provider:m[1] as MediaProviderId,id:m[2]}:{provider:"higgsfield",id};}
+/** Routes each call to the adapter of the model's provider. */
+export class RoutingMediaProvider implements MediaProvider{
+ constructor(private readonly mode:"live"|"dev_live"){}
+ private adapter(p:MediaProviderId):MediaProvider{const f=adapters()[p];if(!f)throw new Error("No adapter for provider");return f(this.mode);}
+ async submit(job:ProviderJob):Promise<{providerRequestId:string}>{
+  const model=findMediaModel(job.modelId);if(!model)throw new Error("Unknown model");
+  const r=await this.adapter(model.provider).submit(job);return {providerRequestId:tagRequestId(model.provider,r.providerRequestId)};
+ }
+ async status(id:string):Promise<ProviderStatus>{const s=splitRequestId(id);return this.adapter(s.provider).status(s.id);}
+ async cancel(id:string):Promise<void>{const s=splitRequestId(id);return this.adapter(s.provider).cancel(s.id);}
+ resendSafe(modelId:string):boolean{const m=findMediaModel(modelId);if(!m)return false;const a=this.adapter(m.provider);return a.resendSafe?a.resendSafe(modelId):true;}
+}
+export const providerForMode=(mode:GenerationMode):MediaProvider=>mode==="demo"?sharedMockProvider():new RoutingMediaProvider(mode);

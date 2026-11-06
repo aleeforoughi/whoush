@@ -28,8 +28,12 @@ export interface ModelCapabilities {
   videoContinuation: boolean;
 }
 export interface MediaRequirements { operation?: Exclude<MediaOperation, "generate">; referenceImages?: number; aspectRatio?: string; durationSeconds?: number; lipSync?: boolean; motionReference?: boolean; videoReference?: boolean; startImage?: boolean; endImage?: boolean; videoContinuation?: boolean; }
+/** The direct provider whose API runs a model (docs/PROVIDERS.md). Private: never serialized to consumers. */
+export type MediaProviderId = "higgsfield" | "google" | "byteplus" | "kling";
 export interface MediaModel {
   id: string;
+  /** Private: which provider's API runs it. */
+  provider: MediaProviderId;
   name: string;
   kind: MediaKind;
   description: string;
@@ -45,6 +49,8 @@ export interface MediaModel {
   resolution: string;
   resolutions?: readonly string[];
   durationSeconds?: number;
+  /** Measured submit-to-completion time in seconds (live checks in docs/evidence/). Paces the progress estimate only; never shown as a promise. */
+  typicalSeconds?: number;
   /** Lip-sync / talking-head limits from the provider catalogue (unverified). */
   characterImagesMax?: number;
   audioClipsMax?: number;
@@ -56,6 +62,10 @@ export interface MediaModel {
   sourceSecondsSkus?: readonly { upToSeconds: number; neurons: number }[];
   capabilities: ModelCapabilities;
   verifiedApiPath?: string; // absent until schema is verified; private, never serialized to consumers
+  /** Private: the provider's own model id, exactly as its API reference spells it (docs/evidence). */
+  providerModel?: string;
+  /** Private: the provider settings this SKU fixes (size, resolution, duration), so the billed configuration is the SKU's, never a provider default. */
+  providerParams?: Readonly<Record<string, string | number | boolean>>;
 }
 /** A model with an approved fixed Neuron SKU. */
 export type PricedMediaModel = MediaModel & { neurons: number };

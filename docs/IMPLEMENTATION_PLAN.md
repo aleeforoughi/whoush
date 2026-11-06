@@ -2,7 +2,7 @@
 Status: **foundation scaffold only, NOT production launch**.
 
 ## Goal
-Persian-first conversational image/video platform built around Runway's three regions (left navigation, center media/cut canvas, right agent). Higgsfield is the *only* media-generation provider. LLMs are invisible implementation tools for private chat, intent detection, reference analysis, prompt improvements, creative planning, media-model routing and job orchestration. Consumers cannot choose LLMs. Consumers can name or switch the actual media model, if supported and available.
+Persian-first conversational image/video platform built around Runway's three regions (left navigation, center media/cut canvas, right agent). **Superseded 2026-11-05 (owner decision):** media generation uses approved direct provider APIs (Google, ByteDance, Kling) plus Higgsfield; see `docs/PROVIDERS.md`. Originally: Higgsfield is the *only* media-generation provider. LLMs are invisible implementation tools for private chat, intent detection, reference analysis, prompt improvements, creative planning, media-model routing and job orchestration. Consumers cannot choose LLMs. Consumers can name or switch the actual media model, if supported and available.
 
 ## Priority board (execute sequentially, except safe parallel subtasks)
 | Priority | Phase | Owner tier | Definition of done |

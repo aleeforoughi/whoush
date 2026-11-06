@@ -14,7 +14,7 @@ import {evaluateOutputQA} from "../lib/output-qa";
 import {orchestrateCreativeTurn} from "../lib/orchestrator";
 import {GET as publicCatalog} from "../app/api/public/catalog/route";
 import {POST as quoteRoute} from "../app/api/generation/quote/route";
-const GATE_ENV=["PROVIDER_END_USER_AUTHORIZED","PROVIDER_RESELLER_AUTHORIZED","ALLOW_LIVE_GENERATION","HIGGSFIELD_API_KEY","PRODUCTION_MODERATION_VERIFIED","BILLING_LEDGER_VERIFIED","QUOTE_SIGNING_SECRET","DEMO_FX_TOMAN_PER_USD"];
+const GATE_ENV=["PROVIDER_END_USER_AUTHORIZED","PROVIDER_RESELLER_AUTHORIZED","ALLOW_LIVE_GENERATION","HIGGSFIELD_API_KEY","PRODUCTION_MODERATION_VERIFIED","BILLING_LEDGER_VERIFIED","QUOTE_SIGNING_SECRET","DEMO_FX_TOMAN_PER_USD","OWNED_MEDIA_STORAGE_VERIFIED","GEMINI_API_KEY","BYTEPLUS_API_KEY","KLING_API_KEY"];
 async function withEnv<T>(vars:Record<string,string|undefined>,fn:()=>Promise<T>|T):Promise<T>{
  const saved:Record<string,string|undefined>={};
  for(const k of GATE_ENV)saved[k]=process.env[k];
@@ -23,7 +23,7 @@ async function withEnv<T>(vars:Record<string,string|undefined>,fn:()=>Promise<T>
  try{return await fn();}
  finally{for(const k of GATE_ENV){if(saved[k]===undefined)delete process.env[k];else process.env[k]=saved[k];}}
 }
-const LIVE_ENV={PROVIDER_END_USER_AUTHORIZED:"true",PROVIDER_RESELLER_AUTHORIZED:"true",ALLOW_LIVE_GENERATION:"true",HIGGSFIELD_API_KEY:"test-id:test-secret",PRODUCTION_MODERATION_VERIFIED:"true",BILLING_LEDGER_VERIFIED:"true",QUOTE_SIGNING_SECRET:"s".repeat(40)};
+const LIVE_ENV={PROVIDER_END_USER_AUTHORIZED:"true",PROVIDER_RESELLER_AUTHORIZED:"true",ALLOW_LIVE_GENERATION:"true",HIGGSFIELD_API_KEY:"test-id:test-secret",PRODUCTION_MODERATION_VERIFIED:"true",BILLING_LEDGER_VERIFIED:"true",QUOTE_SIGNING_SECRET:"s".repeat(40),OWNED_MEDIA_STORAGE_VERIFIED:"true"};
 const PROMPT="یک عکس از کوه‌های البرز هنگام غروب";
 async function turn(text=PROMPT){
  const r=await orchestrateCreativeTurn({text});
@@ -156,7 +156,7 @@ test("generationGate is blocked by default and lists every blocker",async()=>{
  await withEnv({},()=>{
   const g=generationGate(findMediaModel("soul-image"));
   assert.equal(g.live,false);
-  assert.deepEqual(g.blockers.sort(),["billing_ledger_unverified","live_switch","production_moderation_unverified","provider_authorization","provider_credentials","quote_signing_secret"].sort());
+  assert.deepEqual(g.blockers.sort(),["billing_ledger_unverified","live_switch","owned_media_storage","production_moderation_unverified","provider_authorization","provider_credentials","quote_signing_secret"].sort());
   assert.deepEqual(generationGate(findMediaModel("kling-4-0-5s")).blockers.includes("model_unverified"),true);
   assert.equal(generationGate().blockers.includes("model_unspecified"),true);
  });
@@ -257,15 +257,15 @@ test("Higgsfield adapter maps documented statuses exactly and never guesses",asy
 test("router: ineligible explicit model is rejected with reason and compatible alternatives",()=>{
  const r=recommendMediaModels("make a 10 second video with kling","quality",{durationSeconds:10});
  assert.equal(r.kind,"video");assert.equal(r.explicit,undefined);assert.equal(r.explicitRejected?.id,"kling-4-0-5s");assert.ok(r.explicitRejected?.reasonFa);
- assert.deepEqual(r.alternatives.map(m=>m.id),["seedance-2-5-10s"]);assert.ok(r.ranked.every(m=>m.id!=="kling-4-0-5s"));
+ assert.deepEqual(r.alternatives.map(m=>m.id),["kling-3-0-720p-10s","seedance-2-5-10s","seedance-2-0-720p-10s"],"Kling 4.0 is unverified; the direct Kling 3.0 is the first compatible alternative");assert.ok(r.ranked.every(m=>m.id!=="kling-4-0-5s"));
  const img=recommendMediaModels("generate an image with nano banana","quality",{aspectRatio:"16:9"});
- assert.equal(img.explicitRejected?.id,"nano-banana-pro-2k");assert.deepEqual(img.alternatives.map(m=>m.id),["soul-image"]);
+ assert.equal(img.explicit,"nano-banana-pro-2k","16:9 is a Nano Banana Pro ratio (direct Google API, docs/evidence/GOOGLE.md)");assert.equal(img.explicitRejected,undefined);
  const ref=recommendMediaModels("generate an image with soul","quality",{referenceImages:1});
  assert.equal(ref.explicitRejected?.id,"soul-image");assert.deepEqual(ref.alternatives,[]); // nothing verified supports reference images
  const lip=recommendMediaModels("video with seedance lip sync","quality",{lipSync:true});
  assert.equal(lip.explicitRejected?.id,"seedance-2-5-5s");
  const p=buildProposal("make a 10 second video with kling","quality",{durationSeconds:10});
- assert.equal(p.selectedModelId,"seedance-2-5-10s");assert.equal(p.explicitRejected?.modelId,"kling-4-0-5s");assert.ok(p.suggestions.length>=1&&p.suggestions.length<=3);
+ assert.equal(p.selectedModelId,"kling-3-0-720p-10s");assert.equal(p.explicitRejected?.modelId,"kling-4-0-5s");assert.ok(p.suggestions.length>=1&&p.suggestions.length<=3);
  assert.throws(()=>buildProposal("video with seedance lip sync","quality",{lipSync:true}),NoCompatibleModelError);
 });
 test("router: motion-reference and video-reference are unverified for every generation model, so they are never satisfied",()=>{
@@ -280,13 +280,14 @@ test("router: motion-reference and video-reference are unverified for every gene
 test("router: two-argument calls and eligible explicit models behave as before",()=>{
  const a=recommendMediaModels("Generate an image using Nano Banana Pro 2K");
  assert.equal(a.explicit,"nano-banana-pro-2k");assert.equal(a.ranked[0].id,"nano-banana-pro-2k");assert.equal(a.explicitRejected,undefined);assert.deepEqual(a.alternatives,[]);
- const b=recommendMediaModels("a video of a horse","cost");assert.ok(b.ranked.length===3);
+ const b=recommendMediaModels("a video of a horse","cost");assert.ok(b.ranked.length>=3);
  assert.equal(recommendMediaModels("a 10s clip with seedance 10s","quality",{durationSeconds:10}).explicit,"seedance-2-5-10s");
 });
 test("catalog: capability sanity, integer FX-independent prices, only models with a read API reference are verified",async()=>{
  assertValidCatalog();
  assert.ok(MEDIA_CATALOG_VERSION);
- assert.deepEqual(MEDIA_CATALOG.filter(m=>m.capabilities.verified).map(m=>m.id),["soul-image","seedance-2-5-5s","seedance-2-5-10s","genjutsu-replace","genjutsu-motion"]);
+ assert.deepEqual(MEDIA_CATALOG.filter(m=>m.capabilities.verified).map(m=>m.id),["nano-banana-pro-2k","nano-banana-2-1","nano-banana-2","seedream-5-pro-2k","seedream-5-lite","seedance-2-0-720p-5s","seedance-2-0-720p-10s","seedance-2-0-mini-720p-5s","kling-3-0-720p-5s","kling-3-0-720p-10s","soul-image","seedance-2-5-5s","seedance-2-5-10s","genjutsu-replace","genjutsu-motion"]);
+ for(const m of MEDIA_CATALOG.filter(x=>x.capabilities.verified))assert.ok(m.provider==="higgsfield"||(m.providerModel&&m.capabilities.evidence?.startsWith("docs/evidence/")),m.id+": a direct-provider model names its provider model and evidence");
  const priced=MEDIA_CATALOG.filter(m=>!m.pricePending&&!m.sourceSecondsSkus),base=priced.map(m=>priceFor(m));
  for(const n of base)assert.ok(Number.isSafeInteger(n)&&n>0);
  for(const fx of ["150000","250000","900000"])await withEnv({DEMO_FX_TOMAN_PER_USD:fx},async()=>{
@@ -347,7 +348,7 @@ test("P5 router: price-pending and operation models are never proposed, even whe
  assert.throws(()=>buildProposal("talking video","quality",{operation:"lip_sync",lipSync:true}),NoCompatibleModelError);
  assert.throws(()=>buildProposal("a video of a horse","quality",{lipSync:true}),NoCompatibleModelError);
  const named=recommendMediaModels("a video with genjutsu");assert.equal(named.explicitRejected?.id,"genjutsu-replace");assert.ok(named.ranked.length>0&&named.ranked.every(m=>m.operations.includes("generate")&&!m.pricePending));
- assert.equal(buildProposal("a video with intone","quality").selectedModelId.startsWith("seedance"),true);
+ {const sel=findMediaModel(buildProposal("a video with intone","quality").selectedModelId)!;assert.ok(sel.kind==="video"&&sel.operations.includes("generate")&&sel.capabilities.verified&&!sel.pricePending,sel.id);}
  assert.ok(modelIneligibility(findMediaModel("intone")!,{referenceImages:1}),"an operation model is not a generation model");
  const g=findMediaModel("genjutsu-replace")!;
  assert.equal(modelIneligibility(g,{operation:"replace",referenceImages:8,videoReference:true}),undefined,"the documented limit is 8");
@@ -446,7 +447,8 @@ test("capability states: verified from the API reference, unsupported only there
  assert.equal(capabilityState(m("soul-image"),"referenceImages"),"unsupported");
  assert.equal(capabilityState(m("intone")),"documented_unverified");assert.equal(capabilityState(m("intone"),"lipSync"),"documented_unverified");
  assert.equal(capabilityState(m("intone"),"startImage"),"unknown","a false flag on an unverified model proves nothing");
- assert.equal(capabilityState(m("nano-banana-pro-2k")),"unknown");assert.equal(capabilityState(m("nano-banana-pro-2k"),"referenceImages"),"unknown");
+ assert.equal(capabilityState(m("kling-4-0-5s")),"unknown");assert.equal(capabilityState(m("kling-4-0-5s"),"referenceImages"),"unknown");
+ assert.equal(capabilityState(m("nano-banana-pro-2k")),"verified","now read from Google's API reference");
 });
 
 test("an unknown submission keeps its reservation and is resent with the same key until the provider answers; never a second paid job",async()=>{

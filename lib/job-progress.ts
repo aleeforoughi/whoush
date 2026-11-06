@@ -4,16 +4,24 @@
  */
 export const DONE_STATES=["completed","completed_demo"] as const;
 export const STOPPED_STATES=["failed","canceled","released"] as const;
-/** Typical generation time by kind, in milliseconds (used only to pace the estimate). */
-export const TYPICAL_MS={image:25_000,video:120_000} as const;
-const QUEUE_CAP=12,RUN_CAP=95;
+/** Typical generation time by kind, in milliseconds: the fallback pace when the model has no measured time (MediaModel.typicalSeconds). */
+export const TYPICAL_MS={image:60_000,video:120_000} as const;
+const QUEUE_CAP=12,ON_TIME=85,RUN_CAP=95;
 
-/** The estimated percentage (0 to 100, whole number) or null when the job stopped (failed, canceled, released) and has no progress to show. */
-export function estimateProgress(state:string,msInState:number,kind:"image"|"video"="image"):number|null{
+/**
+ * The estimated percentage (0 to 100, whole number) or null when the job stopped (failed, canceled, released) and has no progress to show.
+ * While running, the bar moves at an even pace and reaches 85% at the typical time (the model's measured time when known, else the kind's), so it neither
+ * races ahead at the start nor crawls at the end of a normal run; only past the typical time does it slow, easing towards 95% and never claiming completion.
+ */
+export function estimateProgress(state:string,msInState:number,kind:"image"|"video"="image",typicalMs?:number):number|null{
  if((DONE_STATES as readonly string[]).includes(state))return 100;
  if((STOPPED_STATES as readonly string[]).includes(state))return null;
  const t=Math.max(0,msInState);
- if(state==="running")return Math.min(RUN_CAP,Math.round(QUEUE_CAP+(RUN_CAP-QUEUE_CAP)*(1-Math.exp(-1.6*t/TYPICAL_MS[kind]))));
+ if(state==="running"){
+  const typ=typicalMs&&typicalMs>0?typicalMs:TYPICAL_MS[kind];
+  const p=t<=typ?QUEUE_CAP+(ON_TIME-QUEUE_CAP)*t/typ:ON_TIME+(RUN_CAP-ON_TIME)*(1-Math.exp(-(t-typ)/(0.5*typ)));
+  return Math.min(RUN_CAP,Math.round(p));
+ }
  return Math.min(QUEUE_CAP,Math.round(QUEUE_CAP*(1-Math.exp(-t/4000))));
 }
 /** Whether the job is still in progress (queued or running): the preview shows the bar and the animated gradient only then. */

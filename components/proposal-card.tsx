@@ -7,6 +7,7 @@ import {TagBadge} from "@/components/attachment-chip";
 import type {AgentProposal,NoModelResult} from "@/lib/studio-types";
 import {PAST_PROPOSAL_FA,type ProposalSnapshot} from "@/lib/projects";
 import {fa} from "@/lib/format";
+import {nearestAspectRatio} from "@/lib/aspect";
 
 export const GENERATE_FA="بسازش",DEMO_NOTE_FA="نسخهٔ نمایشی: نه پولی کسر می‌شود و نه رسانهٔ واقعی ساخته می‌شود.";
 const RECOMMENDED_FA="پیشنهاد هووش",ALTERNATE_FA="جایگزین";
@@ -46,6 +47,8 @@ export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onA
  /** The family's version with this resolution and duration (keeping the other setting when possible). */
  const pick=(res?:string,dur?:number)=>{const m=family.find(s=>(res===undefined||s.resolution===res)&&(dur===undefined||s.durationSeconds===dur))??family.find(s=>res!==undefined?s.resolution===res:s.durationSeconds===dur);if(m)onSelect(m.modelId);};
  const ratios=chosen?.aspectRatios??[];
+ // The ratio that will really be used: the wanted one, or the nearest this model offers (the same rule as the quote in studio.tsx).
+ const shownAspect=nearestAspectRatio(aspect,ratios)??aspect;
  return <Card size="sm" data-testid="proposal" data-generation={tag} className="gap-3 p-3">
   <Head kind={proposal.operation==="generate_video"?"video":"image"} tag={tag} onMention={onMention}/>
   {heads.length>1
@@ -61,7 +64,7 @@ export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onA
    :chosen&&<p className="flex items-center gap-2 type-body-sm text-fg-secondary">مدل: <span className="text-fg-primary"><ModelName name={familyOf(chosen.name)}/></span><Badge variant="secondary">{RECOMMENDED_FA}</Badge></p>}
   {/* The model's settings: Whoush's choice is selected (from the brief, «بوم» and the mode) until the user picks another. Only what this model really offers. */}
   {(ratios.length>0||resolutions.length>0||durations.length>0)&&<div className="flex flex-col gap-2">
-   {ratios.length>0&&<Setting label="نسبت تصویر">{ratios.map(r=><Opt key={r} on={aspect===r} onClick={()=>onAspect?.(r)} disabled={!onAspect}><bdi dir="ltr">{r}</bdi></Opt>)}</Setting>}
+   {ratios.length>0&&<Setting label="نسبت تصویر">{ratios.map(r=><Opt key={r} on={shownAspect===r} onClick={()=>onAspect?.(r)} disabled={!onAspect}><bdi dir="ltr">{r}</bdi></Opt>)}</Setting>}
    {resolutions.length>0&&<Setting label="کیفیت">{resolutions.map(r=><Opt key={r} on={chosen?.resolution===r} onClick={()=>pick(r,chosen?.durationSeconds)} disabled={resolutions.length<2}><bdi dir="ltr">{r.toUpperCase()}</bdi></Opt>)}</Setting>}
    {durations.length>0&&<Setting label="مدت">{durations.map(d=><Opt key={d} on={chosen?.durationSeconds===d} onClick={()=>pick(chosen?.resolution,d)} disabled={durations.length<2}>{fa(d)} ثانیه</Opt>)}</Setting>}
   </div>}

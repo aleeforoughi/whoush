@@ -7,5 +7,7 @@ export type AgentProposal=GenerationProposal&{turnId?:string;plan:PublicCreative
 export type NoModelResult={message:string;plan?:PublicCreativePlan};
 /** The public job view from /api/generation/jobs/:id (only the fields the UI uses). */
 export type JobView={state:string;messageFa:string;outputs?:{kind:"image"|"video";url:string}[];
+ /** The model's measured typical duration, when known: paces the progress estimate. */
+ typicalMs?:number;
  /** Client only: the generation this job belongs to (#تولید-۱), for the preview's status line. */
  tag?:string};
