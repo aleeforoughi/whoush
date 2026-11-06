@@ -16,7 +16,7 @@ import {UploadSlotCard} from "@/components/upload-slot";
 import {SLOTS_FULL_FA,addSlot,composerCards,fillSlotWith,forgetAttachment,removeSlot,reserveSlotTag,slotFor,tagsInUse,uploadRejection,type Upload,type UploadSlot} from "@/lib/upload-slots";
 import {AttachmentCard,SentAttachmentCard} from "@/components/attachment-card";
 import {MessageActions,useNow} from "@/components/message-actions";
-import {ModeControl,useMode} from "@/components/mode-control";
+import {ModeControl,SEND_TONE,useMode} from "@/components/mode-control";
 import {StyleControl,useStyleSetting} from "@/components/style-control";
 import type {AttachmentPatch} from "@/components/attachment-chip";
 import {MediaViewer,type ViewerItem} from "@/components/media-viewer";
@@ -821,7 +821,7 @@ export function Studio(){
       endAction={<div className="flex items-center gap-1">
        {voice.enabled&&<button type="button" disabled={busy||reading||loadingProject} onClick={()=>setVoiceOpen(true)} aria-label="پیام صوتی" title="پیام صوتی"
         className={COMPOSER_TOOL+" disabled:pointer-events-none disabled:opacity-50"}><Icon icon={Mic} aria-hidden="true"/></button>}
-       <Button type="submit" size="icon" disabled={busy||reading||!draft.trim()} aria-busy={busy||undefined} aria-label={busy?"در حال ارسال…":"ارسال"} title="ارسال">
+       <Button type="submit" size="icon" className={SEND_TONE[mode]} disabled={busy||reading||!draft.trim()} aria-busy={busy||undefined} aria-label={busy?"در حال ارسال…":"ارسال"} title="ارسال">
         <Icon icon={busy?LoaderCircle:ArrowUp} aria-hidden="true" className={busy?"animate-spin motion-reduce:animate-none":undefined}/>
        </Button>
       </div>}/>

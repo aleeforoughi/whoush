@@ -68,6 +68,11 @@ bdi,
   --whoush-scrollbar-size: 10px;
   --whoush-scrollbar-inset: 3px;
   --whoush-scrollbar-thumb: color-mix(in oklab, var(--color-fg-secondary) 45%, transparent);
+  /* The icon on a mode-colored send button: white on the deep light-theme green, orange and blue; black on the bright dark-theme ones. */
+  --whoush-on-tone: #fff;
+}
+.dark {
+  --whoush-on-tone: #000;
 }
 /* Chrome, Edge, Safari, Opera: exact size. (Setting scrollbar-width or scrollbar-color would make Chrome ignore these, so those are for Firefox only.) */
 ::-webkit-scrollbar {

@@ -11,6 +11,12 @@ const ICONS:Record<AgentPreference,LucideIcon>={cost:Coins,speed:Zap,quality:Gau
  * on the background in both themes (brand/tokens.json). */
 const TONE:Record<AgentPreference,string>={cost:"border-success text-success hover:bg-success-muted",speed:"border-warning text-warning hover:bg-warning-muted",quality:"border-info text-info hover:bg-info-muted"};
 const INK:Record<AgentPreference,string>={cost:"text-success",speed:"text-warning",quality:"text-info"};
+/** The send button filled in the current mode's color, with a white icon in light and black in dark (Feather pairs the light green with a faint grey) (owner, 2026-11-06). */
+export const SEND_TONE:Record<AgentPreference,string>={
+ cost:"bg-success text-(color:--whoush-on-tone) not-disabled:hover:bg-success/90",
+ speed:"bg-warning text-(color:--whoush-on-tone) not-disabled:hover:bg-warning/90",
+ quality:"bg-info text-(color:--whoush-on-tone) not-disabled:hover:bg-info/90"
+};
 /** localStorage can throw (private windows, blocked storage); the choice then simply does not persist. Read through useSyncExternalStore so server and client markup agree. */
 const listeners=new Set<()=>void>();
 const subscribe=(cb:()=>void)=>{listeners.add(cb);window.addEventListener("storage",cb);return()=>{listeners.delete(cb);window.removeEventListener("storage",cb);};};
