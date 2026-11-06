@@ -31,6 +31,8 @@ export function RegionEditor({tag,photoUrl,onClose,onDone}:{tag:string;photoUrl:
  const stage=useRef<HTMLDivElement>(null);
  // A new region's comment takes focus once its field exists (the field is made by the same render that adds the region).
  const [focusNote,setFocusNote]=useState<number|null>(null);
+ // The slot being painted right now: the cursor and dots keep its colour until the press is released, then show the next one.
+ const [painting,setPainting]=useState<number|null>(null);
  useEffect(()=>{if(focusNote===null)return;const el=notes.current.get(focusNote);if(el){el.focus({preventScroll:true});setFocusNote(null);}},[focusNote,regions]);
  const layers=useRef<(HTMLCanvasElement|null)[]>([]);
  const notes=useRef(new Map<number,HTMLTextAreaElement>());
@@ -63,12 +65,12 @@ export function RegionEditor({tag,photoUrl,onClose,onDone}:{tag:string;photoUrl:
   else slot=list[list.length-1].slot;
   const m=layers.current[slot],ctx=m?.getContext("2d");if(!m||!ctx)return;
   history.current.push({slot,data:ctx.getImageData(0,0,m.width,m.height),created});if(history.current.length>30)history.current.shift();redoStack.current=[];bump();
-  const p=toPhoto(cx,cy,slot);stroke.current={slot,last:p,created};paint(slot,p,p,p.k);
+  const p=toPhoto(cx,cy,slot);stroke.current={slot,last:p,created};paint(slot,p,p,p.k);setPainting(slot);
   if(created){const n=Math.max(0,...list.map(r=>r.n))+1,next=[...list,{slot,n,note:"",pin:{x:p.x/m.width,y:p.y/m.height}}];regionsRef.current=next;setRegions(next);}
  }
  /** A second finger arrived mid-stroke: that stroke was the start of a pinch, so it is taken back (and its new region with it). */
  function cancelStroke(){
-  const s=stroke.current;if(!s)return;stroke.current=null;
+  const s=stroke.current;if(!s)return;stroke.current=null;setPainting(null);
   const last=history.current.pop(),ctx=layers.current[s.slot]?.getContext("2d");if(last&&ctx)ctx.putImageData(last.data,0,0);
   if(s.created){const next=regionsRef.current.filter(r=>r.slot!==s.slot);regionsRef.current=next;setRegions(next);}
   bump();
@@ -98,7 +100,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone}:{tag:string;photoUrl:
   if(pointers.current.size<2)pinch.current=null;
   if(!pointers.current.size){
    pan.current=null;
-   const s=stroke.current;stroke.current=null;
+   const s=stroke.current;stroke.current=null;setPainting(null);
    if(s){
     // The next touch is a new region again; a new region's comment takes focus, like a new comment pin.
     setFocus(null);
@@ -140,7 +142,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone}:{tag:string;photoUrl:
   if(empty){setMissing(true);notes.current.get(empty.slot)?.focus();return;}
   onDone({masks:regions.map(r=>layers.current[r.slot]!),regions:regions.map(r=>({n:r.n,color:REGION_COLORS[r.slot].name,note:r.note.trim().slice(0,MAX_NOTE)}))});
  }
- const brushColor=focus!==null?REGION_COLORS[focus].css:regions.length<MAX_REGIONS?REGION_COLORS[[0,1,2,3,4].find(s=>!regions.some(r=>r.slot===s))!].css:colorCss(REGION_COLORS[regions[regions.length-1].slot].name);
+ const brushColor=painting!==null?REGION_COLORS[painting].css:focus!==null?REGION_COLORS[focus].css:regions.length<MAX_REGIONS?REGION_COLORS[[0,1,2,3,4].find(s=>!regions.some(r=>r.slot===s))!].css:colorCss(REGION_COLORS[regions[regions.length-1].slot].name);
  return <div role="dialog" aria-modal="true" aria-label={BRUSH_EDIT_FA+" "+displayTag(tag)} className="fixed inset-0 z-50 flex flex-col bg-background">
   {/* Top bar: close, title, done. */}
   <div className="flex h-14 shrink-0 items-center gap-2 border-b border-line-primary px-3">
