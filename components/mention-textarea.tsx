@@ -84,10 +84,11 @@ function renderSegments(root:HTMLElement,segments:readonly EditorSegment[]){
  * `startAction` (the «+» menu) and `endAction` (send) are pinned to the bottom corners; the text reserves both with padding. Enter (and Ctrl/Cmd+Enter)
  * calls `onSubmitShortcut` and Shift+Enter starts a new line, but never while the mention list is open (there Enter and Tab insert a mention).
  */
-export function MentionTextarea({id,value,onValueChange,options,handleRef,startAction,endAction,top,onSubmitShortcut,onPaste,placeholder,maxLength,labelledBy,describedBy,startPad="ps-14"}:{
+export function MentionTextarea({id,value,onValueChange,options,handleRef,startAction,endAction,top,onSubmitShortcut,onPaste,placeholder,maxLength,labelledBy,describedBy,startPad="ps-14",endPad="pe-14"}:{
  id?:string;value:string;onValueChange:(v:string)=>void;options:readonly MentionOption[];handleRef:RefObject<MentionEditorHandle|null>;startAction?:ReactNode;endAction?:ReactNode;
  /** Content inside the field's border, above the text (the upload cards). */top?:ReactNode;onSubmitShortcut?:()=>void;onPaste?:(e:ClipboardEvent<HTMLDivElement>)=>void;
- placeholder?:string;maxLength?:number;labelledBy?:string;describedBy?:string;/** Inline-start padding reserved for `startAction` (wider when it holds several buttons). */startPad?:string}){
+ placeholder?:string;maxLength?:number;labelledBy?:string;describedBy?:string;/** Inline-start padding reserved for `startAction` (wider when it holds several buttons). */startPad?:string;
+ /** Inline-end padding reserved for `endAction` (wider when it holds several buttons). */endPad?:string}){
  const listId=useId(),optionId=(i:number)=>listId+"-"+i;
  const el=useRef<HTMLDivElement>(null);
  const rendered=useRef<string|null>(null);
@@ -186,11 +187,11 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
   {endAction&&<div className="absolute bottom-1 end-1 z-10">{endAction}</div>}
   {top&&<div className="px-2 pt-2">{top}</div>}
   <div className="relative">
-   {empty&&placeholder&&<span aria-hidden="true" className={"pointer-events-none absolute inset-y-0 start-0 truncate px-control py-control type-body text-fg-tertiary "+(startAction?startPad+" ":"")+(endAction?"pe-14":"")}>{placeholder}</span>}
+   {empty&&placeholder&&<span aria-hidden="true" className={"pointer-events-none absolute inset-y-0 start-0 truncate px-control py-control type-body text-fg-tertiary "+(startAction?startPad+" ":"")+(endAction?endPad:"")}>{placeholder}</span>}
    <div ref={el} id={id} contentEditable="plaintext-only" suppressContentEditableWarning spellCheck={false} tabIndex={0}
     role="combobox" aria-labelledby={labelledBy} aria-describedby={describedBy}
     aria-autocomplete="list" aria-haspopup="listbox" aria-controls={listId} aria-expanded={open} aria-activedescendant={open?optionId(current):undefined}
-    className={"block max-h-40 min-h-13 overflow-y-auto whitespace-pre-wrap break-words px-control py-control type-body text-fg-primary outline-hidden "+(startAction?startPad+" ":"")+(endAction?"pe-14":"")}
+    className={"block max-h-40 min-h-13 overflow-y-auto whitespace-pre-wrap break-words px-control py-control type-body text-fg-primary outline-hidden "+(startAction?startPad+" ":"")+(endAction?endPad:"")}
     onInput={onInput}
     onCompositionStart={()=>{composing.current=true;}}
     onCompositionEnd={()=>{composing.current=false;onInput();}}

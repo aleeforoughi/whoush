@@ -52,6 +52,8 @@ import type {InsertItem} from "@/lib/insert-menu";
 import {nearestAspectRatio} from "@/lib/aspect";
 /** The preview panel's «تدوین» (editing) tab: off for now, until editing exists. */
 const EDIT_TAB_ENABLED=false;
+/** Emoji and GIF buttons in the composer: off for now by owner decision (2026-11-06). */
+const COMPOSER_EXTRAS_ENABLED=false;
 
 /** A stored message plus the live attachments of its turn (object URLs, not persisted). */
 type TranscriptItem=StoredMessage&{attachments?:LocalAttachment[]};
@@ -797,24 +799,29 @@ export function Studio(){
      <Label className="sr-only" id="whoush-prompt-label">توضیح تصویر یا ویدیو</Label>
      <MentionTextarea id="whoush-prompt" handleRef={promptRef} value={draft} onValueChange={setDraft} options={mentionOptions} onPaste={onPaste} placeholder="چی می‌خوای بسازیم؟" labelledBy="whoush-prompt-label" describedBy="prompt-hint" maxLength={4000}
       onSubmitShortcut={()=>{if(draft.trim()&&!busy&&!reading)formRef.current?.requestSubmit();}}
-      startPad="ps-32"
+      startPad={COMPOSER_EXTRAS_ENABLED?"ps-32":"ps-14"}
       startAction={<div className="flex items-center">
        <InsertMenu disabled={reading} onPick={pickInsert}/>
-       <EmojiPalette emojis={COMPOSER_EMOJIS} label="ایموجی" onPick={e=>promptRef.current?.insertText(e)}
-        trigger={<button type="button" aria-label="ایموجی" title="ایموجی" className={COMPOSER_TOOL}><Icon icon={Smile} aria-hidden="true"/></button>}/>
-       <GifPicker onPick={sendGif} trigger={<button type="button" aria-label="فرستادن گیف" title="گیف" className={COMPOSER_TOOL+" type-label"}>GIF</button>}/>
+       {COMPOSER_EXTRAS_ENABLED&&<>
+        <EmojiPalette emojis={COMPOSER_EMOJIS} label="ایموجی" onPick={e=>promptRef.current?.insertText(e)}
+         trigger={<button type="button" aria-label="ایموجی" title="ایموجی" className={COMPOSER_TOOL}><Icon icon={Smile} aria-hidden="true"/></button>}/>
+        <GifPicker onPick={sendGif} trigger={<button type="button" aria-label="فرستادن گیف" title="گیف" className={COMPOSER_TOOL+" type-label"}>GIF</button>}/>
+       </>}
       </div>}
       top={cards.length>0?<ul aria-label="پیوست‌ها" className="flex items-stretch gap-2 overflow-x-auto pb-2">
        {cards.map(c=>c.type==="slot"
         ?<UploadSlotCard key={c.slot.id} slot={c.slot} disabled={reading} onUpload={()=>openSlotPicker(c.slot)} onDropFiles={f=>void fillSlot(c.slot,f)} onRemove={()=>dropSlot(c.slot.id)}/>
         :<AttachmentCard key={c.attachment.id} item={c.attachment} onChange={patch=>patchAttachment(c.attachment.id,patch)} onRemove={()=>removeAttachment(c.attachment.id)} onPreview={()=>openViewer(c.attachment)} onMention={()=>mentionTag(c.attachment.tag)}/>)}
       </ul>:undefined}
-      endAction={voice.enabled&&!draft.trim()&&!busy
-       // An empty composer offers a voice message instead of send (the transcript is then sent like a typed message).
-       ?<Button type="button" size="icon" disabled={reading||loadingProject} onClick={()=>setVoiceOpen(true)} aria-label="پیام صوتی" title="پیام صوتی"><Icon icon={Mic} aria-hidden="true"/></Button>
-       :<Button type="submit" size="icon" disabled={busy||reading||!draft.trim()} aria-busy={busy||undefined} aria-label={busy?"در حال ارسال…":"ارسال"}>
-       <Icon icon={busy?LoaderCircle:ArrowUp} aria-hidden="true" className={busy?"animate-spin motion-reduce:animate-none":undefined}/>
-      </Button>}/>
+      endPad={voice.enabled?"pe-24":"pe-14"}
+      // The blue button always sends. Beside it, a borderless mic opens voice mode when the server can transcribe (the transcript is sent like a typed message).
+      endAction={<div className="flex items-center gap-1">
+       {voice.enabled&&<button type="button" disabled={busy||reading||loadingProject} onClick={()=>setVoiceOpen(true)} aria-label="پیام صوتی" title="پیام صوتی"
+        className={COMPOSER_TOOL+" disabled:pointer-events-none disabled:opacity-50"}><Icon icon={Mic} aria-hidden="true"/></button>}
+       <Button type="submit" size="icon" disabled={busy||reading||!draft.trim()} aria-busy={busy||undefined} aria-label={busy?"در حال ارسال…":"ارسال"} title="ارسال">
+        <Icon icon={busy?LoaderCircle:ArrowUp} aria-hidden="true" className={busy?"animate-spin motion-reduce:animate-none":undefined}/>
+       </Button>
+      </div>}/>
      <VoiceMode open={voiceOpen} maxSeconds={voice.maxSeconds} onClose={()=>setVoiceOpen(false)} onTranscript={text=>answer(text)}/>
      <p id="prompt-hint" className="flex items-start gap-1 type-caption text-fg-secondary"><Icon icon={Info} size={16} aria-hidden="true" className="mt-0.5 shrink-0"/>با # می‌تونی به پیوست‌ها اشاره کنی.</p>
      <div className="flex flex-wrap items-start gap-2">
