@@ -10,7 +10,7 @@ import type {RegionColorName} from "./attachments";
 
 export const BRUSH_EDIT_FA="ادیت";
 export const BRUSH_HINT_FA="روی جایی که می‌خوای عوض بشه بکش و برای هر قسمت بنویس چی بشه. بقیهٔ عکس دست نمی‌خوره.";
-export const BRUSH_NOTE_PLACEHOLDER_FA="اینجا چی بشه؟ مثلاً: رژ لب قرمز مات";
+export const BRUSH_NOTE_PLACEHOLDER_FA="اینجا رو چه تغییری بدیم؟";
 export const BRUSH_DONE_FA="ثبت";
 export const BRUSH_NEW_FA="قلم جدید";
 export const BRUSH_MARKED_FA="ناحیه‌ها مشخص شدن";
