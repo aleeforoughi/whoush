@@ -705,8 +705,8 @@ export function Studio(){
     <div className="border-b border-line-tertiary px-4 py-3">
      <div className="mx-auto flex w-full max-w-3xl items-start justify-between gap-3">
      <div className="min-w-0">
-      <h2 className="type-title text-fg-primary">دستیار هووش</h2>
-      <p className="type-body-sm text-fg-secondary">ساخت تصویر و ویدیو با گفت‌وگو</p>
+      <h2 className="type-title text-fg-primary">هر چی دل تنگت می‌خواهد بساز.</h2>
+      <p className="type-body-sm text-fg-secondary">چت کن، وویس بده، ایدتو بگو، هیچ مهارتی لازم نیست. عکس یا ویدیویی نیست که من نتونم بسازم. برو که بریم!</p>
      </div>
      {/* Once there is a preview: a toggle that shows it («نمایش») or closes it («بستن نمایش»). */}
      {hasPreview&&<Button type="button" variant="outline" onClick={()=>showPreview?minimizePreview():openPreview()} aria-expanded={showPreview} aria-controls="whoush-preview" className="shrink-0">
