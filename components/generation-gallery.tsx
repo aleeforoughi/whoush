@@ -31,7 +31,8 @@ const scrollWithin=(box:HTMLElement|null,el:HTMLElement|undefined,align:"start"|
  * thumbnails beside it. Picking a thumbnail (or a chat preview card, through `focus`) scrolls the list to that generation; scrolling the list highlights its
  * thumbnail and keeps it in view in the strip.
  */
-export function GenerationGallery({items,focus,placeholder,onEdit}:{items:GalleryItem[];focus:GalleryFocus|null;placeholder:string;
+export function GenerationGallery({items,focus,placeholder,onEdit,onView}:{items:GalleryItem[];focus:GalleryFocus|null;placeholder:string;
+ /** Full screen, by generation tag. */onView?:(tag:string)=>void;
  /** «ادیت» on a finished image, by its generation tag. */onEdit?:(tag:string)=>void}){
  const list=useRef<HTMLDivElement>(null),strip=useRef<HTMLDivElement>(null);
  const cards=useRef(new Map<string,HTMLElement>()),thumbs=useRef(new Map<string,HTMLElement>());
@@ -92,7 +93,7 @@ export function GenerationGallery({items,focus,placeholder,onEdit}:{items:Galler
     {(it.job.tag||it.model)&&<p className="flex items-center gap-2 type-label text-fg-secondary">
      {it.job.tag&&<bdi className="text-fg-primary">{displayTag(it.job.tag)}</bdi>}{it.model&&<span>· {it.model}</span>}
     </p>}
-    <GenerationPreview job={it.job} kind={it.kind} model={it.model} placeholder={placeholder} onEdit={onEdit&&it.job.tag&&it.kind==="image"?()=>onEdit(it.job.tag!):undefined}/>
+    <GenerationPreview job={it.job} kind={it.kind} model={it.model} placeholder={placeholder} onEdit={onEdit&&it.job.tag&&it.kind==="image"?()=>onEdit(it.job.tag!):undefined} onView={onView&&it.job.tag?()=>onView(it.job.tag!):undefined}/>
    </section>)}
   </div>
  </div>;

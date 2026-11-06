@@ -1,7 +1,7 @@
 "use client";
 import {useCallback,useEffect,useLayoutEffect,useRef,useState,type KeyboardEvent,type PointerEvent,type RefObject} from "react";
 import Link from "next/link";
-import {AudioLines,ChevronLeft,ChevronRight,Download,FileJson,FileQuestion,FileText,FolderOpen,Images,Film,X,type LucideIcon} from "lucide-react";
+import {AudioLines,Brush,ChevronLeft,ChevronRight,Download,FileJson,FileQuestion,FileText,FolderOpen,Images,Film,X,type LucideIcon} from "lucide-react";
 import {Dialog as DialogPrimitive} from "@base-ui/react/dialog";
 import {Badge,Button,Dialog,DialogPortal,Icon} from "@aleeforoughi/feather-react";
 import {ATTACHMENT_KINDS,displayTag,roleLabelFa,type AttachmentKind,type AttachmentRole} from "@/lib/attachments";
@@ -13,7 +13,36 @@ import {MISSING_FILE_FA,ShareActions,triggerDownload,type ShareFile} from "@/com
 export type ViewerItem={
  id:string;kind:AttachmentKind;mime:string;bytes:number;name:string;tag:string;role?:AttachmentRole;
  width?:number;height?:number;durationSeconds?:number;projectId?:string;url?:string;blob?:Blob;
+ /** The essentials shown over the picture (owner, 2026-11-06): title, date, the brief, the model and a few facts. */info?:ViewerInfo;
 };
+export type ViewerInfo={titleFa:string;dateIso?:string;briefFa?:string;model?:string;facts:{labelFa:string;value:string}[]};
+const faDate=(iso:string)=>{try{return new Intl.DateTimeFormat("fa-IR",{dateStyle:"medium",timeStyle:"short"}).format(new Date(iso));}catch{return "";}};
+/** A file known only by its URL (a generation): its bytes are fetched once the viewer shows it, so download and share work too. */
+function useFetchedBlob(item:ViewerItem):Blob|undefined{
+ const [got,setGot]=useState<{id:string;blob:Blob}|null>(null);
+ useEffect(()=>{
+  if(item.blob||!item.url||item.url.startsWith("blob:"))return;
+  let alive=true;
+  fetch(item.url).then(r=>r.ok?r.blob():undefined).then(b=>{if(alive&&b)setGot({id:item.id,blob:b});}).catch(()=>undefined);
+  return()=>{alive=false;};
+ },[item.id,item.url,item.blob]);
+ return item.blob??(got?.id===item.id?got.blob:undefined);
+}
+/** The info card at the bottom: title and date, the model and the facts as chips, the brief in two lines (tap for all). Compact, task-first. */
+function InfoCard({info}:{info:ViewerInfo}){
+ const [more,setMore]=useState(false);
+ return <div className="pointer-events-auto flex w-full max-w-xl flex-col gap-1.5 rounded-[8px] border border-white/10 bg-background/90 p-3 text-start shadow-lg">
+  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+   <span className="type-label text-fg-primary"><bdi>{info.titleFa}</bdi></span>
+   {info.dateIso&&<span className="type-caption text-fg-secondary">{faDate(info.dateIso)}</span>}
+  </div>
+  {(info.model||info.facts.length>0)&&<ul className="flex flex-wrap gap-1.5">
+   {info.model&&<li className="rounded-[4px] bg-primary/15 px-1.5 py-0.5 type-caption text-fg-primary"><bdi>{info.model}</bdi></li>}
+   {info.facts.map(f=><li key={f.labelFa} className="rounded-[4px] bg-white/10 px-1.5 py-0.5 type-caption text-fg-secondary">{f.labelFa}: <bdi className="text-fg-primary">{f.value}</bdi></li>)}
+  </ul>}
+  {info.briefFa&&<button type="button" onClick={()=>setMore(m=>!m)} aria-expanded={more} className={"text-start type-body-sm text-fg-primary "+(more?"":"line-clamp-2")}>{info.briefFa}</button>}
+ </div>;
+}
 const KIND_ICONS:Record<AttachmentKind,LucideIcon>={image:Images,video:Film,audio:AudioLines,pdf:FileText,json:FileJson,md:FileText};
 export const VIEWER_LABEL_FA="نمایش تمام‌صفحه";
 const shareFile=(item:ViewerItem,projectTitle:string|undefined):ShareFile=>({blob:item.blob,name:item.name,mime:item.mime,kind:item.kind,tag:item.tag,width:item.width,height:item.height,durationSeconds:item.durationSeconds,projectTitle});
@@ -45,7 +74,7 @@ const isRtl=()=>typeof document!=="undefined"&&getComputedStyle(document.documen
 
 function Meta({item}:{item:ViewerItem}){
  return <span className="type-caption text-fg-secondary">
-  {ATTACHMENT_KINDS[item.kind].labelFa} · {faBytes(item.bytes)}
+  {ATTACHMENT_KINDS[item.kind].labelFa}{item.bytes>0&&<> · {faBytes(item.bytes)}</>}
   {item.durationSeconds!==undefined&&<> · <bdi>{faDuration(item.durationSeconds)}</bdi></>}
   {item.width!==undefined&&item.height!==undefined&&<> · <bdi>{faDimensions(item.width,item.height)}</bdi></>}
  </span>;
@@ -87,8 +116,10 @@ function focusInChrome(root:HTMLElement|null):boolean{
  try{return el.matches(":focus-visible");}catch{return true;}
 }
 
-function ViewerBody({items,index,onIndexChange,onClose,projectTitleOf,stageRef}:{items:ViewerItem[];index:number;onIndexChange:(i:number)=>void;onClose:()=>void;projectTitleOf?:(item:ViewerItem)=>string|undefined;stageRef:RefObject<HTMLDivElement|null>}){
+function ViewerBody({items,index,onIndexChange,onClose,projectTitleOf,stageRef,onEdit}:{items:ViewerItem[];index:number;onIndexChange:(i:number)=>void;onClose:()=>void;projectTitleOf?:(item:ViewerItem)=>string|undefined;stageRef:RefObject<HTMLDivElement|null>;
+ onEdit?:(item:ViewerItem)=>void}){
  const item=items[index],n=items.length;
+ const blob=useFetchedBlob(item);
  const [rtl]=useState(isRtl);
  const reduced=useReducedMotion();
  const [shown,setShown]=useState(true);
@@ -167,7 +198,8 @@ function ViewerBody({items,index,onIndexChange,onClose,projectTitleOf,stageRef}:
      :<span className="max-w-full truncate type-label text-fg-primary"><bdi>{projectTitle}</bdi></span>)}
    </div>
    <div className="order-2 ms-auto flex items-center gap-2 sm:order-3 sm:ms-0">
-    <ShareActions overlay instagram file={shareFile(item,projectTitle)}/>
+    {onEdit&&item.kind==="image"&&<Button type="button" variant="secondary" onClick={()=>onEdit(item)} aria-label={"ادیت "+displayTag(item.tag)}><Icon icon={Brush} aria-hidden="true"/>ادیت</Button>}
+    <ShareActions overlay instagram file={shareFile({...item,blob},projectTitle)}/>
     {projectHref&&<Button variant="secondary" size="icon" aria-label="باز کردن پروژه" title="باز کردن پروژه" render={<Link href={projectHref} onClick={onClose}/>} nativeButton={false}><Icon icon={FolderOpen} aria-hidden="true"/></Button>}
    </div>
   </div>
@@ -179,8 +211,9 @@ function ViewerBody({items,index,onIndexChange,onClose,projectTitleOf,stageRef}:
     <Button type="button" variant="secondary" size="icon" disabled={!hasNext(index,n)} onClick={()=>go("next")} aria-label="بعدی"><Icon icon={NextIcon} aria-hidden="true"/></Button>
    </div>
   </>}
-  <div aria-hidden="true" className={"pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-center bg-linear-to-t from-background/80 to-background/0 p-4 "+fade}>
-   <span className="type-label text-fg-primary">{viewerCounter(index,n)}</span>
+  <div data-viewer-chrome className={"pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col items-center gap-2 bg-linear-to-t from-background/80 to-background/0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] "+fade}>
+   {item.info&&<InfoCard key={item.id} info={item.info}/>}
+   {n>1&&<span aria-hidden="true" className="type-caption text-fg-secondary">{viewerCounter(index,n)}</span>}
   </div>
  </div>;
 }
@@ -192,8 +225,9 @@ function ViewerBody({items,index,onIndexChange,onClose,projectTitleOf,stageRef}:
  * `index` is the open item or null; moves are reported through `onIndexChange`, closing through `onClose`.
  * `restoreFocusTo` picks the element that gets focus back on close (default: whatever opened the viewer).
  */
-export function MediaViewer({items,index,onIndexChange,onClose,projectTitleOf,restoreFocusTo}:{
+export function MediaViewer({items,index,onIndexChange,onClose,projectTitleOf,restoreFocusTo,onEdit}:{
  items:ViewerItem[];index:number|null;onIndexChange:(index:number)=>void;onClose:()=>void;
+ /** «ادیت» on an image: closes the viewer and opens it in the brush editor. */onEdit?:(item:ViewerItem)=>void;
  projectTitleOf?:(item:ViewerItem)=>string|undefined;restoreFocusTo?:(item:ViewerItem)=>HTMLElement|null;
 }){
  const stageRef=useRef<HTMLDivElement>(null);
@@ -227,7 +261,7 @@ export function MediaViewer({items,index,onIndexChange,onClose,projectTitleOf,re
     finalFocus={finalFocus}
     className="dark motion-dialog fixed inset-0 z-50 m-0 h-dvh w-screen max-w-none overflow-hidden rounded-none border-0 bg-background p-0 text-fg-primary opacity-100 outline-none data-starting-style:opacity-0"
    >
-    {current&&index!==null&&<ViewerBody items={items} index={index} onIndexChange={onIndexChange} onClose={onClose} projectTitleOf={projectTitleOf} stageRef={stageRef}/>}
+    {current&&index!==null&&<ViewerBody items={items} index={index} onIndexChange={onIndexChange} onClose={onClose} projectTitleOf={projectTitleOf} stageRef={stageRef} onEdit={onEdit}/>}
    </DialogPrimitive.Popup>
   </DialogPortal>
  </Dialog>;

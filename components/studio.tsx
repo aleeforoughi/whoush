@@ -29,7 +29,7 @@ import {RailShell} from "@/components/studio-rail";
 import type {AgentProposal,JobView,NoModelResult} from "@/lib/studio-types";
 import {getLocalCharacter,listLocalCharacters} from "@/lib/character-store";
 import {characterCoverage,characterUsability,type CharacterProfile} from "@/lib/characters";
-import {fa} from "@/lib/format";
+import {fa,faBytes,faDimensions,faDuration} from "@/lib/format";
 import {REVIEW_FAILED_FA,WAITING_FA,photoReviewEnabled,reviewPhoto,reviewStopFa,type PhotoReview} from "@/lib/photo-review";
 import {PhotoReviewOverlay,ReviewRing} from "@/components/photo-review-badge";
 import {RegionEditor} from "@/components/region-editor";
@@ -55,7 +55,7 @@ import type {GenerationStyle} from "@/lib/creative-plan";
 import {UNSUPPORTED_REASONS,type AgentPreference,type UnsupportedReason} from "@/lib/types";
 import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,acceptFor,bumpTagCounters,displayTag,insertMention,lowestFreeTag,nextGenerationTag,newTagCounters,parseMentions,tooManyFa,toWireAttachment,validateAttachmentSet,withRole,withoutRole,type AttachmentKind,type AttachmentRole,type LocalAttachment} from "@/lib/attachments";
 import {readAttachment} from "@/lib/attachment-files";
-import {REGION_COLOR_FA,isGenerationTag,splitMentions} from "@/lib/attachments";
+import {ATTACHMENT_KINDS,REGION_COLOR_FA,isGenerationTag,roleLabelFa,splitMentions} from "@/lib/attachments";
 import type {InsertItem} from "@/lib/insert-menu";
 import {nearestAspectRatio} from "@/lib/aspect";
 /** The preview panel's «تدوین» (editing) tab: off for now, until editing exists. */
@@ -384,10 +384,40 @@ export function Studio(){
  useEffect(()=>{endRef.current?.scrollIntoView({block:"end"});},[messages,proposal,error,thinking?.stage]);
  const blobFor=(id:string)=>blobs.current.get(id);
  /** Opens the viewer on one attachment, with every attachment of this conversation (sent messages first, then the tray) to step through. */
+ /**
+  * Everything viewable in this chat for the full-screen viewer (owner, 2026-11-06), newest first: the files (one per picture) and every generated image or
+  * video, each with its essentials: title, date, the brief, the model and a few facts.
+  */
+ function viewerItems():ViewerItem[]{
+  const sentAt=(id:string)=>messages.find(m=>(m.attachments??[]).some(a=>a.id===id))?.at;
+  const files:ViewerItem[]=distinctFiles.map(c=>{const r=reviews[c.id];return {id:c.id,kind:c.kind,mime:c.mime,bytes:c.bytes,name:c.name,tag:c.tag,role:c.role,width:c.width,height:c.height,durationSeconds:c.durationSeconds,url:c.previewUrl,blob:blobs.current.get(c.id),
+   info:{titleFa:displayTag(c.tag)+(c.role?" · "+roleLabelFa(c.role,c.kind):""),dateIso:sentAt(c.id),facts:[
+    {labelFa:"نوع",value:ATTACHMENT_KINDS[c.kind].labelFa},{labelFa:"حجم",value:faBytes(c.bytes)},
+    ...(c.width&&c.height?[{labelFa:"ابعاد",value:faDimensions(c.width,c.height)}]:[]),...(c.durationSeconds!==undefined?[{labelFa:"مدت",value:faDuration(c.durationSeconds)}]:[]),
+    ...(r?.state==="safe"?[{labelFa:"بررسی ایمنی",value:"تأیید شد"}]:[])]}};});
+  const gens:ViewerItem[]=messages.flatMap(m=>{
+   if(m.kind!=="job"||!m.snapshot.tag)return [];
+   const tag=m.snapshot.tag,g=generationMap.get(tag),outs=(m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined))??[];
+   return outs.filter(o=>(o.kind==="image"||o.kind==="video")&&isOwnedOutputUrl(o.url,window.location.origin)).map((o,k):ViewerItem=>({id:"gen-"+tag+"-"+k,kind:o.kind as "image"|"video",mime:o.kind==="video"?"video/mp4":"image/png",bytes:0,
+    name:displayTag(tag).slice(1)+(o.kind==="video"?".mp4":".png"),tag,url:o.url,info:{titleFa:displayTag(tag),dateIso:m.at,briefFa:g?.plan.intentSummaryFa,model:g?.modelName||undefined,facts:[
+     {labelFa:"نوع",value:o.kind==="video"?"ویدیو":"عکس"},...(g?.plan.camera?.aspectRatio?[{labelFa:"نسبت",value:g.plan.camera.aspectRatio==="original"?"اصلی":g.plan.camera.aspectRatio}]:[]),
+     ...(g?.plan.shot?.durationSeconds?[{labelFa:"مدت",value:fa(g.plan.shot.durationSeconds)+" ثانیه"}]:[]),...(g?.neurons?[{labelFa:"هزینه",value:fa(g.neurons)+" نورون"}]:[])]}}));
+  });
+  return byRecency([...files,...gens]);
+ }
+ function openViewerAt(id:string){const items=viewerItems(),index=items.findIndex(i=>i.id===id);if(index>=0)setViewer({items,index,title:active.current?.title});}
  function openViewer(a:LocalAttachment){
-  const items:ViewerItem[]=conversation.map(c=>({id:c.id,kind:c.kind,mime:c.mime,bytes:c.bytes,name:c.name,tag:c.tag,role:c.role,width:c.width,height:c.height,durationSeconds:c.durationSeconds,url:c.previewUrl,blob:blobFor(c.id)}));
-  const index=items.findIndex(i=>i.id===a.id);
-  if(index>=0)setViewer({items,index,title:active.current?.title});
+  // A repeated file opens as the one picture it is (the # list keeps the latest #).
+  const same=distinctFiles.find(c=>c.kind===a.kind&&c.sha256===a.sha256);openViewerAt(same?.id??a.id);
+ }
+ /** A generated image or video, full screen (from the chat or the preview). */
+ const openGenerationViewer=(tag:string)=>openViewerAt("gen-"+tag+"-0");
+ /** «ادیت» in the viewer: the viewer closes and the picture opens in the brush editor. */
+ function editFromViewer(item:ViewerItem){
+  setViewer(null);
+  if(item.id.startsWith("gen-"))return void editGeneration(item.tag);
+  const inTray=attachments.find(a=>a.id===item.id),sent=conversation.find(a=>a.id===item.id);
+  if(inTray)editAttachment(inTray,true);else if(sent)editAttachment(sent,false);
  }
  function releaseUrl(a:LocalAttachment){if(a.previewUrl){URL.revokeObjectURL(a.previewUrl);urls.current.delete(a.previewUrl);}}
  function setReview(id:string,r:PhotoReview){reviewsRef.current={...reviewsRef.current,[id]:r};setReviews(reviewsRef.current);}
@@ -838,7 +868,7 @@ export function Studio(){
      {/* «تولیدها»: every generation of the chat in one scroll with a thumbnail strip (its own two scroll areas, so the strip stays put). */}
      <TabsContent value="generations" className="flex min-h-0 flex-1 flex-col">
       {galleryItems.length>0
-       ?<GenerationGallery items={galleryItems} focus={galleryFocus} placeholder="خروجی تصویری واقعی هنوز فعال نیست" onEdit={busy?undefined:tag=>{setPreviewOpen(false);void editGeneration(tag);}}/>
+       ?<GenerationGallery items={galleryItems} focus={galleryFocus} placeholder="خروجی تصویری واقعی هنوز فعال نیست" onEdit={busy?undefined:tag=>{setPreviewOpen(false);void editGeneration(tag);}} onView={openGenerationViewer}/>
        :<div className="p-4 lg:p-6"><div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-card border border-line-secondary bg-surface-subtle p-8 text-center md:aspect-video">
         <Icon icon={Clapperboard} size={32} className="text-fg-secondary" aria-hidden="true"/>
         <p className="type-body text-fg-primary">{preview}</p>
@@ -933,6 +963,7 @@ export function Studio(){
          </p>}
         {m.kind==="job"&&<PreviewCard tag={m.snapshot.tag} state={m.snapshot.state} messageFa={m.snapshot.messageFa}
          output={(m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined))?.find(o=>isOwnedOutputUrl(o.url,window.location.origin))} video={m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false} onOpen={()=>openPreview(m.snapshot,m.id)}
+         onView={m.snapshot.tag?()=>openGenerationViewer(m.snapshot.tag!):undefined}
          onEdit={m.snapshot.tag&&!busy?()=>void editGeneration(m.snapshot.tag!):undefined}/>}
         {/* «بوم» is adjustable on every generation: on the live one it feeds «بساز» directly; on an older one its card offers a revision with that scene. */}
         {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan&&<PlanStory plan={m.snapshot.plan} focus={m.kind==="proposal"?refineFocus(m.snapshot.focus,messages.slice(0,i).reverse().find(x=>x.role==="user")?.text):undefined}
@@ -1027,7 +1058,7 @@ export function Studio(){
     </form>
     </div>
    </section>
-   <MediaViewer items={viewer?.items??[]} index={viewer?viewer.index:null} onIndexChange={i=>setViewer(v=>v&&{...v,index:i})} onClose={()=>setViewer(null)}
+   <MediaViewer items={viewer?.items??[]} index={viewer?viewer.index:null} onIndexChange={i=>setViewer(v=>v&&{...v,index:i})} onClose={()=>setViewer(null)} onEdit={busy?undefined:editFromViewer}
     projectTitleOf={()=>viewer?.title}
     restoreFocusTo={item=>document.querySelector<HTMLElement>('[data-viewer-open="'+CSS.escape(item.id)+'"]')}/>
    <CharacterDialog open={charactersOpen} onOpenChange={setCharactersOpen} characters={characters} loaded={charactersLoaded} selectedId={characterId} onPick={pickCharacter}/>

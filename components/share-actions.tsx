@@ -20,7 +20,7 @@ export function triggerDownload(f:ShareFile){
  window.setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 /** The device's own share sheet with the file, if this browser can share files at all (never on most desktop browsers). Undefined otherwise. */
-function shareableFile(f:ShareFile):File|undefined{
+export function shareableFile(f:ShareFile):File|undefined{
  if(!f.blob||typeof navigator==="undefined"||typeof navigator.canShare!=="function"||typeof navigator.share!=="function")return undefined;
  const file=new File([f.blob],fileName(f),{type:f.mime});
  try{return navigator.canShare({files:[file]})?file:undefined;}catch{return undefined;}
