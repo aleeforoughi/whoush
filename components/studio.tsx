@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
 import Link from "next/link";
 import {useRouter,useSearchParams} from "next/navigation";
-import {ArrowUp,ChevronLeft,CircleAlert,Clapperboard,Eye,Info,LoaderCircle,MessageCircle,Mic,Smile,Upload as UploadIcon,UserRound,X} from "lucide-react";
+import {ArrowUp,ChevronLeft,CircleAlert,Clapperboard,Eye,Hash,Info,LoaderCircle,MessageCircle,Mic,Smile,Upload as UploadIcon,UserRound,X} from "lucide-react";
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Tabs,TabsContent,TabsList,TabsTrigger,Label,Tooltip,TooltipContent,TooltipTrigger} from "@aleeforoughi/feather-react";
 import {BACK_TO_CHAT_FA,CLOSE_PREVIEW_FA,OPEN_PREVIEW_FA,PreviewCard} from "@/components/preview-card";
 import {GalleryThumbs,GenerationGallery,galleryFocusOn,type GalleryFocus,type GalleryItem} from "@/components/generation-gallery";
@@ -43,6 +43,7 @@ import {TurnProgress,TypeOut} from "@/components/type-out";
 import {ChatGif} from "@/components/chat-gif";
 import {COMPOSER_EMOJIS,EmojiPalette} from "@/components/emoji-palette";
 import {GifPicker} from "@/components/gif-picker";
+import {TAG_PICKER_LABEL_FA,TagPicker} from "@/components/tag-picker";
 import {MessageReactions} from "@/components/message-reactions";
 import type {GenerationStyle} from "@/lib/creative-plan";
 import type {AgentPreference} from "@/lib/types";
@@ -799,9 +800,11 @@ export function Studio(){
      <Label className="sr-only" id="whoush-prompt-label">توضیح تصویر یا ویدیو</Label>
      <MentionTextarea id="whoush-prompt" handleRef={promptRef} value={draft} onValueChange={setDraft} options={mentionOptions} onPaste={onPaste} placeholder="چی می‌خوای بسازیم؟" labelledBy="whoush-prompt-label" describedBy="prompt-hint" maxLength={4000}
       onSubmitShortcut={()=>{if(draft.trim()&&!busy&&!reading)formRef.current?.requestSubmit();}}
-      startPad={COMPOSER_EXTRAS_ENABLED?"ps-32":"ps-14"}
+      startPad={COMPOSER_EXTRAS_ENABLED?"ps-40":"ps-24"}
       startAction={<div className="flex items-center">
        <InsertMenu disabled={reading} onPick={pickInsert}/>
+       <TagPicker options={mentionOptions} onPick={mentionTag}
+        trigger={<button type="button" aria-label={TAG_PICKER_LABEL_FA} title={TAG_PICKER_LABEL_FA} className={COMPOSER_TOOL}><Icon icon={Hash} aria-hidden="true"/></button>}/>
        {COMPOSER_EXTRAS_ENABLED&&<>
         <EmojiPalette emojis={COMPOSER_EMOJIS} label="ایموجی" onPick={e=>promptRef.current?.insertText(e)}
          trigger={<button type="button" aria-label="ایموجی" title="ایموجی" className={COMPOSER_TOOL}><Icon icon={Smile} aria-hidden="true"/></button>}/>
