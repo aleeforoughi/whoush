@@ -24,6 +24,7 @@ import type {GenerationProposal,MediaRequirements,ProposalResearch,SuggestedMode
 import {researchReferences,type ResearchReference,type ResearchResult,type TurnReference} from "./research";
 import {inspectReferences} from "./reference-inspect";
 import {faPlain} from "./format";
+import {continuesWork} from "./follow-up";
 import {EDIT_CARDS_FA,EDIT_CARD_FA,EDIT_CARD_FINGLISH,wantsEditCard} from "./edit-card";
 import {safeReview} from "./upload-review";
 import {rememberRegionEdit} from "./region-restore";
@@ -393,7 +394,10 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  if(safety.decision!=="allow")return {status:"restricted",decision:safety.decision,category:safety.category,message:safety.message,...(safety.choices?{choices:safety.choices}:{})};
  // A role is optional: media without one gets Whoush's best guess from the words of the brief (no media analysis), before skills resolve.
  // Inferred roles drive the same skills, constraints, kind override and requirements as chosen ones; `voice_clone` is never inferred.
- const given=parsed.attachments??[],roles=new Map(inferAttachmentRoles(parsed.text,given).map(r=>[r.tag,r]));
+ // Keeping the thread (lib/follow-up.ts): with no files of its own, a message that continues the latest work keeps the photos that work was built on.
+ const ownFiles=parsed.attachments??[],carryTags=!ownFiles.length&&parsed.continueWith?.length&&continuesWork(parsed.text,Boolean(parsed.generations?.length))?parsed.continueWith:[];
+ const carried=(parsed.priorAttachments??[]).filter(a=>carryTags.includes(a.tag));
+ const given=[...ownFiles,...carried],roles=new Map(inferAttachmentRoles(parsed.text,given).map(r=>[r.tag,r]));
  // A painted photo is the photo to edit, whatever role it had.
  const files0:Array<Omit<(typeof given)[number],"role">&{role?:AttachmentRole;roleSource?:RoleSource}>=given.map(f=>{if(f.regionEdit)return {...f,role:"edit_reference" as const,roleSource:"user" as RoleSource};const r=roles.get(f.tag);return r?{...f,role:r.role,roleSource:r.roleSource}:f;});
  // Something only a photo can keep (the user's tattoos, logo, product, face, outfit): its photos get the right role (a user's own choice stays), and without

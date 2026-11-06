@@ -53,7 +53,7 @@ import {TAG_PICKER_LABEL_FA,TagPicker} from "@/components/tag-picker";
 import {MessageReactions} from "@/components/message-reactions";
 import type {GenerationStyle} from "@/lib/creative-plan";
 import {UNSUPPORTED_REASONS,type AgentPreference,type UnsupportedReason} from "@/lib/types";
-import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,acceptFor,bumpTagCounters,displayTag,insertMention,lowestFreeTag,nextGenerationTag,newTagCounters,parseMentions,tooManyFa,toWireAttachment,validateAttachmentSet,withRole,withoutRole,type AttachmentKind,type AttachmentRole,type LocalAttachment} from "@/lib/attachments";
+import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,acceptFor,roleAllowed,bumpTagCounters,displayTag,insertMention,lowestFreeTag,nextGenerationTag,newTagCounters,parseMentions,tooManyFa,toWireAttachment,validateAttachmentSet,withRole,withoutRole,type AttachmentKind,type AttachmentRole,type LocalAttachment} from "@/lib/attachments";
 import {readAttachment} from "@/lib/attachment-files";
 import {ATTACHMENT_KINDS,REGION_COLOR_FA,isGenerationTag,roleLabelFa,splitMentions} from "@/lib/attachments";
 import type {InsertItem} from "@/lib/insert-menu";
@@ -159,6 +159,8 @@ export function Studio(){
  const queue=useRef<Promise<void>>(Promise.resolve());
  const loadSeq=useRef(0);
  /** The files of this conversation: their bytes (to store with the project) and which ones are already stored. Replaced, never cleared, so a save in flight keeps its own. */
+ /** Whether the preview fits beside the chat (the side panel from the `md` breakpoint); on a phone it would cover the chat, so it opens only when asked. */
+ const previewFits=()=>typeof window!=="undefined"&&window.matchMedia("(min-width: 768px)").matches;
  const blobs=useRef(new Map<string,Blob>());
  // The photo safety check (lib/photo-review.ts): each photo's state by attachment id, the checks still running, and the photos a sent message waits for.
  const [reviewOn,setReviewOn]=useState(false);
@@ -340,7 +342,7 @@ export function Studio(){
    for(const m of restored)if(m.kind==="job"&&!m.snapshot.jobId&&!isFinalJobState(m.snapshot.state))m.snapshot={...m.snapshot,state:"lost",messageFa:UNTRACKED_JOB_FA};
    setProjectId(p.id);setLocal({mode:p.mode,style:p.style});setMessages(withGenerationTags(restored));
    const lastJob=[...restored].reverse().find(m=>m.kind==="job");
-   if(lastJob?.kind==="job"){setJob(lastJob.snapshot);setPreview(lastJob.snapshot.messageFa);setPreviewOpen(true);setGalleryFocus(galleryFocusOn(lastJob.id));}
+   if(lastJob?.kind==="job"){setJob(lastJob.snapshot);setPreview(lastJob.snapshot.messageFa);setPreviewOpen(previewFits());setGalleryFocus(galleryFocusOn(lastJob.id));}
    // A generation that was still running when the project was saved: ask the server again and follow it to its end.
    for(const m of restored)if(m.kind==="job"&&m.snapshot.jobId&&!isFinalJobState(m.snapshot.state))followJob(m.id,m.snapshot);
    // The character: an explicit ?character= link wins, otherwise the project's own, and either must still be usable.
@@ -730,7 +732,14 @@ export function Studio(){
     }
    }
    setThinking({stage:"reading",done:[],script:replyScriptFor(sentText)});
-   const body=()=>JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(a=>toWireAttachment(a,reviewIdOf(a),a.regionEdit?reviewIdOf(guideOf(a)!):undefined))}:{}),...(prior.length?{priorAttachments:prior.map(a=>toWireAttachment(a,reviewIdOf(a)))}:{}),...(main?{mainSubject:main}:{}),...(generations.length?{generations}:{})}),onStage=(stage:TurnStage)=>setThinking(t=>t&&(t.stage===stage?t:{...t,done:[...t.done,t.stage],stage}));
+ // Keeping the thread (lib/follow-up.ts): the photos the latest plan was built on, with the roles that plan gave them; the server keeps them for a
+   // follow-up that continues the work.
+   let lastPlan:AgentProposal["plan"]|undefined;
+   for(const m of [...messages].reverse()){if((m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan){lastPlan=m.snapshot.plan;break;}}
+   const planRoles=new Map<string,string>((lastPlan?.references??[]).map(r=>[r.tag,r.role]));
+   const continueWith=outgoing.length?[]:prior.filter(a=>planRoles.has(a.tag)).map(a=>a.tag);
+   const withPlanRole=(a:LocalAttachment)=>{const r=planRoles.get(a.tag);return !a.role&&r&&roleAllowed(a.kind,r as AttachmentRole)?withRole(a,r as AttachmentRole):a;};
+   const body=()=>JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(a=>toWireAttachment(a,reviewIdOf(a),a.regionEdit?reviewIdOf(guideOf(a)!):undefined))}:{}),...(prior.length?{priorAttachments:prior.map(a=>toWireAttachment(withPlanRole(a),reviewIdOf(a)))}:{}),...(continueWith.length?{continueWith}:{}),...(main?{mainSubject:main}:{}),...(generations.length?{generations}:{})}),onStage=(stage:TurnStage)=>setThinking(t=>t&&(t.stage===stage?t:{...t,done:[...t.done,t.stage],stage}));
    type ErrorBody={editCards?:unknown;error?:string;reason?:UnsupportedReason;unreviewed?:unknown;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"];references?:unknown;choices?:unknown};
    const postTurn=async()=>{const res=await postAgentTurn(body(),onStage);return {r:res,errorBody:(res.ok?{}:await res.json().catch(()=>({}))) as ErrorBody};};
    // The server no longer knows a check (it restarted): check those photos again, then send once more.
@@ -819,7 +828,8 @@ export function Studio(){
    // The job's message goes into the transcript now (with its id), and is updated in place as the job moves: a project saved or reopened mid-generation
    // still knows which job to follow, and a finished one keeps its outputs.
    const snap:JobSnapshot={...jobSnapshot(current,genTag),...(d?{draft:{modelName:d.modelName}}:{})},msg=item({role:"agent",text:current.messageFa,kind:"job",snapshot:snap});
-   setPreview(current.messageFa);setJob(snap);setPreviewOpen(true);setGalleryFocus(galleryFocusOn(msg.id));
+   // On a phone the preview would cover the chat: the generation stays in the chat as its card, and «نمایش» opens the preview when wanted (owner, 2026-11-06).
+   setPreview(current.messageFa);setJob(snap);setPreviewOpen(previewFits());setGalleryFocus(galleryFocusOn(msg.id));
    setMessages(m=>[...m,msg]);
    if(d)setDraftedFor(liveId);else{setProposal(null);setLiveId(null);}
    touch();

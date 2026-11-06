@@ -85,6 +85,8 @@ export const CreativeTurnInputSchema=z.object({
  mainSubject:z.string().trim().min(1).max(60).optional(),
  /** Files sent with earlier messages of this chat (metadata only, like `attachments`): Whoush reuses photos already given instead of asking again. */
  priorAttachments:AttachmentsSchema.optional(),
+ /** The tags of the earlier photos the latest work was built on (the studio knows them from that plan). A follow-up that continues the work keeps them. */
+ continueWith:z.array(z.string().regex(TAG_PATTERN)).max(MAX_ATTACHMENTS).optional(),
  /** The message answers Whoush's question: the brief is the original request plus the answer, and Whoush decides instead of asking again. */
  answersQuestion:z.boolean().optional(),
  history:z.array(HistoryTurnSchema).max(MAX_HISTORY_TURNS).optional(),

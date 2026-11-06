@@ -94,3 +94,16 @@ test("no duplicates: two #s with the same checked picture go to the model once, 
  assert.equal(getTurnReferences(p.turnId).length,1,"the same bytes are sent once");
  assert.match(getPrivateMediaPrompt(p.turnId)!,/1 = \[reference image 1[^\]]*\] \(also named \[reference image 2[^\]]*\]\)\./);
 });
+
+test("keeping the thread: a follow-up that corrects the work keeps the photos it was built on; a brand-new request starts clean",async()=>{
+ const model=await reviewUpload(JPEG,"image/jpeg",{inspect:safe}),shoes=await reviewUpload(new Uint8Array([0xff,0xd8,0xff,0xe0,7,7,7,7,7,7,7,7]),"image/jpeg",{inspect:async()=>({category:"none",person:false})});
+ const prior=[photo({tag:"image1",role:"character",reviewId:model.reviewId}),photo({tag:"image2",role:"object",reviewId:shoes.reviewId,sha256:"e".repeat(64)})];
+ const gen=[{tag:"generation1",mediaKind:"image" as const,summaryFa:"مدل با کفش"}];
+ const fix=await orchestrateCreativeTurn({text:"چرا کفش رو گذاشتی دستش؟ برش دار، من یه کفش دیگه می‌خواستم",priorAttachments:prior,continueWith:["image1","image2"],generations:gen});
+ assert.equal(fix.status,"planned",JSON.stringify(fix).slice(0,300));
+ const p=fix as Extract<OrchestratorResult,{status:"planned"}>;
+ assert.deepEqual(p.plan.references.map(r=>r.tag).sort(),["image1","image2"],"the model and the shoes photo stay with the work");
+ assert.equal(getTurnReferences(p.turnId).length,2,"both photos go to the model again");
+ const fresh=await orchestrateCreativeTurn({text:"یه عکس جدید از یه دریاچه آروم",priorAttachments:prior,continueWith:["image1","image2"]});
+ assert.ok(fresh.status!=="planned"||fresh.plan.references.length===0,"a new request does not drag old photos in");
+});
