@@ -24,7 +24,7 @@ import type {GenerationProposal,MediaRequirements,ProposalResearch,SuggestedMode
 import {researchReferences,type ResearchReference,type ResearchResult,type TurnReference} from "./research";
 import {inspectReferences} from "./reference-inspect";
 import {faPlain} from "./format";
-import {EDIT_CARD_FA,EDIT_CARD_FINGLISH,wantsBrushEdit} from "./edit-card";
+import {EDIT_CARDS_FA,EDIT_CARD_FA,EDIT_CARD_FINGLISH,wantsEditCard} from "./edit-card";
 import {safeReview} from "./upload-review";
 import {rememberRegionEdit} from "./region-restore";
 import {MEDIA_ROUTE} from "./media-store";
@@ -55,7 +55,7 @@ export type OrchestratorResult=
  |{status:"needs_input";turnId:string;message:string;question:string;reaction?:ReactionEmoji;
   /** The photos Whoush needs to keep something only a photo can (lib/reference-needs.ts): the card shows an upload slot per angle. */references?:ReferenceRequest;
   /** One-tap answers («عکس»، «ویدیو»، «هر دو»): each sends its reply as the user's answer. */choices?:QuestionChoice[];
-  /** The edit card (lib/edit-card.ts): the photo or generation to open full screen for «ویرایش با قلم». */editCard?:{tag:string}};
+  /** The edit cards (lib/edit-card.ts): the photos or generations to open full screen for «ادیت», one card each. */editCards?:{tag:string}[]};
 /**
  * Whoush's own lines when no planner reply is usable (deterministic planner, or a reply that failed a check): everyday spoken Persian, or Finglish for a Finglish
  * brief, in Whoush's voice. A question's setup carries no emoji (docs/CREATIVE_SKILLS.md, Whoush voice).
@@ -407,10 +407,12 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const lastAsked=[...safeHistory].reverse().find(t=>t.role==="agent")?.text??"";
  const answered=(marker:string,fing:string)=>Boolean(parsed.answersQuestion)&&(lastAsked.includes(marker)||lastAsked.includes(fing));
  // The edit card (owner, 2026-11-06): a local change with no place named («اینجاشو عوض کن», «با قلم مشخص کنم») gets the picture to mark, once.
- if(!parsed.answersQuestion&&!files0.some(f=>f.regionEdit)&&wantsBrushEdit(parsed.text)){
+ if(!parsed.answersQuestion&&!files0.some(f=>f.regionEdit)&&wantsEditCard(parsed.text)){
+  // One card per picture to edit: the photos and generations the message names, else the photos it carries, else the one generation of this chat.
   const mentioned=parseMentions(parsed.text),imgs=files0.filter(f=>f.kind==="image"),gens=(parsed.generations??[]).filter(g=>g.mediaKind==="image");
-  const target=imgs.find(f=>mentioned.includes(f.tag))?.tag??gens.find(g=>mentioned.includes(g.tag))?.tag??(imgs.length===1?imgs[0].tag:undefined)??(!imgs.length&&gens.length===1?gens[0].tag:undefined);
-  if(target)return {status:"needs_input",turnId:askTurn,message:finglish?EDIT_CARD_FINGLISH:EDIT_CARD_FA,question:EDIT_CARD_FA,editCard:{tag:target}};
+  const named=[...imgs.filter(f=>mentioned.includes(f.tag)).map(f=>f.tag),...gens.filter(g=>mentioned.includes(g.tag)).map(g=>g.tag)];
+  const targets=named.length?named:imgs.length?imgs.map(f=>f.tag):gens.length===1?[gens[0].tag]:[];
+  if(targets.length)return {status:"needs_input",turnId:askTurn,message:finglish?EDIT_CARD_FINGLISH:targets.length>1?EDIT_CARDS_FA:EDIT_CARD_FA,question:targets.length>1?EDIT_CARDS_FA:EDIT_CARD_FA,editCards:targets.map(tag=>({tag}))};
  }
  // Photo or video (owner, 2026-11-06): what this message says wins; then a file that only a video can use; then the generation it changes; then what the
  // user said earlier in this chat. When nothing says, Whoush asks once, before any planning (an answer that still says nothing gets a photo).

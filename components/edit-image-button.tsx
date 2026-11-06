@@ -48,7 +48,8 @@ export function ImageActionStack({label,onEdit,file,url,under=false}:{label:stri
   {onEdit&&<ActionChip icon={Brush} label={BRUSH_EDIT_FA} aria={BRUSH_EDIT_FA+" "+label} onClick={onEdit}/>}
   <ActionChip icon={Download} label="دانلود" aria={"دانلود "+label} onClick={()=>void get().then(f=>f&&triggerDownload(f))}/>
   <ActionChip icon={Share2} label="اشتراک" aria={"اشتراک‌گذاری "+label} onClick={()=>void share()}/>
-  <ActionChip icon={Instagram} label="اینستاگرام" aria={"اشتراک‌گذاری در اینستاگرام "+label} onClick={()=>void share()}/>
+  {/* Instagram is a phone app: offered on phones only (owner, 2026-11-06). */}
+  {under&&<ActionChip icon={Instagram} label="اینستاگرام" aria={"اشتراک‌گذاری در اینستاگرام "+label} onClick={()=>void share()}/>}
  </div>;
 }
 

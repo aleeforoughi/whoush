@@ -7,7 +7,7 @@ const INTERNAL_FA="خطایی رخ داد. لطفاً دوباره تلاش کن
 /** The public response for a turn: HTTP status and body (unchanged from the JSON API; streaming wraps the same thing). */
 function toResponse(out:OrchestratorResult):{status:number;body:Record<string,unknown>}{
  if(out.status==="restricted")return {status:422,body:{error:"content_restricted",category:out.category,decision:out.decision,message:out.message,...(out.choices?{choices:out.choices}:{})}};
- if(out.status==="needs_input")return {status:422,body:{error:"needs_input",turnId:out.turnId,message:out.message,question:out.question,...(out.reaction?{reaction:out.reaction}:{}),...(out.references?{references:out.references}:{}),...(out.choices?{choices:out.choices}:{}),...(out.editCard?{editCard:out.editCard}:{})}};
+ if(out.status==="needs_input")return {status:422,body:{error:"needs_input",turnId:out.turnId,message:out.message,question:out.question,...(out.reaction?{reaction:out.reaction}:{}),...(out.references?{references:out.references}:{}),...(out.choices?{choices:out.choices}:{}),...(out.editCards?{editCards:out.editCards}:{})}};
  if(out.status==="unsupported")return {status:422,body:{error:"no_compatible_model",reason:out.reason,...(out.unreviewed?{unreviewed:out.unreviewed}:{}),turnId:out.turnId,plan:out.plan,message:out.message,...(out.suggestedModel?{suggestedModel:out.suggestedModel}:{})}};
  return {status:200,body:{...out.proposal,turnId:out.turnId,plan:out.plan,...(out.gif?{gif:out.gif}:{}),...(out.reaction?{reaction:out.reaction}:{})}};
 }

@@ -193,8 +193,8 @@ const CHOICE_ICON:Record<string,LucideIcon>={image:ImageIcon,video:Clapperboard,
  * tattoos, logo, product...), it lists the angles it needs, each with «آپلود» (the photo lands in the chat input as a card with the right role) and a check
  * once it is in, then «ادامه» sends them with the original request.
  */
-export function AgentQuestion({question,waiting,onAnswer,references,uploaded,onUpload,onContinue,choices,onChoose,editCard,onEdit}:{question:string;waiting:boolean;onAnswer:()=>void;
- /** The edit card (lib/edit-card.ts): the picture to open full screen for «ویرایش با قلم». */editCard?:{tag:string;thumbUrl?:string};onEdit?:()=>void;
+export function AgentQuestion({question,waiting,onAnswer,references,uploaded,onUpload,onContinue,choices,onChoose,editCards,onEdit}:{question:string;waiting:boolean;onAnswer:()=>void;
+ /** The edit cards (lib/edit-card.ts): one per picture to open full screen for «ادیت». */editCards?:readonly {tag:string;thumbUrl?:string}[];onEdit?:(tag:string)=>void;
  references?:ReferenceRequest;uploaded?:Record<string,boolean>;onUpload?:(angle:{id:string;titleFa:string})=>void;onContinue?:()=>void;
  /** One-tap answers («عکس»، «ویدیو»، «هر دو»): each sends its reply as the user's answer. */choices?:readonly QuestionChoice[];onChoose?:(reply:string)=>void}){
  const done=references?references.angles.filter(a=>uploaded?.[a.id]).length:0;
@@ -219,17 +219,16 @@ export function AgentQuestion({question,waiting,onAnswer,references,uploaded,onU
     <Button type="button" size="sm" onClick={onContinue} disabled={!done}>ادامه با {fa(done)} عکس<Icon icon={ArrowLeft} aria-hidden="true"/></Button>
     <span className="type-caption text-fg-secondary">هووش خودش نقش عکس‌ها رو تعیین می‌کنه و به {references.titleFa} وصلشون می‌کنه.</span>
    </div>}
-   {editCard&&<div className="flex items-center gap-3 rounded-control border border-line-secondary p-2">
-    {editCard.thumbUrl
+   {/* One interactive card per picture: its thumbnail, its #, and the blue «ادیت» that opens it full screen for brush and comments. */}
+   {editCards&&editCards.length>0&&<ul className="flex flex-col gap-2">{editCards.map(c=><li key={c.tag} className="flex items-center gap-3 rounded-control border border-line-secondary p-2">
+    {c.thumbUrl
      // eslint-disable-next-line @next/next/no-img-element -- a local or owned image
-     ?<img src={editCard.thumbUrl} alt="" className="size-16 shrink-0 rounded-control object-cover"/>
+     ?<img src={c.thumbUrl} alt="" className="size-16 shrink-0 rounded-control object-cover"/>
      :<span className="flex size-16 shrink-0 items-center justify-center rounded-control bg-surface-hover"><Icon icon={ImageIcon} size={20} aria-hidden="true"/></span>}
-    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-     <bdi className="type-label text-fg-primary">{displayTag(editCard.tag)}</bdi>
-     {onEdit&&<Button type="button" size="sm" className="w-fit" onClick={onEdit}><Icon icon={Brush} aria-hidden="true"/>{EDIT_CARD_OPEN_FA}</Button>}
-    </div>
-   </div>}
-   {waiting&&!references&&!choices&&!editCard&&<button type="button" onClick={onAnswer} className="inline-flex w-fit items-center gap-1.5 rounded-control type-label text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><Icon icon={MessageCircle} size={16} aria-hidden="true" className="size-4 shrink-0"/>پاسخ بده</button>}
+    <bdi className="min-w-0 flex-1 type-label text-fg-primary">{displayTag(c.tag)}</bdi>
+    {onEdit&&<Button type="button" size="sm" onClick={()=>onEdit(c.tag)} aria-label={EDIT_CARD_OPEN_FA+" "+displayTag(c.tag)}><Icon icon={Brush} aria-hidden="true"/>{EDIT_CARD_OPEN_FA}</Button>}
+   </li>)}</ul>}
+   {waiting&&!references&&!choices&&!editCards?.length&&<button type="button" onClick={onAnswer} className="inline-flex w-fit items-center gap-1.5 rounded-control type-label text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><Icon icon={MessageCircle} size={16} aria-hidden="true" className="size-4 shrink-0"/>پاسخ بده</button>}
   </div>
  </div>;
 }

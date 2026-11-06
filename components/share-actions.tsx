@@ -69,8 +69,8 @@ export function ShareActions({file,compact=false,reason,overlay=false,instagram=
   catch{setCopied("کپی انجام نشد؛ متن را انتخاب و دستی کپی کن.");}
  }
  const iconOnly=compact||overlay,sized=iconOnly?"icon":"default";
- const btn=(label:string,icon:typeof Share2,onClick:()=>void,visible:string)=>
-  <Button type="button" variant={overlay?"secondary":"outline"} size={sized} disabled={blocked} aria-label={label+" "+tag} aria-describedby={blocked&&!overlay?fitId+"-why":undefined} onClick={onClick}>
+ const btn=(label:string,icon:typeof Share2,onClick:()=>void,visible:string,className?:string)=>
+  <Button type="button" variant={overlay?"secondary":"outline"} size={sized} disabled={blocked} aria-label={label+" "+tag} aria-describedby={blocked&&!overlay?fitId+"-why":undefined} onClick={onClick} className={className}>
    <Icon icon={icon} aria-hidden="true"/>{!iconOnly&&visible}
   </Button>;
  const chosen=target?SHARE_TARGETS.find(t=>t.id===target):undefined;
@@ -118,7 +118,8 @@ export function ShareActions({file,compact=false,reason,overlay=false,instagram=
   <div className={overlay?"flex items-center gap-2":"flex flex-wrap items-center gap-2"}>
    {btn("دانلود",Download,()=>triggerDownload(file),"دانلود")}
    {btn("اشتراک‌گذاری",Share2,()=>void share(),"اشتراک‌گذاری")}
-   {instagram&&btn("اشتراک‌گذاری در اینستاگرام",Instagram,()=>setOpen(true),"اینستاگرام")}
+   {/* Instagram is a phone app: hidden on a computer (a device that can hover), shown on phones (owner, 2026-11-06). */}
+   {instagram&&btn("اشتراک‌گذاری در اینستاگرام",Instagram,()=>setOpen(true),"اینستاگرام","[@media(hover:hover)]:hidden")}
   </div>
   {!overlay&&(blocked
    ?<p id={fitId+"-why"} className="type-caption text-fg-secondary">{blockedReason}</p>

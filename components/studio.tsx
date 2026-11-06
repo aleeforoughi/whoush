@@ -731,7 +731,7 @@ export function Studio(){
    }
    setThinking({stage:"reading",done:[],script:replyScriptFor(sentText)});
    const body=()=>JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(a=>toWireAttachment(a,reviewIdOf(a),a.regionEdit?reviewIdOf(guideOf(a)!):undefined))}:{}),...(prior.length?{priorAttachments:prior.map(a=>toWireAttachment(a,reviewIdOf(a)))}:{}),...(main?{mainSubject:main}:{}),...(generations.length?{generations}:{})}),onStage=(stage:TurnStage)=>setThinking(t=>t&&(t.stage===stage?t:{...t,done:[...t.done,t.stage],stage}));
-   type ErrorBody={editCard?:{tag?:unknown};error?:string;reason?:UnsupportedReason;unreviewed?:unknown;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"];references?:unknown;choices?:unknown};
+   type ErrorBody={editCards?:unknown;error?:string;reason?:UnsupportedReason;unreviewed?:unknown;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"];references?:unknown;choices?:unknown};
    const postTurn=async()=>{const res=await postAgentTurn(body(),onStage);return {r:res,errorBody:(res.ok?{}:await res.json().catch(()=>({}))) as ErrorBody};};
    // The server no longer knows a check (it restarted): check those photos again, then send once more.
    const recheck=async(first:Awaited<ReturnType<typeof postTurn>>)=>{
@@ -756,8 +756,8 @@ export function Studio(){
     }
     if(r.status===422&&errorBody.error==="needs_input"&&typeof errorBody.question==="string"){
      const references=isReferenceRequest(errorBody.references)?errorBody.references:undefined,choices=isQuestionChoices(errorBody.choices)?errorBody.choices:undefined;
-     const editCard=typeof errorBody.editCard?.tag==="string"?{tag:errorBody.editCard.tag}:undefined;
-     setMessages(m=>[...m,agentItem({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"",kind:"question",snapshot:{question:errorBody.question!,...(references?{references}:{}),...(choices?{choices}:{}),...(editCard?{editCard}:{})}})]);whoushReacts(errorBody.reaction);
+     const editCards=Array.isArray(errorBody.editCards)?errorBody.editCards.flatMap(c=>c&&typeof (c as {tag?:unknown}).tag==="string"?[{tag:(c as {tag:string}).tag}]:[]).slice(0,10):[];
+     setMessages(m=>[...m,agentItem({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"",kind:"question",snapshot:{question:errorBody.question!,...(references?{references}:{}),...(choices?{choices}:{}),...(editCards.length?{editCards}:{})}})]);whoushReacts(errorBody.reaction);
      adoptProject(firstText,characterId);
      return;
     }
@@ -982,7 +982,7 @@ export function Studio(){
         {/* The question is always the last item of the agent's message; it waits for an answer until something is sent after it. */}
         {m.kind==="question"&&<AgentQuestion question={m.snapshot.question} waiting={i===messages.length-1&&!busy} onAnswer={()=>promptRef.current?.focus()}
          choices={m.snapshot.choices} onChoose={reply=>answer(reply)}
-         editCard={m.snapshot.editCard?{tag:m.snapshot.editCard.tag,thumbUrl:thumbFor(m.snapshot.editCard.tag)}:undefined} onEdit={m.snapshot.editCard?()=>void openEditFor(m.snapshot.editCard!.tag):undefined}
+         editCards={(m.snapshot.editCards??(m.snapshot.editCard?[m.snapshot.editCard]:[])).map(c=>({tag:c.tag,thumbUrl:thumbFor(c.tag)}))} onEdit={tag=>void openEditFor(tag)}
          references={m.snapshot.references} uploaded={m.snapshot.references?Object.fromEntries(m.snapshot.references.angles.map(a=>[a.id,Boolean(slots.find(s=>s.id==="ref-"+m.id+"-"+a.id)?.attachmentId)])):undefined}
          onUpload={m.snapshot.references?a=>uploadForRequest(m.id,m.snapshot.references!,a):undefined}
          onContinue={m.snapshot.references&&i===messages.length-1&&!busy?()=>answer(replyScriptFor(m.text)==="finglish"?"aksa ro gozashtam":"عکس‌ها رو گذاشتم"):undefined}/>}

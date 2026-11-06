@@ -7,7 +7,7 @@ process.env.WHOUSH_MEDIA_DIR=mkdtempSync(join(tmpdir(),"whoush-region-test-"));
 import {forgetReviewsForTests,reviewUpload,safeReview} from "../lib/upload-review";
 import {orchestrateCreativeTurn,getPrivateMediaPrompt,getTurnReferences,type OrchestratorResult} from "../lib/orchestrator";
 import {resetRouterStateForTests} from "../lib/llm-routing";
-import {wantsBrushEdit} from "../lib/edit-card";
+import {wantsBrushEdit,wantsEditCard} from "../lib/edit-card";
 import {CreativeTurnInputSchema} from "../lib/creative-plan";
 
 const ENV_KEYS=["LLM_PROVIDER_AUTHORIZED","ALLOW_LIVE_LLM","ANTHROPIC_API_KEY","OPENAI_API_KEY"];
@@ -49,7 +49,18 @@ test("edit card: a local change with no place named, or a brush request, gets th
  for(const t of ["رژ لبشو قرمز کن","یه عکس از دریا","پس‌زمینه رو آبی کن"])assert.ok(!wantsBrushEdit(t),t);
  const gen=[{tag:"generation1",mediaKind:"image" as const,summaryFa:"پرتره"}];
  const r=await orchestrateCreativeTurn({text:"#تولید-۱ یه قسمتش رو می‌خوام عوض کنم",generations:gen});
- assert.ok(r.status==="needs_input"&&r.editCard?.tag==="generation1",JSON.stringify(r).slice(0,200));
+ assert.ok(r.status==="needs_input"&&r.editCards?.[0]?.tag==="generation1",JSON.stringify(r).slice(0,200));
  const once=await orchestrateCreativeTurn({text:"#تولید-۱ یه قسمتش رو می‌خوام عوض کنم",generations:gen,answersQuestion:true});
- assert.ok(once.status!=="needs_input"||!once.editCard,"asked once");
+ assert.ok(once.status!=="needs_input"||!once.editCards,"asked once");
+});
+
+test("a plain edit request with uploaded photos opens one edit card per photo; a request that names the change goes straight on",async()=>{
+ for(const t of ["می‌خوام این عکس رو ادیت کنم","ادیتش کن","این عکسا رو ادیت کن","edit this photo","I want to edit these photos","#تصویر-۱ رو ویرایش کنم"])assert.ok(wantsEditCard(t),t);
+ for(const t of ["رژ لبشو قرمز کن","ادیت کن رژ لبشو قرمز کن","edit the sky to sunset","یه عکس از دریا"])assert.ok(!wantsEditCard(t),t);
+ const one=await orchestrateCreativeTurn({text:"می‌خوام این عکس رو ادیت کنم",attachments:[photo()]});
+ assert.ok(one.status==="needs_input"&&one.editCards?.map(c=>c.tag).join()==="image1",JSON.stringify(one).slice(0,200));
+ const two=await orchestrateCreativeTurn({text:"این عکسا رو ادیت کن",attachments:[photo(),photo({tag:"image2",sha256:"d".repeat(64)})]});
+ assert.ok(two.status==="needs_input"&&two.editCards?.map(c=>c.tag).join()==="image1,image2","one card each");
+ const named=await orchestrateCreativeTurn({text:"#تصویر-۲ رو ادیت کن",attachments:[photo(),photo({tag:"image2",sha256:"d".repeat(64)})]});
+ assert.ok(named.status==="needs_input"&&named.editCards?.map(c=>c.tag).join()==="image2","only the one named");
 });
