@@ -1,11 +1,26 @@
 "use client";
-import {BookOpenCheck,RotateCcw,ShieldCheck,X} from "lucide-react";
+import {useState,type ReactNode} from "react";
+import {BookOpenCheck,ChevronDown,RotateCcw,ShieldCheck,X,type LucideIcon} from "lucide-react";
 import {Icon} from "@aleeforoughi/feather-react";
 import type {GenerationProposal,ProposalResearch} from "@/lib/types";
 import {fa} from "@/lib/format";
 
 export const RESEARCH_TITLE_FA="تحقیق هووش";
 const SOURCE_FA={wikimedia:"ویکی‌مدیا",openverse:"اوپن‌ورس"} as const;
+
+/** A report card that folds to its title and a one-line summary, and opens for the details. */
+function Fold({title,icon,summary,defaultOpen,children}:{title:string;icon:LucideIcon;summary:string;defaultOpen:boolean;children:ReactNode}){
+ const [open,setOpen]=useState(defaultOpen);
+ return <section aria-label={title} className="flex flex-col gap-2.5 rounded-card border border-line-secondary bg-surface-subtle p-3">
+  <button type="button" onClick={()=>setOpen(o=>!o)} aria-expanded={open} className="flex w-full items-center gap-2 rounded-control text-start motion-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+   <Icon icon={icon} size={16} aria-hidden="true" className="size-4 shrink-0 text-primary"/>
+   <span className="type-label text-fg-primary">{title}</span>
+   <span className="min-w-0 flex-1 truncate type-caption text-fg-secondary">· {summary}</span>
+   <Icon icon={ChevronDown} size={16} aria-hidden="true" className={"size-4 shrink-0 text-fg-secondary motion-state "+(open?"rotate-180":"")}/>
+  </button>
+  {open&&children}
+ </section>;
+}
 
 /**
  * Whoush's research report on a proposal (docs/RESEARCH_PIPELINE.md): what had to look right, the reference package it found (open-licensed, inspected),
@@ -14,8 +29,9 @@ const SOURCE_FA={wikimedia:"ویکی‌مدیا",openverse:"اوپن‌ورس"} 
  */
 export function ResearchReport({research,excluded,onToggle}:{research:ProposalResearch;excluded?:ReadonlySet<string>;onToggle?:(id:string)=>void}){
  const kept=research.references.filter(r=>!excluded?.has(r.id)).length;
- return <section aria-label={RESEARCH_TITLE_FA} className="flex flex-col gap-2.5 rounded-card border border-line-secondary bg-surface-subtle p-3">
-  <p className="flex items-center gap-2 type-label text-fg-primary"><Icon icon={BookOpenCheck} size={16} aria-hidden="true" className="size-4 text-primary"/>{RESEARCH_TITLE_FA}</p>
+ const summary=research.references.length?fa(kept)+" مرجع آزاد برای "+fa(research.subjects.length)+" موضوع":fa(research.subjects.length)+" موضوع بررسی شد";
+ // Open while the package awaits the user's confirmation; folded otherwise.
+ return <Fold title={RESEARCH_TITLE_FA} icon={BookOpenCheck} summary={summary} defaultOpen={Boolean(onToggle&&research.usedAsImages&&research.references.length)}>
   <ul className="flex flex-col gap-1.5">
    {research.subjects.map(s=><li key={s.labelFa} className="flex flex-col gap-0.5">
     <span className="type-body-sm text-fg-primary">{s.labelFa}</span>
@@ -46,7 +62,7 @@ export function ResearchReport({research,excluded,onToggle}:{research:ProposalRe
    </ul>
   </>}
   {research.notesFa.map(n=><p key={n} className="type-caption text-fg-secondary">{n}</p>)}
- </section>;
+ </Fold>;
 }
 
 export const REVIEW_TITLE_FA="بررسی پیش از ساخت";
@@ -55,12 +71,12 @@ export const REVIEW_TITLE_FA="بررسی پیش از ساخت";
  * only when the check ran.
  */
 export function ReviewNote({review}:{review:NonNullable<GenerationProposal["review"]>}){
- return <section aria-label={REVIEW_TITLE_FA} className="flex flex-col gap-1.5 rounded-card border border-line-secondary bg-surface-subtle p-3">
-  <p className="flex items-center gap-2 type-label text-fg-primary"><Icon icon={ShieldCheck} size={16} aria-hidden="true" className="size-4 text-primary"/>{REVIEW_TITLE_FA}</p>
+ const n=review.risks.length;
+ return <Fold title={REVIEW_TITLE_FA} icon={ShieldCheck} summary={n?fa(n)+" ریسک پیدا و برطرف شد":"مشکلی پیدا نشد"} defaultOpen={false}>
   {review.risks.length
    ?<><p className="type-caption text-fg-secondary">این‌ها رو قبل از ساخت پیدا کردم و توی پرامپت درستشون کردم:</p>
     <ul className="flex flex-col gap-1">{review.risks.map(r=><li key={r.issueFa} className="type-caption text-fg-primary">• {r.issueFa}</li>)}</ul></>
    :<p className="type-caption text-fg-secondary">بررسی شد؛ ریسک مهمی پیدا نشد.</p>}
- </section>;
+ </Fold>;
 }
 

@@ -16,6 +16,14 @@ export const STAGE_TEXT:Record<"fa"|"finglish",Record<TurnStage,string>>={
  fa:{reading:"دارم پیامت رو می‌خونم…",planning:"دارم صحنه، دوربین و نور رو می‌چینم…",researching:"دارم تحقیق می‌کنم و مرجع‌های آزاد پیدا می‌کنم…",reviewing:"دارم قبل از ساخت ریسک‌ها رو بررسی می‌کنم…",checking:"دارم پرامپت رو چک می‌کنم…",pricing:"دارم مدل و قیمت رو پیدا می‌کنم…"},
  finglish:{reading:"Daram payamet ro mikhunam…",planning:"Daram sahne, durbin o nur ro michinam…",researching:"Daram tahghigh mikonam o marja-haye azad peyda mikonam…",reviewing:"Daram ghabl az sakht risk-ha ro barresi mikonam…",checking:"Daram barname ro check mikonam…",pricing:"Daram model o gheymat ro peyda mikonam…"}
 };
+/** A finished stage, for the expandable progress list (what Whoush already did this turn). */
+export const STAGE_DONE_TEXT:Record<"fa"|"finglish",Record<TurnStage,string>>={
+ fa:{reading:"پیامت رو خوندم",planning:"صحنه، دوربین و نور رو چیدم",checking:"پرامپت رو چک کردم",researching:"تحقیق کردم و مرجع‌های آزاد پیدا کردم",pricing:"مدل و قیمت مناسب رو پیدا کردم",reviewing:"ریسک‌ها رو قبل از ساخت بررسی کردم"},
+ finglish:{reading:"Payamet ro khundam",planning:"Sahne, durbin o nur ro chidam",checking:"Prompt ro check kardam",researching:"Tahghigh kardam o marja-haye azad peyda kardam",pricing:"Model o gheymat-e monaseb ro peyda kardam",reviewing:"Risk-ha ro ghabl az sakht barresi kardam"}
+};
+/** Why Whoush plans first, said once in the progress list. */
+export const PLAN_FIRST_FA={fa:"اول برنامه‌ریزی، تحقیق و بررسی رو با سریع‌ترین و ارزون‌ترین مدل‌ها انجام می‌دم تا لازم نباشه چند بار بسازی و نورونت هدر بره.",
+ finglish:"Aval barname-rizi, tahghigh o barresi ro ba sari-tarin o arzun-tarin model-ha anjam midam ta lazem nabashe chand bar besazi."};
 /**
  * Sends a turn and reports each real stage as it starts. Returns the final result shaped like a Response (ok, status, json), so the caller's handling does not
  * change. Falls back to a plain JSON response when the server does not stream.

@@ -109,6 +109,11 @@ export interface GenerationProposal {
   research?: ProposalResearch;
   /** The pre-generation risk check, when it ran: what could have gone wrong, each already fixed in the prompt (Persian; the fixes stay private). */
   review?: { risks: { severity: "high" | "medium" | "low"; issueFa: string }[] };
+  /**
+   * Video only: a cheap draft first (owner, 2026-11-06). A still of the opening frame on the cheapest image model, from the same plan and references, to check
+   * the look before the expensive video. `turnId` is the draft's own private turn; the user may skip it.
+   */
+  draft?: { turnId: string; modelId: string; modelName: string; neurons: number };
   explicitRejected?: { modelId: string; reasonFa: string }; // user named a model that cannot satisfy the request
   requiresApproval: true;
   quoteMode: "demo";

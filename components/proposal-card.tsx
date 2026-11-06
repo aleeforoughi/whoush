@@ -10,7 +10,7 @@ import {fa} from "@/lib/format";
 import {nearestAspectRatio} from "@/lib/aspect";
 import {ResearchReport,ReviewNote} from "@/components/research-report";
 
-export const GENERATE_FA="بسازش",GENERATE_WITH_REFS_FA="با این مرجع‌ها بسازش",DEMO_NOTE_FA="نسخهٔ نمایشی: نه پولی کسر می‌شود و نه رسانهٔ واقعی ساخته می‌شود.";
+export const GENERATE_FA="بسازش",GENERATE_WITH_REFS_FA="با این مرجع‌ها بسازش",DRAFT_FA="اول پیش‌نویس ارزون",SKIP_DRAFT_FA="بدون پیش‌نویس بساز",VIDEO_NOW_FA="حالا ویدیو رو بساز",DEMO_NOTE_FA="نسخهٔ نمایشی: نه پولی کسر می‌شود و نه رسانهٔ واقعی ساخته می‌شود.";
 const RECOMMENDED_FA="پیشنهاد هووش",ALTERNATE_FA="جایگزین";
 /** Latin model names keep their own direction inside Persian text. */
 const ModelName=({name}:{name:string})=><bdi dir="ltr">{name}</bdi>;
@@ -30,11 +30,12 @@ function Head({kind,tag,onMention}:{kind:"image"|"video";tag?:string;onMention?:
  * alternates marked «جایگزین», each with its fixed Neurons), its settings, its notes, then a full-width bar at its very bottom: [✦ بسازش] on the right, its cost
  * («۱۰ نورون») on the left. Tapping the tag mentions it in the chat to ask for changes.
  */
-export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onAspect,busy,onApprove,onMention,excludedReferences,onToggleReference}:{proposal:AgentProposal;tag?:string;
+export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onAspect,busy,onApprove,onMention,excludedReferences,onToggleReference,onDraft,drafted}:{proposal:AgentProposal;tag?:string;
  /** The scene was arranged in «بوم»: «بساز» builds exactly that scene. */adjusted?:boolean;selected:string;onSelect:(id:string)=>void;
  /** The aspect ratio the generation will use (Whoush's from the brief or «بوم», unless the user picked one here). */aspect?:string;onAspect?:(r:string)=>void;
  busy:boolean;onApprove:()=>void;onMention?:()=>void;
- /** Research references the user removed from the package, and the toggle (remove or restore). */excludedReferences?:ReadonlySet<string>;onToggleReference?:(id:string)=>void}){
+ /** Research references the user removed from the package, and the toggle (remove or restore). */excludedReferences?:ReadonlySet<string>;onToggleReference?:(id:string)=>void;
+ /** Video: make the cheap opening-frame draft first (the default), and whether it has been made. */onDraft?:()=>void;drafted?:boolean}){
  const chosen=proposal.suggestions.find(s=>s.modelId===selected);
  const price=chosen?.neurons??proposal.fixedNeurons;
  const ordered=[...proposal.suggestions].sort((a,b)=>Number(b.modelId===proposal.recommendedModelId)-Number(a.modelId===proposal.recommendedModelId));
@@ -74,13 +75,24 @@ export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onA
   {proposal.research&&<ResearchReport research={proposal.research} excluded={excludedReferences} onToggle={onToggleReference}/>}
   {proposal.review&&<ReviewNote review={proposal.review}/>}
   <p className="type-caption text-fg-secondary">{DEMO_NOTE_FA}</p>
+  {/* Video drafts first (owner, 2026-11-06): a cheap still of the opening frame to check the look before the expensive video; the user may skip it. */}
+  {proposal.draft&&onDraft&&!drafted&&<div className="-mx-3 -mb-3 mt-1 flex flex-col gap-2 rounded-b-[inherit] border-t border-line-secondary bg-surface-subtle px-3 py-2.5">
+   <p className="type-caption text-fg-secondary">پیشنهادم اینه اول یه پیش‌نویس ارزون بسازیم: یه عکس از فریم اول، تا قبل از خرج اصلی ظاهرش رو ببینی و اگه چیزی اشتباهه درستش کنیم. اگه نمی‌خوای، مستقیم بساز.</p>
+   <div className="flex flex-wrap items-center justify-between gap-2">
+    <Button type="button" onClick={onDraft} disabled={busy||!proposal.turnId} className="shrink-0"><Icon icon={Sparkles} aria-hidden="true"/>{DRAFT_FA}<span className="type-caption opacity-80">· {fa(proposal.draft.neurons)} نورون</span></Button>
+    <Button type="button" variant="outline" onClick={onApprove} disabled={busy||!proposal.turnId} className="shrink-0">{SKIP_DRAFT_FA}<span className="type-caption text-fg-secondary">· {fa(price)} نورون</span></Button>
+   </div>
+  </div>}
   {/* The call to action, full width at the card's very bottom: [✦ بسازش] on the right (as Persian reads), the cost on the left. */}
-  <div className="-mx-3 -mb-3 mt-1 flex items-center justify-between gap-3 rounded-b-[inherit] border-t border-line-secondary bg-surface-subtle px-3 py-2.5">
+  {!(proposal.draft&&onDraft&&!drafted)&&<div className="-mx-3 -mb-3 mt-1 flex flex-col gap-2 rounded-b-[inherit] border-t border-line-secondary bg-surface-subtle px-3 py-2.5">
+   {drafted&&<p className="type-caption text-fg-secondary">پیش‌نویس آماده‌ست. اگه ظاهرش درسته ویدیو رو بساز؛ وگرنه توی چت بگو چی عوض بشه.</p>}
+   <div className="flex items-center justify-between gap-3">
    <Button type="button" onClick={onApprove} disabled={busy||!proposal.turnId} className="shrink-0">
-    <Icon icon={Sparkles} aria-hidden="true"/>{proposal.research?.usedAsImages&&proposal.research.references.some(r=>!excludedReferences?.has(r.id))?GENERATE_WITH_REFS_FA:GENERATE_FA}
+    <Icon icon={Sparkles} aria-hidden="true"/>{drafted?VIDEO_NOW_FA:!proposal.draft&&proposal.research?.usedAsImages&&proposal.research.references.some(r=>!excludedReferences?.has(r.id))?GENERATE_WITH_REFS_FA:GENERATE_FA}
    </Button>
    <span className="type-label text-fg-primary" aria-label={"هزینه: "+fa(price)+" نورون"}>{fa(price)} نورون</span>
-  </div>
+   </div>
+  </div>}
  </Card>;
 }
 

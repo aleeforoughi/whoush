@@ -288,6 +288,10 @@ export const getPrivateMediaPrompt=(turnId:string):string|undefined=>store().get
 /** The inspected research references of a turn (Whoush-owned copies), private to the server: quotes bind the ones the user kept. */
 const refStore=()=>((globalThis as {__whoushTurnRefs?:Map<string,ResearchReference[]>}).__whoushTurnRefs??=new Map());
 export const getTurnReferences=(turnId:string):readonly ResearchReference[]=>refStore().get(turnId)??[];
+/** The draft for a video: the cheapest image model that takes reference images (docs/RESEARCH_PIPELINE.md). */
+export const DRAFT_IMAGE_MODEL="nano-banana-2-1";
+const DRAFT_PREFIX="A single still photograph: the opening frame of this video shot, as it looks at its first moment. ";
+const DRAFT_SUFFIX=" Still image only: no motion blur, no text or captions.";
 /** Tests only: references for a quotable turn. */
 export function keepTurnReferencesForTests(turnId:string,refs:ResearchReference[]){refStore().set(turnId,refs);}
 /** The prompt-compiler version of a turn whose image prompt was compiled from a scene (lib/scene-compiler.ts); none for other prompts. */
@@ -640,6 +644,20 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   proposal={...proposal,research:report};
  }
  if(review)proposal={...proposal,review:{risks:review.map(x=>({severity:x.severity,issueFa:x.issueFa}))}};
+ // Video drafts first: a still of the opening frame on the cheapest image model (taking the references when it can), quoted against its own private turn.
+ if(kind==="video"){
+  const draftModel=findMediaModel(DRAFT_IMAGE_MODEL);
+  if(draftModel&&!draftModel.pricePending&&draftModel.neurons){
+   const draftTurn=randomUUID();
+   keepPrompt(draftTurn,(DRAFT_PREFIX+plan.mediaPrompt).slice(0,3000-DRAFT_SUFFIX.length)+DRAFT_SUFFIX);
+   // The research references (inspected) go with the draft: the image model takes them even when the video model cannot.
+   const refs=research?.references??[];if(refs.length)refStore().set(draftTurn,refs);
+   proposal={...proposal,draft:{turnId:draftTurn,modelId:draftModel.id,modelName:draftModel.name,neurons:draftModel.neurons}};
+   // The references now serve the draft: the report says so, and the user can still remove any before drafting.
+   if(refs.length&&proposal.research)proposal={...proposal,research:{...proposal.research,usedAsImages:true,
+    notesFa:[...proposal.research.notesFa.filter(n=>!n.startsWith("برای ویدیو")),"مرجع‌ها توی پیش‌نویس (عکس فریم اول) به کار می‌رن؛ خود ویدیو فعلاً از همین پرامپت بررسی‌شده ساخته می‌شه."]}};
+  }
+ }
  rec({planner:label,fallbackReason,corrections:corrections.length?corrections:undefined,usage:label==="live"?result?.usage:undefined});
  // The proposal speaks in Whoush's voice; a rejected explicit model request keeps its factual note after the reply.
  proposal={...proposal,message:replyText("planned")+(proposal.explicitRejected?"\n"+proposal.message:"")};

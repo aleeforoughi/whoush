@@ -86,8 +86,16 @@ test("research turn: the planner asks for research, the turn reports «researchi
  // A video plan keeps the facts in its prompt but cannot take the images yet: the report says so.
  const vplanner:PrivatePlanner=req=>{const p=structuredClone(deterministicPlanner({...req,kind:"video"}).plan) as CreativePlan;p.research=ResearchSchema.parse(PLAN);return {plan:p};};
  const v=await orchestrateCreativeTurn({text:"یه ویدیو از ورود کوروش کبیر به بابل"},{planner:vplanner,research:async()=>({subjects:[],references:refs,notesFa:[]})}) as Extract<OrchestratorResult,{status:"planned"}>;
- assert.equal(v.status,"planned");assert.equal(v.proposal.research?.usedAsImages,false);assert.ok(v.proposal.research?.notesFa.some(n=>n.includes("ویدیو")));
- assert.equal(getTurnReferences(v.turnId!).length,0,"nothing bound when the models cannot take them");
+ assert.equal(v.status,"planned");
+ // Video drafts first: the references serve a cheap opening-frame still on its own turn; the video turn binds none (no video model takes them yet).
+ const d=v.proposal.draft!;assert.equal(d.modelId,"nano-banana-2-1");assert.equal(d.neurons,1);assert.notEqual(d.turnId,v.turnId);
+ assert.equal(getTurnReferences(v.turnId!).length,0,"the video model cannot take them");
+ assert.deepEqual(getTurnReferences(d.turnId).map(x=>x.id),refs.map(x=>x.id),"the draft takes them");
+ assert.equal(v.proposal.research?.usedAsImages,true);assert.ok(v.proposal.research?.notesFa.some(n=>n.includes("پیش‌نویس")));
+ const {getPrivateMediaPrompt}=await import("../lib/orchestrator");
+ assert.ok(getPrivateMediaPrompt(d.turnId)!.startsWith("A single still photograph: the opening frame"));
+ assert.ok(createQuote({modelId:d.modelId,turnId:d.turnId}).references?.length===2,"the draft quote binds the references");
+ assert.equal(r.proposal.draft,undefined,"images need no draft");
 });
 
 test("research: the quote binds the references the user kept; a removed one stays out and a tampered list is refused",async()=>{

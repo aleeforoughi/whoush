@@ -36,10 +36,10 @@ import {MAX_GENERATION_REFS,type ReactionEmoji,type Staging} from "@/lib/creativ
 import {LIGHT_SOURCE_FA,describeStagingChangesFa,followUpFocus,lightTags,propTags,sectionsFromWords} from "@/lib/staging";
 import {normalizePersian} from "@/lib/safety";
 import {isReferenceRequest,type ReferenceRequest} from "@/lib/reference-needs";
-import {STAGE_TEXT,postAgentTurn} from "@/lib/agent-stream";
+import {PLAN_FIRST_FA,STAGE_DONE_TEXT,STAGE_TEXT,postAgentTurn} from "@/lib/agent-stream";
 import type {TurnStage} from "@/lib/orchestrator-stages";
 import {replyScriptFor} from "@/lib/finglish";
-import {ThinkingRow,TypeOut} from "@/components/type-out";
+import {TurnProgress,TypeOut} from "@/components/type-out";
 import {ChatGif} from "@/components/chat-gif";
 import {COMPOSER_EMOJIS,EmojiPalette} from "@/components/emoji-palette";
 import {GifPicker} from "@/components/gif-picker";
@@ -96,6 +96,8 @@ export function Studio(){
  const [galleryFocus,setGalleryFocus]=useState<GalleryFocus|null>(null);
  /** Research references the user removed from the live proposal's package (sent with the quote; the server binds the rest). */
  const [excludedRefs,setExcludedRefs]=useState<ReadonlySet<string>>(new Set());
+ /** The live proposal whose cheap draft has been made: its card then offers the video itself. */
+ const [draftedFor,setDraftedFor]=useState<string|null>(null);
  /** Voice messages: offered only when the server can transcribe now (`/api/voice`); `voiceOpen` shows the full-screen voice mode. */
  const [voice,setVoice]=useState<{enabled:boolean;maxSeconds:number}>({enabled:false,maxSeconds:60}),[voiceOpen,setVoiceOpen]=useState(false);
  useEffect(()=>{let alive=true;fetch("/api/voice").then(r=>r.ok?r.json():undefined).then((v:{enabled?:boolean;maxSeconds?:number}|undefined)=>{if(alive&&v?.enabled)setVoice({enabled:true,maxSeconds:v.maxSeconds??60});}).catch(()=>undefined);return()=>{alive=false;};},[]);
@@ -154,7 +156,8 @@ export function Studio(){
  /** Every attachment of this conversation that still exists: sent messages first, then the tray. */
  const conversation=uniqueById([...messages.flatMap(m=>m.attachments??[]),...attachments]);
  /** While a turn runs: the real stage the server reports, in the script of the user's message. Shown at once as «هووش داره کار می‌کنه». */
- const [thinking,setThinking]=useState<{stage:TurnStage;script:"fa"|"finglish"}|null>(null);
+ /** The turn in progress: its current stage and the stages already done (the expandable progress list). */
+ const [thinking,setThinking]=useState<{stage:TurnStage;done:TurnStage[];script:"fa"|"finglish"}|null>(null);
  /** Agent messages that arrived in this session: their text types out once. */
  const [fresh,setFresh]=useState<ReadonlySet<string>>(()=>new Set());
  /** The live generation's scene as the user arranged it in «بوم» (only while it differs from Whoush's): «بساز» builds exactly this scene. */
@@ -545,8 +548,8 @@ export function Studio(){
   const whoushReacts=(emoji?:ReactionEmoji)=>{if(emoji)react(userMsg.id,emoji,"whoush");};
   const characterRef=current?{id:current.id,name:current.name,angles:characterCoverage(current.references).uploaded,version:current.version}:undefined;
   try{
-   setThinking({stage:"reading",script:replyScriptFor(sentText)});
-   const r=await postAgentTurn(JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(toWireAttachment)}:{}),...(generations.length?{generations}:{})}),stage=>setThinking(t=>t&&{...t,stage}));
+   setThinking({stage:"reading",done:[],script:replyScriptFor(sentText)});
+   const r=await postAgentTurn(JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(toWireAttachment)}:{}),...(generations.length?{generations}:{})}),stage=>setThinking(t=>t&&(t.stage===stage?t:{...t,done:[...t.done,t.stage],stage})));
    if(!r.ok){
     const errorBody=await r.json().catch(()=>({})) as {error?:string;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"];references?:unknown};
     if(r.status===422&&errorBody.error==="no_compatible_model"){
@@ -576,17 +579,22 @@ export function Studio(){
    const named=mentioned.find(t=>generationSet.has(t)),prevSnap=named?generationMap.get(named):[...messages].reverse().find(m=>m.kind==="proposal")?.snapshot as ProposalSnapshot|undefined;
    const focus=followUpFocus(normalizePersian(sentText),prevSnap?.plan.staging,data.plan.staging);
    const reply=agentItem({role:"agent",text:data.message,kind:"proposal",snapshot:{...(tag?{tag}:{}),...(focus?{focus}:{}),operation:data.operation,modelName:picked?.name??"",neurons:picked?.neurons??data.fixedNeurons,intentSummaryFa:data.plan.intentSummaryFa,plan:data.plan}});
-   setProposal(data);setLiveId(reply.id);setSelected(data.selectedModelId);setAspectChoice(null);setExcludedRefs(new Set());setPreview("در انتظار تأیید تولید");setJob(null);
+   setProposal(data);setLiveId(reply.id);setSelected(data.selectedModelId);setAspectChoice(null);setExcludedRefs(new Set());setDraftedFor(null);setPreview("در انتظار تأیید تولید");setJob(null);
    // Like a friend: the reply, then (sometimes) a GIF as its own message.
    setMessages(m=>[...m,reply,...(data.gif?[agentItem({role:"agent",text:"",kind:"gif",snapshot:data.gif})]:[])]);whoushReacts(data.reaction);
    adoptProject(firstText,characterId);
   }catch(err){setError(err instanceof Error?err.message:"خطای ناشناخته");}
   finally{setBusy(false);setThinking(null);}
  }
- async function approve(){
+ /**
+  * Generates the live proposal. `draft` (video only): the cheap opening-frame still on its own private turn first; the proposal stays live so the user can
+  * then make the video, or change it in the chat. Without it, the final generation, which closes the proposal.
+  */
+ async function approve(draft=false){
   if(!proposal||busy)return;setBusy(true);setError("");
   try{
-   const turnId=proposal.turnId;
+   const d=draft?proposal.draft:undefined;if(draft&&!d)return;
+   const turnId=d?d.turnId:proposal.turnId;
    if(!turnId)throw new Error("پیشنهاد منقضی شده است؛ دوباره درخواستت را بفرست.");
    const post=(url:string,body:unknown)=>fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
    // The canvas is the source of truth: an arranged scene goes with the quote (the server applies it to this turn's private plan), and the frame's aspect
@@ -594,8 +602,9 @@ export function Studio(){
    const live=messages.find(m=>m.id===liveId),edit=sceneEdit&&sceneEdit.id===liveId?sceneEdit:null;
    const planAspect=live?.kind==="proposal"?live.snapshot.plan.camera?.aspectRatio:undefined,wanted=aspectChoice??edit?.aspect??planAspect;
    // A ratio this model lacks snaps to the nearest one it offers (4:5 → 3:4), never to the model's square default.
-   const offered=proposal.suggestions.find(s=>s.modelId===selected)?.aspectRatios,aspect=offered?.length?nearestAspectRatio(wanted,offered)??wanted:wanted;
-   const quoteBody={modelId:selected,turnId,...(edit?{stagingOverride:edit.staging,...(edit.aspect!==planAspect?{aspectOverride:edit.aspect}:{})}:{}),
+   const offered=d?undefined:proposal.suggestions.find(s=>s.modelId===selected)?.aspectRatios,aspect=offered?.length?nearestAspectRatio(wanted,offered)??wanted:wanted;
+   // A draft quotes the draft model on the draft's own turn (no canvas override: that belongs to the video turn).
+   const quoteBody={modelId:d?d.modelId:selected,turnId,...(!d&&edit?{stagingOverride:edit.staging,...(edit.aspect!==planAspect?{aspectOverride:edit.aspect}:{})}:{}),
     ...(excludedRefs.size?{excludeReferences:[...excludedRefs]}:{})};
    let q=await post("/api/generation/quote",{...quoteBody,...(aspect?{configuration:{aspectRatio:aspect}}:{})});
    if(q.status===422&&aspect)q=await post("/api/generation/quote",quoteBody); // last resort if the ratio is still refused (invalid_configuration): the prompt still carries it
@@ -611,9 +620,11 @@ export function Studio(){
    const genTag=liveId?(messages.find(m=>m.id===liveId)?.snapshot as ProposalSnapshot|undefined)?.tag:undefined;
    // The job's message goes into the transcript now (with its id), and is updated in place as the job moves: a project saved or reopened mid-generation
    // still knows which job to follow, and a finished one keeps its outputs.
-   const snap=jobSnapshot(current,genTag),msg=item({role:"agent",text:current.messageFa,kind:"job",snapshot:snap});
+   const snap:JobSnapshot={...jobSnapshot(current,genTag),...(d?{draft:{modelName:d.modelName}}:{})},msg=item({role:"agent",text:current.messageFa,kind:"job",snapshot:snap});
    setPreview(current.messageFa);setJob(snap);setPreviewOpen(true);setGalleryFocus(galleryFocusOn(msg.id));
-   setMessages(m=>[...m,msg]);setProposal(null);setLiveId(null);touch();
+   setMessages(m=>[...m,msg]);
+   if(d)setDraftedFor(liveId);else{setProposal(null);setLiveId(null);}
+   touch();
    followJob(msg.id,snap);
   }catch(err){setError(err instanceof Error?err.message:"خطای ناشناخته");}
   finally{setBusy(false);}
@@ -629,7 +640,8 @@ export function Studio(){
  /** Every generation of this chat for the preview gallery, oldest first. An older saved job without outputs borrows the live job's when it is that job. */
  const galleryItems:GalleryItem[]=messages.flatMap(m=>m.kind!=="job"?[]:[{id:m.id,
   job:{...m.snapshot,outputs:m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined)},
-  kind:m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind:undefined,model:m.snapshot.tag?generationMap.get(m.snapshot.tag)?.modelName:undefined}]);
+  kind:m.snapshot.draft?"image":m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind:undefined,
+  model:m.snapshot.draft?"پیش‌نویس · "+m.snapshot.draft.modelName:m.snapshot.tag?generationMap.get(m.snapshot.tag)?.modelName:undefined}]);
  const showPreview=hasPreview&&previewOpen;
  /** Opens the preview panel, on a given generation's job when a preview card asks (the latest job keeps its live outputs). */
  function openPreview(snapshot?:JobSnapshot,messageId?:string){
@@ -752,6 +764,7 @@ export function Studio(){
          }:undefined}/>}
         {m.kind==="proposal"&&(proposal&&m.id===liveId
          ?<ProposalCard proposal={proposal} tag={m.snapshot.tag} adjusted={sceneEdit?.id===m.id} selected={selected} onSelect={setSelected}
+          drafted={draftedFor===m.id} onDraft={proposal.draft?()=>void approve(true):undefined}
           excludedReferences={excludedRefs} onToggleReference={id=>setExcludedRefs(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n;})}
           aspect={aspectChoice??(sceneEdit?.id===m.id?sceneEdit.aspect:undefined)??m.snapshot.plan.camera?.aspectRatio} onAspect={setAspectChoice} busy={busy} onApprove={()=>void approve()} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>
          :<PastProposalCard snapshot={m.snapshot} adjusted={Boolean(pastEdits[m.id])} busy={busy||reading||loadingProject}
@@ -767,7 +780,7 @@ export function Studio(){
         <div className="-mt-2">{actions}</div>
        </div>;
       })}
-      {thinking&&<ThinkingRow text={STAGE_TEXT[thinking.script][thinking.stage]}/>}
+      {thinking&&<TurnProgress current={STAGE_TEXT[thinking.script][thinking.stage]} done={thinking.done} doneText={thinking.done.map(d=>STAGE_DONE_TEXT[thinking.script][d])} why={PLAN_FIRST_FA[thinking.script]}/>}
       <div ref={endRef}/>
      </div>
     </ScrollArea>
