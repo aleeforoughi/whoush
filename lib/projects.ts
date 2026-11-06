@@ -5,7 +5,7 @@ import {ATTACHMENT_KIND_IDS,ATTACHMENT_ROLE_IDS,MAX_ATTACHMENTS,displayTag,isGen
 import {GENERATION_STYLES,MAX_GENERATION_REFS,MAX_GENERATION_SUMMARY_CHARS,MAX_HISTORY_CHARS,MAX_HISTORY_TURNS,REACTION_EMOJIS,STYLE_LABEL_FA,type GenerationRef,type GenerationStyle,type HistoryTurn,type PublicCreativePlan,type ReactionEmoji} from "./creative-plan";
 import {faPlain} from "./format";
 import {MODES} from "./mode";
-import type {AgentPreference} from "./types";
+import {UNSUPPORTED_REASONS,type AgentPreference,type UnsupportedReason} from "./types";
 
 export const PROJECT_VERSION=1;
 export const MAX_TITLE=80;
@@ -22,7 +22,7 @@ export type MessageKind="text"|"proposal"|"no_model"|"restricted"|"job"|"questio
 /** `tag` is the generation's tag in this chat (`generation1`, shown as #تولید-۱); proposals saved before tags existed get one when the project opens. */
 export type ProposalSnapshot={operation:"generate_image"|"generate_video";modelName:string;neurons:number;intentSummaryFa:string;plan:PublicCreativePlan;tag?:string;
  /** A follow-up about one or two parts of the scene: «بوم» opens on just those parts (lib/staging.ts, followUpFocus; «camera» in older saves). */focus?:string[]};
-export type NoModelSnapshot={message:string;plan?:PublicCreativePlan};
+export type NoModelSnapshot={message:string;plan?:PublicCreativePlan;reason?:UnsupportedReason};
 /**
  * A generation's status in the transcript. `jobId` lets a reopened project ask the server again (a job still running is followed to its end); `outputs` are
  * Whoush-owned media paths only, so a finished job shows its result after a reload; `typicalMs` paces the progress estimate.
@@ -134,7 +134,7 @@ function checkMessage(m:unknown,i:number){
    if(!isObject(s)||(s.operation!=="generate_image"&&s.operation!=="generate_video")||typeof s.modelName!=="string"||!Number.isSafeInteger(s.neurons)||typeof s.intentSummaryFa!=="string"||!isPlan(s.plan)||(s.tag!==undefined&&!(typeof s.tag==="string"&&isGenerationTag(s.tag)))
     ||(s.focus!==undefined&&!(Array.isArray(s.focus)&&s.focus.length<=5&&s.focus.every(f=>["frame","angle","distance","lens","light","camera"].includes(f as string)))))bad("پیشنهاد");
    break;
-  case "no_model":if(!isObject(s)||typeof s.message!=="string"||(s.plan!==undefined&&!isPlan(s.plan)))bad("نبود مدل سازگار");break;
+  case "no_model":if(!isObject(s)||typeof s.message!=="string"||(s.plan!==undefined&&!isPlan(s.plan))||(s.reason!==undefined&&!UNSUPPORTED_REASONS.includes(s.reason as UnsupportedReason)))bad("نبود مدل سازگار");break;
   case "gif":if(!isObject(s)||typeof s.id!=="string"||typeof s.title!=="string"||!isGiphyMedia(s.url)||!isGiphyMedia(s.stillUrl)||!(Number(s.width)>0&&Number(s.height)>0))bad("گیف");break;
   case "question":if(!isObject(s)||typeof s.question!=="string"||s.question.length<1||s.question.length>1000||(s.choices!==undefined&&!isQuestionChoices(s.choices)))bad("سؤال");
    else if(s.references!==undefined){const r=s.references as Record<string,unknown>;

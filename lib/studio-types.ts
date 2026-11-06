@@ -1,10 +1,10 @@
-import type {GenerationProposal} from "@/lib/types";
+import type {GenerationProposal,UnsupportedReason} from "@/lib/types";
 import type {PublicCreativePlan} from "@/lib/creative-plan";
 
 /** What POST /api/agent returns for a compatible request: the proposal plus the turn id and the public plan. */
 export type AgentProposal=GenerationProposal&{turnId?:string;plan:PublicCreativePlan};
 /** What POST /api/agent returns with 422 `no_compatible_model`. */
-export type NoModelResult={message:string;plan?:PublicCreativePlan};
+export type NoModelResult={message:string;plan?:PublicCreativePlan;reason?:UnsupportedReason};
 /** The public job view from /api/generation/jobs/:id (only the fields the UI uses). */
 export type JobView={state:string;messageFa:string;outputs?:{kind:"image"|"video";url:string}[];
  /** The server's job id, so the preview and the transcript follow the same job. */

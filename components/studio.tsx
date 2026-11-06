@@ -8,7 +8,7 @@ import {BACK_TO_CHAT_FA,CLOSE_PREVIEW_FA,OPEN_PREVIEW_FA,PreviewCard} from "@/co
 import {GalleryThumbs,GenerationGallery,galleryFocusOn,type GalleryFocus,type GalleryItem} from "@/components/generation-gallery";
 import {isFinalJobState,isOwnedOutputUrl} from "@/lib/job-progress";
 import {followJobUntilDone,jobSnapshot,UNTRACKED_JOB_FA} from "@/lib/job-follow";
-import {NoModelCard,PastProposalCard,ProposalCard} from "@/components/proposal-card";
+import {NoModelCard,PastProposalCard,ProposalCard,noModelTitle} from "@/components/proposal-card";
 import {CharacterDialog} from "@/components/character-dialog";
 import {InsertMenu} from "@/components/insert-menu";
 import {VoiceMode} from "@/components/voice-mode";
@@ -48,7 +48,7 @@ import {GifPicker} from "@/components/gif-picker";
 import {TAG_PICKER_LABEL_FA,TagPicker} from "@/components/tag-picker";
 import {MessageReactions} from "@/components/message-reactions";
 import type {GenerationStyle} from "@/lib/creative-plan";
-import type {AgentPreference} from "@/lib/types";
+import {UNSUPPORTED_REASONS,type AgentPreference,type UnsupportedReason} from "@/lib/types";
 import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,acceptFor,bumpTagCounters,displayTag,insertMention,lowestFreeTag,nextGenerationTag,newTagCounters,parseMentions,tooManyFa,toWireAttachment,validateAttachmentSet,withRole,withoutRole,type AttachmentKind,type AttachmentRole,type LocalAttachment} from "@/lib/attachments";
 import {readAttachment} from "@/lib/attachment-files";
 import type {InsertItem} from "@/lib/insert-menu";
@@ -568,10 +568,11 @@ export function Studio(){
    setThinking({stage:"reading",done:[],script:replyScriptFor(sentText)});
    const r=await postAgentTurn(JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(toWireAttachment)}:{}),...(priorPhotos.length?{priorAttachments:priorPhotos.map(toWireAttachment)}:{}),...(main?{mainSubject:main}:{}),...(generations.length?{generations}:{})}),stage=>setThinking(t=>t&&(t.stage===stage?t:{...t,done:[...t.done,t.stage],stage})));
    if(!r.ok){
-    const errorBody=await r.json().catch(()=>({})) as {error?:string;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"];references?:unknown;choices?:unknown};
+    const errorBody=await r.json().catch(()=>({})) as {error?:string;reason?:UnsupportedReason;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"];references?:unknown;choices?:unknown};
     if(r.status===422&&errorBody.error==="no_compatible_model"){
      const message=typeof errorBody.message==="string"?errorBody.message:"مدل سازگاری برای این درخواست پیدا نشد.";
-     setMessages(m=>[...m,agentItem({role:"agent",text:message,kind:"no_model",snapshot:{message,...(errorBody.plan?{plan:errorBody.plan}:{})}})]);setPreview("مدل سازگار پیدا نشد");
+     const reason=errorBody.reason&&UNSUPPORTED_REASONS.includes(errorBody.reason)?errorBody.reason:undefined;
+     setMessages(m=>[...m,agentItem({role:"agent",text:message,kind:"no_model",snapshot:{message,...(errorBody.plan?{plan:errorBody.plan}:{}),...(reason?{reason}:{})}})]);setPreview(noModelTitle(reason));
      adoptProject(firstText,characterId);
      return;
     }

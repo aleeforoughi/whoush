@@ -1,10 +1,11 @@
 "use client";
 import type React from "react";
-import {Box,CircleOff,Clapperboard,Image as ImageIcon,Sparkles} from "lucide-react";
+import {Box,CircleOff,Clapperboard,Image as ImageIcon,ShieldAlert,Sparkles} from "lucide-react";
 import {Badge,Button,Card,Icon,Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from "@aleeforoughi/feather-react";
 import {SuggestedModelNote} from "@/components/plan-details";
 import {TagBadge} from "@/components/attachment-chip";
 import type {AgentProposal,NoModelResult} from "@/lib/studio-types";
+import type {UnsupportedReason} from "@/lib/types";
 import {PAST_PROPOSAL_FA,type ProposalSnapshot} from "@/lib/projects";
 import {fa} from "@/lib/format";
 import {nearestAspectRatio} from "@/lib/aspect";
@@ -123,13 +124,26 @@ export function PastProposalCard({snapshot,onMention,adjusted,onBuildScene,busy}
 }
 
 /** 422 no_compatible_model: no price and nothing to generate; the model that fits but is not active yet, if any. The plan is in the conversation. */
+/**
+ * Why a plan came with no price, said as it is (owner, 2026-11-06: the iPhone session read «مدل سازگار پیدا نشد» when the real stop was its five photos,
+ * which no safety check can inspect yet). Older saved chats have no reason: they read as before.
+ */
+const NO_MODEL_COPY:Record<UnsupportedReason|"unknown",{title:string;body:string}>={
+ media_review:{title:"عکس‌هات هنوز بررسی ایمنی نمی‌شن",body:"ساخت با عکس یا ویدیوی خودت هنوز فعال نیست، چون بررسی ایمنی فایل‌ها هنوز آماده نیست. برنامه آماده‌ست؛ اگه بدون فایل‌ها بفرستی، فقط از روی توضیحت ساخته می‌شه."},
+ no_model:{title:"مدل سازگاری پیدا نشد",body:"تا پیدا شدن مدل سازگار، قیمتی نمایش داده نمی‌شود و چیزی برای ساخت وجود ندارد."},
+ voice_clone:{title:"ساخت صدا پشتیبانی نمی‌شه",body:"هووش فقط عکس و ویدیو می‌سازه و صدای کسی رو تقلید نمی‌کنه."},
+ unknown:{title:"مدل سازگاری پیدا نشد",body:"تا پیدا شدن مدل سازگار، قیمتی نمایش داده نمی‌شود و چیزی برای ساخت وجود ندارد."}
+};
+/** The card's title, also the chat's preview line. */
+export const noModelTitle=(reason?:UnsupportedReason)=>NO_MODEL_COPY[reason??"unknown"].title;
 export function NoModelCard({result}:{result:NoModelResult}){
+ const copy=NO_MODEL_COPY[result.reason??"unknown"];
  return <Card size="sm" className="gap-3 p-3">
   <div className="flex items-center gap-2">
-   <span className="flex size-9 shrink-0 items-center justify-center rounded-control bg-surface-hover text-fg-secondary"><Icon icon={CircleOff} size={20} aria-hidden="true"/></span>
-   <span className="type-label text-fg-primary">مدل سازگاری پیدا نشد</span>
+   <span className="flex size-9 shrink-0 items-center justify-center rounded-control bg-surface-hover text-fg-secondary"><Icon icon={result.reason==="media_review"?ShieldAlert:CircleOff} size={20} aria-hidden="true"/></span>
+   <span className="type-label text-fg-primary">{copy.title}</span>
   </div>
   {result.plan?.suggestedModel&&<SuggestedModelNote model={result.plan.suggestedModel}/>}
-  <p className="type-caption text-fg-secondary">تا پیدا شدن مدل سازگار، قیمتی نمایش داده نمی‌شود و چیزی برای ساخت وجود ندارد.</p>
+  <p className="type-caption text-fg-secondary">{copy.body}</p>
  </Card>;
 }

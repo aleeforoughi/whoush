@@ -20,7 +20,7 @@ import {MEDIA_KIND_CHOICES,MEDIA_KIND_QUESTION_FA,MEDIA_KIND_QUESTION_FINGLISH,t
 import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
 import {SKILLS,SKILL_REGISTRY_VERSION} from "./skills";
 import {detectReferenceNeeds,type ReferenceRequest} from "./reference-needs";
-import type {GenerationProposal,MediaRequirements,ProposalResearch,SuggestedModel} from "./types";
+import type {GenerationProposal,MediaRequirements,ProposalResearch,SuggestedModel,UnsupportedReason} from "./types";
 import {researchReferences,type ResearchReference,type ResearchResult} from "./research";
 import {inspectReferences} from "./reference-inspect";
 import {reviewAvailable,reviewPlan,promptWithFixes,type PlanReviewer} from "./plan-review";
@@ -41,7 +41,8 @@ export {TURN_STAGES,type TurnStage} from "./orchestrator-stages";
 import type {TurnStage} from "./orchestrator-stages";
 export type OrchestratorResult=
  |{status:"planned";turnId:string;proposal:GenerationProposal;plan:PublicCreativePlan;gif?:ChatGif;reaction?:ReactionEmoji}
- |{status:"unsupported";turnId:string;plan:PublicCreativePlan;message:string;suggestedModel?:SuggestedModel}
+ |{status:"unsupported";turnId:string;plan:PublicCreativePlan;message:string;suggestedModel?:SuggestedModel;
+  /** Why no proposal: the user's files are not yet inspected (a launch gate, not a missing model), no model fits, or a voice clone was asked. */reason:UnsupportedReason}
  |{status:"restricted";decision:"block"|"review";category:SafetyCategory;message:string}
  /** Whoush needs one critical answer before it can offer a generation: no plan card, no price, only the question. */
  |{status:"needs_input";turnId:string;message:string;question:string;reaction?:ReactionEmoji;
@@ -636,14 +637,14 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // Voice cloning is never offered: Whoush only makes images and videos, and generating or imitating a voice is out of scope.
  if(files.some(f=>f.role==="voice_clone")){
   rec({planner:label,fallbackReason:"voice_clone_unsupported",corrections:corrections.length?corrections:undefined});
-  return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,undefined,input.style)),message:FA_VOICE_CLONE};
+  return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,undefined,input.style)),message:FA_VOICE_CLONE,reason:"voice_clone"};
  }
  // TODO(docs/MODERATION_POLICY.md step 4, "Reference inspection"): plug a real multimodal inspector in here. Until one exists, any image, video or
  // audio attachment fails closed: the plan is returned, but no proposal or price, so uninspected media can never reach provider handoff (step 6).
  if(files.some(f=>isMediaKind(f.kind))){
   rec({planner:label,fallbackReason:"media_review_unavailable",corrections:corrections.length?corrections:undefined});
   const suggestedModel=suggestModel(requirements,kind);
-  return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,suggestedModel,input.style)),message:FA_MEDIA_REVIEW+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{})};
+  return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,suggestedModel,input.style)),message:FA_MEDIA_REVIEW+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{}),reason:"media_review"};
  }
  // Research (docs/RESEARCH_PIPELINE.md): what has a real identity or needs research gets open-licensed references, each inspected by a vision model before
  // use. The research text is planner output, so it passes the same plan-text safety check first. A failure leaves a note, never a broken turn.
@@ -674,7 +675,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   if(!(e instanceof NoCompatibleModelError))throw e;
   rec({planner:label,fallbackReason:"no_compatible_model",corrections:corrections.length?corrections:undefined});
   const suggestedModel=suggestModel(requirements,kind),base=ref?FA_NO_REFS:lipsMsg;
-  return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,suggestedModel,input.style)),message:base+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{})};
+  return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,suggestedModel,input.style)),message:base+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{}),reason:"no_model"};
  }
  // Pre-generation risk check: the cheapest model stress-tests the plan for the chosen model before any generation is paid for. Fixes go into the prompt (and
  // into the scene text, so a canvas change keeps them); each risk shown passes the same safety and leak checks as the planner's own text.

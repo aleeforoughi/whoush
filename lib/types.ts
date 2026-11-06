@@ -128,3 +128,6 @@ export interface PackageQuote {
   totalNeurons: number;
   bonusPercent: number;
 }
+/** Why a turn got a plan but no proposal: the user's files are not yet safety-inspected (a launch gate), no model fits, or a voice clone was asked. */
+export type UnsupportedReason="media_review"|"no_model"|"voice_clone";
+export const UNSUPPORTED_REASONS:readonly UnsupportedReason[]=["media_review","no_model","voice_clone"];

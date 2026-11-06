@@ -304,7 +304,7 @@ test("character references and lip sync never route to a model without that capa
  assert.deepEqual((c as {plan:{identityLock?:{providedAngles:string[]}}}).plan.identityLock?.providedAngles,["front","profile_left"]);
  assert.match((c as {message:string}).message,/مرجع/);
  const l=await orchestrateCreativeTurn({text:"lip sync video of a presenter speaking"});
- assert.equal(l.status,"unsupported");assert.match((l as {message:string}).message,/لیپ/);
+ assert.equal(l.status,"unsupported");assert.match((l as {message:string}).message,/لیپ/);assert.equal((l as {reason:string}).reason,"no_model");
  assert.equal(last().fallbackReason,"no_compatible_model");
  const plain=await orchestrateCreativeTurn({text:"a photo of a woman in a garden"});assert.equal(plain.status,"planned");
 });
@@ -397,7 +397,7 @@ test("attachments: an image fails closed with the plan, the media-review message
  for(const kind of ["video","audio"])assert.equal((await orchestrateCreativeTurn({text:"a photo of a lake",attachments:[att(kind)]})).status,"unsupported",kind);
  for(const role of ["environment","object","graphic","edit_reference"])assert.equal((await orchestrateCreativeTurn({text:"a photo of a lake",attachments:[att("image",{role})]})).status,"unsupported","every image role is uninspected media: "+role);
  const res=await POST(new Request("http://x/api/agent",{method:"POST",body:JSON.stringify(body)}));
- assert.equal(res.status,422);const j=await res.json();assert.equal(j.error,"no_compatible_model");assert.match(j.message,MEDIA_REVIEW);assert.ok(j.plan&&j.turnId);assertNoLeak(JSON.stringify(j),"media review");
+ assert.equal(res.status,422);const j=await res.json();assert.equal(j.error,"no_compatible_model");assert.equal(j.reason,"media_review","the card says the files stop it, not a missing model");assert.match(j.message,MEDIA_REVIEW);assert.ok(j.plan&&j.turnId);assertNoLeak(JSON.stringify(j),"media review");
 });
 test("attachments: Persian speech audio on a lip-sync video plans from audio with Tehrani active, and still fails closed",async()=>{
  const speech={hasSpeech:true,language:"fa",accent:"unspecified"};
@@ -658,7 +658,7 @@ test("roles: voice_clone needs consent at the route (400) and is never supported
  assert.equal(r.message,MESSAGE);assert.equal(last().fallbackReason,"voice_clone_unsupported");assert.equal(last().turnId,r.turnId);
  assert.equal(getPrivateMediaPrompt(r.turnId),undefined);assert.ok(r.plan.intentSummaryFa);
  assert.deepEqual(last().attachments,[{tag:"audio1",role:"voice_clone",roleSource:"user",kind:"audio",bytes:2048,sha256:"c".repeat(64)}]);
- const res=await post(ok);assert.equal(res.status,422);const j=await res.json();assert.equal(j.error,"no_compatible_model");assert.equal(j.message,MESSAGE);assertNoLeak(JSON.stringify(j),"voice clone");
+ const res=await post(ok);assert.equal(res.status,422);const j=await res.json();assert.equal(j.error,"no_compatible_model");assert.equal(j.reason,"voice_clone");assert.equal(j.message,MESSAGE);assertNoLeak(JSON.stringify(j),"voice clone");
  // voice_clone outranks media review, and safety outranks both
  const withImage=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("image"),ok]}));
  assert.equal(withImage.message,MESSAGE);assert.equal(last().fallbackReason,"voice_clone_unsupported");
