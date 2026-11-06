@@ -49,6 +49,8 @@ export interface MediaModel {
   resolution: string;
   resolutions?: readonly string[];
   durationSeconds?: number;
+  /** Measured submit-to-completion time in seconds (live checks in docs/evidence/). Paces the progress estimate only; never shown as a promise. */
+  typicalSeconds?: number;
   /** Lip-sync / talking-head limits from the provider catalogue (unverified). */
   characterImagesMax?: number;
   audioClipsMax?: number;

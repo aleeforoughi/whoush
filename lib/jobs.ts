@@ -177,6 +177,7 @@ const MSG:Record<JobState,string>={
 /** Consumer projection: no provider ids/keys/costs/evidence/turn or quote internals. Output URLs only for completed live jobs. */
 const DEV_COMPLETED_FA="تست توسعه: خروجی واقعی ساخته شد و هیچ نورونی کسر نشد. خروجی باید بازبینی شود.";
 export function toPublicJob(j:Job){
- return {id:j.id,state:j.state,mode:j.mode,modelId:j.modelId,neurons:j.neurons,chargedNeurons:j.chargedNeurons,
+ const typical=findMediaModel(j.modelId)?.typicalSeconds;
+ return {id:j.id,state:j.state,mode:j.mode,modelId:j.modelId,neurons:j.neurons,chargedNeurons:j.chargedNeurons,...(typical?{typicalMs:typical*1000}:{}),
   outputs:j.state==="completed"?j.outputs.map(o=>({kind:o.kind,url:o.url})):[],qa:j.qa,messageFa:j.mode==="dev_live"&&j.state==="completed"?DEV_COMPLETED_FA:MSG[j.state]};
 }

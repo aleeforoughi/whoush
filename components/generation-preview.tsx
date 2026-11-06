@@ -26,7 +26,7 @@ export function GenerationPreview({job,kind="image",model,placeholder}:{job:JobV
   const start=Date.now(),id=window.setInterval(()=>setTick({key,elapsed:Date.now()-start}),300);
   return()=>window.clearInterval(id);
  },[active,key]);
- const percent=estimateProgress(job.state,elapsed,kind);
+ const percent=estimateProgress(job.state,elapsed,kind,job.typicalMs);
  // Only a Whoush-owned output is shown (launch gate 8); a provider URL keeps the placeholder.
  const first=job.outputs?.[0],output=first&&typeof window!=="undefined"&&isOwnedOutputUrl(first.url,window.location.origin)?first:undefined;
  const stopped=STOPPED_FA[job.state];

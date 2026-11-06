@@ -577,14 +577,14 @@ export function Studio(){
    const quote=await q.json() as {token:string};
    const execution=await post("/api/generation/execute",{token:quote.token,approved:true,idempotencyKey:crypto.randomUUID()});
    if(!execution.ok)throw new Error("خطا در شروع تولید");
-   let current=await execution.json() as {id:string;state:string;messageFa:string;outputs?:JobView["outputs"]};
+   let current=await execution.json() as {id:string;state:string;messageFa:string;outputs?:JobView["outputs"];typicalMs?:number};
    const done=["completed","completed_demo","failed","canceled","released"];
    const genTag=liveId?(messages.find(m=>m.id===liveId)?.snapshot as ProposalSnapshot|undefined)?.tag:undefined,tagged=genTag?{tag:genTag}:{};
-   setPreview(current.messageFa);setJob({state:current.state,messageFa:current.messageFa,outputs:current.outputs,...tagged});setPreviewOpen(true);
+   setPreview(current.messageFa);setJob({state:current.state,messageFa:current.messageFa,outputs:current.outputs,...(current.typicalMs?{typicalMs:current.typicalMs}:{}),...tagged});setPreviewOpen(true);
    for(let i=0;i<10&&!done.includes(current.state);i++){
     await new Promise(r=>setTimeout(r,1500));
     const poll=await fetch("/api/generation/jobs/"+current.id,{cache:"no-store"});if(!poll.ok)break;
-    current=await poll.json();setPreview(current.messageFa);setJob({state:current.state,messageFa:current.messageFa,outputs:current.outputs,...tagged});
+    current=await poll.json();setPreview(current.messageFa);setJob({state:current.state,messageFa:current.messageFa,outputs:current.outputs,...(current.typicalMs?{typicalMs:current.typicalMs}:{}),...tagged});
    }
    setMessages(m=>[...m,item({role:"agent",text:current.messageFa,kind:"job",snapshot:{state:current.state,messageFa:current.messageFa,...(genTag?{tag:genTag}:{})}})]);setProposal(null);setLiveId(null);touch();
   }catch(err){setError(err instanceof Error?err.message:"خطای ناشناخته");}
