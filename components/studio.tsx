@@ -47,6 +47,7 @@ import type {AgentPreference} from "@/lib/types";
 import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,acceptFor,bumpTagCounters,displayTag,insertMention,lowestFreeTag,nextGenerationTag,newTagCounters,parseMentions,tooManyFa,toWireAttachment,validateAttachmentSet,withRole,withoutRole,type AttachmentKind,type AttachmentRole,type LocalAttachment} from "@/lib/attachments";
 import {readAttachment} from "@/lib/attachment-files";
 import type {InsertItem} from "@/lib/insert-menu";
+import {nearestAspectRatio} from "@/lib/aspect";
 
 /** A stored message plus the live attachments of its turn (object URLs, not persisted). */
 type TranscriptItem=StoredMessage&{attachments?:LocalAttachment[]};
@@ -562,10 +563,12 @@ export function Studio(){
    // The canvas is the source of truth: an arranged scene goes with the quote (the server applies it to this turn's private plan), and the frame's aspect
    // ratio goes as the model's real aspect-ratio setting, so the output frame matches the canvas exactly where the model supports it.
    const live=messages.find(m=>m.id===liveId),edit=sceneEdit&&sceneEdit.id===liveId?sceneEdit:null;
-   const planAspect=live?.kind==="proposal"?live.snapshot.plan.camera?.aspectRatio:undefined,aspect=aspectChoice??edit?.aspect??planAspect;
+   const planAspect=live?.kind==="proposal"?live.snapshot.plan.camera?.aspectRatio:undefined,wanted=aspectChoice??edit?.aspect??planAspect;
+   // A ratio this model lacks snaps to the nearest one it offers (4:5 → 3:4), never to the model's square default.
+   const offered=proposal.suggestions.find(s=>s.modelId===selected)?.aspectRatios,aspect=offered?.length?nearestAspectRatio(wanted,offered)??wanted:wanted;
    const quoteBody={modelId:selected,turnId,...(edit?{stagingOverride:edit.staging,...(edit.aspect!==planAspect?{aspectOverride:edit.aspect}:{})}:{})};
    let q=await post("/api/generation/quote",{...quoteBody,...(aspect?{configuration:{aspectRatio:aspect}}:{})});
-   if(q.status===422&&aspect)q=await post("/api/generation/quote",quoteBody); // a model without that aspect ratio (invalid_configuration): the prompt still carries it
+   if(q.status===422&&aspect)q=await post("/api/generation/quote",quoteBody); // last resort if the ratio is still refused (invalid_configuration): the prompt still carries it
    if(!q.ok){
     // A refusal that says why (a photo edit that changes the camera and the light together; a prop hiding the subject) is shown as is.
     const why=await q.json().then((b:{error?:string;message?:string})=>b.error==="edit_scope_mixed"||b.error==="composition_occluded"?b.message:undefined).catch(()=>undefined);
