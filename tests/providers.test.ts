@@ -4,6 +4,11 @@ import {MockMediaProvider,RoutingMediaProvider,registerAdapter,splitRequestId,ta
 import {hasProviderCredentials,PROVIDER_CREDENTIAL_ENV} from "../lib/provider-credentials";
 import {isStoredMediaUrl,readMedia,storeMedia} from "../lib/media-store";
 import {MEDIA_CATALOG} from "../lib/catalog";
+import {mkdtempSync} from "node:fs";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
+// Media the adapters store goes to a temporary folder, never the real `.media/` store.
+process.env.WHOUSH_MEDIA_DIR=mkdtempSync(join(tmpdir(),"whoush-media-test-"));
 
 test("provider request ids name their provider; Higgsfield ids keep their original form",()=>{
  assert.equal(tagRequestId("higgsfield","abc-123"),"abc-123");

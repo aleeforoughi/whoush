@@ -7,6 +7,11 @@ import {KlingMediaProvider,buildKlingVideoRequest} from "../lib/providers/kling"
 import {settleRun} from "../lib/providers/sync-runner";
 import {readMedia} from "../lib/media-store";
 import {NotCancelableError,SubmissionUnknownError} from "../lib/provider-errors";
+import {mkdtempSync} from "node:fs";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
+// Media the adapters store goes to a temporary folder, never the real `.media/` store.
+process.env.WHOUSH_MEDIA_DIR=mkdtempSync(join(tmpdir(),"whoush-media-test-"));
 
 type Call={url:string;method:string;headers:Record<string,string>;body?:unknown};
 async function withFetch(handler:(c:Call)=>Response|Promise<Response>,run:(calls:Call[])=>Promise<void>,env:Record<string,string>){

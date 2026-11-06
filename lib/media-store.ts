@@ -8,7 +8,8 @@ import path from "node:path";
  * Production needs owned object storage and session-scoped access (OWNED_MEDIA_STORAGE_VERIFIED gates live generation until then).
  */
 export const MEDIA_ROUTE="/api/generation/media/";
-const DIR=path.join(process.cwd(),".media");
+/** The store's folder: `.media/` in the project, or WHOUSH_MEDIA_DIR (the tests use a temporary folder, so they never write into the real store). */
+const dir=()=>process.env.WHOUSH_MEDIA_DIR||path.join(process.cwd(),".media");
 export const STORED_MIME=["image/png","image/jpeg","image/webp","video/mp4","video/webm","video/quicktime"] as const;
 export type StoredMime=(typeof STORED_MIME)[number];
 const EXT:Record<StoredMime,string>={"image/png":"png","image/jpeg":"jpg","image/webp":"webp","video/mp4":"mp4","video/webm":"webm","video/quicktime":"mov"};
@@ -17,8 +18,8 @@ const ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export async function storeMedia(bytes:Uint8Array,mime:StoredMime):Promise<{id:string;url:string}>{
  if(!STORED_MIME.includes(mime))throw new Error("Unsupported media type");
  if(!bytes.byteLength||bytes.byteLength>200*1024*1024)throw new Error("Media size out of range");
- const id=randomUUID();await fs.mkdir(DIR,{recursive:true});
- await fs.writeFile(path.join(DIR,id+"."+EXT[mime]),bytes);
+ const id=randomUUID();await fs.mkdir(dir(),{recursive:true});
+ await fs.writeFile(path.join(dir(),id+"."+EXT[mime]),bytes);
  return {id,url:MEDIA_ROUTE+id};
 }
 /** Downloads a provider's result and stores it (its link may expire, or need the provider key). Only https, only a stored media type. */
@@ -34,7 +35,7 @@ export async function mirrorMedia(url:string,headers?:Record<string,string>,fall
 }
 export async function readMedia(id:string):Promise<{bytes:Buffer;mime:StoredMime}|undefined>{
  if(!ID.test(id))return undefined;
- for(const mime of STORED_MIME){try{return {bytes:await fs.readFile(path.join(DIR,id+"."+EXT[mime])),mime};}catch{/* next type */}}
+ for(const mime of STORED_MIME){try{return {bytes:await fs.readFile(path.join(dir(),id+"."+EXT[mime])),mime};}catch{/* next type */}}
  return undefined;
 }
 /** Whether an output URL is one this store serves. */
