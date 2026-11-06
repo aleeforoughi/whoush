@@ -50,6 +50,8 @@ import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,acceptFor,bumpTag
 import {readAttachment} from "@/lib/attachment-files";
 import type {InsertItem} from "@/lib/insert-menu";
 import {nearestAspectRatio} from "@/lib/aspect";
+/** The preview panel's «تدوین» (editing) tab: off for now, until editing exists. */
+const EDIT_TAB_ENABLED=false;
 
 /** A stored message plus the live attachments of its turn (object URLs, not persisted). */
 type TranscriptItem=StoredMessage&{attachments?:LocalAttachment[]};
@@ -643,7 +645,7 @@ export function Studio(){
     className={(showPreview?"flex":"hidden")+" surface-preview min-h-0 flex-1 flex-col md:order-last md:flex md:min-w-0 md:basis-0 md:overflow-hidden md:transition-[flex-grow,opacity] md:duration-300 md:ease-out motion-reduce:transition-none "+(showPreview?"md:grow md:opacity-100":"md:grow-0 md:opacity-0")}>
     <Tabs value={activeTab} onValueChange={v=>setActiveTab(v as "generations"|"cuts")} className="min-h-0 flex-1 gap-0">
      <div className="flex items-center justify-between gap-4 border-b border-line-tertiary px-4 py-2 lg:px-6">
-      <TabsList><TabsTrigger value="generations">تولیدها</TabsTrigger><TabsTrigger value="cuts">تدوین</TabsTrigger></TabsList>
+      <TabsList><TabsTrigger value="generations">تولیدها</TabsTrigger>{EDIT_TAB_ENABLED&&<TabsTrigger value="cuts">تدوین</TabsTrigger>}</TabsList>
       <div className="flex items-center gap-2">
        <Badge variant="outline">نسخه نمایشی</Badge>
        <Tooltip><TooltipTrigger render={<Button type="button" variant="ghost" size="icon" className="md:hidden" aria-label="کوچک کردن پیش‌نمایش" onClick={minimizePreview}/>}><Icon icon={Minimize2} aria-hidden="true"/></TooltipTrigger><TooltipContent side="bottom">کوچک کردن پیش‌نمایش</TooltipContent></Tooltip>
@@ -658,13 +660,13 @@ export function Studio(){
         <p className="type-body text-fg-primary">{preview}</p>
        </div></div>}
      </TabsContent>
-     <TabsContent value="cuts" className="min-h-0 flex-1">
+     {EDIT_TAB_ENABLED&&<TabsContent value="cuts" className="min-h-0 flex-1">
       <ScrollArea className="h-full">
        <div className="p-4 lg:p-6"><div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-card border border-line-secondary bg-surface-subtle p-8 text-center">
         <p className="type-body text-fg-primary">بخش تدوین در مرحله بعد ساخته می‌شود.</p>
        </div></div>
       </ScrollArea>
-     </TabsContent>
+     </TabsContent>}
     </Tabs>
    </section>
    {/* End side: agent panel */}
