@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
 import Link from "next/link";
 import {useRouter,useSearchParams} from "next/navigation";
-import {ArrowUp,CircleAlert,Clapperboard,Info,LoaderCircle,Minimize2,PanelLeftOpen,Smile,Upload as UploadIcon,UserRound,X} from "lucide-react";
+import {ArrowUp,CircleAlert,Clapperboard,Info,LoaderCircle,Mic,Minimize2,PanelLeftOpen,Smile,Upload as UploadIcon,UserRound,X} from "lucide-react";
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Tabs,TabsContent,TabsList,TabsTrigger,Label,Tooltip,TooltipContent,TooltipTrigger} from "@aleeforoughi/feather-react";
 import {OPEN_PREVIEW_FA,PreviewCard} from "@/components/preview-card";
 import {GenerationPreview} from "@/components/generation-preview";
@@ -10,6 +10,7 @@ import {isOwnedOutputUrl} from "@/lib/job-progress";
 import {NoModelCard,PastProposalCard,ProposalCard} from "@/components/proposal-card";
 import {CharacterDialog} from "@/components/character-dialog";
 import {InsertMenu} from "@/components/insert-menu";
+import {VoiceMode} from "@/components/voice-mode";
 import {UploadSlotCard} from "@/components/upload-slot";
 import {SLOTS_FULL_FA,addSlot,composerCards,fillSlotWith,forgetAttachment,removeSlot,reserveSlotTag,slotFor,tagsInUse,uploadRejection,type Upload,type UploadSlot} from "@/lib/upload-slots";
 import {AttachmentCard,SentAttachmentCard} from "@/components/attachment-card";
@@ -88,6 +89,9 @@ export function Studio(){
  const [busy,setBusy]=useState(false);
  const [preview,setPreview]=useState(idlePreview);
  const [job,setJob]=useState<JobView|null>(null);
+ /** Voice messages: offered only when the server can transcribe now (`/api/voice`); `voiceOpen` shows the full-screen voice mode. */
+ const [voice,setVoice]=useState<{enabled:boolean;maxSeconds:number}>({enabled:false,maxSeconds:60}),[voiceOpen,setVoiceOpen]=useState(false);
+ useEffect(()=>{let alive=true;fetch("/api/voice").then(r=>r.ok?r.json():undefined).then((v:{enabled?:boolean;maxSeconds?:number}|undefined)=>{if(alive&&v?.enabled)setVoice({enabled:true,maxSeconds:v.maxSeconds??60});}).catch(()=>undefined);return()=>{alive=false;};},[]);
  const [activeTab,setActiveTab]=useState<"generations"|"cuts">("generations");
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
@@ -758,9 +762,13 @@ export function Studio(){
         ?<UploadSlotCard key={c.slot.id} slot={c.slot} disabled={reading} onUpload={()=>openSlotPicker(c.slot)} onDropFiles={f=>void fillSlot(c.slot,f)} onRemove={()=>dropSlot(c.slot.id)}/>
         :<AttachmentCard key={c.attachment.id} item={c.attachment} onChange={patch=>patchAttachment(c.attachment.id,patch)} onRemove={()=>removeAttachment(c.attachment.id)} onPreview={()=>openViewer(c.attachment)} onMention={()=>mentionTag(c.attachment.tag)}/>)}
       </ul>:undefined}
-      endAction={<Button type="submit" size="icon" disabled={busy||reading||!draft.trim()} aria-busy={busy||undefined} aria-label={busy?"در حال ارسال…":"ارسال"}>
+      endAction={voice.enabled&&!draft.trim()&&!busy
+       // An empty composer offers a voice message instead of send (the transcript is then sent like a typed message).
+       ?<Button type="button" size="icon" disabled={reading||loadingProject} onClick={()=>setVoiceOpen(true)} aria-label="پیام صوتی" title="پیام صوتی"><Icon icon={Mic} aria-hidden="true"/></Button>
+       :<Button type="submit" size="icon" disabled={busy||reading||!draft.trim()} aria-busy={busy||undefined} aria-label={busy?"در حال ارسال…":"ارسال"}>
        <Icon icon={busy?LoaderCircle:ArrowUp} aria-hidden="true" className={busy?"animate-spin motion-reduce:animate-none":undefined}/>
       </Button>}/>
+     <VoiceMode open={voiceOpen} maxSeconds={voice.maxSeconds} onClose={()=>setVoiceOpen(false)} onTranscript={text=>answer(text)}/>
      <p id="prompt-hint" className="flex items-start gap-1 type-caption text-fg-secondary"><Icon icon={Info} size={16} aria-hidden="true" className="mt-0.5 shrink-0"/>با # می‌تونی به پیوست‌ها اشاره کنی.</p>
      <div className="flex flex-wrap items-start gap-2">
       <ModeControl value={mode} onChange={changeMode} notify={Boolean(proposal)}/>
