@@ -11,7 +11,7 @@ export type InsertAction=
 export type InsertItem={id:string;titleFa:string;hintFa:string;icon:InsertIconKey;action:InsertAction};
 export type InsertGroup={id:"popular"|"image"|"video"|"audio"|"file";/** True for «پرکاربردترین»: shortcuts that repeat entries of the kind groups below. */featured?:true;labelFa:string;items:readonly InsertItem[]};
 
-export const AUTO_UPLOAD_FA={titleFa:"آپلود با نقش خودکار",hintFa:"هر فایلی؛ نقش را هووش انتخاب می‌کند"} as const;
+export const AUTO_UPLOAD_FA={titleFa:"رفرنس اتوماتیک",hintFa:"هر فایلی؛ نقش را هووش انتخاب می‌کند"} as const;
 export const MY_CHARACTERS_FA={titleFa:"کاراکتر",hintFa:"انتخاب از استودیوی کاراکتر"} as const;
 const ROLE_ICON:Record<string,InsertIconKey>={
  "image:reference":"reference_image","image:frame":"frame","video:reference":"reference_video",

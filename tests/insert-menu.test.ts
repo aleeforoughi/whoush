@@ -5,7 +5,7 @@ import {INSERT_MENU,menuRoles} from "../lib/insert-menu";
 
 test("INSERT_MENU: groups and items in the curated order, with «پرکاربردترین» first",()=>{
  assert.deepEqual(INSERT_MENU.map(g=>g.labelFa),["پرکاربردترین","تصویر","ویدیو","صدا","فایل"]);
- assert.deepEqual(INSERT_MENU[0].items.map(i=>[i.titleFa,i.action.type]),[["آپلود با نقش خودکار","auto"],["عکس رفرنس","role"],["شخص","role"],["فریم","role"],["پوشاک","role"],["الگوی گفتار","role"]]);
+ assert.deepEqual(INSERT_MENU[0].items.map(i=>[i.titleFa,i.action.type]),[["رفرنس اتوماتیک","auto"],["عکس رفرنس","role"],["شخص","role"],["فریم","role"],["پوشاک","role"],["الگوی گفتار","role"]]);
  const titles=(id:string)=>INSERT_MENU.find(g=>g.id===id)!.items.map(i=>i.titleFa);
  assert.deepEqual(titles("image"),["عکس رفرنس","شخص","کاراکتر","پیرایش","پوشاک","محیط","اشیا","گرافیک","فریم"],"owner list of 2026-11-05, the saved characters («کاراکتر») right after «شخص»");
  assert.deepEqual(titles("video"),["فیلم رفرنس","الگوی حرکت"]);
@@ -56,7 +56,7 @@ test("menu search: folds Persian letter variants and ZWNJ, matches title, hint o
  assert.deepEqual(ids(""),v.flatMap(s=>s.items.map(i=>i.id)),"empty query: everything");
  assert.deepEqual(ids("کاراکتر"),["characters"]);assert.equal(ids("شخص")[0],"image:character","«شخص» first (the hint «مشخص» also matches)");
  assert.deepEqual(ids("ويدئو"),["image:frame","video:reference","video:motion_reference"],"Arabic ي and ئ fold; the video group label matches, and «فریم» through its hint");
- assert.deepEqual(ids("کفش"),["image:outfit"],"the hint matches");assert.deepEqual(ids("رفرنس"),["image:reference","video:reference"]);
+ assert.deepEqual(ids("کفش"),["image:outfit"],"the hint matches");assert.deepEqual(ids("رفرنس"),["auto","image:reference","video:reference"]);
  assert.deepEqual(ids("عکس‌رفرنس"),["image:reference"],"ZWNJ and spaces ignored");
  assert.deepEqual(ids("ریش"),["image:hairstyle"],"the hint matches");
  assert.deepEqual(ids("PDF"),["file"]);
