@@ -22,8 +22,8 @@ export const MAX_REGIONS=5;
 export const REGION_COLORS:readonly {name:RegionColor;css:string;ink:string}[]=[
  {name:"red",css:"#ff1f4b",ink:"#fff"},{name:"blue",css:"#1f6bff",ink:"#fff"},{name:"green",css:"#39ff14",ink:"#0a0a0a"},{name:"yellow",css:"#fff01f",ink:"#0a0a0a"},{name:"magenta",css:"#ff00e6",ink:"#fff"}
 ];
-/** The subtle hard shadow that lifts a neon dot off any background: offset, no blur, see-through. */
-export const NEON_SHADOW="1.5px 1.5px 0 rgba(0,0,0,.35)";
+/** The thin, smooth edge that keeps a neon dot or tag apart from any background: a 1px ring at 25% opacity (owner, 2026-11-06). */
+export const NEON_SHADOW="0 0 0 1px rgba(255,255,255,.25)";
 export type RegionColor=RegionColorName;
 /** Five brush sizes, in screen pixels (so zooming in paints finer). */
 export const BRUSH_SIZES=[{id:"xs",px:6,labelFa:"خیلی کوچک"},{id:"s",px:12,labelFa:"کوچک"},{id:"m",px:22,labelFa:"متوسط"},{id:"l",px:38,labelFa:"بزرگ"},{id:"xl",px:64,labelFa:"خیلی بزرگ"}] as const;
