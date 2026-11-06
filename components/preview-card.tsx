@@ -4,6 +4,8 @@ import {Brush,Clapperboard,Download,Image as ImageIcon,Maximize2} from "lucide-r
 import {Badge,Button,Icon} from "@aleeforoughi/feather-react";
 import {displayTag} from "@/lib/attachments";
 import {jobStateFa} from "@/lib/projects";
+import {useJobLive} from "@/components/generation-preview";
+import type {JobView} from "@/lib/studio-types";
 
 export const OPEN_PREVIEW_FA="نمایش",CLOSE_PREVIEW_FA="بستن نمایش",BACK_TO_CHAT_FA="بازگشت به چت";
 export type PreviewOutput={kind:"image"|"video";url:string};
@@ -13,10 +15,13 @@ export type PreviewOutput={kind:"image"|"video";url:string};
  * or a video with its own player controls, or the kind's icon while there is no output yet. Under it, «پیش‌نمایش #تولید-۱», the job state and the message, as a
  * button that opens the preview panel on this generation. Shown for every generation with a preview, so the panel can always be brought back from the chat.
  */
-export function PreviewCard({tag,state,messageFa,output,video,onOpen,onEdit,onView}:{tag?:string;state:string;messageFa:string;output?:PreviewOutput;video?:boolean;onOpen:()=>void;
+export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,onEdit,onView}:{tag?:string;state:string;messageFa:string;
+ /** The job, for its live status line while it works (the same line as the preview panel). */job?:JobView;model?:string;
+ output?:PreviewOutput;video?:boolean;onOpen:()=>void;
  /** Full screen (the viewer): a tap on the image, or the corner button on a video. */onView?:()=>void;
  /** «ویرایش با قلم» on a finished image. */onEdit?:()=>void}){
  const label=OPEN_PREVIEW_FA+(tag?" "+displayTag(tag):"");
+ const live=useJobLive(job??{state,messageFa},video?"video":"image",model),line=live.active?live.status:messageFa;
  // The placeholder keeps a 16:9 frame; a real output sets its own frame, so the whole image or video shows at its own ratio (never cropped to fill).
  // A narrower output sits at the start (right, in Persian), at most 300px tall, with no letterbox around it.
  const frame="relative flex w-full items-center overflow-hidden rounded-control text-fg-secondary",media=frame+(output?" justify-start":" aspect-video justify-center bg-surface-hover");
@@ -42,7 +47,7 @@ export function PreviewCard({tag,state,messageFa,output,video,onOpen,onEdit,onVi
      <span className="type-label text-fg-primary">پیش‌نمایش{tag?" "+displayTag(tag):""}</span>
      <Badge variant="outline">{jobStateFa(state)}</Badge>
     </span>
-    <span className="line-clamp-2 type-caption text-fg-secondary">{messageFa}</span>
+    <span aria-live={live.active?"polite":undefined} className="line-clamp-2 type-caption text-fg-secondary">{line}</span>
    </span>
    <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-control text-fg-secondary group-hover/preview:text-fg-primary"><Icon icon={Maximize2} size={16} className="size-4"/></span>
   </button>

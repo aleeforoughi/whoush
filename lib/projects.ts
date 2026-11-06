@@ -29,6 +29,7 @@ export type NoModelSnapshot={message:string;plan?:PublicCreativePlan;reason?:Uns
  * Whoush-owned media paths only, so a finished job shows its result after a reload; `typicalMs` paces the progress estimate.
  */
 export type JobSnapshot={state:string;messageFa:string;tag?:string;jobId?:string;outputs?:{kind:"image"|"video";url:string}[];typicalMs?:number;
+ /** While it works: the live progress lines and stage facts (lib/job-progress.ts liveStatusFa). */progressFa?:string[];progressFacts?:{references?:number;brushEdit?:boolean};
  /** A video's cheap opening-frame draft (made on `draftModel`), not the video itself. */draft?:{modelName:string}};
 const OWNED_MEDIA_PATH=/^\/api\/generation\/media\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const isJobOutputs=(v:unknown)=>Array.isArray(v)&&v.length<=4&&v.every(o=>isObject(o)&&(o.kind==="image"||o.kind==="video")&&typeof o.url==="string"&&OWNED_MEDIA_PATH.test(o.url));
@@ -158,6 +159,8 @@ function checkMessage(m:unknown,i:number){
   case "job":if(!isObject(s)||typeof s.state!=="string"||typeof s.messageFa!=="string"||(s.tag!==undefined&&!(typeof s.tag==="string"&&isGenerationTag(s.tag)))
    ||(s.jobId!==undefined&&!(typeof s.jobId==="string"&&/^[0-9a-f-]{36}$/.test(s.jobId)))||(s.outputs!==undefined&&!isJobOutputs(s.outputs))
    ||(s.typicalMs!==undefined&&!(Number.isSafeInteger(s.typicalMs)&&(s.typicalMs as number)>0&&(s.typicalMs as number)<=3_600_000))
+   ||(s.progressFa!==undefined&&!(Array.isArray(s.progressFa)&&s.progressFa.length<=8&&s.progressFa.every(l=>typeof l==="string"&&l.length<=120)))
+   ||(s.progressFacts!==undefined&&!(isObject(s.progressFacts)&&Object.entries(s.progressFacts).every(([k,v])=>k==="references"?Number.isSafeInteger(v)&&(v as number)>=0&&(v as number)<=20:k==="brushEdit"&&v===true)))
    ||(s.draft!==undefined&&!(isObject(s.draft)&&typeof (s.draft as Record<string,unknown>).modelName==="string"&&((s.draft as Record<string,unknown>).modelName as string).length<=80)))bad("وضعیت تولید");break;
   default:bad("نوع پیام");
  }

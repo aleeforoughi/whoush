@@ -1,3 +1,4 @@
+import type {ProgressFacts} from "./job-progress";
 import type {GenerationProposal,UnsupportedReason} from "@/lib/types";
 import type {PublicCreativePlan} from "@/lib/creative-plan";
 
@@ -11,5 +12,7 @@ export type JobView={state:string;messageFa:string;outputs?:{kind:"image"|"video
  jobId?:string;
  /** The model's measured typical duration, when known: paces the progress estimate. */
  typicalMs?:number;
+ /** While it works: the lines written for this job, and the facts the stage lines state (lib/job-progress.ts liveStatusFa). */
+ progressFa?:string[];progressFacts?:ProgressFacts;
  /** Client only: the generation this job belongs to (#تولید-۱), for the preview's status line. */
  tag?:string};

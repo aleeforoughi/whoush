@@ -6,7 +6,7 @@ import {Badge,Icon} from "@aleeforoughi/feather-react";
 import {ShareActions} from "@/components/share-actions";
 import type {JobView} from "@/lib/studio-types";
 import {displayTag} from "@/lib/attachments";
-import {estimateProgress,isActiveJob,isOwnedOutputUrl,jobStatusFa} from "@/lib/job-progress";
+import {estimateProgress,isActiveJob,isOwnedOutputUrl,liveStatusFa} from "@/lib/job-progress";
 import {fa} from "@/lib/format";
 
 const STOPPED_FA:Record<string,string>={failed:"ناموفق",canceled:"لغو شد",released:"آزاد شد",lost:"در دسترس نیست"};
@@ -16,12 +16,14 @@ const STOPPED_FA:Record<string,string>={failed:"ناموفق",canceled:"لغو �
  * (state, kind and model: real facts only), a smooth progress bar and the estimated percentage («تخمینی»: the provider reports states, not progress, so it
  * eases towards 95% and reaches 100% only on completion). Done: the output when there is one, otherwise the demo note. Stopped: the reason, no bar.
  */
-export function GenerationPreview({job,kind="image",model,placeholder,onEdit,onView}:{job:JobView;kind?:"image"|"video";model?:string;placeholder:string;
- /** Full screen (the viewer). */onView?:()=>void;
- /** «ادیت» on a finished image (components/edit-image-button.tsx). */onEdit?:()=>void}){
+/**
+ * The live status of a job while it works (owner, 2026-11-07): the real stage, then the lines written for this job, moving forward with the time spent in
+ * the current state (measured by an interval restarted on every state change, so rendering stays pure). Also the estimated percentage. Shared by the preview
+ * panel and the chat card, so both say the same thing at the same moment.
+ */
+export function useJobLive(job:JobView,kind:"image"|"video"="image",model?:string):{active:boolean;percent:number|null;status:string}{
  const key=job.state+"|"+job.messageFa;
  const active=isActiveJob(job.state);
- // Time in the current state, measured by the interval (restarted whenever the state changes), so rendering stays pure.
  const [tick,setTick]=useState({key,elapsed:0});
  const elapsed=tick.key===key?tick.elapsed:0;
  useEffect(()=>{
@@ -29,11 +31,17 @@ export function GenerationPreview({job,kind="image",model,placeholder,onEdit,onV
   const start=Date.now(),id=window.setInterval(()=>setTick({key,elapsed:Date.now()-start}),300);
   return()=>window.clearInterval(id);
  },[active,key]);
- const percent=estimateProgress(job.state,elapsed,kind,job.typicalMs);
+ return {active,percent:estimateProgress(job.state,elapsed,kind,job.typicalMs),
+  status:liveStatusFa({state:job.state,elapsedMs:elapsed,kind,model,typicalMs:job.typicalMs,lines:job.progressFa,facts:job.progressFacts})};
+}
+
+export function GenerationPreview({job,kind="image",model,placeholder,onEdit,onView}:{job:JobView;kind?:"image"|"video";model?:string;placeholder:string;
+ /** Full screen (the viewer). */onView?:()=>void;
+ /** «ادیت» on a finished image (components/edit-image-button.tsx). */onEdit?:()=>void}){
+ const {active,percent,status}=useJobLive(job,kind,model);
  // Only a Whoush-owned output is shown (launch gate 8); a provider URL keeps the placeholder.
  const first=job.outputs?.[0],output=first&&typeof window!=="undefined"&&isOwnedOutputUrl(first.url,window.location.origin)?first:undefined;
  const stopped=STOPPED_FA[job.state],shown=output&&!active?output:undefined;
- const status=jobStatusFa(job.state,kind,model);
  // eslint-disable-next-line @next/next/no-img-element -- a Whoush-owned output shown in the preview
  const picture=shown?<img src={shown.url} alt={"تصویر "+(job.tag?displayTag(job.tag):"ساخته‌شده")} className="block h-auto max-h-[min(75dvh,56rem)] w-auto max-w-full rounded-control"/>:null;
  return <div className="flex flex-col gap-3">

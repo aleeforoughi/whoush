@@ -1,3 +1,4 @@
+import {fa} from "./format";
 /**
  * Estimated generation progress for the preview. The provider reports states (queued, running, completed), not progress, so the percentage is an ESTIMATE from the
  * time spent in the current state against a typical duration: it eases towards 95% and reaches 100% only when the provider reports completion. Never a claim of success.
@@ -47,6 +48,33 @@ export function jobStatusFa(state:string,kind:"image"|"video"="image",model?:str
  if(state==="released")return "رزرو نورون آزاد شد";
  if(state==="lost")return "وضعیت این تولید دیگر در دسترس نیست";
  return "در حال آماده‌سازی…";
+}
+/** Facts the stage lines may state (from the server's job): how many of the user's photos it keeps, and whether it is a brush edit. */
+export type ProgressFacts={references?:number;brushEdit?:boolean};
+/** The honest line once a run passes its typical time: no estimate, just that it is still working. */
+export const SLOWER_THAN_USUAL_FA="کمی بیشتر از معمول طول کشیده؛ هنوز داره ساخته می‌شه…";
+/**
+ * The live status line while a job works (owner, 2026-11-07: never one static text; accurate and matching what is happening). Before the model runs: the
+ * real stage (getting ready and sending, with the number of the user's photos; waiting in the model's queue). While it runs: the facts that hold for this
+ * job (a brush edit keeps the rest of the photo as it is; the photos it keeps), then the lines written for this job (lib/progress-narration.ts), paced
+ * evenly across the typical time and only ever moving forward. Past the typical time: that it is taking longer than usual. Finished or stopped: the
+ * fixed final line (jobStatusFa).
+ */
+export function liveStatusFa(i:{state:string;elapsedMs:number;kind?:"image"|"video";model?:string;typicalMs?:number;lines?:readonly string[];facts?:ProgressFacts}):string{
+ const kind=i.kind??"image",what=kind==="video"?"ویدیو":"تصویر",withModel=i.model?" با "+i.model:"",refs=i.facts?.references??0;
+ const photos=refs>0?(refs===1?"عکست":fa(refs)+" عکست"):"";
+ if(i.state==="quoted"||i.state==="approved"||i.state==="reserved")return (photos?"آماده‌سازی "+photos+" و ارسال درخواست":"آماده‌سازی و ارسال درخواست")+withModel+"…";
+ if(i.state==="submission_unknown")return "داریم مطمئن می‌شیم درخواست رسیده…";
+ if(i.state==="queued"||i.state==="submitted")return "درخواست رسید"+(i.model?" به "+i.model:"")+"؛ در صف ساخت…";
+ if(i.state!=="running")return jobStatusFa(i.state,kind,i.model);
+ const typ=i.typicalMs&&i.typicalMs>0?i.typicalMs:TYPICAL_MS[kind],t=Math.max(0,i.elapsedMs);
+ if(t>typ*1.15)return SLOWER_THAN_USUAL_FA;
+ const seq:string[]=["در حال ساخت "+what+withModel+"…"];
+ if(i.facts?.brushEdit)seq.push("فقط جاهایی که رنگ کردی عوض می‌شه؛ بقیهٔ عکس همون می‌مونه…");
+ else if(photos)seq.push("با "+photos+" به‌عنوان مرجع…");
+ if(i.lines?.length)seq.push(...i.lines);
+ // Even pace over the typical time; the index only grows with time, so a line never comes back.
+ return seq[Math.min(seq.length-1,Math.floor(t/(typ/seq.length)))];
 }
 /**
  * Whether an output URL may be shown: only a Whoush-owned one (a same-origin path). Provider URLs are never fetched or shown until outputs are mirrored to owned

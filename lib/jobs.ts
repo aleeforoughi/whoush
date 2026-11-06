@@ -1,10 +1,11 @@
-import {restoreTurnOutputs} from "./region-restore";
+import {regionEditFor,restoreTurnOutputs} from "./region-restore";
+import {narrateProgress,type ProgressNarrator} from "./progress-narration";
 import "server-only";
 import {createHash,randomUUID} from "node:crypto";
 import {findMediaModel,MEDIA_CATALOG_VERSION,type MediaConfiguration} from "./catalog";
 import {ReservationLedger} from "./ledger";
 import {NotCancelableError,providerForMode,SubmissionUnknownError,type MediaProvider,type ProviderOutput,type ProviderStatus} from "./media-provider";
-import {getPrivateMediaPrompt,privatePromptCompilerVersion} from "./orchestrator";
+import {getPrivateMediaPrompt,getTurnReferences,privatePromptCompilerVersion} from "./orchestrator";
 import {isStoredMediaUrl,readMedia} from "./media-store";
 import {evaluateOutputQA,type OutputQA} from "./output-qa";
 import {claimDevSubmit,devGenerationGate,generationGate,type GenerationMode} from "./policy";
@@ -26,7 +27,9 @@ export type Job={id:string;ownerId:string;idempotencyKey:string;quoteId:string;t
  neurons:number;chargedNeurons:number;state:JobState;providerRequestId?:string;
  /** Private provenance (docs/CANVAS_TO_IMAGE.md section 8): what was asked for and sent, so every result can be traced. Never public. */provenance?:JobProvenance;
  /** Private, only while `submission_unknown`: the exact request to resend with the same key (the same key with other parameters is refused), and how the
-  reconciliation is going. Cleared once the provider answers. */unknownSubmission?:{prompt:string;attempts:number;lastAttemptAt:string;reason:string};/** Why a failed job failed, when it is worth telling: the model refused the content. */failure?:"provider_refused";outputs:ProviderOutput[];qa:OutputQA;createdAt:string;updatedAt:string};
+  reconciliation is going. Cleared once the provider answers. */unknownSubmission?:{prompt:string;attempts:number;lastAttemptAt:string;reason:string};/** Why a failed job failed, when it is worth telling: the model refused the content. */failure?:"provider_refused";
+ /** Live progress lines written for this job (lib/progress-narration.ts), shown while the model works. Public: they describe the user's own piece. */progressFa?:string[];
+ outputs:ProviderOutput[];qa:OutputQA;createdAt:string;updatedAt:string};
 /**
  * What a job asked for and sent: the requested model, the endpoint called, the catalog and prompt-compiler versions, and the SHA-256 of the exact prompt
  * (so a result is traced to it without keeping the prompt on the job). `reportedModelId` is filled only when a provider reports which model ran; the
@@ -47,7 +50,7 @@ export type JobErrorCode="not_approved"|"moderation_blocked"|"idempotency_confli
 const JSTATUS:Record<JobErrorCode,number>={not_approved:400,moderation_blocked:422,idempotency_conflict:409,quote_already_used:409,illegal_transition:409,insufficient_balance:402};
 export class JobError extends Error{readonly status:number;constructor(readonly code:JobErrorCode){super(code);this.name="JobError";this.status=JSTATUS[code];}}
 export type Moderation={decision:"allow"|"block"|"review";source?:"lexical_demo"|"production"};
-export type JobDeps={store?:JobStore;ledger?:ReservationLedger;provider?:MediaProvider;now?:()=>Date};
+export type JobDeps={store?:JobStore;ledger?:ReservationLedger;provider?:MediaProvider;now?:()=>Date;/** Writes the live progress lines (tests pass a stub). */narrate?:ProgressNarrator};
 const G=globalThis as {__whoushJobStore?:JobStore;__whoushLedger?:ReservationLedger};
 // TODO(plan phase 02/03): durable DB store and transactional wallet ledger; these in-memory singletons are demo-only.
 const dStore=()=>(G.__whoushJobStore??=new InMemoryJobStore());
@@ -92,6 +95,7 @@ export async function executeApprovedQuote(i:{token:string;approved:boolean;idem
   const r=await provider.submit({modelId:job.modelId,prompt,configuration:job.configuration,idempotencyKey:job.id,...(references.length?{references}:{})});
   job.providerRequestId=r.providerRequestId;transition(job,"submitted",deps.now?.()??new Date());
   if(job.mode==="dev_live")console.info("[whoush dev-live] media submit",job.modelId,r.providerRequestId); // never the prompt
+  if(job.mode!=="demo")startNarration(job,prompt,store,deps.narrate??narrateProgress);
  }catch(e){
   if(job.mode==="dev_live")console.warn("[whoush dev-live] media submit failed:",e instanceof Error?e.message:"unknown"); // message only: no key, no prompt
   const at=deps.now?.()??new Date();
@@ -100,6 +104,14 @@ export async function executeApprovedQuote(i:{token:string;approved:boolean;idem
   else{ledger.release(job.id);transition(job,"released",at);}
  }
  store.save(job);return job;
+}
+/** Writes this job's progress lines in the background, after the submit (it never delays or blocks the generation; a failure leaves none). */
+function startNarration(job:Job,prompt:string,store:JobStore,narrate:ProgressNarrator){
+ const model=findMediaModel(job.modelId),refs=getTurnReferences(job.turnId),kept=new Set(job.references??[]);
+ const referencesFa=refs.filter(r=>kept.has(r.id)&&!/\(ناحیه\)$/.test(r.subjectFa)).map(r=>r.subjectFa);
+ void narrate({kind:model?.kind==="video"?"video":"image",mediaPrompt:prompt,referencesFa,brushEdit:Boolean(regionEditFor(job.turnId))})
+  .then(lines=>{if(!lines?.length)return;const cur=store.get(job.id);if(!cur)return;cur.progressFa=lines;store.save(cur);})
+  .catch(()=>{/* no lines */});
 }
 function finish(job:Job,ledger:ReservationLedger,to:"completed"|"completed_demo"|"failed"|"canceled",now:Date,outputs:ProviderOutput[]=[]){
  transition(job,to,now);
@@ -195,6 +207,9 @@ async function loadReferences(job:Job):Promise<{bytes:Uint8Array;mime:string}[]>
 const DEV_COMPLETED_FA="تست توسعه: خروجی واقعی ساخته شد و هیچ نورونی کسر نشد. خروجی باید بازبینی شود.";
 export function toPublicJob(j:Job){
  const typical=findMediaModel(j.modelId)?.typicalSeconds;
+ // While it works: the lines written for this job and the facts the fixed stage lines use (how many photos it keeps; a brush edit keeps the rest as is).
+ const active=!isTerminal(j.state),refs=j.references?.length??0,brush=active&&Boolean(regionEditFor(j.turnId));
  return {id:j.id,state:j.state,mode:j.mode,modelId:j.modelId,neurons:j.neurons,chargedNeurons:j.chargedNeurons,...(typical?{typicalMs:typical*1000}:{}),
+  ...(active&&j.progressFa?.length?{progressFa:[...j.progressFa]}:{}),...(active&&(refs||brush)?{progressFacts:{references:brush?Math.max(0,refs-1):refs,...(brush?{brushEdit:true}:{})}}:{}),
   outputs:j.state==="completed"?j.outputs.map(o=>({kind:o.kind,url:o.url})):[],qa:j.qa,messageFa:j.mode==="dev_live"&&j.state==="completed"?DEV_COMPLETED_FA:j.state==="failed"&&j.failure==="provider_refused"?REFUSED_FA:MSG[j.state]};
 }
