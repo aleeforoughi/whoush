@@ -22,7 +22,7 @@ import type {AttachmentPatch} from "@/components/attachment-chip";
 import {MediaViewer,type ViewerItem} from "@/components/media-viewer";
 import {MentionTextarea,attachmentOption,type MentionEditorHandle,type MentionOption} from "@/components/mention-textarea";
 import {GenerationRefCard} from "@/components/generation-ref-card";
-import {AgentQuestion,PlanStory} from "@/components/plan-details";
+import {AgentQuestion,PlanStory,RegionChip} from "@/components/plan-details";
 import {MessageText} from "@/components/message-text";
 import {AttachmentTray,type AttachmentProblem} from "@/components/attachment-tray";
 import {RailShell} from "@/components/studio-rail";
@@ -880,6 +880,10 @@ export function Studio(){
         {((m.attachments?.length??0)>0||(m.generationTags?.length??0)>0)&&<ul aria-label="پیوست‌های این پیام" className="flex max-w-full flex-wrap gap-2">
          {(m.generationTags??[]).flatMap(t=>{const g=generationMap.get(t);return g?[<GenerationRefCard key={t} snapshot={g} onMention={()=>mentionTag(t)} onOpen={()=>showGeneration(t)}/>]:[];})}
          {(m.attachments??[]).map(a=><SentAttachmentCard key={a.id} item={a} onPreview={()=>openViewer(a)} onMention={()=>mentionTag(a.tag)} review={reviews[a.id]} onBrush={a.kind==="image"&&!busy?()=>editAttachment(a,false):undefined}/>)}
+        </ul>}
+        {/* A brush edit shows each region with its comment under the photo, like comments on it (memory: a reopened chat shows them in the plan). */}
+        {(m.attachments??[]).some(a=>a.regionEdit)&&<ul aria-label="ادیت‌ها" className="flex flex-col gap-1.5">
+         {(m.attachments??[]).flatMap(a=>a.regionEdit?a.regionEdit.regions.map(r=><li key={a.id+"-"+r.n} className="flex items-start gap-2 type-body-sm text-fg-primary"><RegionChip n={r.n} color={r.color}/><span className="min-w-0 break-words">{r.note}</span></li>):[])}
         </ul>}
         {m.kind==="gif"
          ?<div><span className="sr-only">شما: </span><ChatGif gif={m.snapshot}/></div>

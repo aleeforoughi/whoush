@@ -282,6 +282,8 @@ export type PublicCreativePlan=Pick<CreativePlan,"intentSummaryFa"|"mediaKind"|"
  identityLock?:Pick<NonNullable<CreativePlan["identityLock"]>,"characterId"|"providedAngles"|"lockedAttributes"|"allowedChanges">;realism:{mode:CreativePlan["realism"]["mode"]};
  /** «سوژه اصلی»: the tag the whole work is built around (a file, generation or scene prop), when the user chose one. */
  mainSubject?:string;
+ /** A brush edit («ادیت»): each painted photo's regions (number, colour, comment), shown in the chat with the plan. */
+ regionEdits?:{tag:string;regions:{n:number;color:string;note:string}[]}[];
  /** The media attachments the plan uses, by tag and role. Never ids, hashes or file names. */
  references:PublicReference[];
  /** On an unsupported turn: the catalogue model that fits the work but cannot be offered yet (raw name and Persian blockers, never a price or id). */

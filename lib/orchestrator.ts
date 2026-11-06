@@ -471,7 +471,9 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // it); a scene prop only once the plan has its scene. Anything else is ignored: the choice is optional and never blocks the turn.
  const mainWanted=parsed.mainSubject??typedMainSubject(parsed.text);
  let mainTag=mainWanted&&[...files.map(f=>f.tag),...(parsed.generations??[]).map(g=>g.tag)].includes(mainWanted)?mainWanted:undefined;
- const withMain=(p:PublicCreativePlan):PublicCreativePlan=>mainTag?{...p,mainSubject:mainTag}:p;
+ // A brush edit's regions travel with the public plan, so the chat shows them (and a reopened chat still does).
+ const regionEdits=files0.filter(f=>f.regionEdit).map(f=>({tag:f.tag,regions:f.regionEdit!.regions.map(r=>({n:r.n,color:r.color,note:r.note}))}));
+ const withMain=(p:PublicCreativePlan):PublicCreativePlan=>({...p,...(mainTag?{mainSubject:mainTag}:{}),...(regionEdits.length?{regionEdits}:{})});
  const input={...parsed,text:mainTag?(parsed.text+mainSubjectNote(mainTag)).slice(0,4000):parsed.text,task,visualStyle:parsed.style?STYLE_VISUAL[parsed.style]:parsed.visualStyle,audio:deriveAudio({...parsed,attachments:files}),attachments:undefined,priorAttachments:undefined,generations:undefined,history:undefined,stagingOverride:undefined,aspectOverride:undefined};
  // A video attachment (every media attachment carries a role), a lip_sync audio or a start_frame or end_frame image makes the output a video even when the text sounds like
  // an image request. Such a turn always has media, so it stops at the media-review check below and never reaches `buildProposal`, which re-detects from the text.

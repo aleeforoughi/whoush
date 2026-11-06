@@ -1,6 +1,6 @@
 "use client";
 import {useState,type ReactNode} from "react";
-import {Aperture,ArrowLeft,Brush,Camera,CircleCheck,CircleHelp,Clapperboard,ImagePlus,Image as ImageIcon,Film,Focus,Frame,Gauge,Layers,Lightbulb,ListChecks,MessageCircle,Move,Paperclip,RefreshCw,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Star,Thermometer,Timer,Upload,type LucideIcon} from "lucide-react";
+import {Aperture,ArrowLeft,Brush,Camera,SlidersHorizontal,CircleCheck,CircleHelp,Clapperboard,ImagePlus,Image as ImageIcon,Film,Focus,Frame,Gauge,Layers,Lightbulb,ListChecks,MessageCircle,Move,Paperclip,RefreshCw,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Star,Thermometer,Timer,Upload,type LucideIcon} from "lucide-react";
 import {Accordion,AccordionContent,AccordionItem,AccordionTrigger,Badge,Button,Icon} from "@aleeforoughi/feather-react";
 import type {ReferenceRequest} from "@/lib/reference-needs";
 import {StagingEditor} from "@/components/staging-editor";
@@ -9,6 +9,7 @@ import {STYLE_LABEL_FA,type PublicCreativePlan} from "@/lib/creative-plan";
 import {CHARACTER_VIEWS} from "@/lib/characters";
 import {displayTag} from "@/lib/attachments";
 import {EDIT_CARD_OPEN_FA} from "@/lib/edit-card";
+import {NEON_SHADOW,REGION_COLORS,regionTagFa} from "@/lib/region-edit";
 import {fa,faText,faAuto} from "@/lib/format";
 import type {QuestionChoice} from "@/lib/media-intent";
 import {MAIN_SUBJECT_FA,shownTag} from "@/lib/main-subject";
@@ -70,6 +71,12 @@ function Line({icon,label,children}:{icon:LucideIcon;label:string;children:React
  * A generation plan as part of the conversation (not inside the card): the intent, the references, the camera or shot settings as icon chips and lines, and the hard constraints; preferences, identity lock, continuity, speech and the QA checklist
  * fold under «جزئیات بیشتر»; «بوم» (the adjustable scene) comes last. All of it is Whoush's proposal, not verified model settings.
  */
+/** A brush region's tag as a neon chip (the same colours as the editor). */
+export function RegionChip({n,color}:{n:number;color:string}){
+ const c=REGION_COLORS.find(x=>x.name===color)??REGION_COLORS[0];
+ return <bdi className="shrink-0 rounded-[4px] px-1.5 py-0.5 type-caption font-medium" style={{background:c.css,color:c.ink,boxShadow:NEON_SHADOW}}>{regionTagFa(n)}</bdi>;
+}
+export const DETAILS_FA="جزئیات و تنظیمات";
 export function PlanStory({plan,onStagingChange,focus}:{plan:PublicCreativePlan;
  /** A follow-up about one or two parts of the scene: «بوم» shows just those parts (expandable to all), and the rest of the plan folds under «جزئیات پرامپت». */
  focus?:readonly string[];
@@ -81,7 +88,10 @@ export function PlanStory({plan,onStagingChange,focus}:{plan:PublicCreativePlan;
  const camera=plan.camera&&lens?{...plan.camera,focalLengthMm:lens.focalLengthMm,aperture:lens.aperture,iso:lens.iso,focus:lens.fa}:plan.camera;
  const onArrange=onStagingChange?(s:Staging,aspect:string,changed:boolean)=>{setArranged(changed?s:null);onStagingChange(s,aspect,changed);}:undefined;
  const more=plan.softPreferences.length+plan.continuity.locks.length+plan.continuity.antiTeleport.length+plan.qaChecklist.length>0||identityLock||speech;
- const details=<>
+ // Clean and task-first (owner, 2026-11-06): the goal, the brush edits and the references show; camera, shot, constraints, the rest of the plan and «بوم»
+ // fold into one collapsed «جزئیات و تنظیمات», a tap away. A brush edit has no scene to arrange, so it has no «بوم».
+ const brush=plan.regionEdits?.length?plan.regionEdits:undefined;
+ const summary=<>
   <Section icon={Sparkles} title="هدف">
    <p className="type-body-sm text-fg-primary">{text(plan.intentSummaryFa)}</p>
    <ul className="flex flex-wrap gap-2">
@@ -95,6 +105,12 @@ export function PlanStory({plan,onStagingChange,focus}:{plan:PublicCreativePlan;
    <ul className="flex flex-wrap gap-2">{references.map(r=><li key={r.tag} className="inline-flex h-7 items-center gap-1.5 rounded-control bg-surface-subtle px-2 type-caption text-fg-primary">
     {plan.mainSubject===r.tag&&<Icon icon={Star} size={16} aria-hidden="true" className="size-3.5 shrink-0 fill-current text-primary"/>}<bdi className="type-label">{displayTag(r.tag)}</bdi><span className="text-fg-secondary">{r.labelFa}{r.roleSource==="inferred"&&" (انتخاب هووش)"}</span></li>)}</ul>
   </Section>}
+  {brush&&<Section icon={Brush} title="ادیت‌ها">
+   <ul className="flex flex-col gap-1.5">{brush.flatMap(b=>b.regions.map(r=><li key={b.tag+"-"+r.n} className="flex items-start gap-2 type-body-sm text-fg-primary">
+    <RegionChip n={r.n} color={r.color}/><span className="min-w-0 break-words">{r.note}</span></li>))}</ul>
+  </Section>}
+ </>;
+ const details=<>
   {camera&&<Section icon={Camera} title="دوربین">
    {lens&&<p className="type-caption text-primary">هووش لنز رو برای صحنه‌ای که چیدی دوباره انتخاب کرد.</p>}
    <ul className="flex flex-wrap gap-2">
@@ -127,29 +143,23 @@ export function PlanStory({plan,onStagingChange,focus}:{plan:PublicCreativePlan;
   {plan.hardConstraints.length>0&&<Section icon={ShieldCheck} title="قیدهای قطعی">
    <ul className="list-disc ps-5 type-body-sm text-fg-primary marker:text-fg-secondary">{plan.hardConstraints.map((x,i)=><li key={i}>{text(x)}</li>)}</ul>
   </Section>}
-  {more&&<Accordion>
-   <AccordionItem value="more" className="border-b-0">
-    <AccordionTrigger className="rounded-card px-3 py-2.5 hover:no-underline hover:bg-surface-hover aria-expanded:bg-surface-selected aria-expanded:hover:bg-surface-selected"><span className="flex items-center gap-2"><Icon icon={ListChecks} size={16} aria-hidden="true" className="size-4 text-fg-secondary group-aria-expanded/accordion-trigger:text-primary"/>جزئیات بیشتر</span></AccordionTrigger>
-    <AccordionContent>
-     <div className="flex flex-col gap-5 pt-3">
-      <p className="type-caption text-fg-secondary">این‌ها پیشنهاد کارگردانی هووش است، نه تنظیمات تأییدشدهٔ مدل.</p>
-      <Bullets title="ترجیحات" items={plan.softPreferences}/>
-      {identityLock&&<>
-       <Facts title="قفل هویت کاراکتر" rows={[["زاویه‌های مرجع",identityLock.providedAngles.map(a=>VIEW_TITLE[a]??a).join("، ")]]}/>
-       <Bullets title="ویژگی‌های ثابت" items={identityLock.lockedAttributes}/>
-       <Bullets title="تغییرات مجاز" items={identityLock.allowedChanges}/>
-      </>}
-      <Bullets title="قفل‌های پیوستگی" items={[...plan.continuity.locks,...plan.continuity.antiTeleport]}/>
-      {speech&&<Facts title="گفتار" rows={[["هم‌زمان‌سازی لب",LIP_SYNC[speech.lipSync.status]??speech.lipSync.status],["لهجه",ACCENT[speech.accent]??speech.accent]]}/>}
-      <Bullets title="فهرست کنترل کیفیت" items={plan.qaChecklist}/>
-     </div>
-    </AccordionContent>
-   </AccordionItem>
-  </Accordion>}
+  {more&&<div className="flex flex-col gap-5">
+   <p className="type-caption text-fg-secondary">این‌ها پیشنهاد کارگردانی هووش است، نه تنظیمات تأییدشدهٔ مدل.</p>
+   <Bullets title="ترجیحات" items={plan.softPreferences}/>
+   {identityLock&&<>
+    <Facts title="قفل هویت کاراکتر" rows={[["زاویه‌های مرجع",identityLock.providedAngles.map(a=>VIEW_TITLE[a]??a).join("، ")]]}/>
+    <Bullets title="ویژگی‌های ثابت" items={identityLock.lockedAttributes}/>
+    <Bullets title="تغییرات مجاز" items={identityLock.allowedChanges}/>
+   </>}
+   <Bullets title="قفل‌های پیوستگی" items={[...plan.continuity.locks,...plan.continuity.antiTeleport]}/>
+   {speech&&<Facts title="گفتار" rows={[["هم‌زمان‌سازی لب",LIP_SYNC[speech.lipSync.status]??speech.lipSync.status],["لهجه",ACCENT[speech.accent]??speech.accent]]}/>}
+   <Bullets title="فهرست کنترل کیفیت" items={plan.qaChecklist}/>
+  </div>}
  </>;
- const editor=staging&&<StagingEditor staging={staging} aspectRatio={plan.camera?.aspectRatio} mediaKind={plan.mediaKind} onChange={onArrange} focus={focus?expandFocus(focus):undefined}/>;
+ const editor=staging&&!brush&&<StagingEditor staging={staging} aspectRatio={plan.camera?.aspectRatio} mediaKind={plan.mediaKind} onChange={onArrange} focus={focus?expandFocus(focus):undefined}/>;
  // A focused follow-up: only the part of «بوم» it is about, with the rest of the plan folded away.
  if(focus?.length)return <div className="flex flex-col gap-3">
+  {summary}
   {editor}
   <Accordion>
    <AccordionItem value="plan" className="border-b-0">
@@ -158,8 +168,15 @@ export function PlanStory({plan,onStagingChange,focus}:{plan:PublicCreativePlan;
    </AccordionItem>
   </Accordion>
  </div>;
- // «بوم» closes the plan, right above the generation card (and before any question), so the scene sits next to what builds it.
- return <div className="flex flex-col gap-5">{details}{editor}</div>;
+ return <div className="flex flex-col gap-4">
+  {summary}
+  <Accordion>
+   <AccordionItem value="details" className="border-b-0">
+    <AccordionTrigger className="rounded-card px-3 py-2.5 hover:no-underline hover:bg-surface-hover aria-expanded:bg-surface-selected aria-expanded:hover:bg-surface-selected"><span className="flex items-center gap-2"><Icon icon={SlidersHorizontal} size={16} aria-hidden="true" className="size-4 shrink-0 text-fg-secondary"/><span className="type-label">{DETAILS_FA}</span></span></AccordionTrigger>
+    <AccordionContent><div className="flex flex-col gap-5 pt-3">{details}{editor}</div></AccordionContent>
+   </AccordionItem>
+  </Accordion>
+ </div>;
 }
 
 export const NEEDS_INPUT_FA="نیاز به پاسخ تو";
