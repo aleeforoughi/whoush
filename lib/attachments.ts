@@ -463,6 +463,8 @@ export function validateAttachmentSet(list:readonly {bytes:number}[]):{ok:true}|
 export type LocalAttachment={
  id:string;tag:string;kind:AttachmentKind;mime:string;bytes:number;sha256:string;name:string;role?:AttachmentRole;
  width?:number;height?:number;durationSeconds?:number;textExcerpt?:string;speech?:AttachmentSpeech;previewUrl?:string;
+ /** «ویرایش با قلم» (lib/region-edit.ts): each painted region (number, colour, what to change) and the marked copy (its blob kept by the studio under `guideId`). Memory only. */
+ regionEdit?:{regions:{n:number;color:RegionColorName;note:string}[];guideId:string;guideUrl:string};
 };
 /** Goes back to "Whoush picks automatically": no role, and no speech details that belonged to one. */
 export function withoutRole(a:LocalAttachment):LocalAttachment{
@@ -480,8 +482,12 @@ export function withRole(a:LocalAttachment,role:AttachmentRole):LocalAttachment{
 }
 /** The request payload: metadata and text excerpts only. No bytes, no file name, no object URL. Speech details travel only with the `lip_sync` role. */
 /** The attachment as the agent receives it (details only, never the bytes); `reviewId`: the server's safety check of a photo, when it was found safe. */
-export function toWireAttachment(a:LocalAttachment,reviewId?:string){
- return {...(reviewId&&a.kind==="image"?{reviewId}:{}),id:a.id,tag:a.tag,kind:a.kind,mime:a.mime,bytes:a.bytes,sha256:a.sha256,...(a.role?{role:a.role}:{}),
+/** The five region colours of «ویرایش با قلم», by the English name the prompt uses (lib/region-edit.ts draws them). */
+export const REGION_COLOR_NAMES=["red","blue","green","yellow","magenta"] as const;
+export type RegionColorName=(typeof REGION_COLOR_NAMES)[number];
+export const REGION_COLOR_FA:Record<RegionColorName,string>={red:"قرمز",blue:"آبی",green:"سبز",yellow:"زرد",magenta:"بنفش"};
+export function toWireAttachment(a:LocalAttachment,reviewId?:string,guideReviewId?:string){
+ return {...(reviewId&&a.kind==="image"?{reviewId}:{}),...(a.regionEdit&&guideReviewId&&a.kind==="image"?{regionEdit:{guideReviewId,regions:a.regionEdit.regions.map(r=>({n:r.n,color:r.color,note:r.note}))}}:{}),id:a.id,tag:a.tag,kind:a.kind,mime:a.mime,bytes:a.bytes,sha256:a.sha256,...(a.role?{role:a.role}:{}),
   ...(a.width!==undefined?{width:a.width}:{}),...(a.height!==undefined?{height:a.height}:{}),
   ...(a.durationSeconds!==undefined?{durationSeconds:a.durationSeconds}:{}),
   ...(a.textExcerpt!==undefined?{textExcerpt:a.textExcerpt}:{}),...(a.speech&&a.role==="lip_sync"?{speech:a.speech}:{})};

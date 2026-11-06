@@ -14,7 +14,7 @@ import {InsertMenu} from "@/components/insert-menu";
 import {VoiceMode} from "@/components/voice-mode";
 import {UploadSlotCard} from "@/components/upload-slot";
 import {SLOTS_FULL_FA,addSlot,composerCards,fillSlotWith,forgetAttachment,removeSlot,reserveSlotTag,slotFor,tagsInUse,uploadRejection,type Upload,type UploadSlot} from "@/lib/upload-slots";
-import {AttachmentCard,SentAttachmentCard} from "@/components/attachment-card";
+import {AttachmentCard,MentionRefCard,SentAttachmentCard} from "@/components/attachment-card";
 import {MessageActions,useNow} from "@/components/message-actions";
 import {ModeControl,SEND_TONE,useMode} from "@/components/mode-control";
 import {StyleControl,useStyleSetting} from "@/components/style-control";
@@ -32,6 +32,8 @@ import {characterCoverage,characterUsability,type CharacterProfile} from "@/lib/
 import {fa} from "@/lib/format";
 import {REVIEW_FAILED_FA,WAITING_FA,photoReviewEnabled,reviewPhoto,reviewStopFa,type PhotoReview} from "@/lib/photo-review";
 import {PhotoReviewOverlay,ReviewRing} from "@/components/photo-review-badge";
+import {RegionEditor} from "@/components/region-editor";
+import {renderGuide,type Region} from "@/lib/region-edit";
 import {STORAGE_FULL_FA,getProject,listAssets,saveAsset,saveProject} from "@/lib/project-store";
 import {MAX_MESSAGES,assetToAttachment,attachmentToAsset,autoTitle,rerunSource,uniqueById,answerBrief,historyFor,toggleReaction,generationTagsIn,referencedGenerations,toGenerationRef,withGenerationTags,type GifSnapshot,type ProposalSnapshot,type JobSnapshot,type Project,type StoredMessage} from "@/lib/projects";
 import {MAX_GENERATION_REFS,type ReactionEmoji,type Staging} from "@/lib/creative-plan";
@@ -53,6 +55,7 @@ import type {GenerationStyle} from "@/lib/creative-plan";
 import {UNSUPPORTED_REASONS,type AgentPreference,type UnsupportedReason} from "@/lib/types";
 import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,acceptFor,bumpTagCounters,displayTag,insertMention,lowestFreeTag,nextGenerationTag,newTagCounters,parseMentions,tooManyFa,toWireAttachment,validateAttachmentSet,withRole,withoutRole,type AttachmentKind,type AttachmentRole,type LocalAttachment} from "@/lib/attachments";
 import {readAttachment} from "@/lib/attachment-files";
+import {REGION_COLOR_FA,isGenerationTag,splitMentions} from "@/lib/attachments";
 import type {InsertItem} from "@/lib/insert-menu";
 import {nearestAspectRatio} from "@/lib/aspect";
 /** The preview panel's «تدوین» (editing) tab: off for now, until editing exists. */
@@ -163,6 +166,8 @@ export function Studio(){
  const reviewsRef=useRef<Record<string,PhotoReview>>({});
  const reviewJobs=useRef(new Map<string,Promise<PhotoReview>>());
  const [waitingFor,setWaitingFor]=useState<LocalAttachment[]|null>(null);
+ // «ویرایش با قلم» (lib/region-edit.ts): the photo open in the full-screen editor, and whether it came from the chat box.
+ const [editing,setEditing]=useState<{a:LocalAttachment;fromTray:boolean}|null>(null);
  useEffect(()=>{let alive=true;void photoReviewEnabled().then(on=>{if(alive)setReviewOn(on);});return()=>{alive=false;};},[]);
  const savedAssets=useRef(new Set<string>());
  const latest=useRef({messages,mode,style,character:null as CharacterProfile|null});
@@ -192,9 +197,20 @@ export function Studio(){
  const sceneMsg=[...messages].reverse().find(m=>m.kind==="proposal"&&m.snapshot.plan?.staging);
  const scene=sceneMsg&&sceneMsg.kind==="proposal"?(sceneEdit?.id===sceneMsg.id?sceneEdit.staging:sceneMsg.snapshot.plan.staging):undefined;
  const sceneGen=sceneMsg&&sceneMsg.kind==="proposal"&&sceneMsg.snapshot.tag?" · "+displayTag(sceneMsg.snapshot.tag):"";
- const mentionOptions:MentionOption[]=[...conversation.map(attachmentOption),...[...generationMap.values()].map(g=>({id:"gen-"+g.tag,tag:g.tag,badgeFa:"تولید",captionFa:g.intentSummaryFa})),
-  ...(scene?.props?propTags(scene.props).map((t,i)=>({id:"prop-"+i,tag:t,badgeFa:"پراپ",captionFa:scene.props![i].label+sceneGen})):[]),
-  ...(scene?lightTags(scene.lights).map((t,i)=>({id:"light-"+i,tag:t,badgeFa:"نور",captionFa:LIGHT_SOURCE_FA[scene.lights[i].source]+sceneGen})):[])];
+ // Every # option carries a thumbnail (owner, 2026-11-06): the photo, the generated image, or the kind's icon.
+ const genThumb=(tag:string)=>(messages.find(m=>m.kind==="job"&&m.snapshot.tag===tag)?.snapshot as {outputs?:{kind:string;url:string}[]}|undefined)?.outputs?.find(o=>o.kind==="image")?.url;
+ const mentionOptions:MentionOption[]=[...conversation.map(attachmentOption),...[...generationMap.values()].map(g=>{const u=genThumb(g.tag);return {id:"gen-"+g.tag,tag:g.tag,badgeFa:"تولید",captionFa:g.intentSummaryFa,thumbKind:g.plan.mediaKind==="video"?"video" as const:"image" as const,...(u?{thumbUrl:u}:{})};}),
+  ...(scene?.props?propTags(scene.props).map((t,i)=>({id:"prop-"+i,tag:t,badgeFa:"پراپ",captionFa:scene.props![i].label+sceneGen,thumbKind:"prop" as const})):[]),
+  ...(scene?lightTags(scene.lights).map((t,i)=>({id:"light-"+i,tag:t,badgeFa:"نور",captionFa:LIGHT_SOURCE_FA[scene.lights[i].source]+sceneGen,thumbKind:"light" as const})):[])];
+ // A # in the draft that points at a photo sent earlier or a generation shows as a card beside the new files (owner, 2026-11-06), like a reference.
+ const sentFiles=uniqueById([...messages].reverse().flatMap(m=>m.attachments??[]));
+ type DraftRef={tag:string;kind:AttachmentKind|"generation";thumbUrl?:string;label:string;file?:LocalAttachment};
+ const draftRefs=[...new Set(parseMentions(draft))].filter(t=>!attachments.some(a=>a.tag===t)).flatMap((t):DraftRef[]=>{
+  if(isGenerationTag(t)){const g=generationMap.get(t);return g?[{tag:t,kind:"generation" as const,thumbUrl:genThumb(t),label:"تولید · "+(g.plan.mediaKind==="video"?"ویدیو":"عکس")}]:[];}
+  const a=sentFiles.find(x=>x.tag===t);return a?[{tag:t,kind:a.kind,thumbUrl:a.kind==="image"?a.previewUrl:undefined,label:"از همین گفت‌وگو",file:a}]:[];
+ });
+ /** Takes a # out of the draft (every spelling of it), from its card's ✕. */
+ const dropMention=(tag:string)=>setDraft(d=>splitMentions(d).map(seg=>"tag" in seg?(seg.tag===tag?"":seg.raw):seg.text).join("").replace(/[ \t]{2,}/g," ").trim());
  /** Keep ?project= and ?character= in step with the state without reloading or adding history entries. */
  function syncUrl(project:string|null,character:string|null){
   const query=new URLSearchParams(window.location.search);
@@ -437,6 +453,51 @@ export function Studio(){
   if(s)setAnnounce("کارت "+s.titleFa+" حذف شد.");
   requestAnimationFrame(()=>promptRef.current?.focus());
  }
+ /** The marked copy of a photo, as its own checkable photo (same tag, its own id). */
+ const guideOf=(a:LocalAttachment):LocalAttachment|undefined=>a.regionEdit?{...a,id:a.regionEdit.guideId,regionEdit:undefined}:undefined;
+ /** Opens a photo of this chat (in the chat box or sent) in the full-screen editor; it is checked meanwhile, so it is ready when the edit goes. */
+ function editAttachment(a:LocalAttachment,fromTray:boolean){
+  if(a.kind!=="image"||!a.previewUrl||!blobs.current.get(a.id)){setError("این عکس دیگه توی این مرورگر نیست؛ دوباره اضافه‌ش کن.");return;}
+  setEditing({a:{...a,regionEdit:undefined},fromTray});if(reviewOn)void checkPhoto(a);
+ }
+ /** Opens a generated image in the editor: it joins the chat as a new photo (#تصویر-n), checked like any photo. */
+ async function editGeneration(tag:string){
+  const snap=messages.find(m=>m.kind==="job"&&m.snapshot.tag===tag)?.snapshot as {outputs?:{kind:string;url:string}[]}|undefined;
+  const url=snap?.outputs?.find(o=>o.kind==="image"&&isOwnedOutputUrl(o.url,window.location.origin))?.url;
+  if(!url){setError("تصویر این تولید هنوز آماده نیست.");return;}
+  try{
+   const blob=await fetch(url).then(r=>{if(!r.ok)throw new Error();return r.blob();});
+   const read=await readAttachment(new File([blob],displayTag(tag).slice(1)+".jpg",{type:blob.type||"image/jpeg"}));
+   const newTag=lowestFreeTag([...tagsInUse(messages.flatMap(m=>m.attachments??[]),slots),...attachments.map(x=>x.tag)],"image");
+   if(!newTag||!read.previewUrl){setError(ATTACHMENT_ERRORS_FA.tagsExhausted);return;}
+   tagCounters.current=bumpTagCounters(tagCounters.current,newTag);
+   const a:LocalAttachment={...read,tag:newTag};urls.current.add(read.previewUrl);blobs.current.set(a.id,blob);
+   setEditing({a,fromTray:false});if(reviewOn)void checkPhoto(a);
+  }catch{setError("تصویر این تولید باز نشد. دوباره امتحان کن.");}
+ }
+ /** A photo or generation of this chat by its tag, for the edit card: its thumbnail, and opening it in the editor. */
+ function thumbFor(tag:string):string|undefined{
+  if(isGenerationTag(tag))return (messages.find(m=>m.kind==="job"&&m.snapshot.tag===tag)?.snapshot as {outputs?:{kind:string;url:string}[]}|undefined)?.outputs?.find(o=>o.kind==="image")?.url;
+  return [...attachments,...messages.flatMap(m=>m.attachments??[])].find(a=>a.tag===tag)?.previewUrl;
+ }
+ async function openEditFor(tag:string){
+  if(isGenerationTag(tag))return editGeneration(tag);
+  const inTray=attachments.find(a=>a.tag===tag),sent=[...messages].reverse().flatMap(m=>m.attachments??[]).find(a=>a.tag===tag);
+  if(inTray)editAttachment(inTray,true);else if(sent)editAttachment(sent,false);
+ }
+ /** The editor is done: the marked copy is made and checked, and the edit goes straight to Whoush (as the answer, when Whoush asked for it). */
+ async function applyEdit({masks,regions}:{masks:HTMLCanvasElement[];regions:Region[]}){
+  const e=editing;if(!e)return;setEditing(null);
+  const blob=blobs.current.get(e.a.id);if(!blob)return;
+  let guide:Blob;try{guide=await renderGuide(blob,masks);}catch{setError("علامت‌ها ذخیره نشد. دوباره امتحان کن.");return;}
+  const guideId=crypto.randomUUID(),guideUrl=URL.createObjectURL(guide);urls.current.add(guideUrl);blobs.current.set(guideId,guide);
+  const edited:LocalAttachment={...e.a,regionEdit:{regions,guideId,guideUrl}};
+  if(reviewOn)void checkPhoto(guideOf(edited)!);
+  if(e.fromTray){setAttachments(l=>l.filter(x=>x.id!==e.a.id));setSlots(l=>forgetAttachment(l,e.a.id));}
+  const text=displayTag(edited.tag)+" رو ادیت کن — "+regions.map(r=>"ادیت "+fa(r.n)+" ("+REGION_COLOR_FA[r.color]+"): "+r.note).join("؛ ");
+  const asked=questionAwaitingAnswer();
+  void runTurn(text,[edited],[],false,asked?answerBrief(asked.brief??asked.text,text):undefined);
+ }
  function removeAttachment(id:string){
   const a=attachments.find(x=>x.id===id);if(a)releaseUrl(a);
   if(a&&mainSubject===a.tag)setMainSubject(null);
@@ -602,7 +663,8 @@ export function Studio(){
    // in the chat with their progress and then goes on by itself. Earlier photos that cannot be used are simply left out.
    let prior=priorPhotos;
    if(reviewOn){
-    const mine=outgoing.filter(a=>a.kind==="image"),unsure=[...mine,...prior].filter(a=>reviewsRef.current[a.id]?.state!=="safe");
+    // A painted photo's marked copy is checked like the photo itself.
+    const mine=outgoing.filter(a=>a.kind==="image").flatMap(a=>{const g=guideOf(a);return g?[a,g]:[a];}),unsure=[...mine,...prior].filter(a=>reviewsRef.current[a.id]?.state!=="safe");
     if(unsure.length){
      setWaitingFor(unsure);
      await Promise.all(unsure.map(a=>checkPhoto(a)));
@@ -616,13 +678,13 @@ export function Studio(){
     }
    }
    setThinking({stage:"reading",done:[],script:replyScriptFor(sentText)});
-   const body=()=>JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(a=>toWireAttachment(a,reviewIdOf(a)))}:{}),...(prior.length?{priorAttachments:prior.map(a=>toWireAttachment(a,reviewIdOf(a)))}:{}),...(main?{mainSubject:main}:{}),...(generations.length?{generations}:{})}),onStage=(stage:TurnStage)=>setThinking(t=>t&&(t.stage===stage?t:{...t,done:[...t.done,t.stage],stage}));
-   type ErrorBody={error?:string;reason?:UnsupportedReason;unreviewed?:unknown;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"];references?:unknown;choices?:unknown};
+   const body=()=>JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(a=>toWireAttachment(a,reviewIdOf(a),a.regionEdit?reviewIdOf(guideOf(a)!):undefined))}:{}),...(prior.length?{priorAttachments:prior.map(a=>toWireAttachment(a,reviewIdOf(a)))}:{}),...(main?{mainSubject:main}:{}),...(generations.length?{generations}:{})}),onStage=(stage:TurnStage)=>setThinking(t=>t&&(t.stage===stage?t:{...t,done:[...t.done,t.stage],stage}));
+   type ErrorBody={editCard?:{tag?:unknown};error?:string;reason?:UnsupportedReason;unreviewed?:unknown;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"];references?:unknown;choices?:unknown};
    const postTurn=async()=>{const res=await postAgentTurn(body(),onStage);return {r:res,errorBody:(res.ok?{}:await res.json().catch(()=>({}))) as ErrorBody};};
    // The server no longer knows a check (it restarted): check those photos again, then send once more.
    const recheck=async(first:Awaited<ReturnType<typeof postTurn>>)=>{
     const unreviewed=Array.isArray(first.errorBody.unreviewed)?first.errorBody.unreviewed:[];
-    const again=reviewOn&&first.r.status===422&&first.errorBody.reason==="media_review"?uniqueById([...outgoing,...prior]).filter(a=>unreviewed.includes(a.tag)):[];
+    const again=reviewOn&&first.r.status===422&&first.errorBody.reason==="media_review"?uniqueById([...outgoing,...prior]).filter(a=>unreviewed.includes(a.tag)).flatMap(a=>{const g=guideOf(a);return g?[a,g]:[a];}):[];
     if(!again.length)return first;
     setThinking(null);setWaitingFor(again);
     await Promise.all(again.map(a=>checkPhoto(a,true)));
@@ -642,7 +704,8 @@ export function Studio(){
     }
     if(r.status===422&&errorBody.error==="needs_input"&&typeof errorBody.question==="string"){
      const references=isReferenceRequest(errorBody.references)?errorBody.references:undefined,choices=isQuestionChoices(errorBody.choices)?errorBody.choices:undefined;
-     setMessages(m=>[...m,agentItem({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"",kind:"question",snapshot:{question:errorBody.question!,...(references?{references}:{}),...(choices?{choices}:{})}})]);whoushReacts(errorBody.reaction);
+     const editCard=typeof errorBody.editCard?.tag==="string"?{tag:errorBody.editCard.tag}:undefined;
+     setMessages(m=>[...m,agentItem({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"",kind:"question",snapshot:{question:errorBody.question!,...(references?{references}:{}),...(choices?{choices}:{}),...(editCard?{editCard}:{})}})]);whoushReacts(errorBody.reaction);
      adoptProject(firstText,characterId);
      return;
     }
@@ -753,7 +816,7 @@ export function Studio(){
      {/* «تولیدها»: every generation of the chat in one scroll with a thumbnail strip (its own two scroll areas, so the strip stays put). */}
      <TabsContent value="generations" className="flex min-h-0 flex-1 flex-col">
       {galleryItems.length>0
-       ?<GenerationGallery items={galleryItems} focus={galleryFocus} placeholder="خروجی تصویری واقعی هنوز فعال نیست"/>
+       ?<GenerationGallery items={galleryItems} focus={galleryFocus} placeholder="خروجی تصویری واقعی هنوز فعال نیست" onEdit={busy?undefined:tag=>{setPreviewOpen(false);void editGeneration(tag);}}/>
        :<div className="p-4 lg:p-6"><div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-card border border-line-secondary bg-surface-subtle p-8 text-center md:aspect-video">
         <Icon icon={Clapperboard} size={32} className="text-fg-secondary" aria-hidden="true"/>
         <p className="type-body text-fg-primary">{preview}</p>
@@ -816,7 +879,7 @@ export function Studio(){
        if(m.role==="user")return <div key={m.id} className="group flex flex-col items-start gap-2">
         {((m.attachments?.length??0)>0||(m.generationTags?.length??0)>0)&&<ul aria-label="پیوست‌های این پیام" className="flex max-w-full flex-wrap gap-2">
          {(m.generationTags??[]).flatMap(t=>{const g=generationMap.get(t);return g?[<GenerationRefCard key={t} snapshot={g} onMention={()=>mentionTag(t)} onOpen={()=>showGeneration(t)}/>]:[];})}
-         {(m.attachments??[]).map(a=><SentAttachmentCard key={a.id} item={a} onPreview={()=>openViewer(a)} onMention={()=>mentionTag(a.tag)} review={reviews[a.id]}/>)}
+         {(m.attachments??[]).map(a=><SentAttachmentCard key={a.id} item={a} onPreview={()=>openViewer(a)} onMention={()=>mentionTag(a.tag)} review={reviews[a.id]} onBrush={a.kind==="image"&&!busy?()=>editAttachment(a,false):undefined}/>)}
         </ul>}
         {m.kind==="gif"
          ?<div><span className="sr-only">شما: </span><ChatGif gif={m.snapshot}/></div>
@@ -843,7 +906,8 @@ export function Studio(){
           <span className="sr-only">هووش: </span><TypeOut text={m.text} animate={fresh.has(m.id)}/>
          </p>}
         {m.kind==="job"&&<PreviewCard tag={m.snapshot.tag} state={m.snapshot.state} messageFa={m.snapshot.messageFa}
-         output={(m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined))?.find(o=>isOwnedOutputUrl(o.url,window.location.origin))} video={m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false} onOpen={()=>openPreview(m.snapshot,m.id)}/>}
+         output={(m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined))?.find(o=>isOwnedOutputUrl(o.url,window.location.origin))} video={m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false} onOpen={()=>openPreview(m.snapshot,m.id)}
+         onEdit={m.snapshot.tag&&!busy?()=>void editGeneration(m.snapshot.tag!):undefined}/>}
         {/* «بوم» is adjustable on every generation: on the live one it feeds «بساز» directly; on an older one its card offers a revision with that scene. */}
         {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan&&<PlanStory plan={m.snapshot.plan} focus={m.kind==="proposal"?refineFocus(m.snapshot.focus,messages.slice(0,i).reverse().find(x=>x.role==="user")?.text):undefined}
          onStagingChange={m.kind==="proposal"?(s,aspect,changed)=>{
@@ -861,6 +925,7 @@ export function Studio(){
         {/* The question is always the last item of the agent's message; it waits for an answer until something is sent after it. */}
         {m.kind==="question"&&<AgentQuestion question={m.snapshot.question} waiting={i===messages.length-1&&!busy} onAnswer={()=>promptRef.current?.focus()}
          choices={m.snapshot.choices} onChoose={reply=>answer(reply)}
+         editCard={m.snapshot.editCard?{tag:m.snapshot.editCard.tag,thumbUrl:thumbFor(m.snapshot.editCard.tag)}:undefined} onEdit={m.snapshot.editCard?()=>void openEditFor(m.snapshot.editCard!.tag):undefined}
          references={m.snapshot.references} uploaded={m.snapshot.references?Object.fromEntries(m.snapshot.references.angles.map(a=>[a.id,Boolean(slots.find(s=>s.id==="ref-"+m.id+"-"+a.id)?.attachmentId)])):undefined}
          onUpload={m.snapshot.references?a=>uploadForRequest(m.id,m.snapshot.references!,a):undefined}
          onContinue={m.snapshot.references&&i===messages.length-1&&!busy?()=>answer(replyScriptFor(m.text)==="finglish"?"aksa ro gozashtam":"عکس‌ها رو گذاشتم"):undefined}/>}
@@ -869,6 +934,7 @@ export function Studio(){
         <div className="-mt-2">{actions}</div>
        </div>;
       })}
+      {editing&&editing.a.previewUrl&&<RegionEditor tag={editing.a.tag} photoUrl={editing.a.previewUrl} onClose={()=>setEditing(null)} onDone={r=>void applyEdit(r)}/>}
       {waitingFor&&<div role="status" aria-live="polite" className="flex max-w-prose flex-col gap-2 rounded-card bg-surface-subtle p-3">
        <span className="type-body text-fg-primary">{WAITING_FA}</span>
        <ul className="flex flex-wrap gap-2">{waitingFor.map(a=>{const r=reviews[a.id];return <li key={a.id} className="relative size-16 overflow-hidden rounded-control bg-surface-hover">
@@ -905,10 +971,12 @@ export function Studio(){
         <GifPicker onPick={sendGif} trigger={<button type="button" aria-label="فرستادن گیف" title="گیف" className={COMPOSER_TOOL+" type-label"}>GIF</button>}/>
        </>}
       </div>}
-      top={cards.length>0?<ul aria-label="پیوست‌ها" className="flex items-stretch gap-2 overflow-x-auto pb-2">
+      top={cards.length>0||draftRefs.length>0?<ul aria-label="پیوست‌ها" className="flex items-stretch gap-2 overflow-x-auto pb-2">
+       {draftRefs.map(r=><MentionRefCard key={"ref-"+r.tag} tag={r.tag} thumbUrl={r.thumbUrl} kind={r.kind} label={r.label} onRemove={()=>dropMention(r.tag)}
+        onPreview={r.file?()=>openViewer(r.file!):undefined}/>)}
        {cards.map(c=>c.type==="slot"
         ?<UploadSlotCard key={c.slot.id} slot={c.slot} disabled={reading} onUpload={()=>openSlotPicker(c.slot)} onDropFiles={f=>void fillSlot(c.slot,f)} onRemove={()=>dropSlot(c.slot.id)}/>
-        :<AttachmentCard key={c.attachment.id} item={c.attachment} review={reviews[c.attachment.id]} onRetryReview={()=>void checkPhoto(c.attachment,true)} onChange={patch=>patchAttachment(c.attachment.id,patch)} onRemove={()=>removeAttachment(c.attachment.id)} onPreview={()=>openViewer(c.attachment)} onMention={()=>mentionTag(c.attachment.tag)}
+        :<AttachmentCard key={c.attachment.id} item={c.attachment} onBrush={()=>editAttachment(c.attachment,true)} review={reviews[c.attachment.id]} onRetryReview={()=>void checkPhoto(c.attachment,true)} onChange={patch=>patchAttachment(c.attachment.id,patch)} onRemove={()=>removeAttachment(c.attachment.id)} onPreview={()=>openViewer(c.attachment)} onMention={()=>mentionTag(c.attachment.tag)}
          main={mainSubject===c.attachment.tag} onToggleMain={()=>toggleMain(c.attachment.tag)}/>)}
       </ul>:undefined}
       endPad={voice.enabled?"pe-24":"pe-14"}

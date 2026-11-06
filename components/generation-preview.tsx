@@ -1,4 +1,5 @@
 "use client";
+import {EditImageButton} from "@/components/edit-image-button";
 import {useEffect,useState} from "react";
 import {Clapperboard,Image as ImageIcon} from "lucide-react";
 import {Badge,Icon} from "@aleeforoughi/feather-react";
@@ -15,7 +16,8 @@ const STOPPED_FA:Record<string,string>={failed:"ناموفق",canceled:"لغو �
  * (state, kind and model: real facts only), a smooth progress bar and the estimated percentage («تخمینی»: the provider reports states, not progress, so it
  * eases towards 95% and reaches 100% only on completion). Done: the output when there is one, otherwise the demo note. Stopped: the reason, no bar.
  */
-export function GenerationPreview({job,kind="image",model,placeholder}:{job:JobView;kind?:"image"|"video";model?:string;placeholder:string}){
+export function GenerationPreview({job,kind="image",model,placeholder,onEdit}:{job:JobView;kind?:"image"|"video";model?:string;placeholder:string;
+ /** «ادیت» on a finished image (components/edit-image-button.tsx). */onEdit?:()=>void}){
  const key=job.state+"|"+job.messageFa;
  const active=isActiveJob(job.state);
  // Time in the current state, measured by the interval (restarted whenever the state changes), so rendering stays pure.
@@ -40,7 +42,8 @@ export function GenerationPreview({job,kind="image",model,placeholder}:{job:JobV
      ?(shown.kind==="video"
       ?<video src={shown.url} controls playsInline preload="metadata" aria-label={"ویدیوی "+(job.tag?displayTag(job.tag):"ساخته‌شده")} className="block h-auto max-h-[min(75dvh,56rem)] w-full rounded-control bg-background object-contain"/>
       // eslint-disable-next-line @next/next/no-img-element -- a Whoush-owned output shown in the preview
-      :<img src={shown.url} alt={"تصویر "+(job.tag?displayTag(job.tag):"ساخته‌شده")} className="block h-auto max-h-[min(75dvh,56rem)] w-auto max-w-full rounded-control"/>)
+      :<span className="group relative block w-fit max-w-full">{onEdit&&<EditImageButton label={job.tag?displayTag(job.tag):""} onClick={onEdit}/>}
+       <img src={shown.url} alt={"تصویر "+(job.tag?displayTag(job.tag):"ساخته‌شده")} className="block h-auto max-h-[min(75dvh,56rem)] w-auto max-w-full rounded-control"/></span>)
      :<>
       <Icon icon={kind==="video"?Clapperboard:ImageIcon} size={32} aria-hidden="true" className={active?"text-primary":"text-fg-secondary"}/>
       <p className="type-body text-fg-primary">{active?status:job.messageFa}</p>

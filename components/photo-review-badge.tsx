@@ -22,7 +22,7 @@ export function ReviewRing({progress,size=20}:{progress:number;size?:number}){
 export function PhotoReviewOverlay({review,onRetry}:{review?:PhotoReview;onRetry?:()=>void}){
  if(!review)return null;
  if(review.state==="safe")return <span title={REVIEWED_FA} aria-label={REVIEWED_FA} role="img"
-  className="pointer-events-auto absolute bottom-1 start-1 flex size-6 items-center justify-center rounded-full bg-background/85 text-success shadow-sm">
+  className="pointer-events-auto absolute bottom-1 start-1 flex size-6 items-center justify-center rounded-full bg-background/85 text-primary shadow-sm">
   <Icon icon={BadgeCheck} size={16} aria-hidden="true"/>
  </span>;
  if(review.state==="checking")return <span role="status" aria-live="polite" aria-label={REVIEWING_FA+" "+fa(Math.round(review.progress*100))+"٪"}

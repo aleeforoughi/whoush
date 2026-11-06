@@ -2,7 +2,7 @@
 import {z} from "zod";
 import {CHARACTER_VIEWS,type CharacterView} from "./characters";
 import type {ReasoningTier,SuggestedModel} from "./types";
-import {ATTACHMENT_KINDS,ATTACHMENT_KIND_IDS,ATTACHMENT_ROLE_IDS,GENERATION_TAG_PATTERN,MAX_ATTACHMENTS,MAX_DURATION_SECONDS,MAX_EXCERPT_CHARS,MAX_TOTAL_ATTACHMENT_BYTES,TAG_PATTERN,isMediaKind,roleAllowed,tagPrefix,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
+import {ATTACHMENT_KINDS,ATTACHMENT_KIND_IDS,ATTACHMENT_ROLE_IDS,GENERATION_TAG_PATTERN,MAX_ATTACHMENTS,MAX_DURATION_SECONDS,MAX_EXCERPT_CHARS,MAX_TOTAL_ATTACHMENT_BYTES,TAG_PATTERN,isMediaKind,roleAllowed,tagPrefix,type AttachmentKind,type AttachmentRole,type RoleSource,REGION_COLOR_NAMES} from "./attachments";
 /** The visual style a user can pick for one message (the «سبک» group of the + menu). */
 export const GENERATION_STYLES=["realistic","three_d","cartoon"] as const;
 export type GenerationStyle=(typeof GENERATION_STYLES)[number];
@@ -22,7 +22,9 @@ export const AttachmentSchema=z.object({
  width:z.number().int().min(1).max(20000).optional(),height:z.number().int().min(1).max(20000).optional(),durationSeconds:z.number().min(0).max(MAX_DURATION_SECONDS).optional(),
  textExcerpt:z.string().max(MAX_EXCERPT_CHARS).optional(),role:z.enum(ATTACHMENT_ROLE_IDS).optional(),consent:z.literal(true).optional(),speech:speechSchema.optional(),
  /** The server's safety check of this photo (POST /api/media/review): the id it gave. Only the server's record says whether it is safe. */
- reviewId:z.uuid().optional()
+ reviewId:z.uuid().optional(),
+ /** «ویرایش با قلم»: change only the painted area, as the note says; the marked copy is its own checked photo (lib/region-edit.ts). */
+ regionEdit:z.object({guideReviewId:z.uuid(),regions:z.array(z.object({n:z.number().int().min(1).max(9),color:z.enum(REGION_COLOR_NAMES),note:z.string().trim().min(1).max(300)}).strict()).min(1).max(5)}).strict().optional()
 }).strict().superRefine((a,ctx)=>{
  const bad=(path:string,message:string)=>ctx.addIssue({code:"custom",path:[path],message});
  const def=ATTACHMENT_KINDS[a.kind];
@@ -37,6 +39,7 @@ export const AttachmentSchema=z.object({
  if(a.consent!==undefined&&a.role!=="voice_clone")bad("consent","only voice_clone carries consent");
  if(a.speech&&a.role!=="lip_sync")bad("speech","only lip_sync audio carries speech details");
  if(a.reviewId!==undefined&&a.kind!=="image")bad("reviewId","only images are reviewed");
+ if(a.regionEdit!==undefined&&a.kind!=="image")bad("regionEdit","only photos are painted");
  if((a.width!==undefined||a.height!==undefined)&&a.kind!=="image"&&a.kind!=="video")bad("width","only image and video carry dimensions");
  if(a.durationSeconds!==undefined&&a.kind!=="video"&&a.kind!=="audio")bad("durationSeconds","only video and audio carry a duration");
 });

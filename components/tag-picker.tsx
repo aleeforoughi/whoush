@@ -1,4 +1,5 @@
 "use client";
+import {TagThumb} from "@/components/tag-thumb";
 import {useState,type ReactElement} from "react";
 import {Badge,Popover,PopoverContent,PopoverTrigger} from "@aleeforoughi/feather-react";
 import type {MentionOption} from "@/components/mention-textarea";
@@ -23,6 +24,7 @@ export function TagPicker({options,trigger,onPick,main,onToggleMain}:{options:re
      {options.map(o=><li key={o.id} className="flex items-center gap-1">
       <button type="button" onClick={()=>{setOpen(false);onPick(o.tag);}}
        className="flex min-h-control min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 rounded-control px-3 py-2 text-start motion-hover hover:bg-surface-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring">
+       <TagThumb url={o.thumbUrl} kind={o.thumbKind}/>
        <bdi className="type-label text-fg-primary">{displayTag(o.tag)}</bdi>
        <Badge variant="outline">{o.badgeFa}</Badge>
        {o.captionFa&&<span className="min-w-0 truncate type-caption text-fg-secondary">{o.captionFa}</span>}

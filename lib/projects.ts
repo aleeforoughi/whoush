@@ -42,7 +42,8 @@ export type Reaction={emoji:ReactionEmoji;by:"user"|"whoush"};
 export type GifSnapshot={id:string;url:string;stillUrl:string;width:number;height:number;title:string};
 /** Whoush's one critical question: no plan card or price until the user answers. */
 export type QuestionSnapshot={question:string;/** Photos Whoush asked for (one upload slot per angle). */references?:ReferenceRequest;
- /** One-tap answers («عکس»، «ویدیو»، «هر دو»). */choices?:QuestionChoice[]};
+ /** One-tap answers («عکس»، «ویدیو»، «هر دو»). */choices?:QuestionChoice[];
+ /** The edit card: the photo or generation to open for «ویرایش با قلم» (lib/edit-card.ts). */editCard?:{tag:string}};
 export type StoredMessage=MessageBase&(
  |{kind?:"text";snapshot?:undefined}
  /** A refusal, with the safe ideas Whoush offered (one tap each). */
@@ -139,7 +140,8 @@ function checkMessage(m:unknown,i:number){
    break;
   case "no_model":if(!isObject(s)||typeof s.message!=="string"||(s.plan!==undefined&&!isPlan(s.plan))||(s.reason!==undefined&&!UNSUPPORTED_REASONS.includes(s.reason as UnsupportedReason)))bad("نبود مدل سازگار");break;
   case "gif":if(!isObject(s)||typeof s.id!=="string"||typeof s.title!=="string"||!isGiphyMedia(s.url)||!isGiphyMedia(s.stillUrl)||!(Number(s.width)>0&&Number(s.height)>0))bad("گیف");break;
-  case "question":if(!isObject(s)||typeof s.question!=="string"||s.question.length<1||s.question.length>1000||(s.choices!==undefined&&!isQuestionChoices(s.choices)))bad("سؤال");
+  case "question":if(!isObject(s)||typeof s.question!=="string"||s.question.length<1||s.question.length>1000||(s.choices!==undefined&&!isQuestionChoices(s.choices))
+   ||(s.editCard!==undefined&&!(isObject(s.editCard)&&typeof (s.editCard as {tag?:unknown}).tag==="string"&&((s.editCard as {tag:string}).tag.length<=40))))bad("سؤال");
    else if(s.references!==undefined){const r=s.references as Record<string,unknown>;
     if(!isObject(r)||typeof r.need!=="string"||!findReferenceNeed(r.need)||typeof r.titleFa!=="string"||typeof r.role!=="string"||!Array.isArray(r.angles)||r.angles.length>6
      ||!r.angles.every(a=>isObject(a)&&typeof (a as Record<string,unknown>).id==="string"&&typeof (a as Record<string,unknown>).titleFa==="string"))bad("سؤال");}

@@ -1,4 +1,5 @@
 "use client";
+import {TagThumb,type TagThumbKind} from "@/components/tag-thumb";
 import {useEffect,useId,useImperativeHandle,useLayoutEffect,useRef,useState,type ClipboardEvent,type KeyboardEvent,type ReactNode,type RefObject} from "react";
 import {Badge,Card} from "@aleeforoughi/feather-react";
 import {ATTACHMENT_KINDS,displayTag,insertMention,isMediaKind,isPropTag,mentionTrigger,propMatchesQuery,propMention,roleLabelFa,tagMatchesQuery,type LocalAttachment} from "@/lib/attachments";
@@ -6,9 +7,11 @@ import {editorSegments,removeBadge,type EditorSegment} from "@/lib/mention-edito
 import {enterAction,isTouchOnly} from "@/lib/composer-keys";
 
 /** One entry of the `#` picker: a file or a generation of this chat, with a short badge («تصویر», «تولید») and an optional caption (role, intent). */
-export type MentionOption={id:string;tag:string;badgeFa:string;captionFa?:string};
+/** `thumbUrl`/`thumbKind`: the small thumbnail every option shows (components/tag-thumb.tsx). */
+export type MentionOption={id:string;tag:string;badgeFa:string;captionFa?:string;thumbUrl?:string;thumbKind:TagThumbKind};
 /** A conversation file as a picker entry: its kind, and for media its role or «انتخاب اتوماتیک هووش». */
-export const attachmentOption=(a:Pick<LocalAttachment,"id"|"tag"|"kind"|"role">):MentionOption=>({id:a.id,tag:a.tag,badgeFa:ATTACHMENT_KINDS[a.kind].labelFa,...(isMediaKind(a.kind)?{captionFa:a.role?roleLabelFa(a.role,a.kind):"انتخاب اتوماتیک هووش"}:{})});
+export const attachmentOption=(a:Pick<LocalAttachment,"id"|"tag"|"kind"|"role"|"previewUrl">):MentionOption=>({id:a.id,tag:a.tag,badgeFa:ATTACHMENT_KINDS[a.kind].labelFa,
+ thumbKind:a.kind==="image"||a.kind==="video"||a.kind==="audio"?a.kind:"file",...(a.kind==="image"&&a.previewUrl?{thumbUrl:a.previewUrl}:{}),...(isMediaKind(a.kind)?{captionFa:a.role?roleLabelFa(a.role,a.kind):"انتخاب اتوماتیک هووش"}:{})});
 /** What the studio can do with the prompt: focus it, or put a tag badge at the caret (at the end when the prompt is not focused). */
 export type MentionEditorHandle={focus:()=>void;insertTag:(tag:string)=>void;/** Inserts plain text (an emoji) at the caret, or at the end when the prompt is not focused. */insertText:(text:string)=>void};
 const NAV_KEYS=["ArrowUp","ArrowDown","Enter","Tab","Escape"];
@@ -219,6 +222,7 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
    {matches.map((o,i)=><div key={o.id} id={optionId(i)} role="option" aria-selected={i===current}
     onMouseDown={e=>{e.preventDefault();pick(o);}} onMouseMove={()=>{if(i!==current)setActive(i);}}
     className={"flex min-h-control cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 rounded-control px-3 py-2 "+(i===current?"bg-surface-hover":"")}>
+    <TagThumb url={o.thumbUrl} kind={o.thumbKind}/>
     <bdi className="type-label text-fg-primary">{trigger?.prop?propMention(trigger.prop,o.tag):displayTag(o.tag)}</bdi>
     <Badge variant="outline">{o.badgeFa}</Badge>
     {o.captionFa&&<span className="min-w-0 truncate type-caption text-fg-secondary">{o.captionFa}</span>}

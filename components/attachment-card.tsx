@@ -1,11 +1,13 @@
 "use client";
-import {AudioLines,FileJson,FileText,Image as ImageIcon,Play,Video,X,type LucideIcon} from "lucide-react";
+import {AudioLines,Brush,FileJson,FileText,Image as ImageIcon,Play,Video,X,type LucideIcon} from "lucide-react";
 import {Icon,Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from "@aleeforoughi/feather-react";
 import {ACCENTS,LANGUAGES,TagBadge,canPreview,type AttachmentPatch} from "@/components/attachment-chip";
 import {INSERT_ICONS} from "@/components/insert-menu";
 import {MainSubjectStar} from "@/components/main-subject-star";
 import {PhotoReviewOverlay} from "@/components/photo-review-badge";
+import {EditImageButton} from "@/components/edit-image-button";
 import type {PhotoReview} from "@/lib/photo-review";
+import {BRUSH_EDIT_FA,BRUSH_MARKED_FA} from "@/lib/region-edit";
 import {displayTag,isMediaKind,roleLabelFa,rolesFor,type AttachmentKind,type AttachmentRole,type AttachmentSpeech,type LocalAttachment} from "@/lib/attachments";
 import {roleIconKey,type InsertIconKey} from "@/lib/insert-menu";
 import {faBytes,faDuration} from "@/lib/format";
@@ -45,8 +47,9 @@ export function CardRoleRow({icon,label,muted,remove}:{icon:InsertIconKey;label:
 function CardMedia({item:a,onPreview,review,onRetryReview}:{item:LocalAttachment;onPreview:()=>void;review?:PhotoReview;onRetryReview?:()=>void}){
  const frame=CARD_MEDIA+" bg-surface-hover text-fg-secondary";
  const visual=a.kind==="image"&&a.previewUrl
+  // A painted photo shows its marked copy, so the area to change stays visible.
   // eslint-disable-next-line @next/next/no-img-element -- a local blob: URL; next/image cannot optimize it
-  ?<img src={a.previewUrl} alt="" className="size-full object-cover"/>
+  ?<img src={a.regionEdit?.guideUrl??a.previewUrl} alt="" className="size-full object-cover"/>
   :a.kind==="video"&&a.previewUrl
    ?<><video src={a.previewUrl+"#t=0.1"} preload="metadata" muted playsInline aria-hidden="true" tabIndex={-1} className="size-full object-cover"/>
     <span className="absolute inset-0 flex items-center justify-center"><span className="flex size-8 items-center justify-center rounded-control bg-background/70 text-fg-primary"><Icon icon={Play} size={16} aria-hidden="true"/></span></span></>
@@ -64,7 +67,8 @@ function CardMedia({item:a,onPreview,review,onRetryReview}:{item:LocalAttachment
  * row. A role the user chose is fixed text (to change it, remove the card and add another); a file with no role gets the optional role menu in that row. A lip-sync
  * audio also gets language and accent.
  */
-export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention,main,onToggleMain,review,onRetryReview}:{item:LocalAttachment;onChange:(patch:AttachmentPatch)=>void;onRemove:()=>void;onPreview:()=>void;onMention:()=>void;
+export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention,main,onToggleMain,review,onRetryReview,onBrush}:{item:LocalAttachment;onChange:(patch:AttachmentPatch)=>void;onRemove:()=>void;onPreview:()=>void;onMention:()=>void;
+ /** «ویرایش با قلم»: paint the part of the photo to change (photos only). */onBrush?:()=>void;
  /** The photo's safety check: progress, verified badge, or why it cannot be used (and a retry when the check failed). */review?:PhotoReview;onRetryReview?:()=>void;
  /** «سوژه اصلی»: whether this file is the main subject, and the star that toggles it (optional). */main?:boolean;onToggleMain?:()=>void}){
  // On the narrow card the no-role option reads «اتوماتیک» (the full «انتخاب اتوماتیک هووش» would be cut off beside the delete button); the menu items are unchanged otherwise.
@@ -77,7 +81,10 @@ export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention,mai
   <span className={CARD_META} title={a.name+" · "+faBytes(a.bytes)}>
    <TagBadge tag={a.tag} onMention={onMention}/>
    {a.durationSeconds!==undefined&&<span className="type-caption text-fg-secondary"><bdi>{faDuration(a.durationSeconds)}</bdi></span>}
-   {onToggleMain&&<MainSubjectStar tag={a.tag} on={Boolean(main)} onToggle={onToggleMain} className="ms-auto"/>}
+   {onBrush&&a.kind==="image"&&<button type="button" onClick={onBrush} aria-label={BRUSH_EDIT_FA+" "+displayTag(a.tag)} title={a.regionEdit?BRUSH_MARKED_FA:BRUSH_EDIT_FA}
+    className={"hit-area flex size-7 shrink-0 items-center justify-center rounded-control motion-hover hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring "+"ms-auto "+(a.regionEdit?"text-primary":"text-fg-secondary")}>
+    <Icon icon={Brush} size={16} aria-hidden="true"/></button>}
+   {onToggleMain&&<MainSubjectStar tag={a.tag} on={Boolean(main)} onToggle={onToggleMain} className={onBrush&&a.kind==="image"?"":"ms-auto"}/>}
   </span>
   {/* A role the user chose is fixed: the card shows it, and changing it means removing the card and adding another. A file with no role keeps the optional menu. */}
   {media&&a.role&&<CardRoleRow icon={roleIconKey(a.kind,a.role)} label={roleLabelFa(a.role,a.kind)} remove={remove}/>}
@@ -107,11 +114,11 @@ export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention,mai
  * opens the viewer, the tag inserts itself into the prompt, and there is no delete button or role menu. A file with no role reads «اتوماتیک»; a lip-sync audio
  * adds its language and accent.
  */
-export function SentAttachmentCard({item:a,onPreview,onMention,review}:{item:LocalAttachment;onPreview:()=>void;onMention:()=>void;review?:PhotoReview}){
+export function SentAttachmentCard({item:a,onPreview,onMention,review,onBrush}:{item:LocalAttachment;onPreview:()=>void;onMention:()=>void;review?:PhotoReview;onBrush?:()=>void}){
  const media=isMediaKind(a.kind),lip=a.role==="lip_sync"?a.speech:undefined;
  const label=(list:readonly {value:string;label:string}[],v:string)=>list.find(x=>x.value===v)?.label??v;
  return <li className={CARD_FRAME+" border-line-primary bg-surface-subtle"}>
-  <CardMedia item={a} onPreview={onPreview} review={review}/>
+  <span className="group relative block">{onBrush&&a.kind==="image"&&<EditImageButton label={displayTag(a.tag)} onClick={onBrush}/>}<CardMedia item={a} onPreview={onPreview} review={review}/></span>
   <span className={CARD_META} title={a.name+" · "+faBytes(a.bytes)}>
    <TagBadge tag={a.tag} onMention={onMention}/>
    {a.durationSeconds!==undefined&&<span className="type-caption text-fg-secondary"><bdi>{faDuration(a.durationSeconds)}</bdi></span>}
@@ -120,5 +127,22 @@ export function SentAttachmentCard({item:a,onPreview,onMention,review}:{item:Loc
    ?<CardRoleRow icon={a.role?roleIconKey(a.kind,a.role):"auto"} label={a.role?roleLabelFa(a.role,a.kind):CARD_AUTO_ROLE_FA}/>
    :<CardRoleRow icon="document" label={a.name}/>}
   {lip&&<span className={CARD_FOOT+" type-caption text-fg-secondary"}>{label(LANGUAGES,lip.language)} · {label(ACCENTS,lip.accent)}</span>}
+ </li>;
+}
+
+/**
+ * A # the user picked in the chat box (owner, 2026-11-06): the referenced photo or generation shown as a card beside the new files, exactly like a reference,
+ * so it is recognisable at a glance. Its ✕ takes the # out of the message.
+ */
+export function MentionRefCard({tag,thumbUrl,kind,label,onRemove,onPreview}:{tag:string;thumbUrl?:string;kind:AttachmentKind|"generation";label:string;onRemove:()=>void;onPreview?:()=>void}){
+ const media=CARD_MEDIA+" bg-surface-hover text-fg-secondary";
+ const visual=thumbUrl
+  // eslint-disable-next-line @next/next/no-img-element -- a local blob: URL or an owned output
+  ?<img src={thumbUrl} alt="" className="size-full object-cover"/>
+  :<Icon icon={kind==="generation"?ImageIcon:KIND_ICONS[kind]} size={32} aria-hidden="true"/>;
+ return <li className={CARD_FRAME+" border-dashed border-line-primary bg-surface-subtle"}>
+  {onPreview?<button type="button" onClick={onPreview} aria-label={"نمایش "+displayTag(tag)} className={media+" motion-hover not-disabled:hover:opacity-90"}>{visual}</button>:<span className={media}>{visual}</span>}
+  <span className={CARD_META}><TagBadge tag={tag}/></span>
+  <CardRoleRow icon={kind==="generation"?"auto":kind==="image"?"auto":"document"} label={label} muted remove={{label:"برداشتن "+displayTag(tag)+" از پیام",onClick:onRemove}}/>
  </li>;
 }

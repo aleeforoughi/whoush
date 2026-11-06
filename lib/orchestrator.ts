@@ -6,7 +6,7 @@ import {CreativePlanSchema,CreativeTurnInputSchema,STYLE_VISUAL,toPublicPlan,typ
 import {llmGate,preparePrivateCreativeRequest} from "./llm";
 import {acquireProviderSlot,countAstraCall,defaultRouterState,estimateTurnCostUsd,loadRoutingConfig,markProviderCooldown,planRoute,profileTask,type RoutingAudit,type RoutingAttempt,type RoutingConfig,type RouterState} from "./llm-routing";
 import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./private-audit";
-import {describeTagEn,displayTag,inferAttachmentRoles,isGenerationTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
+import {REGION_COLOR_FA,describeTagEn,displayTag,inferAttachmentRoles,isGenerationTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
 import {providerForModelId} from "./llm-routing";
 import {replyScriptFor} from "./finglish";
 import {clearSightByMovingProp,occlusionMessageFa,sceneVisibility} from "./scene-visibility";
@@ -23,6 +23,8 @@ import {detectReferenceNeeds,type ReferenceRequest} from "./reference-needs";
 import type {GenerationProposal,MediaRequirements,ProposalResearch,SuggestedModel,UnsupportedReason} from "./types";
 import {researchReferences,type ResearchReference,type ResearchResult,type TurnReference} from "./research";
 import {inspectReferences} from "./reference-inspect";
+import {faPlain} from "./format";
+import {EDIT_CARD_FA,EDIT_CARD_FINGLISH,wantsBrushEdit} from "./edit-card";
 import {safeReview} from "./upload-review";
 import {MEDIA_ROUTE} from "./media-store";
 import {reviewAvailable,reviewPlan,promptWithFixes,type PlanReviewer} from "./plan-review";
@@ -51,7 +53,8 @@ export type OrchestratorResult=
  /** Whoush needs one critical answer before it can offer a generation: no plan card, no price, only the question. */
  |{status:"needs_input";turnId:string;message:string;question:string;reaction?:ReactionEmoji;
   /** The photos Whoush needs to keep something only a photo can (lib/reference-needs.ts): the card shows an upload slot per angle. */references?:ReferenceRequest;
-  /** One-tap answers («عکس»، «ویدیو»، «هر دو»): each sends its reply as the user's answer. */choices?:QuestionChoice[]};
+  /** One-tap answers («عکس»، «ویدیو»، «هر دو»): each sends its reply as the user's answer. */choices?:QuestionChoice[];
+  /** The edit card (lib/edit-card.ts): the photo or generation to open full screen for «ویرایش با قلم». */editCard?:{tag:string}};
 /**
  * Whoush's own lines when no planner reply is usable (deterministic planner, or a reply that failed a check): everyday spoken Persian, or Finglish for a Finglish
  * brief, in Whoush's voice. A question's setup carries no emoji (docs/CREATIVE_SKILLS.md, Whoush voice).
@@ -383,12 +386,15 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const typed=typedMappings(raw.text),parsed={...raw,text:expandMappings(raw.text)},audit=deps.audit??defaultAuditSink,now=deps.now??(()=>new Date());
  const stage=(x:TurnStage)=>{try{deps.onStage?.(x);}catch{ /* progress is best effort */ }};
  stage("reading");
- const safety=evaluateTextSafety(parsed.text);
+ // A painted edit's note («ویرایش با قلم») is the user's words too: the same check, even when the message text does not repeat it.
+ const notes=(parsed.attachments??[]).flatMap(a=>a.regionEdit?a.regionEdit.regions.map(r=>r.note):[]);
+ const safety=[parsed.text,...notes].map(t=>evaluateTextSafety(t)).find(r=>r.decision!=="allow")??evaluateTextSafety(parsed.text);
  if(safety.decision!=="allow")return {status:"restricted",decision:safety.decision,category:safety.category,message:safety.message,...(safety.choices?{choices:safety.choices}:{})};
  // A role is optional: media without one gets Whoush's best guess from the words of the brief (no media analysis), before skills resolve.
  // Inferred roles drive the same skills, constraints, kind override and requirements as chosen ones; `voice_clone` is never inferred.
  const given=parsed.attachments??[],roles=new Map(inferAttachmentRoles(parsed.text,given).map(r=>[r.tag,r]));
- const files0:Array<Omit<(typeof given)[number],"role">&{role?:AttachmentRole;roleSource?:RoleSource}>=given.map(f=>{const r=roles.get(f.tag);return r?{...f,role:r.role,roleSource:r.roleSource}:f;});
+ // A painted photo is the photo to edit, whatever role it had.
+ const files0:Array<Omit<(typeof given)[number],"role">&{role?:AttachmentRole;roleSource?:RoleSource}>=given.map(f=>{if(f.regionEdit)return {...f,role:"edit_reference" as const,roleSource:"user" as RoleSource};const r=roles.get(f.tag);return r?{...f,role:r.role,roleSource:r.roleSource}:f;});
  // Something only a photo can keep (the user's tattoos, logo, product, face, outfit): its photos get the right role (a user's own choice stays), and without
  // any photo Whoush asks for exactly the ones it needs, once (an answer without photos goes ahead without them).
  const need=detectReferenceNeeds(normalizePersian(parsed.text))[0];
@@ -399,6 +405,12 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const safeHistory=(parsed.history??[]).filter(t=>evaluateTextSafety(t.text).decision==="allow");
  const lastAsked=[...safeHistory].reverse().find(t=>t.role==="agent")?.text??"";
  const answered=(marker:string,fing:string)=>Boolean(parsed.answersQuestion)&&(lastAsked.includes(marker)||lastAsked.includes(fing));
+ // The edit card (owner, 2026-11-06): a local change with no place named («اینجاشو عوض کن», «با قلم مشخص کنم») gets the picture to mark, once.
+ if(!parsed.answersQuestion&&!files0.some(f=>f.regionEdit)&&wantsBrushEdit(parsed.text)){
+  const mentioned=parseMentions(parsed.text),imgs=files0.filter(f=>f.kind==="image"),gens=(parsed.generations??[]).filter(g=>g.mediaKind==="image");
+  const target=imgs.find(f=>mentioned.includes(f.tag))?.tag??gens.find(g=>mentioned.includes(g.tag))?.tag??(imgs.length===1?imgs[0].tag:undefined)??(!imgs.length&&gens.length===1?gens[0].tag:undefined);
+  if(target)return {status:"needs_input",turnId:askTurn,message:finglish?EDIT_CARD_FINGLISH:EDIT_CARD_FA,question:EDIT_CARD_FA,editCard:{tag:target}};
+ }
  // Photo or video (owner, 2026-11-06): what this message says wins; then a file that only a video can use; then the generation it changes; then what the
  // user said earlier in this chat. When nothing says, Whoush asks once, before any planning (an answer that still says nothing gets a photo).
  const said=requestedMediaKind(parsed.text);
@@ -650,7 +662,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // docs/MODERATION_POLICY.md step 4, "Reference inspection": every photo was checked right after upload (POST /api/media/review, lib/upload-review.ts). Only
  // the server's own record counts, by the review id the photo carries; a photo it does not know as safe (unchecked, blocked, forgotten after a restart) and
  // every video or audio file (no inspector yet) fail closed: the plan is returned with no proposal or price, so unchecked media never reaches a provider.
- const unchecked=files.filter(f=>isMediaKind(f.kind)&&!(f.kind==="image"&&safeReview(f.reviewId)));
+ const unchecked=files.filter(f=>isMediaKind(f.kind)&&!(f.kind==="image"&&safeReview(f.reviewId)&&(!f.regionEdit||safeReview(f.regionEdit.guideReviewId))));
  if(unchecked.length){
   rec({planner:label,fallbackReason:"media_review_unavailable",corrections:corrections.length?corrections:undefined});
   const suggestedModel=suggestModel(requirements,kind),photos=unchecked.filter(f=>f.kind==="image").map(f=>f.tag);
@@ -659,11 +671,24 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  }
  // The checked photos go to the model as reference images, in tag order; the prompt names each by its tag («[reference image 1 · character]»), and the
  // order note says which attached image is which.
- const uploads:TurnReference[]=files.filter(f=>f.kind==="image").sort((a,b)=>tagOrder(a.tag)-tagOrder(b.tag)).map(f=>{
-  const r=safeReview(f.reviewId)!;return {id:r.mediaId,url:MEDIA_ROUTE+r.mediaId,subjectFa:displayTag(f.tag),title:displayTag(f.tag),license:"user",creator:"",sourceUrl:"",source:"upload" as const,mime:r.mime};
- });
+ // A painted photo («ویرایش با قلم») is followed by its marked copy: the same photo with the area to change in translucent red, a guide only.
+ const photos=files.filter(f=>f.kind==="image").sort((a,b)=>tagOrder(a.tag)-tagOrder(b.tag));
+ const asRef=(id:string|undefined,f:(typeof photos)[number],guide=false):TurnReference=>{const r=safeReview(id)!;const t=displayTag(f.tag)+(guide?" (ناحیه)":"");
+  return {id:r.mediaId,url:MEDIA_ROUTE+r.mediaId,subjectFa:t,title:t,license:"user",creator:"",sourceUrl:"",source:"upload" as const,mime:r.mime};};
+ const uploads:TurnReference[]=photos.flatMap(f=>f.regionEdit?[asRef(f.reviewId,f),asRef(f.regionEdit.guideReviewId,f,true)]:[asRef(f.reviewId,f)]);
+ const painted=photos.filter(f=>f.regionEdit);
+ if(painted.length){
+  // Change only the painted area, as the note says; everything else is locked. The rule leads the plan, the sentence leads the edit in the prompt.
+  for(const f of painted){
+   const tagFa=displayTag(f.tag),list=f.regionEdit!.regions.map(r=>"#ادیت-"+faPlain(r.n)+" ("+REGION_COLOR_FA[r.color]+"): «"+r.note+"»").join("؛ ");
+   plan.hardConstraints=["فقط ناحیه‌های رنگ‌شدهٔ "+tagFa+" تغییر می‌کنند — "+list+" — و بقیهٔ عکس (چهره، بدن، ژست، کادر، نور، رنگ‌ها و پس‌زمینه) دقیقاً همان می‌ماند",...plan.hardConstraints.filter(c=>!c.startsWith("فقط ناحیه‌های رنگ‌شدهٔ "+tagFa))];
+  }
+  const lead=painted.map(f=>"Edit "+describeTagEn(f)+" only inside the areas painted in its marked copy, each as noted: "+f.regionEdit!.regions.map(r=>"the "+r.color+" area: "+r.note).join("; ")+". Keep every pixel outside these areas identical: identity, face, body, pose, framing, lighting, colours and background. Blend each change seamlessly with the surrounding texture and light. The output is the edited photo only, with no paint and no marks.").join(" ");
+  plan.mediaPrompt=(lead+" "+plan.mediaPrompt).slice(0,3000);
+  if(content)content={...content,content:(lead+" "+content.content).slice(0,3000)};
+ }
  if(uploads.length){
-  const order=" Attached reference images, in this order: "+files.filter(f=>f.kind==="image").sort((a,b)=>tagOrder(a.tag)-tagOrder(b.tag)).map((f,i)=>(i+1)+" = "+describeTagEn(f)).join("; ")+".";
+  const order=" Attached reference images, in this order: "+photos.flatMap(f=>f.regionEdit?[describeTagEn(f),"the same photo with the areas to change painted in translucent colours (a guide only, never draw the paint)"]:[describeTagEn(f)]).map((d,i)=>(i+1)+" = "+d).join("; ")+".";
   plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-order.length))+order;
   if(content)content={...content,content:(content.content.slice(0,Math.max(0,3000-order.length))+order)};
  }

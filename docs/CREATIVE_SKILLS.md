@@ -215,3 +215,18 @@ If the text sounds like an image request but there is a video attachment, or an 
 - Off unless `GIPHY_API_KEY` is set; in production also `GIPHY_AUTHORIZED=true`, the owner's assertion that GIPHY's terms and regional availability were checked (the terms page could not be read from here).
 - Slack-style reactions: anyone can react to any message from the palette (👍 ❤️ 😂 🔥 😮 🎉 👏 😎 🙌 ✨ 👌 🤩 💯 🙏 🎬 📸); Whoush reacts to the user's message with `reply.react` from the same set. Reactions are saved with the project.
 - Anthropic receives a leaner output schema: the full plan schema exceeds its grammar limit, so reply and staging travel as JSON in `extras` (`CreativePlanAnthropicSchema`).
+
+## «ادیت»: brush edit and the edit card (owner, 2026-11-06)
+Automatic masking is a later feature. For now:
+- **Where:** every uploaded, sent or generated image has a small «ادیت» button (top right, 4px corners). It shows on hover on a computer and is always visible on a phone.
+- **Edit card:** when a message asks to change part of a picture without saying where («اینجاشو عوض کن», «با قلم مشخص کنم»), Whoush answers with an edit card that opens it (`lib/edit-card.ts`).
+- **Editor (`components/region-editor.tsx`, mobile first):**
+  - The picture opens full screen; two fingers pinch and move, or the wheel and the hand tool on a computer.
+  - There are five brush sizes, in screen pixels, with a brush-size circle cursor.
+  - Every new touch starts a new region with the next colour and tag (#ادیت-۱ … #ادیت-۵). Tapping a region's tag first continues it.
+  - Each region has a comment, and its tag pin on the photo has an ✕ to delete it.
+- **On «ثبت»:**
+  - Whoush makes a marked copy (each region in its colour, translucent), and checks it like any photo.
+  - It sends the photo and the copy at once as a new message.
+  - The prompt changes only the painted areas, each as its comment says, and locks everything else. The rule leads the plan, and the edit sentence leads the provider prompt.
+  - A generated image joins the chat as a new photo (#تصویر-n) to be edited. Marks live in memory only.
