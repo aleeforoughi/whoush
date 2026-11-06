@@ -258,6 +258,25 @@ Transport failures, safety rejections and visual mismatches are mapped separatel
 - How long the provider keeps an idempotency key is not verified.
 - Nothing reconciles a job that nobody polls: the studio polls about 15 s. A server-side sweep, and an owner view of stuck jobs, belong with the durable job store (plan phase 02/03).
 
+### Status: visibility and occlusion (2026-11-05)
+
+- **The check uses the canvas's own camera and crop.** `sceneVisibility()` relies on `cssView` and `toScreen`, so it agrees with the frame. Props are boxes of their real size (`sizeOf`), facing as on the canvas.
+- **What it reports:**
+  - which props fall inside the output crop
+  - whether the main subject's key point is in the crop and in clear line of sight: a person's face (or the detail the shot is about), or the middle of anything else
+  - which prop hides it
+- **`sightFix()` finds the smallest change that clears it:** first the least raise of the camera's angle (in 5° steps), then the least orbit (the canvas's real orbit, which turns props and lights with the camera).
+- **The user's own arrangement is never changed.**
+  - Hidden subject at «بساز»: `SceneOccluded`, then 409 `composition_occluded` with a Persian message naming the prop and the fix, shown by the studio. Example: «میز» از این زاویه جلوی صورتِ «مرد» رو گرفته… دوربین رو کمی بالاتر ببر (زاویهٔ حدود −۳۰ درجه).
+  - Hidden subject arranged in a chat message: a question with the same text, and no price.
+- **A scene Whoush arranged itself** (the planner's props): the prop in the way is moved sideways, the least that clears the view. The camera the brief asked for stays.
+- **Out-of-frame props are left out.** The compiled prompt drops props outside the crop from the layout and from the people count. The main subject always stays.
+
+**Limits:**
+- Boxes are a proxy, not a render: there are no seated poses, and a prop's thin parts count as solid.
+- Only one key point is tested, not the whole face.
+- The lens choice (`lensFor`) still counts out-of-frame subjects when it picks a deep focus.
+
 ## 9. Relighting and camera edits
 
 **Relighting order:**
@@ -335,7 +354,7 @@ Approve release thresholds before reading the results.
 | P0 | Provenance and capability states | `lib/catalog.ts`, `lib/jobs.ts`, `lib/media-provider.ts` | **Done 2026-11-05:** each job keeps a private `provenance` (requested model, endpoint called, catalog version, prompt-compiler version, prompt SHA-256, and the reported model with `modelMismatch` when a provider reports one); `capabilityState()` gives the four states. Seeds are not recorded: no verified payload sends one, and the documented status returns none |
 | P0 | Operation and edit policy | `lib/scene-compiler.ts`, `lib/orchestrator.ts`, quote route | **Done 2026-11-05:** `create`, `camera_edit`, `relight_edit` and `content_edit`, read in room terms; each edit's lock opens the prompt; camera with light (or layout) on a photo edit is refused at «بساز» with a Persian reason, before any price |
 | P0 | `submission_unknown` | `lib/jobs.ts`, `lib/media-provider.ts`, `lib/higgsfield.ts` | **Done 2026-11-05:** a timeout, dropped connection, 5xx or unreadable 2xx keeps the reservation and resends the same request with the same idempotency key; only a definite answer submits or releases |
-| P1 | Occlusion preflight | `lib/scene3d.ts`, `lib/frame-css.ts` | The table blocking the face returns `COMPOSITION_OCCLUDED` before quoting |
+| P1 | Occlusion preflight | `lib/scene-visibility.ts` | **Done 2026-11-05:** the table blocking the face returns `composition_occluded` before quoting, with the smallest fix in Persian; out-of-frame props leave the prompt |
 | P1 | Guide export | canvas renderer | Correct crop, coordinates, order and mask polarity; only supported fields |
 | P1 | QA states and judge | `lib/output-qa.ts` | Required failures and unverifiable checks never become `matched` |
 | P1 | Six fixtures | `tests/` | S1–S4, E1 and E2 have exact scene states, target previews and rubrics |

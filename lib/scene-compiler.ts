@@ -1,6 +1,7 @@
 import {describeFocus} from "./frame-css";
 import type {Staging} from "./creative-plan";
 import {describeStagingEn,facingOf,lensFor,lightAngleOf,sceneLeadEn,wrap180} from "./staging";
+import {sceneVisibility} from "./scene-visibility";
 
 /**
  * The image prompt is compiled once from one scene, never concatenated (docs/CANVAS_TO_IMAGE.md, P0 compiler).
@@ -72,9 +73,12 @@ export function compileImagePrompt(i:{content:string;staging:Staging;aspect:stri
  const stripped=stripSceneDirection(own);
  // Nothing left means the planner wrote only direction: keep its text rather than send a prompt with no subject.
  const content=stripped||own.trim();
- const lead=(lock?lock+" ":"")+sceneLeadEn(i.staging)+" ";
+ // Only what the crop shows is described: a prop outside the frame is not in the picture, so it is left out of the layout and the people count.
+ const props=i.staging.props??[],vis=props.length?sceneVisibility(i.staging,i.aspect):undefined,mainAt=Math.max(0,props.findIndex(p=>p.main));
+ const shown:Staging=vis?{...i.staging,props:props.filter((_,j)=>j===mainAt||vis.inFrame[j])}:i.staging;
+ const lead=(lock?lock+" ":"")+sceneLeadEn(shown)+" ";
  // The lights are stated once, in the lead; the scene at the end carries the rest (placement, layout, focus, lens).
- const tail=" Scene (must match): "+describeStagingEn(i.staging,{lights:false})+describeFocus(i.staging,undefined,i.aspect).en+" "+lensFor(i.staging).en+" Aspect ratio "+i.aspect+".";
+ const tail=" Scene (must match): "+describeStagingEn(shown,{lights:false})+describeFocus(i.staging,undefined,i.aspect).en+" "+lensFor(i.staging).en+" Aspect ratio "+i.aspect+".";
  const room=Math.max(0,MAX_MEDIA_PROMPT-lead.length-tail.length);
  return {prompt:(lead+content.slice(0,room)+tail).slice(0,MAX_MEDIA_PROMPT),content:i.content,compilerVersion:SCENE_COMPILER_VERSION};
 }

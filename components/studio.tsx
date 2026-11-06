@@ -567,8 +567,8 @@ export function Studio(){
    let q=await post("/api/generation/quote",{...quoteBody,...(aspect?{configuration:{aspectRatio:aspect}}:{})});
    if(q.status===422&&aspect)q=await post("/api/generation/quote",quoteBody); // a model without that aspect ratio (invalid_configuration): the prompt still carries it
    if(!q.ok){
-    // A refusal that says why (a photo edit that changes the camera and the light together) is shown as is.
-    const why=await q.json().then((b:{error?:string;message?:string})=>b.error==="edit_scope_mixed"?b.message:undefined).catch(()=>undefined);
+    // A refusal that says why (a photo edit that changes the camera and the light together; a prop hiding the subject) is shown as is.
+    const why=await q.json().then((b:{error?:string;message?:string})=>b.error==="edit_scope_mixed"||b.error==="composition_occluded"?b.message:undefined).catch(()=>undefined);
     throw new Error(why??(q.status===410?"پیشنهاد منقضی شده است؛ دوباره درخواستت را بفرست.":"مشکل در محاسبه هزینه"));
    }
    const quote=await q.json() as {token:string};

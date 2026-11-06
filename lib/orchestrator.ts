@@ -9,6 +9,7 @@ import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./
 import {displayTag,inferAttachmentRoles,isGenerationTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
 import {providerForModelId} from "./llm-routing";
 import {replyScriptFor} from "./finglish";
+import {clearSightByMovingProp,occlusionMessageFa,sceneVisibility} from "./scene-visibility";
 import {compileImagePrompt,SCENE_COMPILER_VERSION,FA_EDIT_SCOPE_MIXED,GENERIC_EDIT_RULE_EN,resolveOperation,sceneChangeGroups} from "./scene-compiler";
 import {applyStagingCues,applyTypedMappings,lensFor,describeStagingEn,describeStagingFa,sceneLeadEn,detectProps,detectSubject,expandMappings,mapReferences,tidyProps,typedMappings} from "./staging";
 import {findGif,type ChatGif} from "./giphy";
@@ -283,12 +284,16 @@ export const privatePromptCompilerVersion=(turnId:string):string|undefined=>cont
  * Undefined when the original turn is unknown or expired.
  */
 /** A photo edit whose canvas changes the camera and the light (or the layout) together: refused before any quote (docs/CANVAS_TO_IMAGE.md section 3). */
+/** The user's arranged scene hides the subject (a table in front of a floor-level camera): refused before any quote, with the smallest fix in Persian. */
+export class SceneOccluded extends Error{readonly code="composition_occluded";constructor(readonly messageFa:string){super("composition_occluded");this.name="SceneOccluded";}}
 export class SceneEditConflict extends Error{readonly code="edit_scope_mixed";readonly messageFa=FA_EDIT_SCOPE_MIXED;constructor(){super("edit_scope_mixed");this.name="SceneEditConflict";}}
 export function deriveTurnWithStaging(turnId:string,staging:Staging,aspect?:string):string|undefined{
  const base=store().get(turnId);if(base===undefined)return undefined;
  // An image turn is compiled again from its content and the new scene: the old scene never stays next to the new one.
  const kept=contents().get(turnId);
  if(kept){
+  const asp=aspect??kept.aspect;
+  if(sceneVisibility(staging,asp).subject==="occluded")throw new SceneOccluded(occlusionMessageFa(staging,asp));
   const op=resolveOperation({sourceImage:kept.sourceImage,change:sceneChangeGroups(kept.staging,staging)});
   if("conflict" in op)throw new SceneEditConflict();
   const c={...kept,aspect:aspect??kept.aspect},id=randomUUID();
@@ -510,7 +515,13 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // An image prompt is compiled once from the final scene: the planner's text without its own camera and light words, then the canvas (lib/scene-compiler.ts).
  let content:SceneContent|undefined;
  if(plan.mediaKind==="image"&&plan.staging){
-  const aspect=plan.camera?.aspectRatio??"16:9",sourceImage=files.some(f=>f.kind==="image"&&f.role==="edit_reference");
+  const aspect=plan.camera?.aspectRatio??"16:9";
+  // A hidden subject: the user's own arrangement is refused with the fix; a scene Whoush arranged moves its prop out of the way (the camera stays as asked).
+  if(sceneVisibility(plan.staging,aspect).subject==="occluded"){
+   if(parsed.stagingOverride){const q=occlusionMessageFa(plan.staging,aspect);rec({planner:label,fallbackReason:"composition_occluded",corrections:corrections.length?corrections:undefined});return {status:"needs_input",turnId,message:q,question:q};}
+   plan.staging=clearSightByMovingProp(plan.staging,aspect);
+  }
+  const sourceImage=files.some(f=>f.kind==="image"&&f.role==="edit_reference");
   // Here the canvas the user arranged started from an earlier turn's plan, not from this turn's, so a change in both camera and light cannot be told
   // apart from a different plan: it stays a generic edit (no lock). The canvas change at «بساز» is checked against this turn's scene, which the canvas showed.
   const before=plannedStaging??plan.staging,op=resolveOperation({sourceImage,change:sceneChangeGroups(before,plan.staging)});
