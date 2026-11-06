@@ -18,12 +18,17 @@ import {detectMediaKind,suggestModel} from "./router";
 import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
 import {SKILLS,SKILL_REGISTRY_VERSION} from "./skills";
 import {detectReferenceNeeds,type ReferenceRequest} from "./reference-needs";
-import type {GenerationProposal,MediaRequirements,SuggestedModel} from "./types";
+import type {GenerationProposal,MediaRequirements,ProposalResearch,SuggestedModel} from "./types";
+import {researchReferences,type ResearchReference,type ResearchResult} from "./research";
+import {inspectReferences} from "./reference-inspect";
+import type {ResearchPlan} from "./creative-plan";
 export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;now?:()=>Date;
  /** Progress for the chat's live status: called as each real stage of the turn starts (never invented, never with private details). */
  onStage?:(stage:TurnStage)=>void;
  /** Finds a chat GIF for a mood (GIPHY by default; tests pass a stub). */
  findGif?:(mood:GifMood)=>Promise<ChatGif|undefined>;
+ /** Researches what the plan marked as needing research (open-licensed references, inspected). Tests pass a stub; the default searches and inspects. */
+ research?:(plan:ResearchPlan)=>Promise<ResearchResult>;
  /** Test hook: the planner for one routed model. Defaults to the real Anthropic or OpenAI adapter. */
  plannerFor?:(modelId:string,provider:"anthropic"|"openai")=>PrivatePlanner;routing?:RoutingConfig;routerState?:RouterState};
 export {TURN_STAGES,type TurnStage} from "./orchestrator-stages";
@@ -276,6 +281,11 @@ type SceneContent={content:string;aspect:string;
  staging:Staging;sourceImage:boolean};
 const contents=()=>((globalThis as {__whoushPromptContent?:Map<string,SceneContent>}).__whoushPromptContent??=new Map());
 export const getPrivateMediaPrompt=(turnId:string):string|undefined=>store().get(turnId);
+/** The inspected research references of a turn (Whoush-owned copies), private to the server: quotes bind the ones the user kept. */
+const refStore=()=>((globalThis as {__whoushTurnRefs?:Map<string,ResearchReference[]>}).__whoushTurnRefs??=new Map());
+export const getTurnReferences=(turnId:string):readonly ResearchReference[]=>refStore().get(turnId)??[];
+/** Tests only: references for a quotable turn. */
+export function keepTurnReferencesForTests(turnId:string,refs:ResearchReference[]){refStore().set(turnId,refs);}
 /** The prompt-compiler version of a turn whose image prompt was compiled from a scene (lib/scene-compiler.ts); none for other prompts. */
 export const privatePromptCompilerVersion=(turnId:string):string|undefined=>contents().has(turnId)?SCENE_COMPILER_VERSION:undefined;
 /**
@@ -296,7 +306,7 @@ export function deriveTurnWithStaging(turnId:string,staging:Staging,aspect?:stri
   if(sceneVisibility(staging,asp).subject==="occluded")throw new SceneOccluded(occlusionMessageFa(staging,asp));
   const op=resolveOperation({sourceImage:kept.sourceImage,change:sceneChangeGroups(kept.staging,staging)});
   if("conflict" in op)throw new SceneEditConflict();
-  const c={...kept,aspect:aspect??kept.aspect},id=randomUUID();
+  const c={...kept,aspect:aspect??kept.aspect},id=randomUUID();copyReferences(turnId,id);
   // The new turn keeps the original scene as its reference, so a second change is checked against the photo's scene, not the first change.
   keepPrompt(id,compileImagePrompt({content:c.content,staging,aspect:c.aspect,operation:op.operation}).prompt,c);return id;
  }
@@ -305,15 +315,17 @@ export function deriveTurnWithStaging(turnId:string,staging:Staging,aspect?:stri
  // full scene follows at the end; the planner's own text sits between, cut to fit.
  const lead=sceneLeadEn(staging)+" ";
  const extra=" User-adjusted scene (overrides any earlier camera, framing or lighting direction): "+describeStagingEn(staging)+describeFocus(staging,undefined,aspect??"16:9").en+" "+lensFor(staging).en+(aspect?" Aspect ratio "+aspect+".":"");
- const id=randomUUID();keepPrompt(id,(lead+base.slice(0,Math.max(0,3000-extra.length-lead.length))+extra).slice(0,3000));
+ const id=randomUUID();copyReferences(turnId,id);keepPrompt(id,(lead+base.slice(0,Math.max(0,3000-extra.length-lead.length))+extra).slice(0,3000));
  return id;
 }
 /** Tests only: a quotable image-edit turn (no image-edit model is verified yet, so none can be planned as one). */
 export function keepEditTurnForTests(turnId:string,prompt:string,c:{content:string;aspect:string;staging:Staging}){keepPrompt(turnId,prompt,{...c,sourceImage:true});}
 function keepPrompt(turnId:string,prompt:string,content?:SceneContent){
- const m=store(),c=contents();m.set(turnId,prompt);if(content)c.set(turnId,content);
- while(m.size>MAX_PROMPTS){const k=m.keys().next().value as string;m.delete(k);c.delete(k);}
+ const m=store(),c=contents(),r=refStore();m.set(turnId,prompt);if(content)c.set(turnId,content);
+ while(m.size>MAX_PROMPTS){const k=m.keys().next().value as string;m.delete(k);c.delete(k);r.delete(k);}
 }
+/** A turn derived from another (an arranged scene) keeps the same research references. */
+function copyReferences(from:string,to:string){const r=refStore().get(from);if(r?.length)refStore().set(to,r);}
 // ---- attachments ----
 type Audio=NonNullable<ReturnType<typeof CreativeTurnInputSchema.parse>["audio"]>;
 /** One set of audio flags from the legacy `audio` field and from audio attachments; the first source that has speech decides language and accent. */
@@ -338,7 +350,7 @@ export function mediaRequirements(input:{characterRef?:{angles:readonly string[]
  const operation:MediaRequirements["operation"]=files.some(a=>a.kind==="audio"&&a.role==="lip_sync")?"lip_sync"
   :video("edit_reference")&&images.some(a=>a.role==="character"||a.role==="object")?"replace"
   :video("motion_reference")&&images.some(a=>a.role!=="graphic")?"motion_transfer":undefined;
- return {...(operation?{operation}:{}),referenceImages:refs||undefined,lipSync:lips||undefined,
+ return {...(operation?{operation}:{}),referenceImages:refs||undefined,...(refs?{identityReference:true}:{}),lipSync:lips||undefined,
   ...(video("motion_reference")?{motionReference:true}:{}),...(video("edit_reference")?{videoReference:true}:{}),
   ...(files.some(a=>a.kind==="image"&&a.role==="start_frame")?{startImage:true}:{}),...(files.some(a=>a.kind==="image"&&a.role==="end_frame")?{endImage:true}:{}),...(video("continue")?{videoContinuation:true}:{})};
 }
@@ -572,9 +584,31 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   const suggestedModel=suggestModel(requirements,kind);
   return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs,suggestedModel,input.style),message:FA_MEDIA_REVIEW+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{})};
  }
+ // Research (docs/RESEARCH_PIPELINE.md): what has a real identity or needs research gets open-licensed references, each inspected by a vision model before
+ // use. The research text is planner output, so it passes the same plan-text safety check first. A failure leaves a note, never a broken turn.
+ let research:ResearchResult|undefined;
+ // Only when the user gave no reference of their own (owner, 2026-11-06): an attached image or a saved character means their references lead, not the web.
+ const userGaveReferences=Boolean(ref)||files.some(f=>f.kind==="image");
+ if(plan.research?.subjects.length&&!userGaveReferences){
+  for(const t of plan.research.subjects.flatMap(x=>[x.labelFa,...x.factsFa,...x.queries])){
+   const r=evaluatePlanTextSafety(t);
+   if(r.decision!=="allow"){rec({planner:label,fallbackReason:"plan_restricted",corrections,usage:result?.usage});return {status:"restricted",decision:r.decision,category:r.category,message:r.message};}
+  }
+  stage("researching");
+  research=await (deps.research??(rp=>researchReferences(rp,{inspect:inspectReferences})))(plan.research)
+   .catch(()=>({subjects:plan.research!.subjects.map(x=>({labelFa:x.labelFa,factsFa:[...x.factsFa],found:0,kept:0})),references:[],notesFa:["جست‌وجوی مرجع این بار انجام نشد؛ جزئیات تحقیق فقط در نوشتن صحنه به کار رفت."]}));
+ }
+ const refCount=research?.references.length??0;
  stage("pricing");
  let proposal:GenerationProposal;
- try{proposal=buildProposal(input.text,input.preference,requirements);}
+ // With references, an image is offered on models that take them as images; when none fits, the usual models are offered and the references only shaped the plan.
+ let usedAsImages=false;
+ try{
+  if(refCount&&kind==="image"){
+   try{proposal=buildProposal(input.text,input.preference,{...requirements,referenceImages:Math.max(requirements.referenceImages??0,refCount)});usedAsImages=true;}
+   catch(e){if(!(e instanceof NoCompatibleModelError))throw e;proposal=buildProposal(input.text,input.preference,requirements);}
+  }else proposal=buildProposal(input.text,input.preference,requirements);
+ }
  catch(e){
   if(!(e instanceof NoCompatibleModelError))throw e;
   rec({planner:label,fallbackReason:"no_compatible_model",corrections:corrections.length?corrections:undefined});
@@ -582,6 +616,13 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs,suggestedModel,input.style),message:base+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{})};
  }
  keepPrompt(turnId,plan.mediaPrompt,content);
+ if(research){
+  if(usedAsImages&&refCount)refStore().set(turnId,research.references);
+  const notes=[...research.notesFa,...(refCount&&!usedAsImages?[kind==="video"?"برای ویدیو، مرجع‌ها فعلاً در نوشتن صحنه به کار رفتن، نه به‌عنوان تصویر.":"مدل‌های پیشنهادی مرجع تصویری نمی‌گیرن؛ مرجع‌ها در نوشتن صحنه به کار رفتن."]:[])];
+  const report:ProposalResearch={subjects:research.subjects.map(x=>({labelFa:x.labelFa,factsFa:x.factsFa,kept:x.kept})),
+   references:research.references.map(({mime:_m,...r})=>r),notesFa:notes,usedAsImages:usedAsImages&&refCount>0};
+  proposal={...proposal,research:report};
+ }
  rec({planner:label,fallbackReason,corrections:corrections.length?corrections:undefined,usage:label==="live"?result?.usage:undefined});
  // The proposal speaks in Whoush's voice; a rejected explicit model request keeps its factual note after the reply.
  proposal={...proposal,message:replyText("planned")+(proposal.explicitRejected?"\n"+proposal.message:"")};

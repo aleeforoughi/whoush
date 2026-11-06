@@ -8,8 +8,9 @@ import type {AgentProposal,NoModelResult} from "@/lib/studio-types";
 import {PAST_PROPOSAL_FA,type ProposalSnapshot} from "@/lib/projects";
 import {fa} from "@/lib/format";
 import {nearestAspectRatio} from "@/lib/aspect";
+import {ResearchReport} from "@/components/research-report";
 
-export const GENERATE_FA="بسازش",DEMO_NOTE_FA="نسخهٔ نمایشی: نه پولی کسر می‌شود و نه رسانهٔ واقعی ساخته می‌شود.";
+export const GENERATE_FA="بسازش",GENERATE_WITH_REFS_FA="با این مرجع‌ها بسازش",DEMO_NOTE_FA="نسخهٔ نمایشی: نه پولی کسر می‌شود و نه رسانهٔ واقعی ساخته می‌شود.";
 const RECOMMENDED_FA="پیشنهاد هووش",ALTERNATE_FA="جایگزین";
 /** Latin model names keep their own direction inside Persian text. */
 const ModelName=({name}:{name:string})=><bdi dir="ltr">{name}</bdi>;
@@ -29,10 +30,11 @@ function Head({kind,tag,onMention}:{kind:"image"|"video";tag?:string;onMention?:
  * alternates marked «جایگزین», each with its fixed Neurons), its settings, its notes, then a full-width bar at its very bottom: [✦ بسازش] on the right, its cost
  * («۱۰ نورون») on the left. Tapping the tag mentions it in the chat to ask for changes.
  */
-export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onAspect,busy,onApprove,onMention}:{proposal:AgentProposal;tag?:string;
+export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onAspect,busy,onApprove,onMention,excludedReferences,onToggleReference}:{proposal:AgentProposal;tag?:string;
  /** The scene was arranged in «بوم»: «بساز» builds exactly that scene. */adjusted?:boolean;selected:string;onSelect:(id:string)=>void;
  /** The aspect ratio the generation will use (Whoush's from the brief or «بوم», unless the user picked one here). */aspect?:string;onAspect?:(r:string)=>void;
- busy:boolean;onApprove:()=>void;onMention?:()=>void}){
+ busy:boolean;onApprove:()=>void;onMention?:()=>void;
+ /** Research references the user removed from the package, and the toggle (remove or restore). */excludedReferences?:ReadonlySet<string>;onToggleReference?:(id:string)=>void}){
  const chosen=proposal.suggestions.find(s=>s.modelId===selected);
  const price=chosen?.neurons??proposal.fixedNeurons;
  const ordered=[...proposal.suggestions].sort((a,b)=>Number(b.modelId===proposal.recommendedModelId)-Number(a.modelId===proposal.recommendedModelId));
@@ -69,11 +71,12 @@ export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onA
    {durations.length>0&&<Setting label="مدت">{durations.map(d=><Opt key={d} on={chosen?.durationSeconds===d} onClick={()=>pick(chosen?.resolution,d)} disabled={durations.length<2}>{fa(d)} ثانیه</Opt>)}</Setting>}
   </div>}
   {adjusted&&<p role="status" className="flex items-center gap-2 type-caption text-fg-primary"><Icon icon={Box} size={16} aria-hidden="true" className="size-4 text-primary"/>با صحنه‌ای که توی «بوم» چیدی ساخته می‌شه.</p>}
+  {proposal.research&&<ResearchReport research={proposal.research} excluded={excludedReferences} onToggle={onToggleReference}/>}
   <p className="type-caption text-fg-secondary">{DEMO_NOTE_FA}</p>
   {/* The call to action, full width at the card's very bottom: [✦ بسازش] on the right (as Persian reads), the cost on the left. */}
   <div className="-mx-3 -mb-3 mt-1 flex items-center justify-between gap-3 rounded-b-[inherit] border-t border-line-secondary bg-surface-subtle px-3 py-2.5">
    <Button type="button" onClick={onApprove} disabled={busy||!proposal.turnId} className="shrink-0">
-    <Icon icon={Sparkles} aria-hidden="true"/>{GENERATE_FA}
+    <Icon icon={Sparkles} aria-hidden="true"/>{proposal.research?.usedAsImages&&proposal.research.references.some(r=>!excludedReferences?.has(r.id))?GENERATE_WITH_REFS_FA:GENERATE_FA}
    </Button>
    <span className="type-label text-fg-primary" aria-label={"هزینه: "+fa(price)+" نورون"}>{fa(price)} نورون</span>
   </div>

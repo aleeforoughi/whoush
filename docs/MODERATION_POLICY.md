@@ -9,6 +9,11 @@ Persian-speaking users, Iranian influencers, modern/traditional cultural creator
 2. **Sexualized visual content**: no nudity, sexual display, overtly sensual/erotic poses or clearly revealing outfits (including lingerie and bikinis), sexualization of minors, or sexualized deepfakes. Normal everyday clothing and nonsexual fashion, sportswear, weddings and portrait photography are permitted.
 3. **Explicit severe harms**: no sexual exploitation of minors, graphic dismemberment, explicit religious hostility or direct advertising of illicit/high-risk regulated activities. Add and validate further harms under provider policy before production.
 
+**Historical figures (owner decision, 2026-11-06).** Rulers and public figures who lived before 1900 (for example Cyrus the Great, Darius, Ferdowsi, Hafez) may be depicted respectfully and historically, in their own era: a coronation, an entry into a city, a portrait in period dress. This is not an exception to rule 1:
+- Modern figures stay fully blocked: anyone active in politics from the 20th century on, including the Pahlavi dynasty.
+- A historical figure used for a present-day political message stays blocked: slogans, protest or opposition imagery, campaign or party material, "a message to today's rulers".
+- Accuracy matters for identity-bearing subjects: Whoush researches the era and uses open-licensed references (docs/RESEARCH_PIPELINE.md), so it does not invent a likeness or mix eras.
+
 ## Contextual review (not automatic guilty verdict)
 - Ambiguous historical dynastic terms or common names that might refer to a political person; e.g. “پهلوی”, “روحانی”. A nonpolitical architecture/history context can still be disallowed if explicitly depicting a political leader, but ordinary innocuous meaning should not be auto-banned.
 - Profanity or Persian sensitive slang: infer intent (quoted dialogue, linguistic discussion, mild casual idiom, explicit abuse); avoid substring matching, ZWNJ/Arabic yeh-kaf drift or broad stop words.
@@ -37,6 +42,8 @@ Persian-speaking users, Iranian influencers, modern/traditional cultural creator
 | Professional fashion catalog with modest evening dress | Allow | Ordinary fashion |
 | Nude-color lipstick product shot | Allow | Color name, not nudity |
 | Historic Pahlavi era building | Review | May be nonpolitical architectural context |
+| Cyrus the Great entering Babylon, historical film still | Allow | Pre-1900 figure, historical depiction (owner decision 2026-11-06) |
+| Cyrus the Great with a political slogan or protest banner | Block | A historical figure used for a present-day political message |
 | Persian poem that mentions wine | Review | Context-dependent; not necessarily advertising |
 | Tehran travel postcard with Iranian flag | Allow | National culture without propaganda |
 

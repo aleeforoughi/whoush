@@ -124,3 +124,12 @@
 - **Not yet tested:**
   - **Real Persian speech:** the owner should test with their own voice.
   - **Safari's `audio/mp4` recordings:** sent as `audio/m4a`.
+
+## Image search for references: not available (read 2026-11-06)
+
+From `developers.google.com/custom-search/v1/overview`:
+- "The Custom Search JSON API is closed to new customers."
+- "Existing Custom Search JSON API customers have until January 1, 2027 to transition."
+- The suggested replacement, Vertex AI Search, searches up to 50 domains.
+
+The API's `rights` filter (`cc_publicdomain`, `cc_attribute`, `cc_sharealike` and others) would have suited licensed reference search, but it cannot be used. Whoush uses Wikimedia Commons and Openverse instead (docs/RESEARCH_PIPELINE.md).

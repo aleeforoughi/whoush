@@ -172,6 +172,27 @@ export const StagingSchema=z.object({subject:z.enum(SUBJECTS).optional(),cameraA
  props:z.array(PropSchema).max(MAX_PROPS).optional(),lights:z.array(LightSchema).min(1).max(4)});
 export type Staging=z.infer<typeof StagingSchema>;
 export type StagingLight=Staging["lights"][number];
+/** What an accurate result needs researched (docs/RESEARCH_PIPELINE.md): real people of history, eras, places, dress, artifacts, brands, species. */
+export const RESEARCH_KINDS=["person","era","place","landmark","clothing","artifact","brand","species","other"] as const;
+/** Research stays quick and cheap: at most 3 subjects, each with 1 or 2 queries. */
+export const MAX_RESEARCH_SUBJECTS=3;
+const ResearchSubjectSchema=z.object({
+ /** Short Persian name for the report: «لباس سربازان هخامنشی». */labelFa:s(80),kind:z.enum(RESEARCH_KINDS),
+ /** 1 or 2 short English phrases for an open-licensed image search (Wikimedia Commons, Openverse). */queries:z.array(z.string().trim().min(2).max(120)).min(1).max(2),
+ /** 1 to 4 short Persian lines: what must look right. */factsFa:z.array(s(200)).min(1).max(4)
+}).strict();
+/** Trims a planner's research to the limits (first subjects, first queries, shortened text) instead of dropping it: a slightly long answer still counts. */
+function clampResearch(v:unknown):unknown{
+ if(!v||typeof v!=="object")return v;
+ const cut=(x:unknown,n:number)=>typeof x==="string"?x.trim().slice(0,n):x;
+ const subjects=(v as {subjects?:unknown}).subjects;if(!Array.isArray(subjects))return v;
+ return {subjects:subjects.slice(0,MAX_RESEARCH_SUBJECTS).map(x=>{
+  if(!x||typeof x!=="object")return x;const o=x as Record<string,unknown>;
+  return {...o,labelFa:cut(o.labelFa,80),queries:Array.isArray(o.queries)?o.queries.slice(0,2).map(q=>cut(q,120)):o.queries,factsFa:Array.isArray(o.factsFa)?o.factsFa.slice(0,4).map(f=>cut(f,200)):o.factsFa};
+ })};
+}
+export const ResearchSchema=z.preprocess(clampResearch,z.object({subjects:z.array(ResearchSubjectSchema).min(1).max(MAX_RESEARCH_SUBJECTS)}).strict());
+export type ResearchPlan=z.infer<typeof ResearchSchema>;
 export const CreativePlanSchema=z.object({
  intentSummaryFa:s(500),mediaKind:z.enum(["image","video"]),mediaPrompt:s(3000),
  hardConstraints:list(),softPreferences:list(),negative:list(),
@@ -184,7 +205,9 @@ export const CreativePlanSchema=z.object({
  continuity:z.object({locks:list(),antiTeleport:list()}),
  realism:z.object({mode:z.enum(["photoreal","stylized"]),directives:list()}),
  speech:z.object({lipSync:z.object({status:z.enum(["needs_audio","planned_from_audio","not_requested"]),notes:list(8)}),accent}).optional(),
- qaChecklist:z.array(s(300)).min(3).max(20),clarifyingQuestionFa:s(400).optional()
+ qaChecklist:z.array(s(300)).min(3).max(20),clarifyingQuestionFa:s(400).optional(),
+ /** What to research before generating; absent for generic scenes. An invalid block is dropped instead of failing the plan. */
+ research:ResearchSchema.optional().catch(undefined)
 });
 export type CreativePlan=z.infer<typeof CreativePlanSchema>;
 /**
@@ -208,7 +231,8 @@ export const CreativePlanWireSchema=z.object({
  continuity:z.object({locks:wl,antiTeleport:wl}).strict(),
  realism:z.object({mode:z.enum(["photoreal","stylized"]),directives:wl}).strict(),
  speech:z.object({lipSync:z.object({status:z.enum(["needs_audio","planned_from_audio","not_requested"]),notes:wl}).strict(),accent}).strict().nullable(),
- qaChecklist:wl,clarifyingQuestionFa:ws.nullable()
+ qaChecklist:wl,clarifyingQuestionFa:ws.nullable(),
+ research:z.object({subjects:z.array(z.object({labelFa:ws,kind:z.enum(RESEARCH_KINDS),queries:wl,factsFa:wl}).strict()).max(MAX_RESEARCH_SUBJECTS)}).strict().nullable()
 }).strict();
 export type CreativePlanWire=z.infer<typeof CreativePlanWireSchema>;
 /**
@@ -217,7 +241,7 @@ export type CreativePlanWire=z.infer<typeof CreativePlanWireSchema>;
  * required string, `extras`: compact JSON {"reply":{...},"staging":{...}}. `fromAnthropicPlan` unpacks it; CreativePlanSchema re-validates everything, and an
  * invalid reply or staging is dropped like any other planner's.
  */
-const {staging:_s,reply:_r,...anthropicBase}=CreativePlanSchema.shape;
+const {staging:_s,reply:_r,research:_q,...anthropicBase}=CreativePlanSchema.shape;
 void _s;void _r;
 // An empty clarifying question means "no question" (seen live from a fast model); it is dropped in fromAnthropicPlan.
 export const CreativePlanAnthropicSchema=z.object({...anthropicBase,clarifyingQuestionFa:z.string().max(400).optional(),extras:z.string()});
@@ -226,13 +250,14 @@ export const ANTHROPIC_EXTRAS_NOTE="Output format note: put reply and staging in
  '{"reply":{"text":string,"gif":one of '+JSON.stringify(GIF_MOODS)+' or null,"react":one of '+JSON.stringify(REACTION_EMOJIS)+' or null},'+
  '"staging":{"subject":one of '+JSON.stringify(SUBJECTS)+',"cameraAngle":one of '+JSON.stringify(CAMERA_ANGLES)+',"shotSize":one of '+JSON.stringify(SHOT_SIZES)+',"framing":{"x":-1 to 1,"y":-1 to 1} (where the subject sits in the frame; 0,0 centred; omit when centred),"props":[0 to 6 of {"kind":one of '+JSON.stringify(PROP_KINDS)+',"label":short Persian name,"x":-1 to 1 (beyond ±1 only when the brief wants it partly out of frame),"z":-1 to 1 (-1 nearest the camera; lower only when the frame should cut it),"y":0 to 1,"main":true for the main subject}],"lights":[1 to 4 of {"role":one of '+JSON.stringify(LIGHT_ROLES)+
  ',"direction":one of '+JSON.stringify(LIGHT_DIRECTIONS)+',"height":one of ["low","eye","high"],"quality":one of ["soft","hard"],"source":one of '+JSON.stringify(LIGHT_SOURCES)+
- ',"colorTemperatureK":integer 1500 to 12000,"colorHex":"#rrggbb" only for coloured light, otherwise omit}]}}. Use exactly these values.';
+ ',"colorTemperatureK":integer 1500 to 12000,"colorHex":"#rrggbb" only for coloured light, otherwise omit}]},'+
+ '"research":omit, or {"subjects":[1 to '+MAX_RESEARCH_SUBJECTS+' of {"labelFa":string,"kind":one of '+JSON.stringify(RESEARCH_KINDS)+',"queries":[1 or 2 English search phrases],"factsFa":[1 to 4 short Persian lines]}]}}. Use exactly these values.';
 export function fromAnthropicPlan(raw:unknown):unknown{
  if(!raw||typeof raw!=="object")return raw;
  const {extras,clarifyingQuestionFa:q,...rest}=raw as Record<string,unknown>;
  let x:unknown;try{x=typeof extras==="string"?JSON.parse(extras):undefined;}catch{x=undefined;}
  const o=x&&typeof x==="object"?x as Record<string,unknown>:{};
- return {...rest,...(typeof q==="string"&&q.trim()?{clarifyingQuestionFa:q}:{}),...(o.reply&&typeof o.reply==="object"?{reply:o.reply}:{}),...(o.staging&&typeof o.staging==="object"?{staging:o.staging}:{})};
+ return {...rest,...(typeof q==="string"&&q.trim()?{clarifyingQuestionFa:q}:{}),...(o.reply&&typeof o.reply==="object"?{reply:o.reply}:{}),...(o.staging&&typeof o.staging==="object"?{staging:o.staging}:{}),...(o.research&&typeof o.research==="object"?{research:o.research}:{})};
 }
 /** Drops every null (an absent optional on the wire) recursively. The result is untrusted: validate it with CreativePlanSchema. */
 export function fromWirePlan(wire:unknown):unknown{

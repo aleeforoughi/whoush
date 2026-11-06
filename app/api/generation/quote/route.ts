@@ -13,7 +13,9 @@ const schema=z.object({
  characterRef:z.object({id:z.string().regex(/^[a-z0-9-]{8,80}$/i),version:z.number().int().min(1),angles:z.array(z.enum(VIEW_IDS)).min(1).max(6)}).strict().optional(),
  /** The scene arranged in «بوم» (structured, enum values only): applied to the turn's private plan on the server before quoting. */
  stagingOverride:StagingSchema.optional(),
- aspectOverride:z.string().regex(/^(?:1|2|3|4|5|9|16|21):(?:1|2|3|4|5|9|16)$/).optional()
+ aspectOverride:z.string().regex(/^(?:1|2|3|4|5|9|16|21):(?:1|2|3|4|5|9|16)$/).optional(),
+ /** Research references the user removed from the package (ids); the kept ones are taken from the turn on the server. */
+ excludeReferences:z.array(z.string().uuid()).max(14).optional()
 }).strict();
 export async function POST(request:Request){
  let payload:unknown;try{payload=await request.json();}catch{return NextResponse.json({error:"invalid_json"},{status:400,headers});}

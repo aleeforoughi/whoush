@@ -21,6 +21,8 @@ export function modelIneligibility(m:MediaModel,r:MediaRequirements={},opts:{ass
  const c=m.capabilities,max=c.referenceImages.max;
  if(!m.operations.includes(r.operation??"generate")) return "این مدل این نوع کار را پشتیبانی نمی‌کند.";
  // `max: null` = supported with an unknown count: it cannot satisfy a hard requirement, but a suggestion ("coming soon") may assume it.
+ // The user's own photos (a character) need a model built to keep identity from them; the direct-provider models take Whoush's research images only.
+ if(r.identityReference&&m.provider!=="higgsfield") return "این مدل هنوز چهره یا ظاهر را از عکس‌های خودت نگه نمی‌دارد.";
  if(r.referenceImages&&(!c.referenceImages.supported||(max===null?!opts.assumeUnknownMax:r.referenceImages>max))) return "این مدل از تصویر مرجع به این تعداد پشتیبانی نمی‌کند.";
  if(r.aspectRatio&&!c.aspectRatios.includes(r.aspectRatio)) return "این مدل نسبت تصویر درخواستی را پشتیبانی نمی‌کند.";
  if(r.durationSeconds!==undefined&&!(c.durationsSeconds??[]).includes(r.durationSeconds)) return "این مدل مدت‌زمان درخواستی را پشتیبانی نمی‌کند.";

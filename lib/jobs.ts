@@ -4,7 +4,7 @@ import {findMediaModel,MEDIA_CATALOG_VERSION,type MediaConfiguration} from "./ca
 import {ReservationLedger} from "./ledger";
 import {NotCancelableError,providerForMode,SubmissionUnknownError,type MediaProvider,type ProviderOutput,type ProviderStatus} from "./media-provider";
 import {getPrivateMediaPrompt,privatePromptCompilerVersion} from "./orchestrator";
-import {isStoredMediaUrl} from "./media-store";
+import {isStoredMediaUrl,readMedia} from "./media-store";
 import {evaluateOutputQA,type OutputQA} from "./output-qa";
 import {claimDevSubmit,devGenerationGate,generationGate,type GenerationMode} from "./policy";
 import {verifyQuote,verifyQuoteSignature,QuoteError,type CharacterRefDigest} from "./quotes";
@@ -21,6 +21,7 @@ export const JOB_TRANSITIONS:Readonly<Record<JobState,readonly JobState[]>>={
 };
 export const isTerminal=(s:JobState)=>JOB_TRANSITIONS[s].length===0;
 export type Job={id:string;ownerId:string;idempotencyKey:string;quoteId:string;turnId:string;modelId:string;mode:GenerationMode;configuration:MediaConfiguration;characterRef?:CharacterRefDigest;
+ /** Research references bound by the quote (ids of Whoush-owned copies). */references?:string[];
  neurons:number;chargedNeurons:number;state:JobState;providerRequestId?:string;
  /** Private provenance (docs/CANVAS_TO_IMAGE.md section 8): what was asked for and sent, so every result can be traced. Never public. */provenance?:JobProvenance;
  /** Private, only while `submission_unknown`: the exact request to resend with the same key (the same key with other parameters is refused), and how the
@@ -74,7 +75,7 @@ export async function executeApprovedQuote(i:{token:string;approved:boolean;idem
  // dev_live (owner-only local testing) accepts the lexical pre-submission check and never charges Neurons; see devLiveTest in lib/policy.ts.
  const prompt=getPrivateMediaPrompt(q.turnId);if(prompt===undefined)throw new QuoteError("unknown_turn");
  const t=now.toISOString();
- const job:Job={id:randomUUID(),ownerId:i.ownerId,idempotencyKey:i.idempotencyKey,quoteId:q.quoteId,turnId:q.turnId,modelId:q.modelId,mode:q.mode,configuration:q.configuration,characterRef:q.characterRef,neurons:q.neurons,chargedNeurons:0,state:"quoted",outputs:[],qa:{status:"not_applicable",checks:[]},createdAt:t,updatedAt:t};
+ const job:Job={id:randomUUID(),ownerId:i.ownerId,idempotencyKey:i.idempotencyKey,quoteId:q.quoteId,turnId:q.turnId,modelId:q.modelId,mode:q.mode,configuration:q.configuration,characterRef:q.characterRef,...(q.references?.length?{references:[...q.references]}:{}),neurons:q.neurons,chargedNeurons:0,state:"quoted",outputs:[],qa:{status:"not_applicable",checks:[]},createdAt:t,updatedAt:t};
  const compilerVersion=privatePromptCompilerVersion(q.turnId);
  job.provenance={requestedModelId:q.modelId,endpoint:q.mode==="demo"?"mock":findMediaModel(q.modelId)?.verifiedApiPath??"unverified",catalogVersion:MEDIA_CATALOG_VERSION,
   ...(compilerVersion?{compilerVersion}:{}),promptSha256:createHash("sha256").update(prompt).digest("hex")};
@@ -86,7 +87,8 @@ export async function executeApprovedQuote(i:{token:string;approved:boolean;idem
  try{
   if(job.mode==="live"&&!generationGate(model).live)throw new Error("gate closed");
   if(job.mode==="dev_live"&&!(devGenerationGate(model).live&&claimDevSubmit()))throw new Error("dev gate closed or cap reached");
-  const r=await provider.submit({modelId:job.modelId,prompt,configuration:job.configuration,idempotencyKey:job.id});
+  const references=await loadReferences(job);
+  const r=await provider.submit({modelId:job.modelId,prompt,configuration:job.configuration,idempotencyKey:job.id,...(references.length?{references}:{})});
   job.providerRequestId=r.providerRequestId;transition(job,"submitted",deps.now?.()??new Date());
   if(job.mode==="dev_live")console.info("[whoush dev-live] media submit",job.modelId,r.providerRequestId); // never the prompt
  }catch(e){
@@ -123,7 +125,8 @@ async function reconcile(job:Job,ledger:ReservationLedger,provider:MediaProvider
  if(provider.resendSafe&&!provider.resendSafe(job.modelId))return;
  job.unknownSubmission={...u,attempts:u.attempts+1,lastAttemptAt:now.toISOString()};
  try{
-  const r=await provider.submit({modelId:job.modelId,prompt:u.prompt,configuration:job.configuration,idempotencyKey:job.id});
+  const references=await loadReferences(job);
+  const r=await provider.submit({modelId:job.modelId,prompt:u.prompt,configuration:job.configuration,idempotencyKey:job.id,...(references.length?{references}:{})});
   job.providerRequestId=r.providerRequestId;delete job.unknownSubmission;transition(job,"submitted",now);
  }catch(e){
   if(e instanceof SubmissionUnknownError){job.unknownSubmission={...job.unknownSubmission!,reason:e.reason};return;}
@@ -175,6 +178,12 @@ const MSG:Record<JobState,string>={
  failed:"تولید ناموفق بود؛ نورونی کسر نشد.",canceled:"درخواست لغو شد؛ نورونی کسر نشد.",released:"درخواست ارسال نشد؛ نورون رزروشده آزاد شد و نورونی کسر نشد."
 };
 /** Consumer projection: no provider ids/keys/costs/evidence/turn or quote internals. Output URLs only for completed live jobs. */
+/** The job's research references, read from Whoush's store. A missing one fails the submission: it was part of the approved quote. */
+async function loadReferences(job:Job):Promise<{bytes:Uint8Array;mime:string}[]>{
+ const out:{bytes:Uint8Array;mime:string}[]=[];
+ for(const id of job.references??[]){const m=await readMedia(id);if(!m)throw new Error("Reference missing");out.push({bytes:new Uint8Array(m.bytes),mime:m.mime});}
+ return out;
+}
 const DEV_COMPLETED_FA="تست توسعه: خروجی واقعی ساخته شد و هیچ نورونی کسر نشد. خروجی باید بازبینی شود.";
 export function toPublicJob(j:Job){
  const typical=findMediaModel(j.modelId)?.typicalSeconds;

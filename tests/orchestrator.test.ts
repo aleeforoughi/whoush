@@ -448,8 +448,8 @@ test("attachments: the audit keeps only tag, role, kind, size and sha256",async(
 });
 test("attachments: every image counts as a reference image, video and audio roles raise their own requirements",()=>{
  const refs={attachments:[{kind:"image",role:"character"},{kind:"image",role:"environment"},{kind:"image",role:"edit_reference"},{kind:"video",role:"edit_reference"},{kind:"audio",role:"music"},{kind:"md"}]};
- assert.deepEqual(mediaRequirements(refs,false),{operation:"replace",referenceImages:3,lipSync:undefined,videoReference:true});
- assert.deepEqual(mediaRequirements({...refs,characterRef:{angles:["front","profile_left"]}},true),{operation:"replace",referenceImages:5,lipSync:true,videoReference:true});
+ assert.deepEqual(mediaRequirements(refs,false),{operation:"replace",referenceImages:3,identityReference:true,lipSync:undefined,videoReference:true});
+ assert.deepEqual(mediaRequirements({...refs,characterRef:{angles:["front","profile_left"]}},true),{operation:"replace",referenceImages:5,identityReference:true,lipSync:true,videoReference:true});
  assert.deepEqual(mediaRequirements({attachments:[{kind:"video",role:"motion_reference"}]},false),{referenceImages:undefined,lipSync:undefined,motionReference:true});
  assert.deepEqual(mediaRequirements({attachments:[{kind:"audio",role:"lip_sync"}]},false),{operation:"lip_sync",referenceImages:undefined,lipSync:true});
  assert.deepEqual(mediaRequirements({attachments:[{kind:"audio",role:"voice_clone"},{kind:"audio",role:"music"}]},false),{referenceImages:undefined,lipSync:undefined});
@@ -780,7 +780,7 @@ test("P5: video edit_reference + character/object image suggests Genjutsu; motio
  }
  const m=await orchestrateCreativeTurn({text:"make her dance like the clip",attachments:[att("video",{role:"motion_reference"}),att("image",{role:"character"})]}) as Extract<OrchestratorResult,{status:"unsupported"}>;
  assert.equal(m.suggestedModel?.name,"Genjutsu");assert.ok(m.message.endsWith(SUGGEST("Genjutsu")));
- assert.deepEqual(mediaRequirements({attachments:[{kind:"video",role:"motion_reference"},{kind:"image",role:"graphic"}]},false),{referenceImages:1,lipSync:undefined,motionReference:true});
+ assert.deepEqual(mediaRequirements({attachments:[{kind:"video",role:"motion_reference"},{kind:"image",role:"graphic"}]},false),{referenceImages:1,identityReference:true,lipSync:undefined,motionReference:true});
  // an environment image does not make an edit a replacement
  const env=await orchestrateCreativeTurn({text:"change the sky in the clip",attachments:[att("video",{role:"edit_reference"}),att("image",{role:"environment"})]}) as Extract<OrchestratorResult,{status:"unsupported"}>;
  assert.equal(env.suggestedModel,undefined);assert.ok(!env.message.includes("مدل مناسب این کار"));
@@ -802,7 +802,7 @@ test("curated roles: start_frame makes a video with the first-frame constraint a
  assert.ok(skillsOf().includes("anti_drift")&&skillsOf().includes("continuity")&&skillsOf().includes("cinematographer"));
  assert.deepEqual(r.plan.references,[{tag:"image1",kind:"image",role:"start_frame",roleSource:"user",labelFa:"فریم اول"}]);
  assert.equal(r.suggestedModel,undefined);
- assert.deepEqual(mediaRequirements({attachments:[{kind:"image",role:"start_frame"}]},false),{referenceImages:1,lipSync:undefined,startImage:true});
+ assert.deepEqual(mediaRequirements({attachments:[{kind:"image",role:"start_frame"}]},false),{referenceImages:1,identityReference:true,lipSync:undefined,startImage:true});
  assert.equal(getPrivateMediaPrompt(r.turnId),undefined);
  assert.equal(describeTagEn({tag:"image1",kind:"image",role:"start_frame"}),"[start frame image 1]");
 });
@@ -847,7 +847,7 @@ test("curated roles: end_frame makes a video that ends on the image; start and e
  assert.equal(r.plan.mediaKind,"video");
  assert.ok(r.plan.hardConstraints.includes("#تصویر-۱ فریم آخر ویدیوست؛ ویدیو با همین ترکیب‌بندی، سوژه و نور تمام می‌شود"),JSON.stringify(r.plan.hardConstraints));
  assert.equal(r.plan.references[0].labelFa,"فریم آخر");assert.equal(r.suggestedModel,undefined);
- assert.deepEqual(mediaRequirements({attachments:[{kind:"image",role:"start_frame"},{kind:"image",role:"end_frame"}]},false),{referenceImages:2,lipSync:undefined,startImage:true,endImage:true});
+ assert.deepEqual(mediaRequirements({attachments:[{kind:"image",role:"start_frame"},{kind:"image",role:"end_frame"}]},false),{referenceImages:2,identityReference:true,lipSync:undefined,startImage:true,endImage:true});
  assert.equal(describeTagEn({tag:"image2",kind:"image",role:"end_frame"}),"[end frame image 2]");
  const both=unsupported(await orchestrateCreativeTurn({text:"از #تصویر-۱ شروع کن و به #تصویر-۲ برسه",attachments:[att("image",{tag:"image1",role:undefined}),att("image",{tag:"image2",role:undefined})]}));
  assert.deepEqual(both.plan.references.map(x=>[x.tag,x.role,x.roleSource]),[["image1","start_frame","inferred"],["image2","end_frame","inferred"]]);

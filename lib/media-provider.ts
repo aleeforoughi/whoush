@@ -9,7 +9,10 @@ export type ProviderOutput={kind:"image"|"video"|"audio";url:string;needsMirrori
 export type ProviderState="queued"|"running"|"completed"|"completed_demo"|"failed"|"nsfw"|"canceled";
 /** `reportedModelId`: the model the provider says ran, only when it reports one (the documented Higgsfield status has no such field). */
 export type ProviderStatus={state:ProviderState;outputs:ProviderOutput[];expiresAt?:string;reportedModelId?:string};
-export type ProviderJob={modelId:string;prompt:string;configuration:MediaConfiguration;idempotencyKey:string};
+/** Appended to the prompt when research references go with it: what they are for, so the model takes details from them and not their composition. */
+export const REFERENCE_PROMPT_NOTE=" Reference images are attached: open-licensed photos of the real subjects (artifacts, places, period dress). Follow them for authentic details of clothing, architecture and objects; do not copy their composition, framing or any text in them.";
+/** `references`: inspected, Whoush-owned research reference images the user kept (docs/RESEARCH_PIPELINE.md), for models that take them inline. */
+export type ProviderJob={modelId:string;prompt:string;configuration:MediaConfiguration;idempotencyKey:string;references?:{bytes:Uint8Array;mime:string}[]};
 /**
  * `resendSafe(modelId)`: whether resending the same request after an unclear outcome is safe, because the provider honors an idempotency key (Higgsfield).
  * Absent means safe. Providers with no idempotency (Google, BytePlus, docs/evidence) answer false, and an unknown submission then waits for the owner.

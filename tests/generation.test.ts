@@ -271,7 +271,10 @@ test("router: ineligible explicit model is rejected with reason and compatible a
  const img=recommendMediaModels("generate an image with nano banana","quality",{aspectRatio:"16:9"});
  assert.equal(img.explicit,"nano-banana-pro-2k","16:9 is a Nano Banana Pro ratio (direct Google API, docs/evidence/GOOGLE.md)");assert.equal(img.explicitRejected,undefined);
  const ref=recommendMediaModels("generate an image with soul","quality",{referenceImages:1});
- assert.equal(ref.explicitRejected?.id,"soul-image");assert.deepEqual(ref.alternatives,[]); // nothing verified supports reference images
+ assert.equal(ref.explicitRejected?.id,"soul-image");
+ // Research images go to the direct models that take reference images; a person's own photos (identityReference) still route nowhere verified.
+ assert.ok(ref.alternatives.length>0&&ref.alternatives.every(m=>m.capabilities.referenceImages.supported&&m.provider!=="higgsfield"),ref.alternatives.map(m=>m.id).join());
+ assert.deepEqual(recommendMediaModels("generate an image with soul","quality",{referenceImages:1,identityReference:true}).alternatives,[]);
  const lip=recommendMediaModels("video with seedance lip sync","quality",{lipSync:true});
  assert.equal(lip.explicitRejected?.id,"seedance-2-5-5s");
  const p=buildProposal("make a 10 second video with kling","quality",{durationSeconds:10});

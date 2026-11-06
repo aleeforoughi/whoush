@@ -94,6 +94,8 @@ export function Studio(){
  const [job,setJob]=useState<JobView|null>(null);
  /** Which generation the preview gallery should bring into view (a chat preview card, a new generation, an opened project). */
  const [galleryFocus,setGalleryFocus]=useState<GalleryFocus|null>(null);
+ /** Research references the user removed from the live proposal's package (sent with the quote; the server binds the rest). */
+ const [excludedRefs,setExcludedRefs]=useState<ReadonlySet<string>>(new Set());
  /** Voice messages: offered only when the server can transcribe now (`/api/voice`); `voiceOpen` shows the full-screen voice mode. */
  const [voice,setVoice]=useState<{enabled:boolean;maxSeconds:number}>({enabled:false,maxSeconds:60}),[voiceOpen,setVoiceOpen]=useState(false);
  useEffect(()=>{let alive=true;fetch("/api/voice").then(r=>r.ok?r.json():undefined).then((v:{enabled?:boolean;maxSeconds?:number}|undefined)=>{if(alive&&v?.enabled)setVoice({enabled:true,maxSeconds:v.maxSeconds??60});}).catch(()=>undefined);return()=>{alive=false;};},[]);
@@ -574,7 +576,7 @@ export function Studio(){
    const named=mentioned.find(t=>generationSet.has(t)),prevSnap=named?generationMap.get(named):[...messages].reverse().find(m=>m.kind==="proposal")?.snapshot as ProposalSnapshot|undefined;
    const focus=followUpFocus(normalizePersian(sentText),prevSnap?.plan.staging,data.plan.staging);
    const reply=agentItem({role:"agent",text:data.message,kind:"proposal",snapshot:{...(tag?{tag}:{}),...(focus?{focus}:{}),operation:data.operation,modelName:picked?.name??"",neurons:picked?.neurons??data.fixedNeurons,intentSummaryFa:data.plan.intentSummaryFa,plan:data.plan}});
-   setProposal(data);setLiveId(reply.id);setSelected(data.selectedModelId);setAspectChoice(null);setPreview("در انتظار تأیید تولید");setJob(null);
+   setProposal(data);setLiveId(reply.id);setSelected(data.selectedModelId);setAspectChoice(null);setExcludedRefs(new Set());setPreview("در انتظار تأیید تولید");setJob(null);
    // Like a friend: the reply, then (sometimes) a GIF as its own message.
    setMessages(m=>[...m,reply,...(data.gif?[agentItem({role:"agent",text:"",kind:"gif",snapshot:data.gif})]:[])]);whoushReacts(data.reaction);
    adoptProject(firstText,characterId);
@@ -593,7 +595,8 @@ export function Studio(){
    const planAspect=live?.kind==="proposal"?live.snapshot.plan.camera?.aspectRatio:undefined,wanted=aspectChoice??edit?.aspect??planAspect;
    // A ratio this model lacks snaps to the nearest one it offers (4:5 → 3:4), never to the model's square default.
    const offered=proposal.suggestions.find(s=>s.modelId===selected)?.aspectRatios,aspect=offered?.length?nearestAspectRatio(wanted,offered)??wanted:wanted;
-   const quoteBody={modelId:selected,turnId,...(edit?{stagingOverride:edit.staging,...(edit.aspect!==planAspect?{aspectOverride:edit.aspect}:{})}:{})};
+   const quoteBody={modelId:selected,turnId,...(edit?{stagingOverride:edit.staging,...(edit.aspect!==planAspect?{aspectOverride:edit.aspect}:{})}:{}),
+    ...(excludedRefs.size?{excludeReferences:[...excludedRefs]}:{})};
    let q=await post("/api/generation/quote",{...quoteBody,...(aspect?{configuration:{aspectRatio:aspect}}:{})});
    if(q.status===422&&aspect)q=await post("/api/generation/quote",quoteBody); // last resort if the ratio is still refused (invalid_configuration): the prompt still carries it
    if(!q.ok){
@@ -749,6 +752,7 @@ export function Studio(){
          }:undefined}/>}
         {m.kind==="proposal"&&(proposal&&m.id===liveId
          ?<ProposalCard proposal={proposal} tag={m.snapshot.tag} adjusted={sceneEdit?.id===m.id} selected={selected} onSelect={setSelected}
+          excludedReferences={excludedRefs} onToggleReference={id=>setExcludedRefs(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n;})}
           aspect={aspectChoice??(sceneEdit?.id===m.id?sceneEdit.aspect:undefined)??m.snapshot.plan.camera?.aspectRatio} onAspect={setAspectChoice} busy={busy} onApprove={()=>void approve()} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>
          :<PastProposalCard snapshot={m.snapshot} adjusted={Boolean(pastEdits[m.id])} busy={busy||reading||loadingProject}
           onBuildScene={pastEdits[m.id]&&m.snapshot.tag&&m.snapshot.plan.staging?()=>buildScene(m.id,m.snapshot.tag!,m.snapshot.plan.staging!,m.snapshot.plan.camera?.aspectRatio):undefined} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>)}

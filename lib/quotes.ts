@@ -2,7 +2,7 @@ import "server-only";
 import {createHash,createHmac,randomBytes,randomUUID,timingSafeEqual} from "node:crypto";
 import {z} from "zod";
 import {MEDIA_CATALOG_VERSION,configurationProblem,findMediaModel,priceFor,type MediaConfiguration} from "./catalog";
-import {getPrivateMediaPrompt} from "./orchestrator";
+import {getPrivateMediaPrompt,getTurnReferences} from "./orchestrator";
 import {generationModeFor} from "./policy";
 export type QuoteErrorCode="unsupported_model"|"unknown_turn"|"invalid_configuration"|"invalid_quote"|"expired_quote"|"stale_quote"|"signing_unavailable"|"price_pending";
 const STATUS:Record<QuoteErrorCode,number>={unsupported_model:422,unknown_turn:410,invalid_configuration:422,invalid_quote:400,expired_quote:410,stale_quote:409,signing_unavailable:503,price_pending:409};
@@ -16,7 +16,9 @@ const payloadSchema=z.object({
  configuration:z.object({aspectRatio:z.string().max(12).optional(),durationSeconds:z.number().int().positive().optional()}).strict(),
  characterRef:z.object({id:z.string().max(80),version:z.number().int().positive(),angles:z.array(z.string().max(32)).max(6)}).strict().optional(),
  inputsDigest:z.string().regex(/^[0-9a-f]{64}$/),neurons:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),catalogVersion:z.string().max(64),
- issuedAt:z.string().max(40),expiresAt:z.string().max(40),mode:z.enum(["demo","live","dev_live"])
+ issuedAt:z.string().max(40),expiresAt:z.string().max(40),mode:z.enum(["demo","live","dev_live"]),
+ /** The research references the user kept (ids of Whoush-owned copies, server-side per turn), bound into inputsDigest. */
+ references:z.array(z.string().uuid()).max(14).optional()
 }).strict();
 export type SignedQuote=z.infer<typeof payloadSchema>;
 export type IssuedQuote=Omit<SignedQuote,"turnId"|"characterRef">&{token:string};
@@ -27,8 +29,9 @@ function canonical(v:unknown):string{
  return JSON.stringify(v);
 }
 const sha256=(s:string)=>createHash("sha256").update(s).digest("hex");
-export function computeInputsDigest(prompt:string,characterRef:CharacterRefDigest|undefined,configuration:MediaConfiguration):string{
- return sha256(canonical({promptSha256:sha256(prompt),characterRef:characterRef&&{id:characterRef.id,version:characterRef.version,angles:[...characterRef.angles]},configuration}));
+export function computeInputsDigest(prompt:string,characterRef:CharacterRefDigest|undefined,configuration:MediaConfiguration,references?:readonly string[]):string{
+ return sha256(canonical({promptSha256:sha256(prompt),characterRef:characterRef&&{id:characterRef.id,version:characterRef.version,angles:[...characterRef.angles]},configuration,
+  references:references?.length?[...references].sort():undefined}));
 }
 const envSecret=()=>{const s=process.env.QUOTE_SIGNING_SECRET;return s&&s.length>=32?s:undefined;};
 // Demo-only random per-process secret: demo quotes die with the process. globalThis so route bundles share it.
@@ -36,16 +39,23 @@ const demoSecret=()=>((globalThis as {__whoushQuoteSecret?:string}).__whoushQuot
 const sign=(body:string,secret:string)=>createHmac("sha256",secret).update(body).digest("base64url");
 const eq=(a:string,b:string)=>{const x=Buffer.from(a),y=Buffer.from(b);return x.length===y.length&&timingSafeEqual(x,y);};
 // ---- API ----
-export function createQuote(i:{modelId:string;configuration?:MediaConfiguration;turnId:string;characterRef?:CharacterRefDigest;now?:Date}):IssuedQuote{
+/**
+ * `excludeReferences`: research references the user removed from the package. The rest of the turn's references (server-side, never client-supplied) are bound
+ * to the quote when the model takes reference images, at most its own limit.
+ */
+export function createQuote(i:{modelId:string;configuration?:MediaConfiguration;turnId:string;characterRef?:CharacterRefDigest;excludeReferences?:readonly string[];now?:Date}):IssuedQuote{
  const now=i.now??new Date(),configuration=i.configuration??{};
  const model=findMediaModel(i.modelId);if(!model)throw new QuoteError("unsupported_model");
  if(model.pricePending)throw new QuoteError("price_pending"); // a suggested-only model is never quoted
  const prompt=getPrivateMediaPrompt(i.turnId);if(prompt===undefined)throw new QuoteError("unknown_turn"); // never a client-supplied prompt
  if(configurationProblem(model,configuration))throw new QuoteError("invalid_configuration");
+ const refCap=model.capabilities.referenceImages.supported?model.capabilities.referenceImages.max??0:0,drop=new Set(i.excludeReferences??[]);
+ const references=getTurnReferences(i.turnId).filter(r=>!drop.has(r.id)).slice(0,refCap).map(r=>r.id);
  const mode=generationModeFor(model),secret=envSecret()??(mode!=="live"?demoSecret():undefined);
  if(!secret)throw new QuoteError("signing_unavailable"); // live fails closed
  const p:SignedQuote={quoteId:randomUUID(),modelId:model.id,turnId:i.turnId,configuration:{...configuration},characterRef:i.characterRef&&{id:i.characterRef.id,version:i.characterRef.version,angles:[...i.characterRef.angles]},
-  inputsDigest:computeInputsDigest(prompt,i.characterRef,configuration),neurons:priceFor(model,configuration),catalogVersion:MEDIA_CATALOG_VERSION,issuedAt:now.toISOString(),expiresAt:new Date(now.getTime()+QUOTE_TTL_MS).toISOString(),mode};
+  inputsDigest:computeInputsDigest(prompt,i.characterRef,configuration,references),neurons:priceFor(model,configuration),catalogVersion:MEDIA_CATALOG_VERSION,issuedAt:now.toISOString(),expiresAt:new Date(now.getTime()+QUOTE_TTL_MS).toISOString(),mode,
+  ...(references.length?{references}:{})};
  const body=Buffer.from(JSON.stringify(p)).toString("base64url");
  const {turnId:_t,characterRef:_c,...pub}=p;void _t;void _c;
  return {...pub,token:body+"."+sign(body,secret)};
@@ -71,6 +81,11 @@ export function verifyQuote(token:string,now:Date=new Date()):SignedQuote{
  if(p.catalogVersion!==MEDIA_CATALOG_VERSION||!model||configurationProblem(model,p.configuration)||priceFor(model,p.configuration)!==p.neurons)throw new QuoteError("stale_quote");
  if(p.mode!==generationModeFor(model))throw new QuoteError("stale_quote");
  const prompt=getPrivateMediaPrompt(p.turnId);if(prompt===undefined)throw new QuoteError("unknown_turn");
- if(computeInputsDigest(prompt,p.characterRef,p.configuration)!==p.inputsDigest)throw new QuoteError("stale_quote");
+ if(computeInputsDigest(prompt,p.characterRef,p.configuration,p.references)!==p.inputsDigest)throw new QuoteError("stale_quote");
+ // Every bound reference must still be one of this turn's (and within the model's limit).
+ if(p.references?.length){
+  const own=new Set(getTurnReferences(p.turnId).map(r=>r.id)),cap=model.capabilities.referenceImages.supported?model.capabilities.referenceImages.max??0:0;
+  if(p.references.length>cap||p.references.some(id=>!own.has(id)))throw new QuoteError("stale_quote");
+ }
  return p;
 }

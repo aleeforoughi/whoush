@@ -27,7 +27,10 @@ export interface ModelCapabilities {
   /** Continues a supplied video from its last frame. No API-docs evidence for our ids: false everywhere. */
   videoContinuation: boolean;
 }
-export interface MediaRequirements { operation?: Exclude<MediaOperation, "generate">; referenceImages?: number; aspectRatio?: string; durationSeconds?: number; lipSync?: boolean; motionReference?: boolean; videoReference?: boolean; startImage?: boolean; endImage?: boolean; videoContinuation?: boolean; }
+export interface MediaRequirements { operation?: Exclude<MediaOperation, "generate">; referenceImages?: number;
+  /** The references are the user's own photos of a person or thing (a character, uploads), not Whoush's inspected research images: only a model built to keep
+   * identity from them qualifies (none of the direct-provider models: their reference input carries research images only). */
+  identityReference?: boolean; aspectRatio?: string; durationSeconds?: number; lipSync?: boolean; motionReference?: boolean; videoReference?: boolean; startImage?: boolean; endImage?: boolean; videoContinuation?: boolean; }
 /** The direct provider whose API runs a model (docs/PROVIDERS.md). Private: never serialized to consumers. */
 export type MediaProviderId = "higgsfield" | "google" | "byteplus" | "kling";
 export interface MediaModel {
@@ -85,6 +88,16 @@ export interface MediaSuggestion {
   durationSeconds?: number;
   aspectRatios?: readonly string[];
 }
+/** One open-licensed reference Whoush found and inspected (docs/RESEARCH_PIPELINE.md). `url` is Whoush-owned; the rest is the attribution. */
+export interface ProposalReference { id: string; url: string; subjectFa: string; title: string; license: string; creator: string; sourceUrl: string; source: "wikimedia" | "openverse"; }
+/** Whoush's research report on a proposal: what had to look right, the references kept, and honest notes (never a provider or model name). */
+export interface ProposalResearch {
+  subjects: { labelFa: string; factsFa: string[]; kept: number }[];
+  references: ProposalReference[];
+  notesFa: string[];
+  /** Whether the offered models take the references as images; otherwise they only shaped the written plan. */
+  usedAsImages: boolean;
+}
 export interface GenerationProposal {
   operation: "generate_image" | "generate_video";
   intentSummary: string;
@@ -92,6 +105,8 @@ export interface GenerationProposal {
   recommendedModelId: string;
   selectedModelId: string;
   fixedNeurons: number;
+  /** Present when the plan needed research: the report the proposal card shows, and the reference package the user confirms. */
+  research?: ProposalResearch;
   explicitRejected?: { modelId: string; reasonFa: string }; // user named a model that cannot satisfy the request
   requiresApproval: true;
   quoteMode: "demo";

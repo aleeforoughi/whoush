@@ -104,3 +104,10 @@ test("plan text: negated generic categories are compliance, named figures and ex
  // User input keeps the strict check: the exemption is for planner output only.
  assert.equal(evaluateTextSafety("no political banners").decision,"block");
 });
+
+test("historical figures (owner decision 2026-11-06): a pre-1900 ruler in a historical scene is allowed; modern figures and political use stay blocked",()=>{
+ for(const t of ["یه ویدیو ۳ ثانیه ای می خوام از لحظه ورود کوروش کبیر به بابل","Cyrus the Great entering Babylon, Achaemenid era","پرتره داریوش بزرگ در تخت جمشید","فردوسی در حال نوشتن شاهنامه"])
+  assert.notEqual(evaluateTextSafety(t).decision,"block",t);
+ for(const t of ["کوروش کبیر با شعار سیاسی","Cyrus the Great at a political protest","پوستر انتخابات با کوروش","محمدرضا شاه در کاخ","Trump as Cyrus the Great"])
+  assert.equal(evaluateTextSafety(t).decision,"block",t);
+});
