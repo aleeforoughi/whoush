@@ -168,7 +168,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone}:{tag:string;photoUrl:
     </div>
    </div>
    {/* The brush cursor: a see-through neon dot the size of the brush, no border, lifted by a hard shadow. */}
-   {cursor&&!hand&&<span aria-hidden="true" className="pointer-events-none absolute rounded-full"
+   {cursor&&!hand&&<span aria-hidden="true" className="pointer-events-none absolute block aspect-square rounded-full"
     style={{left:cursor.x,top:cursor.y,width:BRUSH_SIZES[size].px,height:BRUSH_SIZES[size].px,transform:"translate(-50%,-50%)",background:brushColor,opacity:.6,boxShadow:NEON_SHADOW}}/>}
    {view.s>1&&<button type="button" onPointerDown={e=>e.stopPropagation()} onClick={()=>setView({s:1,x:0,y:0})} className="absolute start-2 top-2 rounded-full bg-background/80 px-3 py-1 type-caption text-fg-primary">اندازهٔ اصلی</button>}
    {/* Tools: a vertical card on the photo's left (the end side in RTL), see-through, 8px corners; padding keeps the selected ring whole (nothing clips it). */}
@@ -176,7 +176,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone}:{tag:string;photoUrl:
     className="absolute end-4 top-1/2 flex -translate-y-1/2 flex-col items-center gap-1.5 rounded-[8px] border border-white/15 bg-background/75 p-2 shadow-lg backdrop-blur-md md:end-6" style={{cursor:"default"}}>
     {BRUSH_SIZES.map((b,i)=><button key={b.id} type="button" onClick={()=>{setSize(i);setHand(false);}} aria-pressed={size===i&&!hand} aria-label={"قلم "+b.labelFa} title={"قلم "+b.labelFa}
      className={"flex size-10 shrink-0 items-center justify-center rounded-[8px] motion-hover hover:bg-white/10 "+(size===i&&!hand?"bg-white/15 ring-2 ring-primary":"")}>
-     <span className="rounded-full" style={{width:Math.min(26,4+b.px*.35),height:Math.min(26,4+b.px*.35),background:brushColor}}/></button>)}
+     <span className="block aspect-square shrink-0 grow-0 rounded-full" style={{width:Math.round(Math.min(26,4+b.px*.35)),height:Math.round(Math.min(26,4+b.px*.35)),minWidth:Math.round(Math.min(26,4+b.px*.35)),background:brushColor}}/></button>)}
     <span className="my-0.5 h-px w-6 bg-white/25" aria-hidden="true"/>
     <button type="button" onClick={()=>setHand(h=>!h)} aria-pressed={hand} aria-label="جابه‌جایی عکس" title="جابه‌جایی عکس"
      className={"flex size-10 items-center justify-center rounded-[8px] text-fg-primary motion-hover hover:bg-white/10 "+(hand?"bg-white/15 ring-2 ring-primary":"")}><Icon icon={Hand} aria-hidden="true"/></button>
