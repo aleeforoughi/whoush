@@ -5,6 +5,7 @@ import {useRouter,useSearchParams} from "next/navigation";
 import {ArrowUp,ChevronLeft,CircleAlert,Clapperboard,Eye,Hash,Info,LoaderCircle,MessageCircle,Mic,Smile,Sparkles,Star,Upload as UploadIcon,UserRound,X} from "lucide-react";
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Tabs,TabsContent,TabsList,TabsTrigger,Label,Tooltip,TooltipContent,TooltipTrigger} from "@aleeforoughi/feather-react";
 import {BACK_TO_CHAT_FA,CLOSE_PREVIEW_FA,OPEN_PREVIEW_FA,PreviewCard} from "@/components/preview-card";
+import {ChatEmpty} from "@/components/chat-empty";
 import {GalleryThumbs,GenerationGallery,galleryFocusOn,type GalleryFocus,type GalleryItem} from "@/components/generation-gallery";
 import {isFinalJobState,isOwnedOutputUrl} from "@/lib/job-progress";
 import {followJobUntilDone,jobSnapshot,UNTRACKED_JOB_FA} from "@/lib/job-follow";
@@ -909,17 +910,14 @@ export function Studio(){
      <Icon icon={UploadIcon} size={32} aria-hidden="true"/>فایل‌ها را اینجا رها کن
     </div>}
     <div role="status" aria-live="polite" className="sr-only">{dragging?"فایل‌ها را اینجا رها کن":announce}</div>
-    <div className="border-b border-line-tertiary px-4 py-3">
-     <div className="mx-auto flex w-full max-w-3xl items-start justify-between gap-3">
-     <div className="min-w-0">
-      <h2 className="type-title text-fg-primary">هر چی دل تنگت می‌خواهد بساز.</h2>
-      <p className="type-body-sm text-fg-secondary">چت کن، وویس بده، ایدتو بگو، هیچ مهارتی لازم نیست. عکس یا ویدیویی نیست که من نتونم بسازم. برو که بریم!</p>
+    {/* The welcome line is the empty view (components/chat-empty.tsx), never a fixed header; the bar is only the preview toggle, once there is a preview. */}
+    {hasPreview&&<div className="border-b border-line-tertiary px-4 py-2">
+     <div className="mx-auto flex w-full max-w-3xl items-center justify-end gap-3">
+     {/* A toggle that shows the preview («نمایش») or closes it («بستن نمایش»). */}
+     <Button type="button" variant="outline" onClick={()=>showPreview?minimizePreview():openPreview()} aria-expanded={showPreview} aria-controls="whoush-preview" className="shrink-0">
+      <Icon icon={showPreview?ChevronLeft:Eye} aria-hidden="true"/>{showPreview?CLOSE_PREVIEW_FA:OPEN_PREVIEW_FA}</Button>
      </div>
-     {/* Once there is a preview: a toggle that shows it («نمایش») or closes it («بستن نمایش»). */}
-     {hasPreview&&<Button type="button" variant="outline" onClick={()=>showPreview?minimizePreview():openPreview()} aria-expanded={showPreview} aria-controls="whoush-preview" className="shrink-0">
-      <Icon icon={showPreview?ChevronLeft:Eye} aria-hidden="true"/>{showPreview?CLOSE_PREVIEW_FA:OPEN_PREVIEW_FA}</Button>}
-     </div>
-    </div>
+    </div>}
     {notice&&<div className="border-b border-line-tertiary px-4 py-3"><Alert role="status"><Icon icon={Info} aria-hidden="true"/><AlertDescription>{notice}</AlertDescription></Alert></div>}
     {storageNote&&<div className="border-b border-line-tertiary px-4 py-3"><Alert role="status"><Icon icon={Info} aria-hidden="true"/><AlertDescription>{storageNote}</AlertDescription></Alert></div>}
     {characterNote&&<div className="border-b border-line-tertiary px-4 py-3"><Alert role="status"><Icon icon={Info} aria-hidden="true"/><AlertDescription>{characterNote}</AlertDescription></Alert></div>}
@@ -932,7 +930,8 @@ export function Studio(){
      <p className="type-caption text-fg-secondary">{fa(characterCoverage(character.references).count)} عکس مرجع · فقط در این مرورگر. مشخصات کاراکتر همراه درخواست برای برنامه‌ریزی ارسال می‌شود؛ خود عکس‌ها هنوز به سرویس تولید فرستاده نمی‌شوند.</p>
     </div>}
     <ScrollArea className="min-h-0 flex-1">
-     <div aria-live="polite" aria-label="گفت‌وگو" role="log" className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4">
+     <div aria-live="polite" aria-label="گفت‌وگو" role="log" className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4 p-4">
+      {!messages.length&&!loadingProject&&<ChatEmpty/>}
       {loadingProject&&<p role="status" className="type-body-sm text-fg-secondary">در حال باز کردن پروژه…</p>}
       {/* User messages: on the right (the start in RTL), in a filled grey bubble with no border, their files and «اصلاح» generations above it as the same cards
           they were in the chat input. Agent messages: full-width plain text, then the plan as part of the conversation (icons and diagrams), then the compact card
