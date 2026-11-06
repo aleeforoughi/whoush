@@ -969,7 +969,7 @@ export function Studio(){
           they were in the chat input. Agent messages: full-width plain text, then the plan as part of the conversation (icons and diagrams), then the compact card
           that carries the actions (generate, change). Each message gets the hover action bar (copy, run again, time). */}
       {messages.map((m,i)=>{
-       const actions=<MessageActions text={m.text} at={m.at} now={now} onRerun={m.kind==="gif"?undefined:()=>rerun(m.id)} rerunDisabled={busy||reading||loadingProject} onReact={e=>react(m.id,e,"user")}/>;
+       const actions=<MessageActions pinned={i===messages.length-1} text={m.text} at={m.at} now={now} onRerun={m.kind==="gif"?undefined:()=>rerun(m.id)} rerunDisabled={busy||reading||loadingProject} onReact={e=>react(m.id,e,"user")}/>;
        const reactions=<MessageReactions reactions={m.reactions} onToggle={e=>react(m.id,e,"user")}/>;
        if(m.role==="user")return <div key={m.id} className="group flex flex-col items-start gap-2">
         {((m.attachments?.length??0)>0||(m.generationTags?.length??0)>0)&&<ul aria-label="پیوست‌های این پیام" className="flex max-w-full flex-wrap gap-2">
