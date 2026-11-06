@@ -6,6 +6,7 @@ import {ArrowUp,ChevronLeft,CircleAlert,Clapperboard,Eye,Hash,Info,LoaderCircle,
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Tabs,TabsContent,TabsList,TabsTrigger,Label,Tooltip,TooltipContent,TooltipTrigger} from "@aleeforoughi/feather-react";
 import {BACK_TO_CHAT_FA,CLOSE_PREVIEW_FA,OPEN_PREVIEW_FA,PreviewCard} from "@/components/preview-card";
 import {ChatEmpty} from "@/components/chat-empty";
+import {asStartFrame,continuedGeneration,type EarlierWork} from "@/lib/follow-up";
 import {GalleryThumbs,GenerationGallery,galleryFocusOn,type GalleryFocus,type GalleryItem} from "@/components/generation-gallery";
 import {isFinalJobState,isOwnedOutputUrl} from "@/lib/job-progress";
 import {followJobUntilDone,jobSnapshot,UNTRACKED_JOB_FA} from "@/lib/job-follow";
@@ -164,6 +165,10 @@ export function Studio(){
  /** Whether the preview fits beside the chat (the side panel from the `md` breakpoint); on a phone it would cover the chat, so it opens only when asked. */
  const previewFits=()=>typeof window!=="undefined"&&window.matchMedia("(min-width: 768px)").matches;
  const blobs=useRef(new Map<string,Blob>());
+ /** A generation's image as a chat photo, one copy per generation (generationPhoto). */
+ const genCopies=useRef(new Map<string,LocalAttachment>());
+ /** The same copies, for rendering (their thumbnails on edit cards). */
+ const [carriedPhotos,setCarriedPhotos]=useState<LocalAttachment[]>([]);
  // The photo safety check (lib/photo-review.ts): each photo's state by attachment id, the checks still running, and the photos a sent message waits for.
  const [reviewOn,setReviewOn]=useState(false);
  const [reviews,setReviews]=useState<Record<string,PhotoReview>>({});
@@ -197,6 +202,9 @@ export function Studio(){
  /** The generations of this chat by tag (#تولید-۱ ...): every proposal is one. Only these can be referenced from this chat. */
  const generationMap=new Map(messages.flatMap(m=>m.kind==="proposal"&&m.snapshot.tag?[[m.snapshot.tag,m.snapshot as ProposalSnapshot&{tag:string}] as const]:[]));
  const generationSet=new Set(generationMap.keys());
+ /** This chat's generations, newest first, and whether each has a finished output (lib/follow-up.ts continuedGeneration). */
+ const earlierWorks:EarlierWork[]=[...generationMap.values()].reverse().map(g=>({tag:g.tag,kind:g.plan.mediaKind,
+  done:messages.some(m=>m.kind==="job"&&m.snapshot.tag===g.tag&&(m.snapshot.outputs?.length??0)>0)}));
  // The latest scene («بوم» of the newest generation, as the user arranged it): its props and lights can be named in the chat (#زن, #نور-۱).
  const sceneMsg=[...messages].reverse().find(m=>m.kind==="proposal"&&m.snapshot.plan?.staging);
  const scene=sceneMsg&&sceneMsg.kind==="proposal"?(sceneEdit?.id===sceneMsg.id?sceneEdit.staging:sceneMsg.snapshot.plan.staging):undefined;
@@ -305,7 +313,7 @@ export function Studio(){
  function changeStyle(s:GenerationStyle|null){if(local){setLocal({...local,style:s});touch();}else setGlobalStyle(s);}
  function releaseAll(){
   urls.current.forEach(u=>URL.revokeObjectURL(u));urls.current.clear();
-  blobs.current=new Map();savedAssets.current=new Set();
+  blobs.current=new Map();genCopies.current=new Map();setCarriedPhotos([]);savedAssets.current=new Set();
   setAttachments([]);setSlots([]);setProblems([]);setAnnounce("");setViewer(null);tagCounters.current=newTagCounters();
   setMessages([]);setProposal(null);setLiveId(null);setJob(null);setPreviewOpen(false);
   setPreview(idlePreview);setError("");setNotice("");setStorageNote("");setDraft("");
@@ -514,31 +522,41 @@ export function Studio(){
   setEditing({a:{...a,regionEdit:undefined},fromTray,...(suggested?.length?{suggested}:{})});if(reviewOn)void checkPhoto(a);
  }
  /** Opens a generated image in the editor: it joins the chat as a new photo (#تصویر-n), checked like any photo. */
- async function editGeneration(tag:string,suggested?:readonly SuggestedEdit[]){
-  // One copy per generation: a second «ادیت» opens the copy made the first time (same #, already checked).
-  const copy=[...attachments,...[...messages].reverse().flatMap(m=>m.attachments??[])].find(a=>a.fromGeneration===tag&&a.previewUrl&&blobs.current.has(a.id));
-  if(copy){setEditing({a:{...copy,regionEdit:undefined},fromTray:false,...(suggested?.length?{suggested}:{})});if(reviewOn)void checkPhoto(copy);return;}
+ /**
+  * A generated image as a photo of this chat (#تصویر-n, `fromGeneration`), checked like any photo: one copy per generation, made once and reused (by «ادیت»
+  * and by follow-ups that continue it). `undefined` with the reason when there is no image yet or it cannot be read.
+  */
+ async function generationPhoto(tag:string):Promise<LocalAttachment|{errorFa:string}>{
+  const copy=genCopies.current.get(tag)??[...attachments,...[...messages].reverse().flatMap(m=>m.attachments??[])].find(a=>a.fromGeneration===tag&&a.previewUrl&&blobs.current.has(a.id));
+  if(copy&&blobs.current.has(copy.id)){if(reviewOn)void checkPhoto(copy);return copy;}
   const snap=messages.find(m=>m.kind==="job"&&m.snapshot.tag===tag)?.snapshot as {outputs?:{kind:string;url:string}[]}|undefined;
   const url=snap?.outputs?.find(o=>o.kind==="image"&&isOwnedOutputUrl(o.url,window.location.origin))?.url;
-  if(!url){setError("تصویر این تولید هنوز آماده نیست.");return;}
+  if(!url)return {errorFa:"تصویر این تولید هنوز آماده نیست."};
   try{
    const blob=await fetch(url).then(r=>{if(!r.ok)throw new Error();return r.blob();});
    const read=await readAttachment(new File([blob],displayTag(tag).slice(1)+".jpg",{type:blob.type||"image/jpeg"}));
-   const newTag=lowestFreeTag([...tagsInUse(messages.flatMap(m=>m.attachments??[]),slots),...attachments.map(x=>x.tag)],"image");
-   if(!newTag||!read.previewUrl){setError(ATTACHMENT_ERRORS_FA.tagsExhausted);return;}
+   const newTag=lowestFreeTag([...tagsInUse(messages.flatMap(m=>m.attachments??[]),slots),...attachments.map(x=>x.tag),...[...genCopies.current.values()].map(x=>x.tag)],"image");
+   if(!newTag||!read.previewUrl)return {errorFa:ATTACHMENT_ERRORS_FA.tagsExhausted};
    tagCounters.current=bumpTagCounters(tagCounters.current,newTag);
-   const a:LocalAttachment={...read,tag:newTag,fromGeneration:tag};urls.current.add(read.previewUrl);blobs.current.set(a.id,blob);
-   setEditing({a,fromTray:false,...(suggested?.length?{suggested}:{})});if(reviewOn)void checkPhoto(a);
-  }catch{setError("تصویر این تولید باز نشد. دوباره امتحان کن.");}
+   const a:LocalAttachment={...read,tag:newTag,fromGeneration:tag};urls.current.add(read.previewUrl);blobs.current.set(a.id,blob);genCopies.current.set(tag,a);setCarriedPhotos(p=>[...p,a]);
+   if(reviewOn)void checkPhoto(a);
+   return a;
+  }catch{return {errorFa:"تصویر این تولید باز نشد. دوباره امتحان کن."};}
+ }
+ async function editGeneration(tag:string,suggested?:readonly SuggestedEdit[]){
+  const a=await generationPhoto(tag);
+  if("errorFa" in a){setError(a.errorFa);return;}
+  setEditing({a:{...a,regionEdit:undefined},fromTray:false,...(suggested?.length?{suggested}:{})});
  }
  /** A photo or generation of this chat by its tag, for the edit card: its thumbnail, and opening it in the editor. */
  function thumbFor(tag:string):string|undefined{
   if(isGenerationTag(tag))return (messages.find(m=>m.kind==="job"&&m.snapshot.tag===tag)?.snapshot as {outputs?:{kind:string;url:string}[]}|undefined)?.outputs?.find(o=>o.kind==="image")?.url;
-  return [...attachments,...messages.flatMap(m=>m.attachments??[])].find(a=>a.tag===tag)?.previewUrl;
+  return [...attachments,...messages.flatMap(m=>m.attachments??[]),...carriedPhotos].find(a=>a.tag===tag)?.previewUrl;
  }
  async function openEditFor(tag:string,suggested?:readonly SuggestedEdit[]){
   if(isGenerationTag(tag))return editGeneration(tag,suggested);
-  const inTray=attachments.find(a=>a.tag===tag),sent=[...messages].reverse().flatMap(m=>m.attachments??[]).find(a=>a.tag===tag);
+  // A generation carried into a follow-up is a photo of this chat too (generationPhoto), kept apart from the sent files.
+  const inTray=attachments.find(a=>a.tag===tag),sent=[...[...messages].reverse().flatMap(m=>m.attachments??[]),...genCopies.current.values()].find(a=>a.tag===tag);
   if(inTray)editAttachment(inTray,true,suggested);else if(sent)editAttachment(sent,false,suggested);
  }
  /** The editor is done: the marked copy is made and checked, and the edit goes straight to Whoush (as the answer, when Whoush asked for it). */
@@ -686,10 +704,23 @@ export function Studio(){
   if(messages.length>=MAX_MESSAGES-4){setError(LIMIT_FA);return;}
   // This message's own files plus any earlier file it mentions as #تصویر-۱ or @image1 (metadata only, as before).
   const sentText=brief??text,mentioned=parseMentions(sentText),own=new Set(files.map(a=>a.id));
-  const outgoing=uniqueById([...messages.flatMap(m=>m.attachments??[]).filter(a=>mentioned.includes(a.tag)&&!own.has(a.id)),...files]);
+  // Keeping the thread in the session (owner, 2026-11-07): a message with no files, tags or cards of its own that continues the work («روشن‌ترش کن»،
+  // «همین عکس رو…»، «ویدیو رو کوتاه‌تر کن») is about the latest generation (of the kind it names). It is linked like a card, and a generated image goes to
+  // the model as the photo itself (to change, or as a video's first frame), so the change is made to that picture, not to a new one (lib/follow-up.ts).
+  let carried:LocalAttachment|undefined,carriedTag:string|undefined;
+  if(!files.length&&!mentioned.length&&!changes.length){
+   carriedTag=continuedGeneration(sentText,earlierWorks);
+   if(carriedTag&&generationMap.get(carriedTag)?.plan.mediaKind==="image"){
+    const c=await generationPhoto(carriedTag);
+    // The role is set directly: «ادیت عکس» is a role the server takes (roleAllowed) though the menu does not offer it for a photo.
+    if(!("errorFa" in c)){const role:AttachmentRole=asStartFrame(sentText)?"frame":"edit_reference";carried=roleAllowed("image",role)?{...c,role}:c;}
+   }
+  }
+  const linked=carriedTag?[...changes,carriedTag]:changes;
+  const outgoing=uniqueById([...messages.flatMap(m=>m.attachments??[]).filter(a=>mentioned.includes(a.tag)&&!own.has(a.id)),...files,...(carried?[carried]:[])]);
   // Photos sent earlier in this chat (details only, no bytes): Whoush reuses ones it asked for instead of asking again. The latest ten, at most.
   const priorPhotos=uniqueById(messages.flatMap(m=>m.attachments??[])).filter(a=>a.kind==="image"&&!outgoing.some(o=>o.id===a.id)).slice(-MAX_ATTACHMENTS);
-  const refs=referencedGenerations(changes,mentioned,generationSet),cardRefs=changes.filter(t=>generationSet.has(t));
+  const refs=referencedGenerations(linked,mentioned,generationSet),cardRefs=linked.filter(t=>generationSet.has(t));
   const generations=refs.flatMap(t=>{const g=generationMap.get(t);return g?[toGenerationRef(g)]:[];});
   const fits=validateAttachmentSet(outgoing);
   if(!fits.ok){setError(fits.error);return;}
@@ -768,7 +799,8 @@ export function Studio(){
     if(r.status===422&&errorBody.error==="needs_input"&&typeof errorBody.question==="string"){
      const references=isReferenceRequest(errorBody.references)?errorBody.references:undefined,choices=isQuestionChoices(errorBody.choices)?errorBody.choices:undefined;
      const editCards=Array.isArray(errorBody.editCards)?errorBody.editCards.flatMap(c=>{const x=c as {tag?:unknown;suggested?:unknown};
-      return typeof x.tag==="string"?[{tag:x.tag,...(Array.isArray(x.suggested)?{suggested:(x.suggested as SuggestedEdit[]).slice(0,5)}:{})}]:[];}).slice(0,10):[];
+      // A carried generation's photo is shown and opened as that generation (#تولید-n): its own thumbnail, and it still opens after a reload.
+      return typeof x.tag==="string"?[{tag:carried&&carriedTag&&x.tag===carried.tag?carriedTag:x.tag,...(Array.isArray(x.suggested)?{suggested:(x.suggested as SuggestedEdit[]).slice(0,5)}:{})}]:[];}).slice(0,10):[];
      setMessages(m=>[...m,agentItem({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"",kind:"question",snapshot:{question:errorBody.question!,...(references?{references}:{}),...(choices?{choices}:{}),...(editCards.length?{editCards}:{})}})]);whoushReacts(errorBody.reaction);
      adoptProject(firstText,characterId);
      return;
