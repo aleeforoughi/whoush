@@ -243,7 +243,7 @@ export function Studio(){
   const a:ActiveProject={id:crypto.randomUUID(),createdAt:new Date().toISOString(),title:autoTitle(firstText),titleSource:"auto",persisted:false};
   active.current=a;setProjectId(a.id);setLocal({mode,style});syncUrl(a.id,characterId);touch();
  }
- // Save when the page is hidden or the studio unmounts (for example a click on «دارایی‌ها»).
+ // Save when the page is hidden or the studio unmounts (for example a click on «گالری»).
  useEffect(()=>{
   const onHide=()=>{if(document.visibilityState==="hidden")void save();};
   document.addEventListener("visibilitychange",onHide);
@@ -640,7 +640,7 @@ export function Studio(){
    <h1 className="sr-only">استودیوی هووش</h1>
    {/* Preview: after the chat on desktop (md:order-last), first on mobile */}
    <section aria-label="پیش‌نمایش" inert={!showPreview||undefined} aria-hidden={!showPreview||undefined}
-    className={(showPreview?"flex":"hidden")+" min-h-0 flex-1 flex-col md:order-last md:flex md:min-w-0 md:basis-0 md:overflow-hidden md:transition-[flex-grow,opacity] md:duration-300 md:ease-out motion-reduce:transition-none "+(showPreview?"md:grow md:opacity-100":"md:grow-0 md:opacity-0")}>
+    className={(showPreview?"flex":"hidden")+" surface-preview min-h-0 flex-1 flex-col md:order-last md:flex md:min-w-0 md:basis-0 md:overflow-hidden md:transition-[flex-grow,opacity] md:duration-300 md:ease-out motion-reduce:transition-none "+(showPreview?"md:grow md:opacity-100":"md:grow-0 md:opacity-0")}>
     <Tabs value={activeTab} onValueChange={v=>setActiveTab(v as "generations"|"cuts")} className="min-h-0 flex-1 gap-0">
      <div className="flex items-center justify-between gap-4 border-b border-line-tertiary px-4 py-2 lg:px-6">
       <TabsList><TabsTrigger value="generations">تولیدها</TabsTrigger><TabsTrigger value="cuts">تدوین</TabsTrigger></TabsList>
@@ -779,7 +779,7 @@ export function Studio(){
         trigger={<button type="button" aria-label="ایموجی" title="ایموجی" className={COMPOSER_TOOL}><Icon icon={Smile} aria-hidden="true"/></button>}/>
        <GifPicker onPick={sendGif} trigger={<button type="button" aria-label="فرستادن گیف" title="گیف" className={COMPOSER_TOOL+" type-label"}>GIF</button>}/>
       </div>}
-      top={cards.length>0?<ul aria-label="پیوست‌ها" className="flex items-stretch gap-2 overflow-x-auto pb-2 [scrollbar-width:thin]">
+      top={cards.length>0?<ul aria-label="پیوست‌ها" className="flex items-stretch gap-2 overflow-x-auto pb-2">
        {cards.map(c=>c.type==="slot"
         ?<UploadSlotCard key={c.slot.id} slot={c.slot} disabled={reading} onUpload={()=>openSlotPicker(c.slot)} onDropFiles={f=>void fillSlot(c.slot,f)} onRemove={()=>dropSlot(c.slot.id)}/>
         :<AttachmentCard key={c.attachment.id} item={c.attachment} onChange={patch=>patchAttachment(c.attachment.id,patch)} onRemove={()=>removeAttachment(c.attachment.id)} onPreview={()=>openViewer(c.attachment)} onMention={()=>mentionTag(c.attachment.tag)}/>)}

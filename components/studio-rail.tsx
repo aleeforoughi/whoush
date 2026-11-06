@@ -39,7 +39,7 @@ export function RailContent({labels,current,activeProjectId,onNewChat,onProjectD
   <nav aria-label="ناوبری استودیو" className="shrink-0">
    <ul className="flex flex-col gap-1">
     <li><RailLink href="/studio" icon={Sparkles} label="استودیو" active={current==="studio"} labels={labels} onNavigate={onNavigate}/></li>
-    <li><RailLink href="/assets" icon={Images} label="دارایی‌ها" active={current==="assets"} labels={labels} onNavigate={onNavigate}/></li>
+    <li><RailLink href="/assets" icon={Images} label="گالری" active={current==="assets"} labels={labels} onNavigate={onNavigate}/></li>
     <li><RailLink href="/characters" icon={UserRound} label="استودیوی کاراکتر" labels={labels} onNavigate={onNavigate}/></li>
     <li><RailLink href="/neurons" icon={Zap} label="خرید نورون" labels={labels} onNavigate={onNavigate}/></li>
    </ul>
@@ -61,7 +61,7 @@ export function RailContent({labels,current,activeProjectId,onNewChat,onProjectD
 export function RailShell({current,activeProjectId,onNewChat,onProjectDeleted,children}:{current:RailCurrent;activeProjectId?:string|null;onNewChat:()=>void;onProjectDeleted?:(id:string)=>void;children:ReactNode}){
  const [menuOpen,setMenuOpen]=useState(false);
  const rail={current,activeProjectId,onNewChat,onProjectDeleted};
- return <div className="flex h-dvh flex-col overflow-hidden md:grid md:grid-cols-[4.5rem_minmax(0,1fr)] lg:grid-cols-[16rem_minmax(0,1fr)]">
+ return <div className="flex h-dvh flex-col overflow-hidden md:grid md:grid-cols-[4.5rem_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)] lg:grid-cols-[16rem_minmax(0,1fr)]">
   {/* Mobile: top bar with brand and menu */}
   <header className="flex items-center justify-between border-b border-line-tertiary px-4 py-1 md:hidden">
    <BrandMark/>

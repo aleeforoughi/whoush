@@ -81,13 +81,15 @@ export function GenerationGallery({items,focus,placeholder}:{items:GalleryItem[]
 
  const register=(which:"cards"|"thumbs",id:string)=>(el:HTMLElement|null)=>{const map=(which==="cards"?cards:thumbs).current;if(el)map.set(id,el);else map.delete(id);};
  return <div className="flex min-h-0 flex-1 gap-3 p-4 lg:p-6">
-  {items.length>1&&<nav aria-label="تولیدهای این گفت‌وگو" className="flex w-16 shrink-0 flex-col">
-   <div ref={strip} className="scrollbar-right flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain pb-2">
+  {/* The thumbnail strip: at the end side (left, in Persian), thumbnails only, centred vertically; it scrolls when they do not fit. */}
+  {items.length>1&&<nav aria-label="تولیدهای این گفت‌وگو" className="order-last flex w-[4.75rem] shrink-0 flex-col">
+   <div ref={strip} className="scrollbar-right flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+    <div className="flex min-h-full flex-col justify-center gap-2 py-1">
     {items.map(it=>{
      const out=it.job.outputs?.find(o=>isOwnedOutputUrl(o.url)),on=it.id===current,tag=it.job.tag?displayTag(it.job.tag):"";
      return <button key={it.id} ref={register("thumbs",it.id)} type="button" onClick={()=>jump(it.id)} aria-current={on||undefined}
       aria-label={"نمایش "+(tag||"تولید")}
-      className={"flex shrink-0 flex-col items-center gap-1 rounded-control p-1 motion-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring "+(on?"bg-surface-hover ring-2 ring-primary":"hover:bg-surface-hover")}>
+      className={"flex shrink-0 items-center justify-center rounded-control p-1 motion-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring "+(on?"bg-surface-hover ring-2 ring-primary":"hover:bg-surface-hover")}>
       <span className="flex w-full items-center justify-center overflow-hidden rounded-control bg-surface-subtle text-fg-secondary">
        {out?.kind==="image"
         // eslint-disable-next-line @next/next/no-img-element -- a Whoush-owned output thumbnail
@@ -97,9 +99,9 @@ export function GenerationGallery({items,focus,placeholder}:{items:GalleryItem[]
           className={isActiveJob(it.job.state)?"animate-spin text-primary motion-reduce:animate-none":undefined}/>
         </span>}
       </span>
-      {tag&&<bdi className="max-w-full truncate type-caption text-fg-secondary">{tag}</bdi>}
      </button>;
     })}
+    </div>
    </div>
   </nav>}
   <div ref={list} className="scrollbar-right flex min-h-0 min-w-0 flex-1 snap-y snap-proximity flex-col gap-8 overflow-y-auto overscroll-contain pb-[30vh]">
