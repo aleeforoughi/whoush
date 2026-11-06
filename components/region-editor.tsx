@@ -1,6 +1,6 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
-import {Check,Hand,Trash2,Undo2,X} from "lucide-react";
+import {Check,Hand,Redo2,Trash2,Undo2,X} from "lucide-react";
 import {Button,Icon} from "@aleeforoughi/feather-react";
 import {BRUSH_DONE_FA,BRUSH_EDIT_FA,BRUSH_HINT_FA,BRUSH_MISSING_NOTE_FA,BRUSH_NOTE_PLACEHOLDER_FA,BRUSH_SIZES,MAX_NOTE,MAX_REGIONS,REGION_COLORS,
  colorCss,maskHasPaint,regionTagFa,type Region} from "@/lib/region-edit";
@@ -62,7 +62,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone}:{tag:string;photoUrl:
   else if(list.length<MAX_REGIONS){slot=[0,1,2,3,4].find(s=>!list.some(r=>r.slot===s))!;created=true;}
   else slot=list[list.length-1].slot;
   const m=layers.current[slot],ctx=m?.getContext("2d");if(!m||!ctx)return;
-  history.current.push({slot,data:ctx.getImageData(0,0,m.width,m.height),created});if(history.current.length>30)history.current.shift();
+  history.current.push({slot,data:ctx.getImageData(0,0,m.width,m.height),created});if(history.current.length>30)history.current.shift();redoStack.current=[];bump();
   const p=toPhoto(cx,cy,slot);stroke.current={slot,last:p,created};paint(slot,p,p,p.k);
   if(created){const n=Math.max(0,...list.map(r=>r.n))+1,next=[...list,{slot,n,note:"",pin:{x:p.x/m.width,y:p.y/m.height}}];regionsRef.current=next;setRegions(next);}
  }
@@ -71,6 +71,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone}:{tag:string;photoUrl:
   const s=stroke.current;if(!s)return;stroke.current=null;
   const last=history.current.pop(),ctx=layers.current[s.slot]?.getContext("2d");if(last&&ctx)ctx.putImageData(last.data,0,0);
   if(s.created){const next=regionsRef.current.filter(r=>r.slot!==s.slot);regionsRef.current=next;setRegions(next);}
+  bump();
  }
  const dist=(a:{x:number;y:number},b:{x:number;y:number})=>Math.hypot(a.x-b.x,a.y-b.y);
  function down(e:React.PointerEvent<HTMLDivElement>){
@@ -106,15 +107,28 @@ export function RegionEditor({tag,photoUrl,onClose,onDone}:{tag:string;photoUrl:
  function wheel(e:React.WheelEvent<HTMLDivElement>){
   const v=viewRef.current,s=Math.min(MAX_S,Math.max(MIN_S,v.s*(e.deltaY<0?1.15:1/1.15)));setView(s===1?{s:1,x:0,y:0}:{...v,s});
  }
+ /** Undo and redo, stroke by stroke; a region a stroke created leaves with it and comes back with it (its comment kept). */
+ const redoStack=useRef<{slot:number;before:ImageData;after:ImageData;created:boolean;region?:Draft}[]>([]);
+ // How many steps undo and redo can take, for their buttons (the stacks themselves live in refs).
+ const [steps,setSteps]=useState({u:0,r:0});const bump=()=>setSteps({u:history.current.length,r:redoStack.current.length});
  function undo(){
   const last=history.current.pop();if(!last)return;
   const m=layers.current[last.slot],ctx=m?.getContext("2d");if(!m||!ctx)return;
-  ctx.putImageData(last.data,0,0);
-  if(last.created&&!maskHasPaint(m))setRegions(l=>l.filter(r=>r.slot!==last.slot));
+  const after=ctx.getImageData(0,0,m.width,m.height);ctx.putImageData(last.data,0,0);
+  let region:Draft|undefined;
+  if(last.created&&!maskHasPaint(m)){region=regionsRef.current.find(r=>r.slot===last.slot);const next=regionsRef.current.filter(r=>r.slot!==last.slot);regionsRef.current=next;setRegions(next);}
+  redoStack.current.push({slot:last.slot,before:last.data,after,created:last.created,region});bump();
+ }
+ function redo(){
+  const r=redoStack.current.pop();if(!r)return;
+  const ctx=layers.current[r.slot]?.getContext("2d");if(!ctx)return;
+  ctx.putImageData(r.after,0,0);history.current.push({slot:r.slot,data:r.before,created:r.created});
+  if(r.region&&!regionsRef.current.some(x=>x.slot===r.slot)){const next=[...regionsRef.current,r.region].sort((a,b)=>a.n-b.n);regionsRef.current=next;setRegions(next);}
+  bump();
  }
  function removeRegion(slot:number){
   const m=layers.current[slot];m?.getContext("2d")?.clearRect(0,0,m.width,m.height);
-  history.current=history.current.filter(h=>h.slot!==slot);setRegions(l=>l.filter(r=>r.slot!==slot));if(focus===slot)setFocus(null);
+  history.current=history.current.filter(h=>h.slot!==slot);redoStack.current=redoStack.current.filter(h=>h.slot!==slot);bump();setRegions(l=>l.filter(r=>r.slot!==slot));if(focus===slot)setFocus(null);
  }
  /** Tapping a region (its pin or row): the next stroke continues it, and its comment is ready to edit. */
  function pick(slot:number){setFocus(slot);setHand(false);}
@@ -157,17 +171,21 @@ export function RegionEditor({tag,photoUrl,onClose,onDone}:{tag:string;photoUrl:
     style={{left:cursor.x,top:cursor.y,width:BRUSH_SIZES[size].px,height:BRUSH_SIZES[size].px,transform:"translate(-50%,-50%)",
      border:"2px solid "+brushColor,boxShadow:"0 0 0 1px rgba(255,255,255,.9), inset 0 0 0 1px rgba(255,255,255,.9)"}}/>}
    {view.s>1&&<button type="button" onPointerDown={e=>e.stopPropagation()} onClick={()=>setView({s:1,x:0,y:0})} className="absolute start-2 top-2 rounded-full bg-background/80 px-3 py-1 type-caption text-fg-primary">اندازهٔ اصلی</button>}
-  </div>
-  {/* The bottom sheet: brush sizes and tools, then one comment per region. Thumb-reachable on a phone. */}
-  <div className="flex max-h-[45dvh] shrink-0 flex-col gap-2 overflow-y-auto border-t border-line-primary bg-surface-subtle p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-   <div className="flex items-center gap-1 overflow-x-auto" role="toolbar" aria-label="ابزار قلم">
-    {BRUSH_SIZES.map((b,i)=><button key={b.id} type="button" onClick={()=>{setSize(i);setHand(false);}} aria-pressed={size===i&&!hand} aria-label={"قلم "+b.labelFa}
-     className={"hit-area flex size-10 shrink-0 items-center justify-center rounded-control "+(size===i&&!hand?"bg-surface-hover ring-2 ring-primary":"")}>
-     <span className="rounded-full" style={{width:Math.min(28,4+b.px*.4),height:Math.min(28,4+b.px*.4),background:brushColor}}/></button>)}
-    <span className="mx-1 h-6 w-px shrink-0 bg-line-primary"/>
-    <button type="button" onClick={()=>setHand(h=>!h)} aria-pressed={hand} aria-label="جابه‌جایی عکس" className={"hit-area flex size-10 shrink-0 items-center justify-center rounded-control "+(hand?"bg-surface-hover ring-2 ring-primary":"")}><Icon icon={Hand} aria-hidden="true"/></button>
-    <button type="button" onClick={undo} aria-label="برگرد" className="hit-area flex size-10 shrink-0 items-center justify-center rounded-control"><Icon icon={Undo2} aria-hidden="true"/></button>
+   {/* Tools: a vertical card on the photo's left (the end side in RTL), see-through, 8px corners; padding keeps the selected ring whole (nothing clips it). */}
+   <div role="toolbar" aria-orientation="vertical" aria-label="ابزار قلم" onPointerDown={e=>e.stopPropagation()} onPointerMove={()=>setCursor(null)}
+    className="absolute end-2 top-1/2 flex -translate-y-1/2 flex-col items-center gap-1.5 rounded-[8px] border border-white/15 bg-background/45 p-2 shadow-lg backdrop-blur-md" style={{cursor:"default"}}>
+    {BRUSH_SIZES.map((b,i)=><button key={b.id} type="button" onClick={()=>{setSize(i);setHand(false);}} aria-pressed={size===i&&!hand} aria-label={"قلم "+b.labelFa} title={"قلم "+b.labelFa}
+     className={"flex size-10 shrink-0 items-center justify-center rounded-[8px] motion-hover hover:bg-white/10 "+(size===i&&!hand?"bg-white/15 ring-2 ring-primary":"")}>
+     <span className="rounded-full ring-1 ring-white/60" style={{width:Math.min(26,4+b.px*.35),height:Math.min(26,4+b.px*.35),background:brushColor}}/></button>)}
+    <span className="my-0.5 h-px w-6 bg-white/25" aria-hidden="true"/>
+    <button type="button" onClick={()=>setHand(h=>!h)} aria-pressed={hand} aria-label="جابه‌جایی عکس" title="جابه‌جایی عکس"
+     className={"flex size-10 items-center justify-center rounded-[8px] text-fg-primary motion-hover hover:bg-white/10 "+(hand?"bg-white/15 ring-2 ring-primary":"")}><Icon icon={Hand} aria-hidden="true"/></button>
+    <button type="button" onClick={undo} disabled={!steps.u} aria-label="برگرد" title="برگرد" className="flex size-10 items-center justify-center rounded-[8px] text-fg-primary motion-hover hover:bg-white/10 disabled:opacity-40"><Icon icon={Undo2} aria-hidden="true"/></button>
+    <button type="button" onClick={redo} disabled={!steps.r} aria-label="دوباره انجام بده" title="دوباره انجام بده" className="flex size-10 items-center justify-center rounded-[8px] text-fg-primary motion-hover hover:bg-white/10 disabled:opacity-40"><Icon icon={Redo2} aria-hidden="true"/></button>
    </div>
+  </div>
+  {/* The bottom sheet: one comment per region. Thumb-reachable on a phone. */}
+  <div className="flex max-h-[45dvh] shrink-0 flex-col gap-2 overflow-y-auto border-t border-line-primary bg-surface-subtle p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
    {!regions.length&&<p className="type-caption text-fg-secondary">{BRUSH_HINT_FA}</p>}
    {regions.length>0&&focus===null&&regions.length<MAX_REGIONS&&<p className="type-caption text-fg-secondary">{CONTINUE_FA}</p>}
    {missing&&regions.some(r=>!r.note.trim())&&<p role="alert" className="type-caption text-error">{BRUSH_MISSING_NOTE_FA}</p>}

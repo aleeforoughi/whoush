@@ -41,8 +41,8 @@ export function GenerationPreview({job,kind="image",model,placeholder,onEdit}:{j
     {shown
      ?(shown.kind==="video"
       ?<video src={shown.url} controls playsInline preload="metadata" aria-label={"ویدیوی "+(job.tag?displayTag(job.tag):"ساخته‌شده")} className="block h-auto max-h-[min(75dvh,56rem)] w-full rounded-control bg-background object-contain"/>
-      // eslint-disable-next-line @next/next/no-img-element -- a Whoush-owned output shown in the preview
       :<span className="group relative block w-fit max-w-full">{onEdit&&<EditImageButton label={job.tag?displayTag(job.tag):""} onClick={onEdit}/>}
+       {/* eslint-disable-next-line @next/next/no-img-element -- a Whoush-owned output shown in the preview */}
        <img src={shown.url} alt={"تصویر "+(job.tag?displayTag(job.tag):"ساخته‌شده")} className="block h-auto max-h-[min(75dvh,56rem)] w-auto max-w-full rounded-control"/></span>)
      :<>
       <Icon icon={kind==="video"?Clapperboard:ImageIcon} size={32} aria-hidden="true" className={active?"text-primary":"text-fg-secondary"}/>
