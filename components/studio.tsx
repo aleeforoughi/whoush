@@ -634,13 +634,13 @@ export function Studio(){
  }
  function minimizePreview(){setPreviewOpen(false);requestAnimationFrame(()=>promptRef.current?.focus());}
  return <RailShell current="studio" activeProjectId={projectId} onNewChat={newChat} onProjectDeleted={onProjectDeleted}>
-  {/* Desktop: the preview (centre) and the chat (end side) share the row; the preview grows in and out (flex-grow transition) and, while it is closed, the chat
-      takes the whole width. Mobile: one at a time; the preview covers the chat until minimized. */}
+  {/* Desktop: the chat (right after the side nav, at the start side) and the preview share the row; the preview grows in and out (flex-grow transition) and,
+      while it is closed, the chat takes the whole width. Mobile: one at a time; the preview covers the chat until minimized. */}
   <main id="main" className="flex min-h-0 flex-1 flex-col md:flex-row">
    <h1 className="sr-only">استودیوی هووش</h1>
-   {/* Centre: preview */}
+   {/* Preview: after the chat on desktop (md:order-last), first on mobile */}
    <section aria-label="پیش‌نمایش" inert={!showPreview||undefined} aria-hidden={!showPreview||undefined}
-    className={(showPreview?"flex":"hidden")+" min-h-0 flex-1 flex-col md:flex md:min-w-0 md:basis-0 md:overflow-hidden md:transition-[flex-grow,opacity] md:duration-300 md:ease-out motion-reduce:transition-none "+(showPreview?"md:grow md:opacity-100":"md:grow-0 md:opacity-0")}>
+    className={(showPreview?"flex":"hidden")+" min-h-0 flex-1 flex-col md:order-last md:flex md:min-w-0 md:basis-0 md:overflow-hidden md:transition-[flex-grow,opacity] md:duration-300 md:ease-out motion-reduce:transition-none "+(showPreview?"md:grow md:opacity-100":"md:grow-0 md:opacity-0")}>
     <Tabs value={activeTab} onValueChange={v=>setActiveTab(v as "generations"|"cuts")} className="min-h-0 flex-1 gap-0">
      <div className="flex items-center justify-between gap-4 border-b border-line-tertiary px-4 py-2 lg:px-6">
       <TabsList><TabsTrigger value="generations">تولیدها</TabsTrigger><TabsTrigger value="cuts">تدوین</TabsTrigger></TabsList>
@@ -668,7 +668,7 @@ export function Studio(){
     </Tabs>
    </section>
    {/* End side: agent panel */}
-   <section aria-label="دستیار هووش" className={(showPreview?"hidden md:flex":"flex")+" relative min-h-0 flex-1 flex-col border-line-tertiary md:min-w-0 md:basis-[22rem] md:transition-[flex-grow] md:duration-300 md:ease-out motion-reduce:transition-none lg:basis-[26rem] "+(showPreview?"md:grow-0 md:border-s":"md:grow")}
+   <section aria-label="دستیار هووش" className={(showPreview?"hidden md:flex":"flex")+" relative min-h-0 flex-1 flex-col border-line-tertiary md:min-w-0 md:basis-[22rem] md:transition-[flex-grow] md:duration-300 md:ease-out motion-reduce:transition-none lg:basis-[26rem] "+(showPreview?"md:grow-0 md:border-e":"md:grow")}
     onDragEnter={e=>{if(!hasFiles(e))return;e.preventDefault();dragDepth.current+=1;setDragging(true);}}
     onDragOver={e=>{if(hasFiles(e))e.preventDefault();}}
     onDragLeave={e=>{if(!hasFiles(e))return;dragDepth.current=Math.max(0,dragDepth.current-1);if(!dragDepth.current)setDragging(false);}}
