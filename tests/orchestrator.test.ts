@@ -581,7 +581,7 @@ test("roles: image character brings character_creation and anti_drift, a Persian
  const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("image",{role:"character"})]}));
  assert.ok(skillsOf().includes("character_creation")&&skillsOf().includes("anti_drift"));
  assert.ok(r.plan.hardConstraints.includes(CONSTRAINT.character),JSON.stringify(r.plan.hardConstraints));
- assert.deepEqual(r.plan.references,[{tag:"image1",kind:"image",role:"character",roleSource:"user",labelFa:"کاراکتر"}]);
+ assert.deepEqual(r.plan.references,[{tag:"image1",kind:"image",role:"character",roleSource:"user",labelFa:"شخص"}]);
  assert.equal(last().fallbackReason,"media_review_unavailable");
  // other image roles do not
  for(const role of ["environment","object","graphic","edit_reference"]){await orchestrateCreativeTurn({text:LAKE,attachments:[att("image",{role})]});assert.ok(!skillsOf().includes("character_creation"),role);}
@@ -686,7 +686,7 @@ test("inferred roles: an unmentioned role is guessed from the brief and drives t
  const r=unsupported(await orchestrateCreativeTurn({text:"keep the face of #تصویر-۱ and put it in a garden",attachments:[noRole("image")]}));
  assert.ok(skillsOf().includes("character_creation")&&skillsOf().includes("anti_drift"),skillsOf().join());
  assert.deepEqual(last().attachments,[{tag:"image1",role:"character",roleSource:"inferred",kind:"image",bytes:2048,sha256:"c".repeat(64)}]);
- assert.deepEqual(r.plan.references,[{tag:"image1",kind:"image",role:"character",roleSource:"inferred",labelFa:"کاراکتر"}]);
+ assert.deepEqual(r.plan.references,[{tag:"image1",kind:"image",role:"character",roleSource:"inferred",labelFa:"شخص"}]);
  assert.ok(r.plan.hardConstraints.includes(CONSTRAINT.character));assertNoLeak(JSON.stringify(r),"inferred character");
  // the planner sees the role and where it came from
  const seen=await seenBy("keep the face of #تصویر-۱",[noRole("image")]);
@@ -747,7 +747,7 @@ test("public plan: references carry tag, kind, role and labelFa only, files-only
  const files=[att("image",{role:"character"}),att("video",{role:"motion_reference"}),att("audio",{role:"lip_sync",speech:{hasSpeech:true,language:"fa",accent:"unspecified"}}),att("md"),att("pdf")];
  const r=unsupported(await orchestrateCreativeTurn({text:"a presenter walking, see @image1 and @file1",attachments:files}));
  assert.deepEqual(r.plan.references,[
-  {tag:"image1",kind:"image",role:"character",roleSource:"user",labelFa:"کاراکتر"},{tag:"video1",kind:"video",role:"motion_reference",roleSource:"user",labelFa:"الگوی حرکت"},{tag:"audio1",kind:"audio",role:"lip_sync",roleSource:"user",labelFa:"الگوی گفتار"}]);
+  {tag:"image1",kind:"image",role:"character",roleSource:"user",labelFa:"شخص"},{tag:"video1",kind:"video",role:"motion_reference",roleSource:"user",labelFa:"الگوی حرکت"},{tag:"audio1",kind:"audio",role:"lip_sync",roleSource:"user",labelFa:"الگوی گفتار"}]);
  for(const ref of r.plan.references)assert.deepEqual(Object.keys(ref).sort(),["kind","labelFa","role","roleSource","tag"]);
  const json=JSON.stringify(r);assertNoLeak(json,"references");
  for(const f of files)assert.ok(!json.includes(f.id)&&!json.includes(f.sha256),"no ids or hashes in the public plan");

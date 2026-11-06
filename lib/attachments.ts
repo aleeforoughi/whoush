@@ -33,7 +33,7 @@ type RoleDef={id:AttachmentRole;labelFa:string;hintFa:string;en:string};
 export const ATTACHMENT_ROLES={
  image:[
   {id:"reference",labelFa:"عکس رفرنس",hintFa:"ظاهر، سبک یا محتوا؛ هووش از متنت می‌فهمه",en:"image reference"},
-  {id:"character",labelFa:"کاراکتر",hintFa:"چهره و هویت ثابت می‌مونه",en:"character"},
+  {id:"character",labelFa:"شخص",hintFa:"چهره و هویت ثابت می‌مونه",en:"character"},
   {id:"hairstyle",labelFa:"پیرایش",hintFa:"مدل مو و فرم ریش",en:"hairstyle and beard reference"},
   {id:"outfit",labelFa:"پوشاک",hintFa:"لباس، کفش و استایل پوشش روی سوژه",en:"outfit reference"},
   {id:"environment",labelFa:"محیط",hintFa:"فضا، پس‌زمینه و نور",en:"environment"},

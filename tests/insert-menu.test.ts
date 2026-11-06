@@ -5,9 +5,9 @@ import {INSERT_MENU,menuRoles} from "../lib/insert-menu";
 
 test("INSERT_MENU: groups and items in the curated order, with «پرکاربردترین» first",()=>{
  assert.deepEqual(INSERT_MENU.map(g=>g.labelFa),["پرکاربردترین","تصویر","ویدیو","صدا","فایل"]);
- assert.deepEqual(INSERT_MENU[0].items.map(i=>[i.titleFa,i.action.type]),[["آپلود با نقش خودکار","auto"],["عکس رفرنس","role"],["کاراکتر","role"],["فریم","role"],["پوشاک","role"],["الگوی گفتار","role"]]);
+ assert.deepEqual(INSERT_MENU[0].items.map(i=>[i.titleFa,i.action.type]),[["آپلود با نقش خودکار","auto"],["عکس رفرنس","role"],["شخص","role"],["فریم","role"],["پوشاک","role"],["الگوی گفتار","role"]]);
  const titles=(id:string)=>INSERT_MENU.find(g=>g.id===id)!.items.map(i=>i.titleFa);
- assert.deepEqual(titles("image"),["عکس رفرنس","کاراکتر","کاراکترهای من","پیرایش","پوشاک","محیط","اشیا","گرافیک","فریم"],"owner list of 2026-11-05, «کاراکترهای من» right after کاراکتر");
+ assert.deepEqual(titles("image"),["عکس رفرنس","شخص","کاراکتر","پیرایش","پوشاک","محیط","اشیا","گرافیک","فریم"],"owner list of 2026-11-05, the saved characters («کاراکتر») right after «شخص»");
  assert.deepEqual(titles("video"),["فیلم رفرنس","الگوی حرکت"]);
  assert.deepEqual(titles("audio"),["الگوی گفتار","موزیک"]);
  assert.deepEqual(titles("file"),["فایل"]);assert.equal(INSERT_MENU[4].items[0].hintFa,"PDF، JSON یا Markdown برای زمینه");assert.equal(FILE_MENU_FA.labelFa,"فایل");
@@ -54,7 +54,7 @@ test("menu search: folds Persian letter variants and ZWNJ, matches title, hint o
  const {filterInsertMenu,foldSearch,visibleInsertMenu}=await import("../lib/insert-menu");
  const v=visibleInsertMenu(),ids=(q:string)=>filterInsertMenu(v,q).flatMap(s=>s.items.map(i=>i.id));
  assert.deepEqual(ids(""),v.flatMap(s=>s.items.map(i=>i.id)),"empty query: everything");
- assert.deepEqual(ids("کاراکتر"),["image:character","characters"]);
+ assert.deepEqual(ids("کاراکتر"),["characters"]);assert.equal(ids("شخص")[0],"image:character","«شخص» first (the hint «مشخص» also matches)");
  assert.deepEqual(ids("ويدئو"),["image:frame","video:reference","video:motion_reference"],"Arabic ي and ئ fold; the video group label matches, and «فریم» through its hint");
  assert.deepEqual(ids("کفش"),["image:outfit"],"the hint matches");assert.deepEqual(ids("رفرنس"),["image:reference","video:reference"]);
  assert.deepEqual(ids("عکس‌رفرنس"),["image:reference"],"ZWNJ and spaces ignored");

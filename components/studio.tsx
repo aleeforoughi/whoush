@@ -447,7 +447,7 @@ export function Studio(){
   el.scrollIntoView({block:"center",behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"});
   el.querySelector<HTMLElement>("button")?.focus({preventScroll:true});
  }
- /** A + menu entry adds an empty upload card (title and icon) inside the chat input and moves focus to it; «کاراکترهای من» opens the saved-character dialog. */
+ /** A + menu entry adds an empty upload card (title and icon) inside the chat input and moves focus to it; «کاراکتر» (saved characters) opens the saved-character dialog. */
  /** Adds an upload card to the chat input (with its tag reserved), or reports why it cannot; returns the card as added. */
  function createSlot(slot:UploadSlot):UploadSlot|undefined{
   const r=addSlot(slots,slot,attachments.length);
