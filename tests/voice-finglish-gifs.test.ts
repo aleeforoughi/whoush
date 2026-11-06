@@ -45,27 +45,27 @@ const planned=(r:OrchestratorResult)=>{assert.equal(r.status,"planned",JSON.stri
 const gifStub=()=>{const calls:string[]=[];return {calls,findGif:async(m:string)=>{calls.push(m);return {id:"g1",url:"https://media1.giphy.com/media/g1/200.gif",stillUrl:"https://media1.giphy.com/media/g1/200_s.gif",width:200,height:150,title:"high five"};}};};
 test("the planner's reply is the chat message, with its GIF and reaction; a recent GIF in the history means no GIF now",async()=>{
  const s=gifStub();
- const r=planned(await orchestrateCreativeTurn({text:"یه گربه روی پشت‌بوم"},{planner:withReply({text:"ایول، گربه‌ی پشت‌بومی! 😎 برنامه‌ش آماده‌ست",gif:"high_five",react:"🔥"}),findGif:s.findGif}));
+ const r=planned(await orchestrateCreativeTurn({text:"یه عکس از گربه روی پشت‌بوم"},{planner:withReply({text:"ایول، گربه‌ی پشت‌بومی! 😎 برنامه‌ش آماده‌ست",gif:"high_five",react:"🔥"}),findGif:s.findGif}));
  assert.equal(r.proposal.message,"ایول، گربه‌ی پشت‌بومی! 😎 برنامه‌ش آماده‌ست");assert.equal(r.gif?.id,"g1");assert.equal(r.reaction,"🔥");assert.deepEqual(s.calls,["high_five"]);
  assert.equal("reply" in r.plan,false,"the reply is not part of the public plan");
- const again=planned(await orchestrateCreativeTurn({text:"یه گربه",history:[{role:"agent",text:"[GIF: yay]",gif:true},{role:"user",text:"مرسی"}]},{planner:withReply({text:"حله 👌",gif:"celebrate"}),findGif:s.findGif}));
+ const again=planned(await orchestrateCreativeTurn({text:"یه عکس گربه",history:[{role:"agent",text:"[GIF: yay]",gif:true},{role:"user",text:"مرسی"}]},{planner:withReply({text:"حله 👌",gif:"celebrate"}),findGif:s.findGif}));
  assert.equal(again.gif,undefined);assert.deepEqual(s.calls,["high_five"],"no GIF back to back");
 });
 test("a reply that leaks internals or fails the safety check is replaced by Whoush's own line, in the user's script",async()=>{
- const leaky=planned(await orchestrateCreativeTurn({text:"یه دریاچه"},{planner:withReply({text:"این برنامه رو Claude نوشت"})}));
+ const leaky=planned(await orchestrateCreativeTurn({text:"یه عکس از دریاچه"},{planner:withReply({text:"این برنامه رو Claude نوشت"})}));
  assert.ok(!/claude/i.test(leaky.proposal.message));assert.match(leaky.proposal.message,/[؀-ۿ]/);
  const fin=planned(await orchestrateCreativeTurn({text:"salam, ye aks az daryache mikham"}));
  assert.ok(/^[\x00-ɏ\s\p{Emoji_Presentation}\p{Extended_Pictographic}!?.,;'’-]+$/u.test(fin.proposal.message),"Finglish brief, Finglish line: "+fin.proposal.message);
- const mixed=planned(await orchestrateCreativeTurn({text:"salam ye kafe-ye dej mikham"},{planner:withReply({text:"Salam! Ye cafe ba baroon-e پشت-e panjere 😍"})}));
+ const mixed=planned(await orchestrateCreativeTurn({text:"salam ye aks az kafe-ye dej mikham"},{planner:withReply({text:"Salam! Ye cafe ba baroon-e پشت-e panjere 😍"})}));
  assert.ok(!/[\u0600-\u06ff]/.test(mixed.proposal.message),"a Finglish reply never mixes in Persian script: "+mixed.proposal.message);
- const tagged=planned(await orchestrateCreativeTurn({text:"salam ye kafe-ye dej mikham"},{planner:withReply({text:"Halle, mesl-e #تولید-۱ vali shab 🌙"})}));
+ const tagged=planned(await orchestrateCreativeTurn({text:"salam ye aks az kafe-ye dej mikham"},{planner:withReply({text:"Halle, mesl-e #تولید-۱ vali shab 🌙"})}));
  assert.equal(tagged.proposal.message,"Halle, mesl-e #تولید-۱ vali shab 🌙","a Persian-script tag is fine");
  const q=await orchestrateCreativeTurn({text:"mesl-e #تولید-۹ kon ye chiz"});
  assert.ok(q.status==="needs_input"&&!/[؀-ۿ]/.test(q.message),"the question's setup follows Finglish too");
 });
 test("history turns that fail the prefilter are left out; they never block today's message",async()=>{
  let seen:unknown;const spy:PrivatePlanner=r=>{seen=r.history;return deterministicPlanner(r);};
- planned(await orchestrateCreativeTurn({text:"یه دریاچه",history:[{role:"user",text:"یه عکس سیاسی"},{role:"agent",text:"اینم برنامه‌ش"}]},{planner:spy}));
+ planned(await orchestrateCreativeTurn({text:"یه عکس از دریاچه",history:[{role:"user",text:"یه عکس سیاسی"},{role:"agent",text:"اینم برنامه‌ش"}]},{planner:spy}));
  assert.deepEqual(seen,[{role:"agent",text:"اینم برنامه‌ش"}]);
 });
 

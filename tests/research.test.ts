@@ -129,9 +129,9 @@ test("research: never when the user gave references of their own (an attached im
  const planner:PrivatePlanner=r=>{const p=structuredClone(deterministicPlanner(r).plan) as CreativePlan;p.research=ResearchSchema.parse(PLAN);return {plan:p};};
  let asked=0;const research=async()=>{asked++;return {subjects:[],references:[],notesFa:[]};};
  const att={id:"55555555-5555-4555-8555-555555555555",kind:"image",tag:"image1",mime:"image/jpeg",width:64,height:64,role:"environment",bytes:2048,sha256:"a".repeat(64)};
- await orchestrateCreativeTurn({text:"ورود کوروش کبیر به بابل",attachments:[att]},{planner,research});
+ await orchestrateCreativeTurn({text:"عکس ورود کوروش کبیر به بابل",attachments:[att]},{planner,research});
  assert.equal(asked,0,"the user's own image leads; no web search");
- await orchestrateCreativeTurn({text:"ورود کوروش کبیر به بابل"},{planner,research});
+ await orchestrateCreativeTurn({text:"عکس ورود کوروش کبیر به بابل"},{planner,research});
  assert.equal(asked,1);
  const {compileSkillInstructions}=await import("../lib/skills");
  const sys=compileSkillInstructions({prompt:"x",kind:"image"});
@@ -149,7 +149,7 @@ test("pre-generation check: stress-tests the plan for the chosen model, appends 
  const {promptWithFixes}=await import("../lib/plan-review");
  const planner:PrivatePlanner=r=>({plan:deterministicPlanner(r).plan});
  let seen:{model:{name:string};brief:string}|undefined;const stages:TurnStage[]=[];
- const r=await orchestrateCreativeTurn({text:"سه تا گربه روی کاناپه"},{planner,onStage:s=>stages.push(s),reviewPlan:async input=>{seen=input;return [
+ const r=await orchestrateCreativeTurn({text:"عکس سه تا گربه روی کاناپه"},{planner,onStage:s=>stages.push(s),reviewPlan:async input=>{seen=input;return [
   {severity:"high",issueFa:"تعداد گربه‌ها ممکنه اشتباه دربیاد",fixEn:"Exactly three cats, all fully visible and separate."},
   {severity:"low",issueFa:"Claude says hi",fixEn:"ignore"}]; }}) as Extract<OrchestratorResult,{status:"planned"}>;
  assert.equal(r.status,"planned");assert.equal(stages.at(-1),"reviewing","the check runs last, once the model is known");

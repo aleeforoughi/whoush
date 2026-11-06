@@ -116,7 +116,8 @@ export interface GenerationProposal {
   draft?: { turnId: string; modelId: string; modelName: string; neurons: number };
   explicitRejected?: { modelId: string; reasonFa: string }; // user named a model that cannot satisfy the request
   requiresApproval: true;
-  quoteMode: "demo";
+  /** How the selected model would run now: `demo` makes no real media; `dev_live` is owner testing; `live` is production. */
+  quoteMode: "demo" | "dev_live" | "live";
   message: string;
 }
 export interface PackageQuote {

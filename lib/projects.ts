@@ -1,4 +1,5 @@
 /** Chat history as projects and the assets page: the pure data model. Browser-local only (see lib/project-store.ts); safe in the browser and on the server. */
+import {isQuestionChoices,type QuestionChoice} from "./media-intent";
 import {findReferenceNeed,type ReferenceRequest} from "./reference-needs";
 import {ATTACHMENT_KIND_IDS,ATTACHMENT_ROLE_IDS,MAX_ATTACHMENTS,displayTag,isGenerationTag,nextGenerationTag,splitMentions,tagPrefix,type AttachmentKind,type AttachmentRole,type AttachmentSpeech,type LocalAttachment,type TagCounters} from "./attachments";
 import {GENERATION_STYLES,MAX_GENERATION_REFS,MAX_GENERATION_SUMMARY_CHARS,MAX_HISTORY_CHARS,MAX_HISTORY_TURNS,REACTION_EMOJIS,STYLE_LABEL_FA,type GenerationRef,type GenerationStyle,type HistoryTurn,type PublicCreativePlan,type ReactionEmoji} from "./creative-plan";
@@ -40,7 +41,8 @@ export type Reaction={emoji:ReactionEmoji;by:"user"|"whoush"};
 /** A GIF sent in the chat (by the user or by Whoush): GIPHY's own media URLs, as the API returned them (never cached or rewritten). */
 export type GifSnapshot={id:string;url:string;stillUrl:string;width:number;height:number;title:string};
 /** Whoush's one critical question: no plan card or price until the user answers. */
-export type QuestionSnapshot={question:string;/** Photos Whoush asked for (one upload slot per angle). */references?:ReferenceRequest};
+export type QuestionSnapshot={question:string;/** Photos Whoush asked for (one upload slot per angle). */references?:ReferenceRequest;
+ /** One-tap answers («عکس»، «ویدیو»، «هر دو»). */choices?:QuestionChoice[]};
 export type StoredMessage=MessageBase&(
  |{kind?:"text"|"restricted";snapshot?:undefined}
  |{kind:"proposal";snapshot:ProposalSnapshot}
@@ -134,7 +136,7 @@ function checkMessage(m:unknown,i:number){
    break;
   case "no_model":if(!isObject(s)||typeof s.message!=="string"||(s.plan!==undefined&&!isPlan(s.plan)))bad("نبود مدل سازگار");break;
   case "gif":if(!isObject(s)||typeof s.id!=="string"||typeof s.title!=="string"||!isGiphyMedia(s.url)||!isGiphyMedia(s.stillUrl)||!(Number(s.width)>0&&Number(s.height)>0))bad("گیف");break;
-  case "question":if(!isObject(s)||typeof s.question!=="string"||s.question.length<1||s.question.length>1000)bad("سؤال");
+  case "question":if(!isObject(s)||typeof s.question!=="string"||s.question.length<1||s.question.length>1000||(s.choices!==undefined&&!isQuestionChoices(s.choices)))bad("سؤال");
    else if(s.references!==undefined){const r=s.references as Record<string,unknown>;
     if(!isObject(r)||typeof r.need!=="string"||!findReferenceNeed(r.need)||typeof r.titleFa!=="string"||typeof r.role!=="string"||!Array.isArray(r.angles)||r.angles.length>6
      ||!r.angles.every(a=>isObject(a)&&typeof (a as Record<string,unknown>).id==="string"&&typeof (a as Record<string,unknown>).titleFa==="string"))bad("سؤال");}

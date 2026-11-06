@@ -14,7 +14,8 @@ import {compileImagePrompt,SCENE_COMPILER_VERSION,FA_EDIT_SCOPE_MIXED,GENERIC_ED
 import {applyStagingCues,applyTypedMappings,lensFor,describeStagingEn,describeStagingFa,sceneLeadEn,detectProps,detectSubject,expandMappings,mapReferences,tidyProps,typedMappings} from "./staging";
 import {findGif,type ChatGif} from "./giphy";
 import {describeFocus} from "./frame-css";
-import {detectMediaKind,suggestModel} from "./router";
+import {requestedMediaKind,suggestModel} from "./router";
+import {MEDIA_KIND_CHOICES,MEDIA_KIND_QUESTION_FA,MEDIA_KIND_QUESTION_FINGLISH,type QuestionChoice} from "./media-intent";
 import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
 import {SKILLS,SKILL_REGISTRY_VERSION} from "./skills";
 import {detectReferenceNeeds,type ReferenceRequest} from "./reference-needs";
@@ -43,7 +44,8 @@ export type OrchestratorResult=
  |{status:"restricted";decision:"block"|"review";category:SafetyCategory;message:string}
  /** Whoush needs one critical answer before it can offer a generation: no plan card, no price, only the question. */
  |{status:"needs_input";turnId:string;message:string;question:string;reaction?:ReactionEmoji;
-  /** The photos Whoush needs to keep something only a photo can (lib/reference-needs.ts): the card shows an upload slot per angle. */references?:ReferenceRequest};
+  /** The photos Whoush needs to keep something only a photo can (lib/reference-needs.ts): the card shows an upload slot per angle. */references?:ReferenceRequest;
+  /** One-tap answers («عکس»، «ویدیو»، «هر دو»): each sends its reply as the user's answer. */choices?:QuestionChoice[]};
 /**
  * Whoush's own lines when no planner reply is usable (deterministic planner, or a reply that failed a check): everyday spoken Persian, or Finglish for a Finglish
  * brief, in Whoush's voice. A question's setup carries no emoji (docs/CREATIVE_SKILLS.md, Whoush voice).
@@ -61,6 +63,8 @@ const VOICE={
  }
 } as const;
 const pickLine=(lines:readonly string[],seed:string)=>lines[[...seed].reduce((n,c)=>(n*31+c.charCodeAt(0))>>>0,7)%lines.length];
+/** The start of the «use the photos you sent earlier?» question; the next turn recognises its answer by it. */
+const REUSE_MARKER_FA="همون عکس‌هایی که قبلاً فرستادی",REUSE_MARKER_FINGLISH="Hamun aksai ke ghablan ferestadi";
 const FA_REFUSED="این درخواست در حال حاضر قابل پردازش نیست. لطفاً آن را با توضیح غیرحساس‌تر دوباره بنویس.";
 const FA_NO_REFS="پرامپت تولید با کاراکتر انتخاب‌شده آماده است، اما هنوز هیچ مدل تأییدشده‌ای عکس مرجع کاراکتر را نمی‌پذیرد؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 const FA_TEXT_BLOCKED="یکی از فایل‌های متنیِ پیوست‌شده مسدود شد. ";
@@ -380,14 +384,48 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const need=detectReferenceNeeds(normalizePersian(parsed.text))[0];
  // A general reference («عکس رفرنس») is resolved by the brief's words; for a detail like a tattoo it stays the general reference it already is.
  const fits=(f:{role?:AttachmentRole})=>Boolean(need)&&(f.role===need!.role||(need!.role==="reference"&&f.role==="general"));
- const needPhotos=need?files0.filter(f=>f.kind==="image"&&(fits(f)||!f.role||f.roleSource==="inferred")):[];
- // Asked only when the message brought no photo at all (a photo the user gave another role is theirs to decide).
- if(need&&!files0.some(f=>f.kind==="image")&&!parsed.answersQuestion){
-  const ask=replyScriptFor(parsed.text)==="finglish"?need.askFinglish:need.askFa;
-  return {status:"needs_input",turnId:randomUUID(),message:ask,question:need.askFa,references:{need:need.id,titleFa:need.titleFa,role:need.role,angles:need.angles.map(a=>({id:a.id,titleFa:a.titleFa}))}};
+ const finglish=replyScriptFor(parsed.text)==="finglish",askTurn=randomUUID();
+ // Which question this message answers: the last Whoush turn in the history carries the question's text.
+ const safeHistory=(parsed.history??[]).filter(t=>evaluateTextSafety(t.text).decision==="allow");
+ const lastAsked=[...safeHistory].reverse().find(t=>t.role==="agent")?.text??"";
+ const answered=(marker:string,fing:string)=>Boolean(parsed.answersQuestion)&&(lastAsked.includes(marker)||lastAsked.includes(fing));
+ // Photo or video (owner, 2026-11-06): what this message says wins; then a file that only a video can use; then the generation it changes; then what the
+ // user said earlier in this chat. When nothing says, Whoush asks once, before any planning (an answer that still says nothing gets a photo).
+ const said=requestedMediaKind(parsed.text);
+ const earlier=[...safeHistory].reverse().filter(t=>t.role==="user").map(t=>requestedMediaKind(t.text)).find(Boolean);
+ const videoFile=files0.some(f=>f.kind==="video"||(f.kind==="audio"&&f.role==="lip_sync")||(f.kind==="image"&&(f.role==="start_frame"||f.role==="end_frame")));
+ const chosen=videoFile?"video":said??(parsed.generations?.length?parsed.generations[0].mediaKind:earlier);
+ // Asked only of a brief on its own: a message with files or #tags works with something already in the chat (and a missing #file gets its own question).
+ if(!chosen&&!parsed.answersQuestion&&parsed.task!=="character"&&!files0.length&&!parseMentions(parsed.text).length&&!parsed.stagingOverride){
+  return {status:"needs_input",turnId:askTurn,message:pickLine(VOICE[finglish?"finglish":"fa"].needsInput,askTurn),question:finglish?MEDIA_KIND_QUESTION_FINGLISH:MEDIA_KIND_QUESTION_FA,choices:MEDIA_KIND_CHOICES.map(c=>({...c}))};
  }
+ const kind:"image"|"video"=chosen==="both"||chosen==="video"?"video":"image",wantsBoth=chosen==="both";
+ // Photos for the thing to keep may already be in this chat (sent with an earlier message): Whoush uses them instead of asking again. Ones that were given
+ // for it (their role fits) are used as they are; other earlier photos are offered with one question («همون عکس‌ها؟»). A saved character covers a face.
+ const priorImages=(parsed.priorAttachments??[]).filter(p=>p.kind==="image"&&!(parsed.attachments??[]).some(f=>f.tag===p.tag));
+ const reuseAsked=answered(REUSE_MARKER_FA,REUSE_MARKER_FINGLISH),reuseYes=reuseAsked&&/(همونا|همون عکس|آره|اره|بله|اوکی|hamuna|hamoona|are|bale|yes|ok)/.test(normalizePersian(parsed.text).split(" ").slice(-12).join(" "));
+ let reused:typeof priorImages=[];
+ if(need&&!files0.some(f=>f.kind==="image")&&!(need.id==="face"&&parsed.characterRef)){
+  const fitting=priorImages.filter(fits);
+  if(fitting.length)reused=fitting;
+  else if(priorImages.length&&reuseYes)reused=priorImages;
+  else if(priorImages.length&&!parsed.answersQuestion){
+   const tags=priorImages.slice(0,6).map(f=>displayTag(f.tag)).join("، ");
+   return {status:"needs_input",turnId:askTurn,message:finglish?need.askFinglish:need.askFa,
+    question:(finglish?REUSE_MARKER_FINGLISH+" ("+tags+") baraye "+need.titleFa+" estefade konam? Age na, aks-e taze befrest.":REUSE_MARKER_FA+" ("+tags+") رو برای "+need.titleFa+" استفاده کنم؟ اگه نه، عکس تازه بفرست."),
+    choices:[{id:"reuse",labelFa:finglish?"Are, hamuna":"آره، همونا",replyFa:finglish?"are, hamuna ro estefade kon":"آره، همونا رو استفاده کن"}],
+    references:{need:need.id,titleFa:need.titleFa,role:need.role,angles:need.angles.map(a=>({id:a.id,titleFa:a.titleFa}))}};
+  }
+  // Asked only when the message brought no photo at all and none is in the chat (a photo the user gave another role is theirs to decide); an answer to
+  // the photo-or-video question still gets this one question.
+  else if(!priorImages.length&&(!parsed.answersQuestion||answered(MEDIA_KIND_QUESTION_FA,MEDIA_KIND_QUESTION_FINGLISH))){
+   return {status:"needs_input",turnId:askTurn,message:finglish?need.askFinglish:need.askFa,question:need.askFa,references:{need:need.id,titleFa:need.titleFa,role:need.role,angles:need.angles.map(a=>({id:a.id,titleFa:a.titleFa}))}};
+  }
+ }
+ const withReused:typeof files0=[...files0,...reused.map(f=>({...f,...(f.role?{roleSource:"user" as RoleSource}:{})}))];
+ const needPhotos=need?withReused.filter(f=>f.kind==="image"&&(fits(f)||!f.role||f.roleSource==="inferred")):[];
  const needTags=new Set(needPhotos.map(f=>f.tag));
- const files=files0.map(f=>needTags.has(f.tag)&&need&&!fits(f)?{...f,role:need.role==="reference"?"general":need.role,roleSource:"inferred" as RoleSource}:f);
+ const files=withReused.map(f=>needTags.has(f.tag)&&need&&!fits(f)?{...f,role:need.role==="reference"?"general":need.role,roleSource:"inferred" as RoleSource}:f);
  // Text attachments are user text: they get the same preflight before any planner sees them.
  for(const f of files){
   if(!f.textExcerpt)continue;
@@ -406,10 +444,10 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // Planners see attachments only through `req.attachments` (kinds and excerpts as data); the audio flags are merged into `input.audio`.
  // An edit_reference (image or video) makes the turn an edit, which brings photo_editor or video_editor.
  const task=parsed.task!=="character"&&files.some(f=>f.role==="edit_reference")?"edit":parsed.task;
- const input={...parsed,task,visualStyle:parsed.style?STYLE_VISUAL[parsed.style]:parsed.visualStyle,audio:deriveAudio({...parsed,attachments:files}),attachments:undefined,generations:undefined,history:undefined,stagingOverride:undefined,aspectOverride:undefined};
+ const input={...parsed,task,visualStyle:parsed.style?STYLE_VISUAL[parsed.style]:parsed.visualStyle,audio:deriveAudio({...parsed,attachments:files}),attachments:undefined,priorAttachments:undefined,generations:undefined,history:undefined,stagingOverride:undefined,aspectOverride:undefined};
  // A video attachment (every media attachment carries a role), a lip_sync audio or a start_frame or end_frame image makes the output a video even when the text sounds like
  // an image request. Such a turn always has media, so it stops at the media-review check below and never reaches `buildProposal`, which re-detects from the text.
- const kind=files.some(f=>f.kind==="video"||(f.kind==="audio"&&f.role==="lip_sync")||(f.kind==="image"&&(f.role==="start_frame"||f.role==="end_frame")))?"video":generations.length&&detectMediaKind(input.text)!=="video"?generations[0].mediaKind:detectMediaKind(input.text),a=input.audio,ref=input.characterRef;
+ const a=input.audio,ref=input.characterRef;
  const refs:PublicReference[]=files.flatMap(f=>isMediaKind(f.kind)&&f.role?[{tag:f.tag,kind:f.kind,role:f.role,roleSource:f.roleSource??"user",labelFa:roleLabelFa(f.role,f.kind)}]:[]);
  const have=new Set([...files.map(f=>f.tag),...generations.map(g=>g.tag)]),mentionedMissing=parseMentions(input.text).filter(t=>!have.has(t)),byTag=tagMap(files),genTags=new Set(generations.map(g=>g.tag));
  const missing=mentionedMissing.filter(t=>!isGenerationTag(t)),missingGenerations=mentionedMissing.filter(isGenerationTag);
@@ -613,9 +651,9 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  let usedAsImages=false;
  try{
   if(refCount&&kind==="image"){
-   try{proposal=buildProposal(input.text,input.preference,{...requirements,referenceImages:Math.max(requirements.referenceImages??0,refCount)});usedAsImages=true;}
-   catch(e){if(!(e instanceof NoCompatibleModelError))throw e;proposal=buildProposal(input.text,input.preference,requirements);}
-  }else proposal=buildProposal(input.text,input.preference,requirements);
+   try{proposal=buildProposal(input.text,input.preference,{...requirements,referenceImages:Math.max(requirements.referenceImages??0,refCount)},kind);usedAsImages=true;}
+   catch(e){if(!(e instanceof NoCompatibleModelError))throw e;proposal=buildProposal(input.text,input.preference,requirements,kind);}
+  }else proposal=buildProposal(input.text,input.preference,requirements,kind);
  }
  catch(e){
   if(!(e instanceof NoCompatibleModelError))throw e;
@@ -660,7 +698,9 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  }
  rec({planner:label,fallbackReason,corrections:corrections.length?corrections:undefined,usage:label==="live"?result?.usage:undefined});
  // The proposal speaks in Whoush's voice; a rejected explicit model request keeps its factual note after the reply.
- proposal={...proposal,message:replyText("planned")+(proposal.explicitRejected?"\n"+proposal.message:"")};
+ // «هر دو»: the video's opening-frame draft is the photo, then the video from it.
+ const bothNote=wantsBoth&&proposal.draft?(script==="finglish"?"\nHar do ro misazam: aval aks (frame-e aval), baad video.":"\nهر دو رو می‌سازم: اول عکس (فریم اول)، بعد ویدیو از روی همون."):"";
+ proposal={...proposal,message:replyText("planned")+bothNote+(proposal.explicitRejected?"\n"+proposal.message:"")};
  const gif=gifMood?await (deps.findGif??findGif)(gifMood).catch(()=>undefined):undefined;
  return {status:"planned",turnId,proposal,plan:toPublicPlan(plan,refs,undefined,input.style),...(gif?{gif}:{}),...(reaction?{reaction}:{})};
 }

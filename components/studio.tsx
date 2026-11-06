@@ -36,6 +36,7 @@ import {MAX_GENERATION_REFS,type ReactionEmoji,type Staging} from "@/lib/creativ
 import {LIGHT_SOURCE_FA,describeStagingChangesFa,followUpFocus,lightTags,propTags,sectionsFromWords} from "@/lib/staging";
 import {normalizePersian} from "@/lib/safety";
 import {isReferenceRequest,type ReferenceRequest} from "@/lib/reference-needs";
+import {isQuestionChoices} from "@/lib/media-intent";
 import {PLAN_FIRST_FA,STAGE_DONE_TEXT,STAGE_TEXT,postAgentTurn} from "@/lib/agent-stream";
 import type {TurnStage} from "@/lib/orchestrator-stages";
 import {replyScriptFor} from "@/lib/finglish";
@@ -525,6 +526,8 @@ export function Studio(){
   // This message's own files plus any earlier file it mentions as #تصویر-۱ or @image1 (metadata only, as before).
   const sentText=brief??text,mentioned=parseMentions(sentText),own=new Set(files.map(a=>a.id));
   const outgoing=uniqueById([...messages.flatMap(m=>m.attachments??[]).filter(a=>mentioned.includes(a.tag)&&!own.has(a.id)),...files]);
+  // Photos sent earlier in this chat (details only, no bytes): Whoush reuses ones it asked for instead of asking again. The latest ten, at most.
+  const priorPhotos=uniqueById(messages.flatMap(m=>m.attachments??[])).filter(a=>a.kind==="image"&&!outgoing.some(o=>o.id===a.id)).slice(-MAX_ATTACHMENTS);
   const refs=referencedGenerations(changes,mentioned,generationSet),cardRefs=changes.filter(t=>generationSet.has(t));
   const generations=refs.flatMap(t=>{const g=generationMap.get(t);return g?[toGenerationRef(g)]:[];});
   const fits=validateAttachmentSet(outgoing);
@@ -551,9 +554,9 @@ export function Studio(){
   const characterRef=current?{id:current.id,name:current.name,angles:characterCoverage(current.references).uploaded,version:current.version}:undefined;
   try{
    setThinking({stage:"reading",done:[],script:replyScriptFor(sentText)});
-   const r=await postAgentTurn(JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(toWireAttachment)}:{}),...(generations.length?{generations}:{})}),stage=>setThinking(t=>t&&(t.stage===stage?t:{...t,done:[...t.done,t.stage],stage})));
+   const r=await postAgentTurn(JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(toWireAttachment)}:{}),...(priorPhotos.length?{priorAttachments:priorPhotos.map(toWireAttachment)}:{}),...(generations.length?{generations}:{})}),stage=>setThinking(t=>t&&(t.stage===stage?t:{...t,done:[...t.done,t.stage],stage})));
    if(!r.ok){
-    const errorBody=await r.json().catch(()=>({})) as {error?:string;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"];references?:unknown};
+    const errorBody=await r.json().catch(()=>({})) as {error?:string;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"];references?:unknown;choices?:unknown};
     if(r.status===422&&errorBody.error==="no_compatible_model"){
      const message=typeof errorBody.message==="string"?errorBody.message:"مدل سازگاری برای این درخواست پیدا نشد.";
      setMessages(m=>[...m,agentItem({role:"agent",text:message,kind:"no_model",snapshot:{message,...(errorBody.plan?{plan:errorBody.plan}:{})}})]);setPreview("مدل سازگار پیدا نشد");
@@ -561,8 +564,8 @@ export function Studio(){
      return;
     }
     if(r.status===422&&errorBody.error==="needs_input"&&typeof errorBody.question==="string"){
-     const references=isReferenceRequest(errorBody.references)?errorBody.references:undefined;
-     setMessages(m=>[...m,agentItem({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"",kind:"question",snapshot:{question:errorBody.question!,...(references?{references}:{})}})]);whoushReacts(errorBody.reaction);
+     const references=isReferenceRequest(errorBody.references)?errorBody.references:undefined,choices=isQuestionChoices(errorBody.choices)?errorBody.choices:undefined;
+     setMessages(m=>[...m,agentItem({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"",kind:"question",snapshot:{question:errorBody.question!,...(references?{references}:{}),...(choices?{choices}:{})}})]);whoushReacts(errorBody.reaction);
      adoptProject(firstText,characterId);
      return;
     }
@@ -773,6 +776,7 @@ export function Studio(){
         {m.kind==="no_model"&&<NoModelCard result={m.snapshot}/>}
         {/* The question is always the last item of the agent's message; it waits for an answer until something is sent after it. */}
         {m.kind==="question"&&<AgentQuestion question={m.snapshot.question} waiting={i===messages.length-1&&!busy} onAnswer={()=>promptRef.current?.focus()}
+         choices={m.snapshot.choices} onChoose={reply=>answer(reply)}
          references={m.snapshot.references} uploaded={m.snapshot.references?Object.fromEntries(m.snapshot.references.angles.map(a=>[a.id,Boolean(slots.find(s=>s.id==="ref-"+m.id+"-"+a.id)?.attachmentId)])):undefined}
          onUpload={m.snapshot.references?a=>uploadForRequest(m.id,m.snapshot.references!,a):undefined}
          onContinue={m.snapshot.references&&i===messages.length-1&&!busy?()=>answer(replyScriptFor(m.text)==="finglish"?"aksa ro gozashtam":"عکس‌ها رو گذاشتم"):undefined}/>}

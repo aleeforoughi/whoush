@@ -16,12 +16,12 @@ const RECOMMENDED_FA="پیشنهاد هووش",ALTERNATE_FA="جایگزین";
 const ModelName=({name}:{name:string})=><bdi dir="ltr">{name}</bdi>;
 
 /** The card's top row: the kind's icon, «تصویر» or «ویدیو», the generation's tag (a button that puts it in the prompt) and the demo badge. */
-function Head({kind,tag,onMention}:{kind:"image"|"video";tag?:string;onMention?:()=>void}){
+function Head({kind,tag,onMention,demo}:{kind:"image"|"video";tag?:string;onMention?:()=>void;/** Only a real demo (no media made) is labelled. */demo?:boolean}){
  return <div className="flex items-center gap-2">
   <span className="flex size-9 shrink-0 items-center justify-center rounded-control bg-surface-hover text-fg-secondary"><Icon icon={kind==="video"?Clapperboard:ImageIcon} size={20} aria-hidden="true"/></span>
   <span className="type-label text-fg-primary">{kind==="video"?"ساخت ویدیو":"ساخت تصویر"}</span>
   {tag&&<TagBadge tag={tag} onMention={onMention}/>}
-  <Badge variant="outline" className="ms-auto">نسخه نمایشی</Badge>
+  {demo&&<Badge variant="outline" className="ms-auto">نسخه نمایشی</Badge>}
  </div>;
 }
 
@@ -53,7 +53,7 @@ export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onA
  // The ratio that will really be used: the wanted one, or the nearest this model offers (the same rule as the quote in studio.tsx).
  const shownAspect=nearestAspectRatio(aspect,ratios)??aspect;
  return <Card size="sm" data-testid="proposal" data-generation={tag} className="gap-3 p-3">
-  <Head kind={proposal.operation==="generate_video"?"video":"image"} tag={tag} onMention={onMention}/>
+  <Head kind={proposal.operation==="generate_video"?"video":"image"} tag={tag} onMention={onMention} demo={proposal.quoteMode==="demo"}/>
   {heads.length>1
    ?<Select value={headOf(selected)} onValueChange={v=>onSelect(String(v))} items={items}>
     <SelectTrigger size="sm" aria-label="مدل تولید" className="w-full"><span className="text-fg-secondary">مدل</span><SelectValue/></SelectTrigger>
@@ -74,7 +74,7 @@ export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onA
   {adjusted&&<p role="status" className="flex items-center gap-2 type-caption text-fg-primary"><Icon icon={Box} size={16} aria-hidden="true" className="size-4 text-primary"/>با صحنه‌ای که توی «بوم» چیدی ساخته می‌شه.</p>}
   {proposal.research&&<ResearchReport research={proposal.research} excluded={excludedReferences} onToggle={onToggleReference}/>}
   {proposal.review&&<ReviewNote review={proposal.review}/>}
-  <p className="type-caption text-fg-secondary">{DEMO_NOTE_FA}</p>
+  {proposal.quoteMode==="demo"&&<p className="type-caption text-fg-secondary">{DEMO_NOTE_FA}</p>}
   {/* Video drafts first (owner, 2026-11-06): a cheap still of the opening frame to check the look before the expensive video; the user may skip it. */}
   {proposal.draft&&onDraft&&!drafted&&<div className="-mx-3 -mb-3 mt-1 flex flex-col gap-2 rounded-b-[inherit] border-t border-line-secondary bg-surface-subtle px-3 py-2.5">
    <p className="type-caption text-fg-secondary">پیشنهادم اینه اول یه پیش‌نویس ارزون بسازیم: یه عکس از فریم اول، تا قبل از خرج اصلی ظاهرش رو ببینی و اگه چیزی اشتباهه درستش کنیم. اگه نمی‌خوای، مستقیم بساز.</p>

@@ -110,9 +110,9 @@ test("diagram maths: light colour from kelvin, tones, polar points and shot frac
 
 test("a question stops the turn: no plan card or price; an answer is never asked again, Whoush decides",async()=>{
  const asking:import("../lib/creative-plan").PrivatePlanner=r=>{const plan=structuredClone(deterministicPlanner(r).plan);plan.clarifyingQuestionFa="چه چیزی را می‌خواهی ببینی؟";return {plan};};
- const first=await orchestrateCreativeTurn({text:"یه چیز قشنگ"},{planner:asking});
+ const first=await orchestrateCreativeTurn({text:"یه عکس قشنگ"},{planner:asking});
  assert.equal(first.status,"needs_input");assert.ok(first.status==="needs_input"&&first.question.includes("چه چیزی"));
- const answered=planned(await orchestrateCreativeTurn({text:"یه چیز قشنگ\nیک گربه روی پشت‌بام",answersQuestion:true},{planner:asking}));
+ const answered=planned(await orchestrateCreativeTurn({text:"یه عکس قشنگ\nیک گربه روی پشت‌بام",answersQuestion:true},{planner:asking}));
  assert.equal(answered.plan.clarifyingQuestionFa,undefined,"the planner's second question is dropped");assert.equal(answered.status,"planned");
  // an answer is never asked about again: a reference that is still missing is left out, with a note in the plan
  const still=planned(await orchestrateCreativeTurn({text:"مثل #تولید-۹ کن\nفقط حال‌وهوای شب",answersQuestion:true}));

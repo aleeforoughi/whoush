@@ -6,6 +6,7 @@ import type {MediaProvider,ProviderJob,ProviderOutput,ProviderState,ProviderStat
 import {NotCancelableError,SubmissionUnknownError} from "../provider-errors";
 import {runStatus,startRun} from "./sync-runner";
 import type {MediaModel} from "../types";
+import {markModelNotOpen} from "../model-availability";
 /**
  * BytePlus ModelArk (ByteDance), docs/evidence/BYTEPLUS.md. Base https://ark.ap-southeast.bytepluses.com/api/v3, `Authorization: Bearer <key>`.
  * Seedream images: POST /images/generations, synchronous, result URL valid 24 h (mirrored at once). Seedance video: POST /contents/generations/tasks,
@@ -38,10 +39,11 @@ export function buildSeedanceRequest(model:MediaModel,prompt:string,c:MediaConfi
  return {model:model.providerModel,content:[{type:"text",text:prompt}],resolution:res,ratio:c.aspectRatio&&SEEDANCE_RATIOS.includes(c.aspectRatio)?c.aspectRatio:"16:9",
   duration:dur,generate_audio:false,watermark:false}; // audio off: generated audio is not moderated yet
 }
-async function call(method:string,path:string,body?:unknown):Promise<unknown>{
+/** `modelId`: a refusal as not open for the account stops Whoush offering that model (lib/model-availability.ts). */
+async function call(method:string,path:string,body?:unknown,modelId?:string):Promise<unknown>{
  const r=await fetch(BASE+path,{method,headers:auth(),body:body===undefined?undefined:JSON.stringify(body),cache:"no-store",signal:AbortSignal.timeout(120_000)});
  const json=await r.json().catch(()=>undefined) as {error?:{code?:string}}|undefined;
- if(!r.ok)throw new BytePlusHttpError(r.status,json?.error?.code??"");
+ if(!r.ok){const code=json?.error?.code??"";if(code==="ModelNotOpen"&&modelId)markModelNotOpen(modelId);throw new BytePlusHttpError(r.status,code);}
  return json;
 }
 const TASK_STATE:Record<string,ProviderState>={queued:"queued",running:"running",succeeded:"completed",failed:"failed",cancelled:"canceled",expired:"failed"};
@@ -51,7 +53,7 @@ export class BytePlusMediaProvider implements MediaProvider{
   if(model.kind==="image"){
    const body=buildSeedreamRequest(model,job.prompt,job.configuration,job.references);
    return {providerRequestId:"img_"+startRun(async()=>{
-    const r=await call("POST","/images/generations",body) as {data?:{url?:string;error?:unknown}[]};
+    const r=await call("POST","/images/generations",body,model.id) as {data?:{url?:string;error?:unknown}[]};
     const outputs:ProviderOutput[]=[];
     for(const d of r?.data??[])if(typeof d.url==="string"){const m=await mirrorMedia(d.url,undefined,"image/png");outputs.push({kind:"image",url:m.url,needsMirroring:true,mime:m.mime});}
     return outputs;
@@ -59,7 +61,7 @@ export class BytePlusMediaProvider implements MediaProvider{
   }
   const body=buildSeedanceRequest(model,job.prompt,job.configuration);
   let r:{id?:unknown};
-  try{r=await call("POST","/contents/generations/tasks",body) as {id?:unknown};}
+  try{r=await call("POST","/contents/generations/tasks",body,model.id) as {id?:unknown};}
   catch(e){
    if(e instanceof BytePlusHttpError&&e.status<500)throw e; // a 4xx refusal: nothing was created
    throw new SubmissionUnknownError(e instanceof BytePlusHttpError?"http_"+e.status:"network"); // may exist: never resent (no idempotency)

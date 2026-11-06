@@ -75,6 +75,8 @@ export const CreativeTurnInputSchema=z.object({
  }).strict().optional(),
  audio:z.object({hasAudioReference:z.boolean(),hasSpeech:z.boolean(),language:z.enum(["fa","other","unknown"]),accent}).strict().optional(),
  attachments:AttachmentsSchema.optional(),
+ /** Files sent with earlier messages of this chat (metadata only, like `attachments`): Whoush reuses photos already given instead of asking again. */
+ priorAttachments:AttachmentsSchema.optional(),
  /** The message answers Whoush's question: the brief is the original request plus the answer, and Whoush decides instead of asking again. */
  answersQuestion:z.boolean().optional(),
  history:z.array(HistoryTurnSchema).max(MAX_HISTORY_TURNS).optional(),

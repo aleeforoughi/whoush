@@ -1,6 +1,6 @@
 "use client";
 import {useState,type ReactNode} from "react";
-import {Aperture,ArrowLeft,Camera,CircleCheck,CircleHelp,Clapperboard,ImagePlus,Image as ImageIcon,Film,Focus,Frame,Gauge,Lightbulb,ListChecks,MessageCircle,Move,Paperclip,RefreshCw,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Thermometer,Timer,Upload,type LucideIcon} from "lucide-react";
+import {Aperture,ArrowLeft,Camera,CircleCheck,CircleHelp,Clapperboard,ImagePlus,Image as ImageIcon,Film,Focus,Frame,Gauge,Layers,Lightbulb,ListChecks,MessageCircle,Move,Paperclip,RefreshCw,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Thermometer,Timer,Upload,type LucideIcon} from "lucide-react";
 import {Accordion,AccordionContent,AccordionItem,AccordionTrigger,Badge,Button,Icon} from "@aleeforoughi/feather-react";
 import type {ReferenceRequest} from "@/lib/reference-needs";
 import {StagingEditor} from "@/components/staging-editor";
@@ -9,6 +9,7 @@ import {STYLE_LABEL_FA,type PublicCreativePlan} from "@/lib/creative-plan";
 import {CHARACTER_VIEWS} from "@/lib/characters";
 import {displayTag} from "@/lib/attachments";
 import {fa,faText,faAuto} from "@/lib/format";
+import type {QuestionChoice} from "@/lib/media-intent";
 import {expandFocus,lensFor} from "@/lib/staging";
 
 const latin=(v:string|number)=><bdi dir="ltr">{faText(String(v))}</bdi>;
@@ -158,6 +159,8 @@ export function PlanStory({plan,onStagingChange,focus}:{plan:PublicCreativePlan;
 }
 
 export const NEEDS_INPUT_FA="نیاز به پاسخ تو";
+/** Icons for the one-tap answers: a photo, a video, both, or «آره، همونا». */
+const CHOICE_ICON:Record<string,LucideIcon>={image:ImageIcon,video:Clapperboard,both:Layers,reuse:CircleCheck};
 /**
  * The agent's question, always the last item of its message (after the plan and the card) so it is not missed. While it waits for an answer (`waiting`: nothing
  * has been sent since), it is highlighted with a flashing «نیاز به پاسخ تو» badge (a gentle pulse; still under reduced motion) and «پاسخ بده» moves focus to the
@@ -168,8 +171,9 @@ export const NEEDS_INPUT_FA="نیاز به پاسخ تو";
  * tattoos, logo, product...), it lists the angles it needs, each with «آپلود» (the photo lands in the chat input as a card with the right role) and a check
  * once it is in, then «ادامه» sends them with the original request.
  */
-export function AgentQuestion({question,waiting,onAnswer,references,uploaded,onUpload,onContinue}:{question:string;waiting:boolean;onAnswer:()=>void;
- references?:ReferenceRequest;uploaded?:Record<string,boolean>;onUpload?:(angle:{id:string;titleFa:string})=>void;onContinue?:()=>void}){
+export function AgentQuestion({question,waiting,onAnswer,references,uploaded,onUpload,onContinue,choices,onChoose}:{question:string;waiting:boolean;onAnswer:()=>void;
+ references?:ReferenceRequest;uploaded?:Record<string,boolean>;onUpload?:(angle:{id:string;titleFa:string})=>void;onContinue?:()=>void;
+ /** One-tap answers («عکس»، «ویدیو»، «هر دو»): each sends its reply as the user's answer. */choices?:readonly QuestionChoice[];onChoose?:(reply:string)=>void}){
  const done=references?references.angles.filter(a=>uploaded?.[a.id]).length:0;
  return <div role={waiting?"status":undefined} className={"flex items-start gap-3 rounded-card p-3 "+(waiting?"border border-primary bg-surface-subtle":"bg-surface-subtle")}>
   <Icon icon={references?ImagePlus:CircleHelp} size={20} aria-hidden="true" className={"mt-0.5 shrink-0 "+(waiting?"text-primary":"text-fg-secondary")}/>
@@ -178,6 +182,9 @@ export function AgentQuestion({question,waiting,onAnswer,references,uploaded,onU
     <span aria-hidden="true" className="size-1.5 rounded-full bg-current"/>{NEEDS_INPUT_FA}
    </span>}
    <p className="type-body-sm text-fg-primary">{text(question)}</p>
+   {choices&&waiting&&onChoose&&<div role="group" aria-label={question} className="flex flex-wrap gap-2">
+    {choices.map(c=><Button key={c.id} type="button" size="sm" variant="secondary" onClick={()=>onChoose(c.replyFa)}><Icon icon={CHOICE_ICON[c.id]??CircleCheck} aria-hidden="true"/>{c.labelFa}</Button>)}
+   </div>}
    {references&&<ul className="flex flex-col gap-1.5" aria-label={"عکس‌های لازم: "+references.titleFa}>
     {references.angles.map(a=><li key={a.id} className="flex items-center gap-2 rounded-control border border-line-secondary px-2.5 py-1.5">
      <Icon icon={uploaded?.[a.id]?CircleCheck:ImageIcon} size={16} aria-hidden="true" className={"size-4 shrink-0 "+(uploaded?.[a.id]?"text-primary":"text-fg-secondary")}/>
@@ -189,7 +196,7 @@ export function AgentQuestion({question,waiting,onAnswer,references,uploaded,onU
     <Button type="button" size="sm" onClick={onContinue} disabled={!done}>ادامه با {fa(done)} عکس<Icon icon={ArrowLeft} aria-hidden="true"/></Button>
     <span className="type-caption text-fg-secondary">هووش خودش نقش عکس‌ها رو تعیین می‌کنه و به {references.titleFa} وصلشون می‌کنه.</span>
    </div>}
-   {waiting&&!references&&<button type="button" onClick={onAnswer} className="inline-flex w-fit items-center gap-1.5 rounded-control type-label text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><Icon icon={MessageCircle} size={16} aria-hidden="true" className="size-4 shrink-0"/>پاسخ بده</button>}
+   {waiting&&!references&&!choices&&<button type="button" onClick={onAnswer} className="inline-flex w-fit items-center gap-1.5 rounded-control type-label text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><Icon icon={MessageCircle} size={16} aria-hidden="true" className="size-4 shrink-0"/>پاسخ بده</button>}
   </div>
  </div>;
 }
