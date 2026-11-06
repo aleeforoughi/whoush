@@ -15,14 +15,15 @@ export type PreviewOutput={kind:"image"|"video";url:string};
 export function PreviewCard({tag,state,messageFa,output,video,onOpen}:{tag?:string;state:string;messageFa:string;output?:PreviewOutput;video?:boolean;onOpen:()=>void}){
  const label=OPEN_PREVIEW_FA+(tag?" "+displayTag(tag):"");
  // The placeholder keeps a 16:9 frame; a real output sets its own frame, so the whole image or video shows at its own ratio (never cropped to fill).
- const frame="relative flex w-full items-center justify-center overflow-hidden rounded-control bg-surface-hover text-fg-secondary",media=frame+(output?"":" aspect-video");
+ // A narrower output sits at the start (right, in Persian), at most 300px tall, with no letterbox around it.
+ const frame="relative flex w-full items-center overflow-hidden rounded-control text-fg-secondary",media=frame+(output?" justify-start":" aspect-video justify-center bg-surface-hover");
  return <div data-preview-card={tag??""} className="flex w-full max-w-md flex-col gap-2 rounded-card border border-line-secondary bg-surface-subtle p-2">
   {output?.kind==="video"
-   ?<video src={output.url} controls playsInline preload="metadata" aria-label={"ویدیوی "+(tag?displayTag(tag):"پیش‌نمایش")} className="block h-auto max-h-80 w-full rounded-control bg-background object-contain"/>
+   ?<video src={output.url} controls playsInline preload="metadata" aria-label={"ویدیوی "+(tag?displayTag(tag):"پیش‌نمایش")} className="block h-auto max-h-[300px] w-auto max-w-full rounded-control bg-background"/>
    :<button type="button" onClick={onOpen} aria-label={label} className={media+" motion-hover not-disabled:hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"}>
     {output
      // eslint-disable-next-line @next/next/no-img-element -- a provider output URL shown as the card's preview
-     ?<img src={output.url} alt="" className="block h-auto max-h-80 w-auto max-w-full"/>
+     ?<img src={output.url} alt="" className="block h-auto max-h-[300px] w-auto max-w-full rounded-control"/>
      :<Icon icon={video?Clapperboard:ImageIcon} size={32} aria-hidden="true"/>}
    </button>}
   <button type="button" onClick={onOpen} aria-label={label+": "+jobStateFa(state)}

@@ -60,3 +60,62 @@ bdi,
 @media (prefers-reduced-motion: reduce) {
   .whoush-generating { animation: none; background-position: 50% 0; }
 }
+
+/* Scrollbars: minimal and quiet. Hidden until the area is hovered or being scrolled (components/providers.tsx marks a scrolling element with
+   data-scrolling), then a thin rounded thumb in the theme's secondary text color, with no track. Feather's ScrollArea reports the same states itself.
+   Candidate to move into Feather. */
+:root {
+  --whoush-scrollbar-thumb: color-mix(in oklab, var(--color-fg-secondary) 45%, transparent);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+:hover,
+[data-scrolling] {
+  scrollbar-color: var(--whoush-scrollbar-thumb) transparent;
+}
+/* Safari (no scrollbar-color yet): the same look through the WebKit pseudo-elements. Chrome ignores these once scrollbar-color is set. */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-color: transparent;
+  background-clip: padding-box;
+}
+:hover::-webkit-scrollbar-thumb,
+[data-scrolling]::-webkit-scrollbar-thumb {
+  background-color: var(--whoush-scrollbar-thumb);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+/* Feather's ScrollArea: a slimmer bar that fades in on hover or scroll. */
+[data-slot="scroll-area-scrollbar"] {
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease-standard);
+}
+[data-slot="scroll-area-scrollbar"][data-hovering],
+[data-slot="scroll-area-scrollbar"][data-scrolling] {
+  opacity: 1;
+}
+[data-slot="scroll-area-scrollbar"][data-orientation="vertical"] {
+  width: 0.625rem !important;
+  padding: 0.1875rem !important;
+}
+[data-slot="scroll-area-scrollbar"][data-orientation="horizontal"] {
+  height: 0.625rem !important;
+  padding: 0.1875rem !important;
+}
+[data-slot="scroll-area-thumb"] {
+  background-color: var(--whoush-scrollbar-thumb) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="scroll-area-scrollbar"] {
+    transition: none;
+  }
+}
