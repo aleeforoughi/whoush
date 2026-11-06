@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
 import Link from "next/link";
 import {useRouter,useSearchParams} from "next/navigation";
-import {ArrowUp,CircleAlert,Clapperboard,Info,LoaderCircle,Mic,Minimize2,PanelLeftOpen,Smile,Upload as UploadIcon,UserRound,X} from "lucide-react";
+import {ArrowUp,CircleAlert,Clapperboard,Eye,Info,LoaderCircle,Mic,Minimize2,Smile,Upload as UploadIcon,UserRound,X} from "lucide-react";
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Tabs,TabsContent,TabsList,TabsTrigger,Label,Tooltip,TooltipContent,TooltipTrigger} from "@aleeforoughi/feather-react";
 import {OPEN_PREVIEW_FA,PreviewCard} from "@/components/preview-card";
 import {GenerationGallery,galleryFocusOn,type GalleryFocus,type GalleryItem} from "@/components/generation-gallery";
@@ -684,7 +684,7 @@ export function Studio(){
       <p className="type-body-sm text-fg-secondary">ساخت تصویر و ویدیو با گفت‌وگو</p>
      </div>
      {/* Only while there is a preview and it is minimized: brings it back, then hides until the preview is minimized again. */}
-     {hasPreview&&!showPreview&&<Button type="button" variant="outline" onClick={()=>openPreview()} className="shrink-0"><Icon icon={PanelLeftOpen} aria-hidden="true"/>{OPEN_PREVIEW_FA}</Button>}
+     {hasPreview&&!showPreview&&<Button type="button" variant="outline" onClick={()=>openPreview()} className="shrink-0"><Icon icon={Eye} aria-hidden="true"/>{OPEN_PREVIEW_FA}</Button>}
      </div>
     </div>
     {notice&&<div className="border-b border-line-tertiary px-4 py-3"><Alert role="status"><Icon icon={Info} aria-hidden="true"/><AlertDescription>{notice}</AlertDescription></Alert></div>}
