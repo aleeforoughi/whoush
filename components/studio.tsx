@@ -2,9 +2,9 @@
 import {useEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
 import Link from "next/link";
 import {useRouter,useSearchParams} from "next/navigation";
-import {ArrowUp,ChevronLeft,CircleAlert,Clapperboard,Eye,Info,LoaderCircle,Mic,Minimize2,Smile,Upload as UploadIcon,UserRound,X} from "lucide-react";
+import {ArrowUp,ChevronLeft,CircleAlert,Clapperboard,Eye,Info,LoaderCircle,MessageCircle,Mic,Smile,Upload as UploadIcon,UserRound,X} from "lucide-react";
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Tabs,TabsContent,TabsList,TabsTrigger,Label,Tooltip,TooltipContent,TooltipTrigger} from "@aleeforoughi/feather-react";
-import {CLOSE_PREVIEW_FA,OPEN_PREVIEW_FA,PreviewCard} from "@/components/preview-card";
+import {BACK_TO_CHAT_FA,CLOSE_PREVIEW_FA,OPEN_PREVIEW_FA,PreviewCard} from "@/components/preview-card";
 import {GenerationGallery,galleryFocusOn,type GalleryFocus,type GalleryItem} from "@/components/generation-gallery";
 import {isFinalJobState,isOwnedOutputUrl} from "@/lib/job-progress";
 import {followJobUntilDone,jobSnapshot,UNTRACKED_JOB_FA} from "@/lib/job-follow";
@@ -644,11 +644,12 @@ export function Studio(){
    <section id="whoush-preview" aria-label="پیش‌نمایش" inert={!showPreview||undefined} aria-hidden={!showPreview||undefined}
     className={(showPreview?"flex":"hidden")+" surface-preview min-h-0 flex-1 flex-col md:order-last md:flex md:min-w-0 md:basis-0 md:overflow-hidden md:transition-[flex-grow,opacity] md:duration-300 md:ease-out motion-reduce:transition-none "+(showPreview?"md:grow md:opacity-100":"md:grow-0 md:opacity-0")}>
     <Tabs value={activeTab} onValueChange={v=>setActiveTab(v as "generations"|"cuts")} className="min-h-0 flex-1 gap-0">
-     <div className="flex items-center justify-between gap-4 border-b border-line-tertiary px-4 py-2 lg:px-6">
-      <TabsList><TabsTrigger value="generations">تولیدها</TabsTrigger>{EDIT_TAB_ENABLED&&<TabsTrigger value="cuts">تدوین</TabsTrigger>}</TabsList>
+     {/* The header: the tabs only while «تدوین» exists (one tab needs no tab bar); otherwise it holds just the phones' «بازگشت به چت», so desktop hides it. */}
+     <div className={"flex items-center justify-between gap-4 border-b border-line-tertiary px-4 py-2 lg:px-6"+(EDIT_TAB_ENABLED?"":" md:hidden")}>
+      {EDIT_TAB_ENABLED?<TabsList><TabsTrigger value="generations">تولیدها</TabsTrigger><TabsTrigger value="cuts">تدوین</TabsTrigger></TabsList>:<span/>}
       <div className="flex items-center gap-2">
-       <Badge variant="outline">نسخه نمایشی</Badge>
-       <Tooltip><TooltipTrigger render={<Button type="button" variant="ghost" size="icon" className="md:hidden" aria-label="کوچک کردن پیش‌نمایش" onClick={minimizePreview}/>}><Icon icon={Minimize2} aria-hidden="true"/></TooltipTrigger><TooltipContent side="bottom">کوچک کردن پیش‌نمایش</TooltipContent></Tooltip>
+       {/* Phones: the preview covers the chat, so the toggle lives here as «بازگشت به چت» (on desktop the chat header's «بستن نمایش» closes it). */}
+       <Button type="button" variant="outline" className="md:hidden" onClick={minimizePreview} aria-controls="whoush-preview"><Icon icon={MessageCircle} aria-hidden="true"/>{BACK_TO_CHAT_FA}</Button>
       </div>
      </div>
      {/* «تولیدها»: every generation of the chat in one scroll with a thumbnail strip (its own two scroll areas, so the strip stays put). */}
