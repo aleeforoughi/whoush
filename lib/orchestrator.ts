@@ -676,7 +676,11 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // The checked photos go to the model as reference images, in tag order; the prompt names each by its tag («[reference image 1 · character]»), and the
  // order note says which attached image is which.
  // A painted photo («ویرایش با قلم») is followed by its marked copy: the same photo with the area to change in translucent red, a guide only.
- const photos=files.filter(f=>f.kind==="image").sort((a,b)=>tagOrder(a.tag)-tagOrder(b.tag));
+ // One picture is sent once (owner, 2026-11-06: no duplicates): two #s with the same checked bytes are one reference, and the order note names both.
+ const sortedPhotos=files.filter(f=>f.kind==="image").sort((a,b)=>tagOrder(a.tag)-tagOrder(b.tag));
+ const shaOf=(f:(typeof sortedPhotos)[number])=>safeReview(f.reviewId)?.sha256??f.tag;
+ const photos=sortedPhotos.filter((f,i)=>f.regionEdit||sortedPhotos.findIndex(g=>!g.regionEdit&&shaOf(g)===shaOf(f))===i);
+ const alsoNamed=(f:(typeof sortedPhotos)[number])=>sortedPhotos.filter(g=>g!==f&&!photos.includes(g)&&shaOf(g)===shaOf(f)).map(g=>describeTagEn(g));
  const asRef=(id:string|undefined,f:(typeof photos)[number],guide=false):TurnReference=>{const r=safeReview(id)!;const t=displayTag(f.tag)+(guide?" (ناحیه)":"");
   return {id:r.mediaId,url:MEDIA_ROUTE+r.mediaId,subjectFa:t,title:t,license:"user",creator:"",sourceUrl:"",source:"upload" as const,mime:r.mime};};
  const uploads:TurnReference[]=photos.flatMap(f=>f.regionEdit?[asRef(f.reviewId,f),asRef(f.regionEdit.guideReviewId,f,true)]:[asRef(f.reviewId,f)]);
@@ -693,7 +697,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   plan.mediaPrompt=lead.slice(0,3000);content=undefined;
  }
  if(uploads.length){
-  const order=" Attached reference images, in this order: "+photos.flatMap(f=>f.regionEdit?[describeTagEn(f),"the same photo with the areas to change painted in translucent colours (a guide only, never draw the paint)"]:[describeTagEn(f)]).map((d,i)=>(i+1)+" = "+d).join("; ")+".";
+  const order=" Attached reference images, in this order: "+photos.flatMap(f=>{const also=alsoNamed(f),names=describeTagEn(f)+(also.length?" (also named "+also.join(", ")+")":"");return f.regionEdit?[names,"the same photo with the areas to change painted in translucent colours (a guide only, never draw the paint)"]:[names];}).map((d,i)=>(i+1)+" = "+d).join("; ")+".";
   plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-order.length))+order;
   if(content)content={...content,content:(content.content.slice(0,Math.max(0,3000-order.length))+order)};
  }

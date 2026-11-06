@@ -46,7 +46,7 @@ test("review route: closed when photos cannot be checked (no live vision), with 
 });
 
 test("checked photos are not a blocker: the turn is priced on a model that keeps a face, and the exact checked photos go with it, in order",async()=>{
- const face=await reviewUpload(JPEG,"image/jpeg",{inspect:safe}),place=await reviewUpload(JPEG,"image/jpeg",{inspect:async()=>({category:"none",person:false})});
+ const face=await reviewUpload(JPEG,"image/jpeg",{inspect:safe}),place=await reviewUpload(new Uint8Array([0xff,0xd8,0xff,0xe0,9,9,9,9,9,9,9,9]),"image/jpeg",{inspect:async()=>({category:"none",person:false})});
  const r=await orchestrateCreativeTurn({text:"یه عکس از من با #تصویر-۱ توی جای #تصویر-۲",attachments:[photo({tag:"image2",role:"environment",reviewId:place.reviewId}),photo({tag:"image1",role:"character",reviewId:face.reviewId})]});
  assert.equal(r.status,"planned",JSON.stringify(r).slice(0,400));
  const p=(r as Extract<OrchestratorResult,{status:"planned"}>);
@@ -84,4 +84,13 @@ test("router: a person's own photos go only to models documented to keep a face;
  assert.ok(ids.length&&ids.every(id=>id==="nano-banana-2"||id==="nano-banana-2-1"),ids.join());
  assert.ok(recommendMediaModels("یه عکس",undefined,{referenceImages:2},"image").ranked.some(m=>m.id.startsWith("seedream")),"a place or outfit photo: Seedream too");
  assert.equal(recommendMediaModels("یه عکس",undefined,{referenceImages:2,identityReference:true,savedCharacter:true},"image").ranked.length,0);
+});
+
+test("no duplicates: two #s with the same checked picture go to the model once, and the order note names both",async()=>{
+ const a=await reviewUpload(JPEG,"image/jpeg",{inspect:safe}),b=await reviewUpload(JPEG,"image/jpeg",{inspect:safe});
+ const r=await orchestrateCreativeTurn({text:"یه عکس از من با #تصویر-۱ و #تصویر-۲ توی کافه",attachments:[photo({tag:"image1",role:"character",reviewId:a.reviewId}),photo({tag:"image2",role:"character",reviewId:b.reviewId})]});
+ assert.equal(r.status,"planned",JSON.stringify(r).slice(0,300));
+ const p=r as Extract<OrchestratorResult,{status:"planned"}>;
+ assert.equal(getTurnReferences(p.turnId).length,1,"the same bytes are sent once");
+ assert.match(getPrivateMediaPrompt(p.turnId)!,/1 = \[reference image 1[^\]]*\] \(also named \[reference image 2[^\]]*\]\)\./);
 });

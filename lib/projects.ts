@@ -184,18 +184,18 @@ export function cleanTitle(raw:string):string|undefined{
 /** A file of a project, kept in this browser. `name` is private and never leaves it. `blob` is absent when the browser had no room to store it. */
 export type StoredAsset={
  id:string;projectId:string;kind:AttachmentKind;role?:AttachmentRole;roleSource?:"user";tag:string;mime:string;bytes:number;sha256:string;
- width?:number;height?:number;durationSeconds?:number;name:string;createdAt:string;textExcerpt?:string;speech?:AttachmentSpeech;blob?:Blob;
+ width?:number;height?:number;durationSeconds?:number;name:string;createdAt:string;textExcerpt?:string;speech?:AttachmentSpeech;blob?:Blob;fromGeneration?:string;
 };
 export function attachmentToAsset(a:LocalAttachment,projectId:string,createdAt:string,blob?:Blob):StoredAsset{
  return {id:a.id,projectId,kind:a.kind,...(a.role?{role:a.role,roleSource:"user" as const}:{}),tag:a.tag,mime:a.mime,bytes:a.bytes,sha256:a.sha256,
   ...(a.width!==undefined?{width:a.width}:{}),...(a.height!==undefined?{height:a.height}:{}),...(a.durationSeconds!==undefined?{durationSeconds:a.durationSeconds}:{}),
-  name:a.name,createdAt,...(a.textExcerpt!==undefined?{textExcerpt:a.textExcerpt}:{}),...(a.speech?{speech:a.speech}:{}),...(blob?{blob}:{})};
+  name:a.name,createdAt,...(a.textExcerpt!==undefined?{textExcerpt:a.textExcerpt}:{}),...(a.speech?{speech:a.speech}:{}),...(a.fromGeneration?{fromGeneration:a.fromGeneration}:{}),...(blob?{blob}:{})};
 }
 /** The chat's attachment for a stored asset; pass an object URL made from its blob (the caller revokes it). */
 export function assetToAttachment(a:StoredAsset,previewUrl?:string):LocalAttachment{
  return {id:a.id,tag:a.tag,kind:a.kind,mime:a.mime,bytes:a.bytes,sha256:a.sha256,name:a.name,...(a.role?{role:a.role}:{}),
   ...(a.width!==undefined?{width:a.width}:{}),...(a.height!==undefined?{height:a.height}:{}),...(a.durationSeconds!==undefined?{durationSeconds:a.durationSeconds}:{}),
-  ...(a.textExcerpt!==undefined?{textExcerpt:a.textExcerpt}:{}),...(a.speech?{speech:a.speech}:{}),...(previewUrl?{previewUrl}:{})};
+  ...(a.textExcerpt!==undefined?{textExcerpt:a.textExcerpt}:{}),...(a.speech?{speech:a.speech}:{}),...(typeof a.fromGeneration==="string"?{fromGeneration:a.fromGeneration}:{}),...(previewUrl?{previewUrl}:{})};
 }
 /** The assets page's kind tabs; «فایل» is every document kind (pdf, json, md). */
 export const ASSET_FILTERS=[{id:"all",labelFa:"همه"},{id:"image",labelFa:"تصویر"},{id:"video",labelFa:"ویدیو"},{id:"audio",labelFa:"صدا"},{id:"file",labelFa:"فایل"}] as const;

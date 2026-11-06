@@ -465,6 +465,8 @@ export type LocalAttachment={
  width?:number;height?:number;durationSeconds?:number;textExcerpt?:string;speech?:AttachmentSpeech;previewUrl?:string;
  /** «ویرایش با قلم» (lib/region-edit.ts): each painted region (number, colour, what to change) and the marked copy (its blob kept by the studio under `guideId`). Memory only. */
  regionEdit?:{regions:{n:number;color:RegionColorName;note:string}[];guideId:string;guideUrl:string};
+ /** The generation this photo is a copy of (opened for «ادیت»): one copy per generation, and the # list shows the generation once. */
+ fromGeneration?:string;
 };
 /** Goes back to "Whoush picks automatically": no role, and no speech details that belonged to one. */
 export function withoutRole(a:LocalAttachment):LocalAttachment{

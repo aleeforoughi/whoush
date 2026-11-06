@@ -199,13 +199,22 @@ export function Studio(){
  const sceneGen=sceneMsg&&sceneMsg.kind==="proposal"&&sceneMsg.snapshot.tag?" · "+displayTag(sceneMsg.snapshot.tag):"";
  // Every # option carries a thumbnail (owner, 2026-11-06): the photo, the generated image, or the kind's icon.
  const genThumb=(tag:string)=>(messages.find(m=>m.kind==="job"&&m.snapshot.tag===tag)?.snapshot as {outputs?:{kind:string;url:string}[]}|undefined)?.outputs?.find(o=>o.kind==="image")?.url;
- const mentionOptions:MentionOption[]=[...conversation.map(attachmentOption),...[...generationMap.values()].map(g=>{const u=genThumb(g.tag);return {id:"gen-"+g.tag,tag:g.tag,badgeFa:"تولید",captionFa:g.intentSummaryFa,thumbKind:g.plan.mediaKind==="video"?"video" as const:"image" as const,...(u?{thumbUrl:u}:{})};}),
+ // Last used first (owner, 2026-11-06): a #'s recency is the latest message that sent, mentioned or generated it; the chat box's own files are newest.
+ const recency=new Map<string,number>();
+ messages.forEach((m,i)=>{const bump=(t:string)=>recency.set(t,i);(m.attachments??[]).forEach(a=>bump(a.tag));(m.generationTags??[]).forEach(bump);
+  parseMentions(m.brief??m.text).forEach(bump);if((m.kind==="proposal"||m.kind==="job")&&m.snapshot.tag)bump(m.snapshot.tag);});
+ attachments.forEach((a,i)=>recency.set(a.tag,messages.length+1+i));
+ const byRecency=<T extends {tag:string}>(list:readonly T[])=>list.map((x,i)=>({x,i})).sort((a,b)=>(recency.get(b.x.tag)??-1)-(recency.get(a.x.tag)??-1)||a.i-b.i).map(o=>o.x);
+ // No duplicates: one entry per picture. The same file sent twice keeps its latest #; a photo copy of a generation is listed as the generation itself.
+ const distinctFiles=byRecency(conversation).filter((a,i,all)=>all.findIndex(b=>b.kind===a.kind&&b.sha256===a.sha256)===i&&!(a.fromGeneration&&generationMap.has(a.fromGeneration)));
+ const mentionOptions:MentionOption[]=byRecency([...distinctFiles.map(attachmentOption),...[...generationMap.values()].map(g=>{const u=genThumb(g.tag);return {id:"gen-"+g.tag,tag:g.tag,badgeFa:"تولید",captionFa:g.intentSummaryFa,thumbKind:g.plan.mediaKind==="video"?"video" as const:"image" as const,...(u?{thumbUrl:u}:{})};}),
   ...(scene?.props?propTags(scene.props).map((t,i)=>({id:"prop-"+i,tag:t,badgeFa:"پراپ",captionFa:scene.props![i].label+sceneGen,thumbKind:"prop" as const})):[]),
-  ...(scene?lightTags(scene.lights).map((t,i)=>({id:"light-"+i,tag:t,badgeFa:"نور",captionFa:LIGHT_SOURCE_FA[scene.lights[i].source]+sceneGen,thumbKind:"light" as const})):[])];
+  ...(scene?lightTags(scene.lights).map((t,i)=>({id:"light-"+i,tag:t,badgeFa:"نور",captionFa:LIGHT_SOURCE_FA[scene.lights[i].source]+sceneGen,thumbKind:"light" as const})):[])])
+  .filter((o,i,all)=>all.findIndex(x=>x.tag===o.tag)===i);
  // A # in the draft that points at a photo sent earlier or a generation shows as a card beside the new files (owner, 2026-11-06), like a reference.
  const sentFiles=uniqueById([...messages].reverse().flatMap(m=>m.attachments??[]));
  type DraftRef={tag:string;kind:AttachmentKind|"generation";thumbUrl?:string;label:string;file?:LocalAttachment};
- const draftRefs=[...new Set(parseMentions(draft))].filter(t=>!attachments.some(a=>a.tag===t)).flatMap((t):DraftRef[]=>{
+ const draftRefs=byRecency([...new Set(parseMentions(draft))].map(tag=>({tag}))).map(x=>x.tag).filter(t=>!attachments.some(a=>a.tag===t)).flatMap((t):DraftRef[]=>{
   if(isGenerationTag(t)){const g=generationMap.get(t);return g?[{tag:t,kind:"generation" as const,thumbUrl:genThumb(t),label:"تولید · "+(g.plan.mediaKind==="video"?"ویدیو":"عکس")}]:[];}
   const a=sentFiles.find(x=>x.tag===t);return a?[{tag:t,kind:a.kind,thumbUrl:a.kind==="image"?a.previewUrl:undefined,label:"از همین گفت‌وگو",file:a}]:[];
  });
@@ -412,7 +421,17 @@ export function Studio(){
    const name=file.name||"فایل",fail=(message:string)=>bad.push({key:crypto.randomUUID(),name,message});
    if(next.length>=MAX_ATTACHMENTS){fail(tooManyFa());continue;}
    try{
-    const read=await readAttachment(file),check=validateAttachmentSet([...next,read]);
+    const read=await readAttachment(file);
+    // No duplicates (owner, 2026-11-06): a file already in the chat box is not added twice; one sent earlier comes back with its own # (and its check).
+    const sameInTray=next.find(x=>x.kind===read.kind&&x.sha256===read.sha256);
+    if(sameInTray){if(read.previewUrl)URL.revokeObjectURL(read.previewUrl);fail("همین فایل الان توی پیامه: "+displayTag(sameInTray.tag));continue;}
+    const sameSent=reservedTag?undefined:[...messages].reverse().flatMap(m=>m.attachments??[]).find(x=>x.kind===read.kind&&x.sha256===read.sha256&&x.previewUrl);
+    if(sameSent){
+     if(read.previewUrl)URL.revokeObjectURL(read.previewUrl);
+     if(!blobs.current.has(sameSent.id))blobs.current.set(sameSent.id,file);
+     const again={...(upload?.role?withRole(sameSent,upload.role):sameSent),regionEdit:undefined};next.push(again);added.push(again);continue;
+    }
+    const check=validateAttachmentSet([...next,read]);
     if(!check.ok){if(read.previewUrl)URL.revokeObjectURL(read.previewUrl);fail(check.error);continue;}
     // A file added through a + menu entry must be of that entry's kind; the check runs before a tag is spent.
     const rejection=upload?uploadRejection(upload,read.kind):undefined;
@@ -430,7 +449,7 @@ export function Studio(){
   }
   setAttachments(cur=>[...cur,...added]);setProblems(bad);
   // Each photo is checked right away, so it is ready by the time the message goes.
-  if(reviewOn)for(const a of added)if(a.kind==="image")void checkPhoto(a);
+  if(reviewOn)for(const a of added)if(a.kind==="image"&&reviewsRef.current[a.id]?.state!=="safe")void checkPhoto(a);
   setAnnounce((added.length?fa(added.length)+" فایل اضافه شد. ":"")+(bad.length?fa(bad.length)+" فایل رد شد.":""));
   readingRef.current=false;setReading(false);
   return added;
@@ -462,6 +481,9 @@ export function Studio(){
  }
  /** Opens a generated image in the editor: it joins the chat as a new photo (#تصویر-n), checked like any photo. */
  async function editGeneration(tag:string){
+  // One copy per generation: a second «ادیت» opens the copy made the first time (same #, already checked).
+  const copy=[...attachments,...[...messages].reverse().flatMap(m=>m.attachments??[])].find(a=>a.fromGeneration===tag&&a.previewUrl&&blobs.current.has(a.id));
+  if(copy){setEditing({a:{...copy,regionEdit:undefined},fromTray:false});if(reviewOn)void checkPhoto(copy);return;}
   const snap=messages.find(m=>m.kind==="job"&&m.snapshot.tag===tag)?.snapshot as {outputs?:{kind:string;url:string}[]}|undefined;
   const url=snap?.outputs?.find(o=>o.kind==="image"&&isOwnedOutputUrl(o.url,window.location.origin))?.url;
   if(!url){setError("تصویر این تولید هنوز آماده نیست.");return;}
@@ -471,7 +493,7 @@ export function Studio(){
    const newTag=lowestFreeTag([...tagsInUse(messages.flatMap(m=>m.attachments??[]),slots),...attachments.map(x=>x.tag)],"image");
    if(!newTag||!read.previewUrl){setError(ATTACHMENT_ERRORS_FA.tagsExhausted);return;}
    tagCounters.current=bumpTagCounters(tagCounters.current,newTag);
-   const a:LocalAttachment={...read,tag:newTag};urls.current.add(read.previewUrl);blobs.current.set(a.id,blob);
+   const a:LocalAttachment={...read,tag:newTag,fromGeneration:tag};urls.current.add(read.previewUrl);blobs.current.set(a.id,blob);
    setEditing({a,fromTray:false});if(reviewOn)void checkPhoto(a);
   }catch{setError("تصویر این تولید باز نشد. دوباره امتحان کن.");}
  }

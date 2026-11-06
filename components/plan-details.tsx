@@ -102,7 +102,8 @@ export function PlanStory({plan,onStagingChange,focus}:{plan:PublicCreativePlan;
    </ul>
   </Section>
   {references.length>0&&<Section icon={Paperclip} title="مراجع">
-   <ul className="flex flex-wrap gap-2">{references.map(r=><li key={r.tag} className="inline-flex h-7 items-center gap-1.5 rounded-control bg-surface-subtle px-2 type-caption text-fg-primary">
+   {/* Newest first (owner, 2026-11-06), once each. */}
+   <ul className="flex flex-wrap gap-2">{[...references].filter((r,i,all)=>all.findIndex(x=>x.tag===r.tag)===i).sort((a,b)=>Number(b.tag.replace(/\D/g,""))-Number(a.tag.replace(/\D/g,""))).map(r=><li key={r.tag} className="inline-flex h-7 items-center gap-1.5 rounded-control bg-surface-subtle px-2 type-caption text-fg-primary">
     {plan.mainSubject===r.tag&&<Icon icon={Star} size={16} aria-hidden="true" className="size-3.5 shrink-0 fill-current text-primary"/>}<bdi className="type-label">{displayTag(r.tag)}</bdi><span className="text-fg-secondary">{r.labelFa}{r.roleSource==="inferred"&&" (انتخاب هووش)"}</span></li>)}</ul>
   </Section>}
   {brush&&<Section icon={Brush} title="ادیت‌ها">
