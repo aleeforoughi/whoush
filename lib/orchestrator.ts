@@ -11,10 +11,11 @@ import {providerForModelId} from "./llm-routing";
 import {replyScriptFor} from "./finglish";
 import {clearSightByMovingProp,occlusionMessageFa,sceneVisibility} from "./scene-visibility";
 import {compileImagePrompt,SCENE_COMPILER_VERSION,FA_EDIT_SCOPE_MIXED,GENERIC_EDIT_RULE_EN,resolveOperation,sceneChangeGroups} from "./scene-compiler";
-import {applyStagingCues,applyTypedMappings,lensFor,describeStagingEn,describeStagingFa,sceneLeadEn,detectProps,detectSubject,expandMappings,mapReferences,tidyProps,typedMappings} from "./staging";
+import {propTags,applyStagingCues,applyTypedMappings,lensFor,describeStagingEn,describeStagingFa,sceneLeadEn,detectProps,detectSubject,expandMappings,mapReferences,tidyProps,typedMappings} from "./staging";
 import {findGif,type ChatGif} from "./giphy";
 import {describeFocus} from "./frame-css";
 import {requestedMediaKind,suggestModel} from "./router";
+import {mainSubjectNote,mainSubjectRule,shownTag,typedMainSubject} from "./main-subject";
 import {MEDIA_KIND_CHOICES,MEDIA_KIND_QUESTION_FA,MEDIA_KIND_QUESTION_FINGLISH,type QuestionChoice} from "./media-intent";
 import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
 import {SKILLS,SKILL_REGISTRY_VERSION} from "./skills";
@@ -444,7 +445,12 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // Planners see attachments only through `req.attachments` (kinds and excerpts as data); the audio flags are merged into `input.audio`.
  // An edit_reference (image or video) makes the turn an edit, which brings photo_editor or video_editor.
  const task=parsed.task!=="character"&&files.some(f=>f.role==="edit_reference")?"edit":parsed.task;
- const input={...parsed,task,visualStyle:parsed.style?STYLE_VISUAL[parsed.style]:parsed.visualStyle,audio:deriveAudio({...parsed,attachments:files}),attachments:undefined,priorAttachments:undefined,generations:undefined,history:undefined,stagingOverride:undefined,aspectOverride:undefined};
+ // «سوژه اصلی» (lib/main-subject.ts): marked with the star, or written in the brief. A file or generation is known now (the planner is told to compose around
+ // it); a scene prop only once the plan has its scene. Anything else is ignored: the choice is optional and never blocks the turn.
+ const mainWanted=parsed.mainSubject??typedMainSubject(parsed.text);
+ let mainTag=mainWanted&&[...files.map(f=>f.tag),...(parsed.generations??[]).map(g=>g.tag)].includes(mainWanted)?mainWanted:undefined;
+ const withMain=(p:PublicCreativePlan):PublicCreativePlan=>mainTag?{...p,mainSubject:mainTag}:p;
+ const input={...parsed,text:mainTag?(parsed.text+mainSubjectNote(mainTag)).slice(0,4000):parsed.text,task,visualStyle:parsed.style?STYLE_VISUAL[parsed.style]:parsed.visualStyle,audio:deriveAudio({...parsed,attachments:files}),attachments:undefined,priorAttachments:undefined,generations:undefined,history:undefined,stagingOverride:undefined,aspectOverride:undefined};
  // A video attachment (every media attachment carries a role), a lip_sync audio or a start_frame or end_frame image makes the output a video even when the text sounds like
  // an image request. Such a turn always has media, so it stops at the media-review check below and never reaches `buildProposal`, which re-detects from the text.
  const a=input.audio,ref=input.characterRef;
@@ -554,6 +560,15 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   if(!plan.hardConstraints.includes(fa))plan.hardConstraints=[...plan.hardConstraints,fa];
   plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
  }
+ // The main subject leads: the first hard rule, and the provider prompt builds the frame around it.
+ const mainProp=!mainTag&&mainWanted&&plan.staging?.props?propTags(plan.staging.props).indexOf(mainWanted):-1;
+ if(mainProp!==undefined&&mainProp>=0&&plan.staging?.props)mainTag=mainWanted;
+ if(mainTag){
+  const r=mainSubjectRule(mainTag,plan.mediaKind),prop=mainProp!==undefined&&mainProp>=0?plan.staging!.props![mainProp]:undefined;
+  const en=prop?r.en.replace(" "+shownTag(mainTag)+"."," the "+prop.kind+" in the scene ("+prop.label+")."):r.en;
+  if(!plan.hardConstraints.includes(r.fa))plan.hardConstraints=[r.fa,...plan.hardConstraints];
+  plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
+ }
  if(parsed.aspectOverride&&plan.camera&&plan.camera.aspectRatio!==parsed.aspectOverride){
   plan.camera={...plan.camera,aspectRatio:parsed.aspectOverride};
   if(plan.mediaKind!=="image"){const en=" Aspect ratio "+parsed.aspectOverride+".";plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;}
@@ -621,14 +636,14 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // Voice cloning is never offered: Whoush only makes images and videos, and generating or imitating a voice is out of scope.
  if(files.some(f=>f.role==="voice_clone")){
   rec({planner:label,fallbackReason:"voice_clone_unsupported",corrections:corrections.length?corrections:undefined});
-  return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs,undefined,input.style),message:FA_VOICE_CLONE};
+  return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,undefined,input.style)),message:FA_VOICE_CLONE};
  }
  // TODO(docs/MODERATION_POLICY.md step 4, "Reference inspection"): plug a real multimodal inspector in here. Until one exists, any image, video or
  // audio attachment fails closed: the plan is returned, but no proposal or price, so uninspected media can never reach provider handoff (step 6).
  if(files.some(f=>isMediaKind(f.kind))){
   rec({planner:label,fallbackReason:"media_review_unavailable",corrections:corrections.length?corrections:undefined});
   const suggestedModel=suggestModel(requirements,kind);
-  return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs,suggestedModel,input.style),message:FA_MEDIA_REVIEW+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{})};
+  return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,suggestedModel,input.style)),message:FA_MEDIA_REVIEW+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{})};
  }
  // Research (docs/RESEARCH_PIPELINE.md): what has a real identity or needs research gets open-licensed references, each inspected by a vision model before
  // use. The research text is planner output, so it passes the same plan-text safety check first. A failure leaves a note, never a broken turn.
@@ -659,7 +674,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   if(!(e instanceof NoCompatibleModelError))throw e;
   rec({planner:label,fallbackReason:"no_compatible_model",corrections:corrections.length?corrections:undefined});
   const suggestedModel=suggestModel(requirements,kind),base=ref?FA_NO_REFS:lipsMsg;
-  return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs,suggestedModel,input.style),message:base+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{})};
+  return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,suggestedModel,input.style)),message:base+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{})};
  }
  // Pre-generation risk check: the cheapest model stress-tests the plan for the chosen model before any generation is paid for. Fixes go into the prompt (and
  // into the scene text, so a canvas change keeps them); each risk shown passes the same safety and leak checks as the planner's own text.
@@ -702,5 +717,5 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const bothNote=wantsBoth&&proposal.draft?(script==="finglish"?"\nHar do ro misazam: aval aks (frame-e aval), baad video.":"\nهر دو رو می‌سازم: اول عکس (فریم اول)، بعد ویدیو از روی همون."):"";
  proposal={...proposal,message:replyText("planned")+bothNote+(proposal.explicitRejected?"\n"+proposal.message:"")};
  const gif=gifMood?await (deps.findGif??findGif)(gifMood).catch(()=>undefined):undefined;
- return {status:"planned",turnId,proposal,plan:toPublicPlan(plan,refs,undefined,input.style),...(gif?{gif}:{}),...(reaction?{reaction}:{})};
+ return {status:"planned",turnId,proposal,plan:withMain(toPublicPlan(plan,refs,undefined,input.style)),...(gif?{gif}:{}),...(reaction?{reaction}:{})};
 }

@@ -3,6 +3,7 @@ import {AudioLines,FileJson,FileText,Image as ImageIcon,Play,Video,X,type Lucide
 import {Icon,Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from "@aleeforoughi/feather-react";
 import {ACCENTS,LANGUAGES,TagBadge,canPreview,type AttachmentPatch} from "@/components/attachment-chip";
 import {INSERT_ICONS} from "@/components/insert-menu";
+import {MainSubjectStar} from "@/components/main-subject-star";
 import {displayTag,isMediaKind,roleLabelFa,rolesFor,type AttachmentKind,type AttachmentRole,type AttachmentSpeech,type LocalAttachment} from "@/lib/attachments";
 import {roleIconKey,type InsertIconKey} from "@/lib/insert-menu";
 import {faBytes,faDuration} from "@/lib/format";
@@ -59,7 +60,8 @@ function CardMedia({item:a,onPreview}:{item:LocalAttachment;onPreview:()=>void})
  * row. A role the user chose is fixed text (to change it, remove the card and add another); a file with no role gets the optional role menu in that row. A lip-sync
  * audio also gets language and accent.
  */
-export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention}:{item:LocalAttachment;onChange:(patch:AttachmentPatch)=>void;onRemove:()=>void;onPreview:()=>void;onMention:()=>void}){
+export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention,main,onToggleMain}:{item:LocalAttachment;onChange:(patch:AttachmentPatch)=>void;onRemove:()=>void;onPreview:()=>void;onMention:()=>void;
+ /** «سوژه اصلی»: whether this file is the main subject, and the star that toggles it (optional). */main?:boolean;onToggleMain?:()=>void}){
  // On the narrow card the no-role option reads «اتوماتیک» (the full «انتخاب اتوماتیک هووش» would be cut off beside the delete button); the menu items are unchanged otherwise.
  const media=isMediaKind(a.kind),roles=[{value:AUTO_ROLE,label:CARD_AUTO_ROLE_FA},...rolesFor(a.kind).map(r=>({value:r.id,label:r.labelFa}))];
  const lip=a.role==="lip_sync"?a.speech:undefined;
@@ -70,6 +72,7 @@ export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention}:{i
   <span className={CARD_META} title={a.name+" · "+faBytes(a.bytes)}>
    <TagBadge tag={a.tag} onMention={onMention}/>
    {a.durationSeconds!==undefined&&<span className="type-caption text-fg-secondary"><bdi>{faDuration(a.durationSeconds)}</bdi></span>}
+   {onToggleMain&&<MainSubjectStar tag={a.tag} on={Boolean(main)} onToggle={onToggleMain} className="ms-auto"/>}
   </span>
   {/* A role the user chose is fixed: the card shows it, and changing it means removing the card and adding another. A file with no role keeps the optional menu. */}
   {media&&a.role&&<CardRoleRow icon={roleIconKey(a.kind,a.role)} label={roleLabelFa(a.role,a.kind)} remove={remove}/>}

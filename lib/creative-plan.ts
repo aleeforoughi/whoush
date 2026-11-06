@@ -75,6 +75,8 @@ export const CreativeTurnInputSchema=z.object({
  }).strict().optional(),
  audio:z.object({hasAudioReference:z.boolean(),hasSpeech:z.boolean(),language:z.enum(["fa","other","unknown"]),accent}).strict().optional(),
  attachments:AttachmentsSchema.optional(),
+ /** «سوژه اصلی» (optional): the tag of the file, generation or scene prop the whole work is built around (lib/main-subject.ts). */
+ mainSubject:z.string().trim().min(1).max(60).optional(),
  /** Files sent with earlier messages of this chat (metadata only, like `attachments`): Whoush reuses photos already given instead of asking again. */
  priorAttachments:AttachmentsSchema.optional(),
  /** The message answers Whoush's question: the brief is the original request plus the answer, and Whoush decides instead of asking again. */
@@ -272,6 +274,8 @@ export function fromWirePlan(wire:unknown):unknown{
 export type PublicReference={tag:string;kind:AttachmentKind;role:AttachmentRole;roleSource:RoleSource;labelFa:string};
 export type PublicCreativePlan=Pick<CreativePlan,"intentSummaryFa"|"mediaKind"|"hardConstraints"|"softPreferences"|"camera"|"shot"|"staging"|"continuity"|"speech"|"qaChecklist"|"clarifyingQuestionFa">&{
  identityLock?:Pick<NonNullable<CreativePlan["identityLock"]>,"characterId"|"providedAngles"|"lockedAttributes"|"allowedChanges">;realism:{mode:CreativePlan["realism"]["mode"]};
+ /** «سوژه اصلی»: the tag the whole work is built around (a file, generation or scene prop), when the user chose one. */
+ mainSubject?:string;
  /** The media attachments the plan uses, by tag and role. Never ids, hashes or file names. */
  references:PublicReference[];
  /** On an unsupported turn: the catalogue model that fits the work but cannot be offered yet (raw name and Persian blockers, never a price or id). */

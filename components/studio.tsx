@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
 import Link from "next/link";
 import {useRouter,useSearchParams} from "next/navigation";
-import {ArrowUp,ChevronLeft,CircleAlert,Clapperboard,Eye,Hash,Info,LoaderCircle,MessageCircle,Mic,Smile,Upload as UploadIcon,UserRound,X} from "lucide-react";
+import {ArrowUp,ChevronLeft,CircleAlert,Clapperboard,Eye,Hash,Info,LoaderCircle,MessageCircle,Mic,Smile,Star,Upload as UploadIcon,UserRound,X} from "lucide-react";
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Tabs,TabsContent,TabsList,TabsTrigger,Label,Tooltip,TooltipContent,TooltipTrigger} from "@aleeforoughi/feather-react";
 import {BACK_TO_CHAT_FA,CLOSE_PREVIEW_FA,OPEN_PREVIEW_FA,PreviewCard} from "@/components/preview-card";
 import {GalleryThumbs,GenerationGallery,galleryFocusOn,type GalleryFocus,type GalleryItem} from "@/components/generation-gallery";
@@ -37,6 +37,7 @@ import {LIGHT_SOURCE_FA,describeStagingChangesFa,followUpFocus,lightTags,propTag
 import {normalizePersian} from "@/lib/safety";
 import {isReferenceRequest,type ReferenceRequest} from "@/lib/reference-needs";
 import {isQuestionChoices} from "@/lib/media-intent";
+import {MAIN_SUBJECT_FA,shownTag} from "@/lib/main-subject";
 import {PLAN_FIRST_FA,STAGE_DONE_TEXT,STAGE_TEXT,postAgentTurn} from "@/lib/agent-stream";
 import type {TurnStage} from "@/lib/orchestrator-stages";
 import {replyScriptFor} from "@/lib/finglish";
@@ -120,6 +121,8 @@ export function Studio(){
   */
  const [previewOpen,setPreviewOpen]=useState(false);
  const [attachments,setAttachments]=useState<LocalAttachment[]>([]);
+ /** «سوژه اصلی» of the next message (optional): the tag of a file, generation or scene prop the whole work is built around (lib/main-subject.ts). */
+ const [mainSubject,setMainSubject]=useState<string|null>(null);
  const [problems,setProblems]=useState<AttachmentProblem[]>([]);
  const [reading,setReading]=useState(false);
  const [dragging,setDragging]=useState(false);
@@ -403,12 +406,20 @@ export function Studio(){
  }
  function removeAttachment(id:string){
   const a=attachments.find(x=>x.id===id);if(a)releaseUrl(a);
+  if(a&&mainSubject===a.tag)setMainSubject(null);
   blobs.current.delete(id);
   setAttachments(list=>list.filter(x=>x.id!==id));setSlots(list=>forgetAttachment(list,id));
  }
  function patchAttachment(id:string,patch:AttachmentPatch){setAttachments(list=>list.map(x=>x.id!==id?x:patch.role===null?withoutRole(x):patch.role?withRole(x,patch.role):{...x,...(patch.speech?{speech:patch.speech}:{})}));}
  /** Puts the tag (`#تصویر-۱`) into the prompt as a badge at the caret (at the end when the prompt is not focused), with focus in the prompt after it. */
  function mentionTag(tag:string){promptRef.current?.insertTag(tag);}
+ /** The star: makes this the main subject (only one), or clears it. A # that is not in the message yet is dropped into the prompt, so it goes with it. */
+ function toggleMain(tag:string){
+  if(mainSubject===tag){setMainSubject(null);return;}
+  setMainSubject(tag);
+  const inTray=attachments.some(a=>a.tag===tag),inText=tag.startsWith("#")?draft.includes(tag):parseMentions(draft).includes(tag);
+  if(!inTray&&!inText)mentionTag(tag);
+ }
  /**
   * A generation card's tag (#تولید-۱): puts it into the prompt as a dismissable badge, where the user writes the changes. The mention is what
   * sends the generation to the planner (at most MAX_GENERATION_REFS per message).
@@ -545,7 +556,8 @@ export function Studio(){
   }
   // The tray clears, but the files stay (with their object URLs) on the sent message; they are released on new chat, project switch or unmount.
   const sent=files,firstText=messages.find(m=>m.role==="user")?.text??text,characterId=current?.id??null;
-  if(fromComposer){setDraft("");setAttachments([]);setSlots([]);setProblems([]);}
+  const main=fromComposer?mainSubject:null;
+  if(fromComposer){setDraft("");setAttachments([]);setSlots([]);setProblems([]);setMainSubject(null);}
   setError("");setNotice("");setBusy(true);setProposal(null);setLiveId(null);setAnnounce("");
   const userMsg=item({role:"user",text,...(sent.length?{attachments:sent}:{}),...(cardRefs.length?{generationTags:cardRefs}:{}),...(brief?{brief}:{})});
   setMessages(m=>[...m,userMsg]);touch();
@@ -554,7 +566,7 @@ export function Studio(){
   const characterRef=current?{id:current.id,name:current.name,angles:characterCoverage(current.references).uploaded,version:current.version}:undefined;
   try{
    setThinking({stage:"reading",done:[],script:replyScriptFor(sentText)});
-   const r=await postAgentTurn(JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(toWireAttachment)}:{}),...(priorPhotos.length?{priorAttachments:priorPhotos.map(toWireAttachment)}:{}),...(generations.length?{generations}:{})}),stage=>setThinking(t=>t&&(t.stage===stage?t:{...t,done:[...t.done,t.stage],stage})));
+   const r=await postAgentTurn(JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(toWireAttachment)}:{}),...(priorPhotos.length?{priorAttachments:priorPhotos.map(toWireAttachment)}:{}),...(main?{mainSubject:main}:{}),...(generations.length?{generations}:{})}),stage=>setThinking(t=>t&&(t.stage===stage?t:{...t,done:[...t.done,t.stage],stage})));
    if(!r.ok){
     const errorBody=await r.json().catch(()=>({})) as {error?:string;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"];references?:unknown;choices?:unknown};
     if(r.status===422&&errorBody.error==="no_compatible_model"){
@@ -805,7 +817,7 @@ export function Studio(){
       startPad={COMPOSER_EXTRAS_ENABLED?"ps-40":"ps-24"}
       startAction={<div className="flex items-center">
        <InsertMenu disabled={reading} onPick={pickInsert}/>
-       <TagPicker options={mentionOptions} onPick={mentionTag}
+       <TagPicker options={mentionOptions} onPick={mentionTag} main={mainSubject} onToggleMain={toggleMain}
         trigger={<button type="button" aria-label={TAG_PICKER_LABEL_FA} title={TAG_PICKER_LABEL_FA} className={COMPOSER_TOOL}><Icon icon={Hash} aria-hidden="true"/></button>}/>
        {COMPOSER_EXTRAS_ENABLED&&<>
         <EmojiPalette emojis={COMPOSER_EMOJIS} label="ایموجی" onPick={e=>promptRef.current?.insertText(e)}
@@ -816,7 +828,8 @@ export function Studio(){
       top={cards.length>0?<ul aria-label="پیوست‌ها" className="flex items-stretch gap-2 overflow-x-auto pb-2">
        {cards.map(c=>c.type==="slot"
         ?<UploadSlotCard key={c.slot.id} slot={c.slot} disabled={reading} onUpload={()=>openSlotPicker(c.slot)} onDropFiles={f=>void fillSlot(c.slot,f)} onRemove={()=>dropSlot(c.slot.id)}/>
-        :<AttachmentCard key={c.attachment.id} item={c.attachment} onChange={patch=>patchAttachment(c.attachment.id,patch)} onRemove={()=>removeAttachment(c.attachment.id)} onPreview={()=>openViewer(c.attachment)} onMention={()=>mentionTag(c.attachment.tag)}/>)}
+        :<AttachmentCard key={c.attachment.id} item={c.attachment} onChange={patch=>patchAttachment(c.attachment.id,patch)} onRemove={()=>removeAttachment(c.attachment.id)} onPreview={()=>openViewer(c.attachment)} onMention={()=>mentionTag(c.attachment.tag)}
+         main={mainSubject===c.attachment.tag} onToggleMain={()=>toggleMain(c.attachment.tag)}/>)}
       </ul>:undefined}
       endPad={voice.enabled?"pe-24":"pe-14"}
       // The blue button always sends. Beside it, a borderless mic opens voice mode when the server can transcribe (the transcript is sent like a typed message).
@@ -828,7 +841,11 @@ export function Studio(){
        </Button>
       </div>}/>
      <VoiceMode open={voiceOpen} maxSeconds={voice.maxSeconds} onClose={()=>setVoiceOpen(false)} onTranscript={text=>answer(text)}/>
-     <p id="prompt-hint" className="flex items-start gap-1 type-caption text-fg-secondary"><Icon icon={Info} size={16} aria-hidden="true" className="mt-0.5 shrink-0"/>با # می‌تونی به پیوست‌ها اشاره کنی.</p>
+     {mainSubject&&<p role="status" className="flex w-fit items-center gap-1.5 rounded-control bg-surface-selected py-0.5 ps-2 pe-0.5 type-caption text-fg-primary">
+      <Icon icon={Star} size={16} aria-hidden="true" className="size-3.5 shrink-0 fill-current text-primary"/>{MAIN_SUBJECT_FA}: <bdi className="type-label">{shownTag(mainSubject)}</bdi>
+      <button type="button" onClick={()=>setMainSubject(null)} aria-label={"برداشتن "+MAIN_SUBJECT_FA} className="hit-area flex size-6 items-center justify-center rounded-control text-fg-secondary motion-hover hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-2 focus-visible:outline-ring"><Icon icon={X} size={16} aria-hidden="true" className="size-3.5"/></button>
+     </p>}
+     <p id="prompt-hint" className="flex items-start gap-1 type-caption text-fg-secondary"><Icon icon={Info} size={16} aria-hidden="true" className="mt-0.5 shrink-0"/>با # می‌تونی به پیوست‌ها اشاره کنی؛ با ستاره یکی رو {MAIN_SUBJECT_FA} کن (اختیاری).</p>
      <div className="flex flex-wrap items-start gap-2">
       <ModeControl value={mode} onChange={changeMode} notify={Boolean(proposal)}/>
       <StyleControl value={style} onChange={changeStyle}/>

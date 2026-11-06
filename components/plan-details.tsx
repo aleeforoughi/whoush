@@ -1,6 +1,6 @@
 "use client";
 import {useState,type ReactNode} from "react";
-import {Aperture,ArrowLeft,Camera,CircleCheck,CircleHelp,Clapperboard,ImagePlus,Image as ImageIcon,Film,Focus,Frame,Gauge,Layers,Lightbulb,ListChecks,MessageCircle,Move,Paperclip,RefreshCw,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Thermometer,Timer,Upload,type LucideIcon} from "lucide-react";
+import {Aperture,ArrowLeft,Camera,CircleCheck,CircleHelp,Clapperboard,ImagePlus,Image as ImageIcon,Film,Focus,Frame,Gauge,Layers,Lightbulb,ListChecks,MessageCircle,Move,Paperclip,RefreshCw,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Star,Thermometer,Timer,Upload,type LucideIcon} from "lucide-react";
 import {Accordion,AccordionContent,AccordionItem,AccordionTrigger,Badge,Button,Icon} from "@aleeforoughi/feather-react";
 import type {ReferenceRequest} from "@/lib/reference-needs";
 import {StagingEditor} from "@/components/staging-editor";
@@ -10,6 +10,7 @@ import {CHARACTER_VIEWS} from "@/lib/characters";
 import {displayTag} from "@/lib/attachments";
 import {fa,faText,faAuto} from "@/lib/format";
 import type {QuestionChoice} from "@/lib/media-intent";
+import {MAIN_SUBJECT_FA,shownTag} from "@/lib/main-subject";
 import {expandFocus,lensFor} from "@/lib/staging";
 
 const latin=(v:string|number)=><bdi dir="ltr">{faText(String(v))}</bdi>;
@@ -84,12 +85,14 @@ export function PlanStory({plan,onStagingChange,focus}:{plan:PublicCreativePlan;
    <p className="type-body-sm text-fg-primary">{text(plan.intentSummaryFa)}</p>
    <ul className="flex flex-wrap gap-2">
     <Spec icon={plan.mediaKind==="video"?Clapperboard:Camera} label="نوع خروجی">{plan.mediaKind==="video"?"ویدیو":"تصویر"}</Spec>
+    {plan.mainSubject&&<li className="inline-flex h-7 items-center gap-1.5 rounded-control bg-surface-selected px-2 type-caption text-fg-primary" title={MAIN_SUBJECT_FA}>
+     <Icon icon={Star} size={16} aria-hidden="true" className="size-3.5 shrink-0 fill-current text-primary"/>{MAIN_SUBJECT_FA}: <bdi className="type-label">{shownTag(plan.mainSubject)}</bdi></li>}
     <Spec icon={Sparkles} label="سبک">{plan.style?STYLE_LABEL_FA[plan.style]:plan.realism.mode==="photoreal"?"واقع‌گرایانه":"سبک‌دار"}</Spec>
    </ul>
   </Section>
   {references.length>0&&<Section icon={Paperclip} title="مراجع">
    <ul className="flex flex-wrap gap-2">{references.map(r=><li key={r.tag} className="inline-flex h-7 items-center gap-1.5 rounded-control bg-surface-subtle px-2 type-caption text-fg-primary">
-    <bdi className="type-label">{displayTag(r.tag)}</bdi><span className="text-fg-secondary">{r.labelFa}{r.roleSource==="inferred"&&" (انتخاب هووش)"}</span></li>)}</ul>
+    {plan.mainSubject===r.tag&&<Icon icon={Star} size={16} aria-hidden="true" className="size-3.5 shrink-0 fill-current text-primary"/>}<bdi className="type-label">{displayTag(r.tag)}</bdi><span className="text-fg-secondary">{r.labelFa}{r.roleSource==="inferred"&&" (انتخاب هووش)"}</span></li>)}</ul>
   </Section>}
   {camera&&<Section icon={Camera} title="دوربین">
    {lens&&<p className="type-caption text-primary">هووش لنز رو برای صحنه‌ای که چیدی دوباره انتخاب کرد.</p>}
