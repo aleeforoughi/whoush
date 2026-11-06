@@ -107,6 +107,8 @@ export interface GenerationProposal {
   fixedNeurons: number;
   /** Present when the plan needed research: the report the proposal card shows, and the reference package the user confirms. */
   research?: ProposalResearch;
+  /** The pre-generation risk check, when it ran: what could have gone wrong, each already fixed in the prompt (Persian; the fixes stay private). */
+  review?: { risks: { severity: "high" | "medium" | "low"; issueFa: string }[] };
   explicitRejected?: { modelId: string; reasonFa: string }; // user named a model that cannot satisfy the request
   requiresApproval: true;
   quoteMode: "demo";

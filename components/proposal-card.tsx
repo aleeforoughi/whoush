@@ -8,7 +8,7 @@ import type {AgentProposal,NoModelResult} from "@/lib/studio-types";
 import {PAST_PROPOSAL_FA,type ProposalSnapshot} from "@/lib/projects";
 import {fa} from "@/lib/format";
 import {nearestAspectRatio} from "@/lib/aspect";
-import {ResearchReport} from "@/components/research-report";
+import {ResearchReport,ReviewNote} from "@/components/research-report";
 
 export const GENERATE_FA="بسازش",GENERATE_WITH_REFS_FA="با این مرجع‌ها بسازش",DEMO_NOTE_FA="نسخهٔ نمایشی: نه پولی کسر می‌شود و نه رسانهٔ واقعی ساخته می‌شود.";
 const RECOMMENDED_FA="پیشنهاد هووش",ALTERNATE_FA="جایگزین";
@@ -72,6 +72,7 @@ export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onA
   </div>}
   {adjusted&&<p role="status" className="flex items-center gap-2 type-caption text-fg-primary"><Icon icon={Box} size={16} aria-hidden="true" className="size-4 text-primary"/>با صحنه‌ای که توی «بوم» چیدی ساخته می‌شه.</p>}
   {proposal.research&&<ResearchReport research={proposal.research} excluded={excludedReferences} onToggle={onToggleReference}/>}
+  {proposal.review&&<ReviewNote review={proposal.review}/>}
   <p className="type-caption text-fg-secondary">{DEMO_NOTE_FA}</p>
   {/* The call to action, full width at the card's very bottom: [✦ بسازش] on the right (as Persian reads), the cost on the left. */}
   <div className="-mx-3 -mb-3 mt-1 flex items-center justify-between gap-3 rounded-b-[inherit] border-t border-line-secondary bg-surface-subtle px-3 py-2.5">

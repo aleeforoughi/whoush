@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import {parseNdjson,STAGE_TEXT} from "../lib/agent-stream";
 import {orchestrateCreativeTurn} from "../lib/orchestrator";
 import {TURN_STAGES} from "../lib/orchestrator-stages";
-/** A turn without research skips that stage (it runs only when the plan asks for research). */
-const PLAIN_STAGES=TURN_STAGES.filter(s=>s!=="researching");
+/** A turn without research or a live risk check skips those stages (each runs only when it applies). */
+const PLAIN_STAGES=TURN_STAGES.filter(s=>s!=="researching"&&s!=="reviewing");
 import {resetRouterStateForTests} from "../lib/llm-routing";
 import {POST} from "../app/api/agent/route";
 

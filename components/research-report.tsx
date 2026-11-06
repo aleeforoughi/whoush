@@ -1,7 +1,7 @@
 "use client";
-import {BookOpenCheck,RotateCcw,X} from "lucide-react";
+import {BookOpenCheck,RotateCcw,ShieldCheck,X} from "lucide-react";
 import {Icon} from "@aleeforoughi/feather-react";
-import type {ProposalResearch} from "@/lib/types";
+import type {GenerationProposal,ProposalResearch} from "@/lib/types";
 import {fa} from "@/lib/format";
 
 export const RESEARCH_TITLE_FA="تحقیق هووش";
@@ -48,3 +48,19 @@ export function ResearchReport({research,excluded,onToggle}:{research:ProposalRe
   {research.notesFa.map(n=><p key={n} className="type-caption text-fg-secondary">{n}</p>)}
  </section>;
 }
+
+export const REVIEW_TITLE_FA="بررسی پیش از ساخت";
+/**
+ * The pre-generation risk check on a proposal: what could have gone wrong with this model, each already fixed in the prompt, or a short all-clear. Shown
+ * only when the check ran.
+ */
+export function ReviewNote({review}:{review:NonNullable<GenerationProposal["review"]>}){
+ return <section aria-label={REVIEW_TITLE_FA} className="flex flex-col gap-1.5 rounded-card border border-line-secondary bg-surface-subtle p-3">
+  <p className="flex items-center gap-2 type-label text-fg-primary"><Icon icon={ShieldCheck} size={16} aria-hidden="true" className="size-4 text-primary"/>{REVIEW_TITLE_FA}</p>
+  {review.risks.length
+   ?<><p className="type-caption text-fg-secondary">این‌ها رو قبل از ساخت پیدا کردم و توی پرامپت درستشون کردم:</p>
+    <ul className="flex flex-col gap-1">{review.risks.map(r=><li key={r.issueFa} className="type-caption text-fg-primary">• {r.issueFa}</li>)}</ul></>
+   :<p className="type-caption text-fg-secondary">بررسی شد؛ ریسک مهمی پیدا نشد.</p>}
+ </section>;
+}
+

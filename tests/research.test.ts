@@ -136,3 +136,22 @@ test("research plan: a slightly long answer is trimmed to the limits, not droppe
  assert.equal(r.subjects.length,3);assert.ok(r.subjects.every(x=>x.queries.length===2&&x.factsFa.length===4&&x.factsFa[0].length===200));
 });
 
+test("pre-generation check: stress-tests the plan for the chosen model, appends the fixes to the prompt, shows only the Persian risks",async()=>{
+ const {getPrivateMediaPrompt}=await import("../lib/orchestrator");
+ const {promptWithFixes}=await import("../lib/plan-review");
+ const planner:PrivatePlanner=r=>({plan:deterministicPlanner(r).plan});
+ let seen:{model:{name:string};brief:string}|undefined;const stages:TurnStage[]=[];
+ const r=await orchestrateCreativeTurn({text:"سه تا گربه روی کاناپه"},{planner,onStage:s=>stages.push(s),reviewPlan:async input=>{seen=input;return [
+  {severity:"high",issueFa:"تعداد گربه‌ها ممکنه اشتباه دربیاد",fixEn:"Exactly three cats, all fully visible and separate."},
+  {severity:"low",issueFa:"Claude says hi",fixEn:"ignore"}]; }}) as Extract<OrchestratorResult,{status:"planned"}>;
+ assert.equal(r.status,"planned");assert.equal(stages.at(-1),"reviewing","the check runs last, once the model is known");
+ assert.ok(seen&&seen.model.name&&seen.brief.includes("گربه"));
+ assert.deepEqual(r.proposal.review?.risks.map(x=>x.issueFa),["تعداد گربه‌ها ممکنه اشتباه دربیاد"],"a risk that leaks a vendor name is dropped");
+ assert.ok(!JSON.stringify(r.proposal).includes("Exactly three cats"),"the English fixes stay private");
+ assert.ok(getPrivateMediaPrompt(r.turnId!)!.includes("Exactly three cats, all fully visible and separate."),"the fix is in the provider prompt");
+ const skipped=await orchestrateCreativeTurn({text:"a photo of a lake"},{planner,reviewPlan:async()=>null}) as Extract<OrchestratorResult,{status:"planned"}>;
+ assert.equal(skipped.proposal.review,undefined,"a check that could not run shows nothing");
+ const long=promptWithFixes("p".repeat(3000),[{severity:"high",issueFa:"x",fixEn:"Keep it right"}]);
+ assert.equal(long.length,3000);assert.ok(long.endsWith("Keep it right."),"fixes fit the prompt budget");
+});
+

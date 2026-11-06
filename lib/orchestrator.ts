@@ -21,6 +21,8 @@ import {detectReferenceNeeds,type ReferenceRequest} from "./reference-needs";
 import type {GenerationProposal,MediaRequirements,ProposalResearch,SuggestedModel} from "./types";
 import {researchReferences,type ResearchReference,type ResearchResult} from "./research";
 import {inspectReferences} from "./reference-inspect";
+import {reviewAvailable,reviewPlan,promptWithFixes,type PlanReviewer} from "./plan-review";
+import {findMediaModel} from "./catalog";
 import type {ResearchPlan} from "./creative-plan";
 export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;now?:()=>Date;
  /** Progress for the chat's live status: called as each real stage of the turn starts (never invented, never with private details). */
@@ -29,6 +31,8 @@ export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;no
  findGif?:(mood:GifMood)=>Promise<ChatGif|undefined>;
  /** Researches what the plan marked as needing research (open-licensed references, inspected). Tests pass a stub; the default searches and inspects. */
  research?:(plan:ResearchPlan)=>Promise<ResearchResult>;
+ /** The pre-generation risk check (the cheapest private model by default; tests pass a stub). */
+ reviewPlan?:PlanReviewer;
  /** Test hook: the planner for one routed model. Defaults to the real Anthropic or OpenAI adapter. */
  plannerFor?:(modelId:string,provider:"anthropic"|"openai")=>PrivatePlanner;routing?:RoutingConfig;routerState?:RouterState};
 export {TURN_STAGES,type TurnStage} from "./orchestrator-stages";
@@ -615,6 +619,18 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   const suggestedModel=suggestModel(requirements,kind),base=ref?FA_NO_REFS:lipsMsg;
   return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs,suggestedModel,input.style),message:base+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{})};
  }
+ // Pre-generation risk check: the cheapest model stress-tests the plan for the chosen model before any generation is paid for. Fixes go into the prompt (and
+ // into the scene text, so a canvas change keeps them); each risk shown passes the same safety and leak checks as the planner's own text.
+ const chosenModel=findMediaModel(proposal.selectedModelId),reviewer=deps.reviewPlan??(reviewAvailable()?reviewPlan:undefined);
+ let review:{severity:"high"|"medium"|"low";issueFa:string;fixEn:string}[]|null=null;
+ if(chosenModel&&reviewer){
+  stage("reviewing");
+  review=await reviewer({brief:input.text,kind,mediaPrompt:plan.mediaPrompt,hardConstraints:plan.hardConstraints,
+   researchFactsFa:research?.subjects.flatMap(x=>x.factsFa)??[],aspect:content?.aspect??plan.camera?.aspectRatio,
+   model:{name:chosenModel.name,kind:chosenModel.kind,resolution:chosenModel.resolution,durationSeconds:chosenModel.durationSeconds,takesReferences:usedAsImages,referenceCount:usedAsImages?refCount:0}}).catch(()=>null);
+  if(review)review=review.filter(x=>evaluatePlanTextSafety(x.issueFa).decision==="allow"&&evaluatePlanTextSafety(x.fixEn).decision==="allow"&&!leakText(x.issueFa,input.text)&&!leakText(x.fixEn,input.text));
+  if(review?.length){plan.mediaPrompt=promptWithFixes(plan.mediaPrompt,review);if(content)content={...content,content:promptWithFixes(content.content,review)};}
+ }
  keepPrompt(turnId,plan.mediaPrompt,content);
  if(research){
   if(usedAsImages&&refCount)refStore().set(turnId,research.references);
@@ -623,6 +639,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
    references:research.references.map(({mime:_m,...r})=>r),notesFa:notes,usedAsImages:usedAsImages&&refCount>0};
   proposal={...proposal,research:report};
  }
+ if(review)proposal={...proposal,review:{risks:review.map(x=>({severity:x.severity,issueFa:x.issueFa}))}};
  rec({planner:label,fallbackReason,corrections:corrections.length?corrections:undefined,usage:label==="live"?result?.usage:undefined});
  // The proposal speaks in Whoush's voice; a rejected explicit model request keeps its factual note after the reply.
  proposal={...proposal,message:replyText("planned")+(proposal.explicitRejected?"\n"+proposal.message:"")};
