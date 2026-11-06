@@ -4,7 +4,7 @@ import {Badge,Icon} from "@aleeforoughi/feather-react";
 import {displayTag} from "@/lib/attachments";
 import {jobStateFa} from "@/lib/projects";
 
-export const OPEN_PREVIEW_FA="نمایش";
+export const OPEN_PREVIEW_FA="نمایش",CLOSE_PREVIEW_FA="بستن نمایش";
 export type PreviewOutput={kind:"image"|"video";url:string};
 
 /**

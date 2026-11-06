@@ -2,9 +2,9 @@
 import {useEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
 import Link from "next/link";
 import {useRouter,useSearchParams} from "next/navigation";
-import {ArrowUp,CircleAlert,Clapperboard,Eye,Info,LoaderCircle,Mic,Minimize2,Smile,Upload as UploadIcon,UserRound,X} from "lucide-react";
+import {ArrowUp,ChevronLeft,CircleAlert,Clapperboard,Eye,Info,LoaderCircle,Mic,Minimize2,Smile,Upload as UploadIcon,UserRound,X} from "lucide-react";
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Tabs,TabsContent,TabsList,TabsTrigger,Label,Tooltip,TooltipContent,TooltipTrigger} from "@aleeforoughi/feather-react";
-import {OPEN_PREVIEW_FA,PreviewCard} from "@/components/preview-card";
+import {CLOSE_PREVIEW_FA,OPEN_PREVIEW_FA,PreviewCard} from "@/components/preview-card";
 import {GenerationGallery,galleryFocusOn,type GalleryFocus,type GalleryItem} from "@/components/generation-gallery";
 import {isFinalJobState,isOwnedOutputUrl} from "@/lib/job-progress";
 import {followJobUntilDone,jobSnapshot,UNTRACKED_JOB_FA} from "@/lib/job-follow";
@@ -639,14 +639,14 @@ export function Studio(){
   <main id="main" className="flex min-h-0 flex-1 flex-col md:flex-row">
    <h1 className="sr-only">استودیوی هووش</h1>
    {/* Preview: after the chat on desktop (md:order-last), first on mobile */}
-   <section aria-label="پیش‌نمایش" inert={!showPreview||undefined} aria-hidden={!showPreview||undefined}
+   <section id="whoush-preview" aria-label="پیش‌نمایش" inert={!showPreview||undefined} aria-hidden={!showPreview||undefined}
     className={(showPreview?"flex":"hidden")+" surface-preview min-h-0 flex-1 flex-col md:order-last md:flex md:min-w-0 md:basis-0 md:overflow-hidden md:transition-[flex-grow,opacity] md:duration-300 md:ease-out motion-reduce:transition-none "+(showPreview?"md:grow md:opacity-100":"md:grow-0 md:opacity-0")}>
     <Tabs value={activeTab} onValueChange={v=>setActiveTab(v as "generations"|"cuts")} className="min-h-0 flex-1 gap-0">
      <div className="flex items-center justify-between gap-4 border-b border-line-tertiary px-4 py-2 lg:px-6">
       <TabsList><TabsTrigger value="generations">تولیدها</TabsTrigger><TabsTrigger value="cuts">تدوین</TabsTrigger></TabsList>
       <div className="flex items-center gap-2">
        <Badge variant="outline">نسخه نمایشی</Badge>
-       <Tooltip><TooltipTrigger render={<Button type="button" variant="ghost" size="icon" aria-label="کوچک کردن پیش‌نمایش" onClick={minimizePreview}/>}><Icon icon={Minimize2} aria-hidden="true"/></TooltipTrigger><TooltipContent side="bottom">کوچک کردن پیش‌نمایش</TooltipContent></Tooltip>
+       <Tooltip><TooltipTrigger render={<Button type="button" variant="ghost" size="icon" className="md:hidden" aria-label="کوچک کردن پیش‌نمایش" onClick={minimizePreview}/>}><Icon icon={Minimize2} aria-hidden="true"/></TooltipTrigger><TooltipContent side="bottom">کوچک کردن پیش‌نمایش</TooltipContent></Tooltip>
       </div>
      </div>
      {/* «تولیدها»: every generation of the chat in one scroll with a thumbnail strip (its own two scroll areas, so the strip stays put). */}
@@ -683,8 +683,9 @@ export function Studio(){
       <h2 className="type-title text-fg-primary">دستیار هووش</h2>
       <p className="type-body-sm text-fg-secondary">ساخت تصویر و ویدیو با گفت‌وگو</p>
      </div>
-     {/* Only while there is a preview and it is minimized: brings it back, then hides until the preview is minimized again. */}
-     {hasPreview&&!showPreview&&<Button type="button" variant="outline" onClick={()=>openPreview()} className="shrink-0"><Icon icon={Eye} aria-hidden="true"/>{OPEN_PREVIEW_FA}</Button>}
+     {/* Once there is a preview: a toggle that shows it («نمایش») or closes it («بستن نمایش»). */}
+     {hasPreview&&<Button type="button" variant="outline" onClick={()=>showPreview?minimizePreview():openPreview()} aria-expanded={showPreview} aria-controls="whoush-preview" className="shrink-0">
+      <Icon icon={showPreview?ChevronLeft:Eye} aria-hidden="true"/>{showPreview?CLOSE_PREVIEW_FA:OPEN_PREVIEW_FA}</Button>}
      </div>
     </div>
     {notice&&<div className="border-b border-line-tertiary px-4 py-3"><Alert role="status"><Icon icon={Info} aria-hidden="true"/><AlertDescription>{notice}</AlertDescription></Alert></div>}
