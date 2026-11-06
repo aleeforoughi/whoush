@@ -64,7 +64,6 @@ const item=(m:Omit<TranscriptItem,"id"|"at">):TranscriptItem=>({...m,id:crypto.r
 const toStored=({attachments,...m}:TranscriptItem):StoredMessage=>({...m,...(attachments?.length?{attachmentIds:attachments.map(a=>a.id)}:{})} as StoredMessage);
 const NOT_FOUND_FA="این پروژه در این مرورگر پیدا نشد؛ گفت‌وگوی تازه‌ای شروع شد.";
 const LIMIT_FA="این گفت‌وگو به سقف تعداد پیام‌ها رسیده؛ یک گفت‌وگوی جدید شروع کن.";
-const opening="سلام! دوست داری چه تصویر یا ویدیویی بسازیم؟ می‌تونی مدل موردعلاقه‌ات رو هم توی پیام بنویسی.";
 const idlePreview="شروع کن: ایده‌ات رو در چت بنویس.";
 const CHARACTER_KEY="whoush-character";
 /** The composer's compact tool buttons beside «+» (emoji, GIF): 36px to the eye, 44px touch targets. */
@@ -726,7 +725,6 @@ export function Studio(){
     </div>}
     <ScrollArea className="min-h-0 flex-1">
      <div aria-live="polite" aria-label="گفت‌وگو" role="log" className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4">
-      <div className="type-body-sm text-fg-primary"><span className="sr-only">هووش: </span>{opening}</div>
       {loadingProject&&<p role="status" className="type-body-sm text-fg-secondary">در حال باز کردن پروژه…</p>}
       {/* User messages: on the right (the start in RTL), in a filled grey bubble with no border, their files and «اصلاح» generations above it as the same cards
           they were in the chat input. Agent messages: full-width plain text, then the plan as part of the conversation (icons and diagrams), then the compact card
