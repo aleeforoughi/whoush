@@ -80,7 +80,7 @@ export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onA
    <p className="type-caption text-fg-secondary">پیشنهادم اینه اول یه پیش‌نویس ارزون بسازیم: یه عکس از فریم اول، تا قبل از خرج اصلی ظاهرش رو ببینی و اگه چیزی اشتباهه درستش کنیم. اگه نمی‌خوای، مستقیم بساز.</p>
    <div className="flex flex-wrap items-center justify-between gap-2">
     <Button type="button" onClick={onDraft} disabled={busy||!proposal.turnId} className="shrink-0"><Icon icon={Sparkles} aria-hidden="true"/>{DRAFT_FA}<span className="type-caption opacity-80">· {fa(proposal.draft.neurons)} نورون</span></Button>
-    <Button type="button" variant="outline" onClick={onApprove} disabled={busy||!proposal.turnId} className="shrink-0">{SKIP_DRAFT_FA}<span className="type-caption text-fg-secondary">· {fa(price)} نورون</span></Button>
+    <Button type="button" variant="outline" onClick={onApprove} disabled={busy||!proposal.turnId} className="shrink-0"><Icon icon={Clapperboard} aria-hidden="true"/>{SKIP_DRAFT_FA}<span className="type-caption text-fg-secondary">· {fa(price)} نورون</span></Button>
    </div>
   </div>}
   {/* The call to action, full width at the card's very bottom: [✦ بسازش] on the right (as Persian reads), the cost on the left. */}

@@ -1,6 +1,6 @@
 "use client";
 import {useState,type ReactNode} from "react";
-import {Aperture,Camera,CircleCheck,CircleHelp,Clapperboard,ImagePlus,Image as ImageIcon,Film,Focus,Frame,Gauge,Lightbulb,ListChecks,Move,Paperclip,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Thermometer,Timer,type LucideIcon} from "lucide-react";
+import {Aperture,ArrowLeft,Camera,CircleCheck,CircleHelp,Clapperboard,ImagePlus,Image as ImageIcon,Film,Focus,Frame,Gauge,Lightbulb,ListChecks,MessageCircle,Move,Paperclip,RefreshCw,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Thermometer,Timer,Upload,type LucideIcon} from "lucide-react";
 import {Accordion,AccordionContent,AccordionItem,AccordionTrigger,Badge,Button,Icon} from "@aleeforoughi/feather-react";
 import type {ReferenceRequest} from "@/lib/reference-needs";
 import {StagingEditor} from "@/components/staging-editor";
@@ -182,14 +182,14 @@ export function AgentQuestion({question,waiting,onAnswer,references,uploaded,onU
     {references.angles.map(a=><li key={a.id} className="flex items-center gap-2 rounded-control border border-line-secondary px-2.5 py-1.5">
      <Icon icon={uploaded?.[a.id]?CircleCheck:ImageIcon} size={16} aria-hidden="true" className={"size-4 shrink-0 "+(uploaded?.[a.id]?"text-primary":"text-fg-secondary")}/>
      <span className="min-w-0 flex-1 type-caption text-fg-primary">{a.titleFa}</span>
-     {waiting&&onUpload&&<Button type="button" size="sm" variant={uploaded?.[a.id]?"ghost":"secondary"} onClick={()=>onUpload(a)}>{uploaded?.[a.id]?"عوض کن":"آپلود"}</Button>}
+     {waiting&&onUpload&&<Button type="button" size="sm" variant={uploaded?.[a.id]?"ghost":"secondary"} onClick={()=>onUpload(a)}><Icon icon={uploaded?.[a.id]?RefreshCw:Upload} aria-hidden="true"/>{uploaded?.[a.id]?"عوض کن":"آپلود"}</Button>}
     </li>)}
    </ul>}
    {references&&waiting&&onContinue&&<div className="flex flex-wrap items-center gap-2">
-    <Button type="button" size="sm" onClick={onContinue} disabled={!done}>ادامه با {fa(done)} عکس</Button>
+    <Button type="button" size="sm" onClick={onContinue} disabled={!done}>ادامه با {fa(done)} عکس<Icon icon={ArrowLeft} aria-hidden="true"/></Button>
     <span className="type-caption text-fg-secondary">هووش خودش نقش عکس‌ها رو تعیین می‌کنه و به {references.titleFa} وصلشون می‌کنه.</span>
    </div>}
-   {waiting&&!references&&<button type="button" onClick={onAnswer} className="w-fit rounded-control type-label text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">پاسخ بده</button>}
+   {waiting&&!references&&<button type="button" onClick={onAnswer} className="inline-flex w-fit items-center gap-1.5 rounded-control type-label text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><Icon icon={MessageCircle} size={16} aria-hidden="true" className="size-4 shrink-0"/>پاسخ بده</button>}
   </div>
  </div>;
 }
