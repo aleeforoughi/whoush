@@ -14,16 +14,20 @@ export type ReviewImageMime=(typeof REVIEW_IMAGE_MIMES)[number];
 /** The studio shrinks a photo to 2048 px before sending; this leaves room for an original that is already small. */
 export const MAX_REVIEW_BYTES=12*1024*1024;
 export type UploadReview={reviewId:string;sha256:string;at:string}&({state:"safe";mediaId:string;mime:ReviewImageMime;person:boolean}|{state:"blocked";category:Exclude<UploadCategory,"none">;fixFa:string});
-/** One short line per blocked category (owner, 2026-11-06: no details, no lecture), never naming a provider or model; the fix says what to do. */
+/** One short line per blocked category with its general reason (owner, 2026-11-07: say why in a word, never like an error; no details, no lecture), never naming a provider or model; the fix says what to do. */
 export const BLOCKED_FA:Record<Exclude<UploadCategory,"none">,string>={
- iran_political:"اینجا درباره سیاست حرف نمی‌زنیم؛ این عکس قابل استفاده نیست.",
- iran_royal:"این عکس قابل استفاده نیست.",
- sexual:"این عکس قابل استفاده نیست.",
- minor:"این عکس قابل استفاده نیست.",
- alcohol:"این عکس قابل استفاده نیست.",
- drugs:"این عکس قابل استفاده نیست.",
- violence:"این عکس قابل استفاده نیست.",
- public_figure:"عکس افراد مشهور بدون اجازه‌شون قابل استفاده نیست."
+ iran_political:"این عکس سیاسیه؛ اینجا سراغ سیاست نمی‌ریم.",
+ iran_royal:"این عکس نماد سیاسی داره؛ سراغ سیاست نمی‌ریم.",
+ sexual:"این عکس برهنگی داره و ازش استفاده نمی‌کنیم.",
+ minor:"برای امنیت بچه‌ها از این عکس استفاده نمی‌کنیم.",
+ alcohol:"این عکس الکل داره و ازش استفاده نمی‌کنیم.",
+ drugs:"این عکس مواد مخدر داره و ازش استفاده نمی‌کنیم.",
+ violence:"این عکس خشونت یا خون داره؛ ازش استفاده نمی‌کنیم.",
+ public_figure:"از عکس آدم مشهور بدون اجازه‌ش استفاده نمی‌کنیم."
+};
+/** The reason in a word or two, on the photo itself (calm, not an error look). */
+export const BLOCKED_LABEL_FA:Record<Exclude<UploadCategory,"none">,string>={
+ iran_political:"سیاسی",iran_royal:"سیاسی",sexual:"برهنگی",minor:"امنیت کودک",alcohol:"الکل",drugs:"مواد مخدر",violence:"خشونت",public_figure:"فرد مشهور"
 };
 /**
  * The safe way forward when the check has none to offer (owner, 2026-11-06: Whoush is the user's advocate and always offers a safe change). A suggestion

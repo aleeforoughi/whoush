@@ -27,7 +27,7 @@ test("upload review: a safe photo is stored and known by its id; a blocked one i
  assert.equal(safeReview(ok.reviewId)?.state,"safe");
  const bad=await reviewUpload(JPEG,"image/jpeg",{inspect:async()=>({category:"iran_royal",person:false})});
  assert.equal(bad.state,"blocked");assert.equal(files(),before+1,"a blocked photo is not kept");
- assert.equal(safeReview(bad.reviewId),undefined);assert.ok(BLOCKED_FA.iran_royal.length<40,"one short line, no details");
+ assert.equal(safeReview(bad.reviewId),undefined);assert.ok(Object.values(BLOCKED_FA).every(l=>l.length<50),"one short line, no details");
  await assert.rejects(reviewUpload(JPEG,"image/jpeg",{inspect:async()=>{throw new Error("down");}}));
  assert.equal(safeReview(crypto.randomUUID()),undefined,"an id the server never gave is unknown");
  assert.equal(safeReview(undefined),undefined);
@@ -116,4 +116,10 @@ test("a model's content refusal is told as a refusal with a way forward (nothing
  assert.equal(runStatus(other).state,"failed");
  const {REFUSED_FA}=await import("../lib/jobs");
  assert.ok(REFUSED_FA.includes("نورونی کسر نشد")&&!/google|gemini|byteplus|higgsfield/i.test(REFUSED_FA));
+});
+
+test("owner (2026-11-07): a blocked photo says its reason, in a line and in a word on the photo",async()=>{
+ const {BLOCKED_FA,BLOCKED_LABEL_FA}=await import("../lib/upload-review");
+ for(const k of Object.keys(BLOCKED_FA) as (keyof typeof BLOCKED_FA)[]){assert.ok(BLOCKED_LABEL_FA[k].length<=12,k);assert.doesNotMatch(BLOCKED_FA[k],/^این عکس قابل استفاده نیست\.$/,k);}
+ assert.match(BLOCKED_FA.sexual,/برهنگی/);assert.match(BLOCKED_FA.iran_royal,/سیاس/);assert.match(BLOCKED_FA.alcohol,/الکل/);
 });

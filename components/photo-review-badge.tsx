@@ -1,5 +1,5 @@
 "use client";
-import {BadgeCheck,RotateCw,ShieldX} from "lucide-react";
+import {BadgeCheck,Info,RotateCw} from "lucide-react";
 import {Icon} from "@aleeforoughi/feather-react";
 import {BLOCKED_SHORT_FA,RETRY_REVIEW_FA,REVIEWED_FA,REVIEWING_FA,type PhotoReview} from "@/lib/photo-review";
 import {fa} from "@/lib/format";
@@ -30,10 +30,11 @@ export function PhotoReviewOverlay({review,onRetry}:{review?:PhotoReview;onRetry
   <ReviewRing progress={review.progress} size={24}/>
   <span className="type-caption text-fg-primary">{REVIEWING_FA}</span>
  </span>;
- if(review.state==="blocked")return <span role="img" aria-label={BLOCKED_SHORT_FA+": "+review.reasonFa+(review.fixFa?" "+review.fixFa:"")} title={review.reasonFa+(review.fixFa?"\n"+review.fixFa:"")}
-  className="pointer-events-auto absolute inset-0 flex flex-col items-center justify-center gap-1 bg-error/15 px-2 text-center text-error backdrop-blur-[2px]">
-  <Icon icon={ShieldX} size={20} aria-hidden="true"/>
-  <span className="type-caption font-medium">{BLOCKED_SHORT_FA}</span>
+ if(review.state==="blocked")return <span role="img" aria-label={(review.labelFa??BLOCKED_SHORT_FA)+": "+review.reasonFa+(review.fixFa?" "+review.fixFa:"")} title={review.reasonFa+(review.fixFa?"\n"+review.fixFa:"")}
+  className="pointer-events-auto absolute inset-0 flex flex-col items-center justify-center gap-1 bg-background/80 px-2 text-center text-fg-primary backdrop-blur-[2px]">
+  {/* Calm, not an error (owner, 2026-11-07): an info mark and the reason in a word; the full line and the way forward are in the chat and the title. */}
+  <Icon icon={Info} size={16} aria-hidden="true" className="text-fg-secondary"/>
+  <span className="type-caption font-medium">{review.labelFa??BLOCKED_SHORT_FA}</span>
  </span>;
  return <span className="pointer-events-auto absolute inset-0 flex flex-col items-center justify-center gap-1 bg-background/70 px-2 text-center">
   <span className="type-caption text-fg-secondary">{review.reasonFa}</span>

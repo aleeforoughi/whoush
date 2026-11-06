@@ -1,5 +1,5 @@
 import {NextResponse} from "next/server";
-import {BLOCKED_FA,MAX_REVIEW_BYTES,REVIEW_UNAVAILABLE_FA,reviewAvailable,reviewUpload,type ReviewImageMime} from "@/lib/upload-review";
+import {BLOCKED_FA,BLOCKED_LABEL_FA,MAX_REVIEW_BYTES,REVIEW_UNAVAILABLE_FA,reviewAvailable,reviewUpload,type ReviewImageMime} from "@/lib/upload-review";
 const headers={"Cache-Control":"no-store"};
 /** At most this many photos are checked at once per server process; the rest are told to try again (the studio retries). */
 const MAX_IN_FLIGHT=6;
@@ -29,7 +29,7 @@ export async function POST(request:Request){
  slots.n++;
  try{
   const r=await reviewUpload(bytes,mime);
-  return NextResponse.json(r.state==="safe"?{reviewId:r.reviewId,state:"safe"}:{reviewId:r.reviewId,state:"blocked",message:BLOCKED_FA[r.category],fix:r.fixFa},{headers});
+  return NextResponse.json(r.state==="safe"?{reviewId:r.reviewId,state:"safe"}:{reviewId:r.reviewId,state:"blocked",message:BLOCKED_FA[r.category],label:BLOCKED_LABEL_FA[r.category],fix:r.fixFa},{headers});
  }catch{return fail("review_failed",REVIEW_UNAVAILABLE_FA,502);}
  finally{slots.n--;}
 }

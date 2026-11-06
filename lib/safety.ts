@@ -51,8 +51,19 @@ const POLITICAL_FIGURES=[
 const IRAN_ROYAL=[
  "شیر و خورشید","شیروخورشید","پهلوی","شاهنشاهی","شاهنشاه","تاج پهلوی","اعلیحضرت","شهبانو","فرح پهلوی","رضا پهلوی","رضاشاه","رضا شاه","محمدرضا شاه",
  "محمد رضا شاه","شاه ایران","شاه سابق","ولیعهد","سلطنت طلب","lion and sun","lion sun flag","pahlavi","shahanshah","imperial iran","shah of iran","the shah",
- "reza pahlavi","farah pahlavi","monarchist"
+ "reza pahlavi","farah pahlavi","monarchist","آریامهر","aryamehr"
 ];
+/**
+ * Royal titles every Iranian dynasty used («شاهنشاه», "King of Kings", «شاه ایران», crown prince): Pahlavi-era only when nothing places the text in older
+ * history. Next to Cyrus, Darius, the Achaemenids, Persepolis or the Safavids they are history (owner, 2026-11-07: Cyrus the Great is Iranian history,
+ * not politics). Pahlavi names and symbols (the lion and sun, «پهلوی», «رضا شاه», «آریامهر») stay restricted in every context.
+ */
+const GENERIC_ROYAL_TITLES=["شاهنشاه","شاهنشاهی","شاه ایران","ولیعهد","shahanshah","shahanshahi","shah of iran","the shah","imperial iran","crown prince"];
+const ANCIENT_HISTORY=["کوروش","کوروش بزرگ","کوروش کبیر","داریوش","داریوش بزرگ","خشایارشا","خشایار شاه","اردشیر","شاپور","انوشیروان","خسرو انوشیروان","خسرو پرویز",
+ "هخامنشی","هخامنشیان","ساسانی","ساسانیان","اشکانی","اشکانیان","مادها","ایلامی","تخت جمشید","پاسارگاد","پارسه","نقش رستم","بیستون","طاق بستان","ایران باستان","پارس باستان",
+ "منشور کوروش","استوانه کوروش","صفوی","صفویه","شاه عباس","نادرشاه","نادر شاه","افشاریه","کریم خان","زندیه","سلجوقی","شاهنامه","فردوسی","کیخسرو","جمشید","فریدون",
+ "cyrus","cyrus the great","darius","darius the great","xerxes","artaxerxes","shapur","khosrow","achaemenid","achaemenids","sasanian","sassanid","sasanid","parthian","median empire",
+ "persepolis","pasargadae","naqsh e rostam","behistun","ancient persia","ancient persian","ancient iran","persian empire","cyrus cylinder","safavid","shah abbas","nader shah","shahnameh","ferdowsi"];
 const ROYAL_HISTORY_OK=["خط پهلوی","زبان پهلوی","پهلوی ساسانی","پهلوی اشکانی","فارسی میانه","pahlavi script","pahlavi language","middle persian"];
 const SEXUALIZED=[
  "nude","nudity","naked","topless","bottomless","erotic","sexual pose","sexy pose","seductive","porn","porno","pornography","pornographic","sex","xxx","nsfw",
@@ -131,7 +142,7 @@ export function evaluateTextSafety(raw:string):SafetyResult {
  if(matches(without(text,VIOLENCE_OK),GRAPHIC_VIOLENCE)||f("violence"))return refused("block","graphic_violence","violence");
  if(matches(text,RELIGIOUS_HOSTILITY)||f("religion"))return refused("block","religious_hostility","religion");
  if(matches(text,IRAN_POLITICS)||matches(text,POLITICAL_FIGURES)||f("iran")||f("figures"))return refused("block","iran_politics","iran_politics");
- const royalText=without(text,ROYAL_HISTORY_OK);
+ const royalText=without(matches(text,ANCIENT_HISTORY)?without(text,GENERIC_ROYAL_TITLES):text,ROYAL_HISTORY_OK);
  if(matches(royalText,IRAN_ROYAL)||FINGLISH.royal.some(t=>containsFinglish(normalizeFinglish(royalText),t)))return refused("block","iran_royal","iran_royal");
  if(matches(text,POLITICAL_TERMS)||f("political"))return refused("block","politics","iran_politics");
  const drinkText=without(text.replace(DRINK_COLOUR," ok "),FASHION_COLOURS);

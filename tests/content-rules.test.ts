@@ -47,3 +47,14 @@ test("beauty influencers, models and bloggers (owner, 2026-11-06): everyday beau
  assert.equal(decide("a glass of red wine on the table"),"alcohol","a drink is still a drink");
  assert.equal(decide("nude photo"),"sexualized_content","nudity is still nudity");
 });
+
+test("owner (2026-11-07): Cyrus the Great and ancient Iranian kings are history, not politics; Pahlavi names and symbols stay restricted",()=>{
+ for(const t of ["یه عکس از کوروش بزرگ بساز","کوروش کبیر شاهنشاه هخامنشی در پاسارگاد","Cyrus the Great, Achaemenid King of Kings (shahanshah), at Pasargadae",
+  "Darius the Great at Persepolis with the Immortals","شاه عباس صفوی در میدان نقش جهان","shahanshah Shapur I, Sasanian relief at Naqsh-e Rostam"])assert.equal(decide(t),"allow",t);
+ for(const t of ["کوروش و پرچم شیر و خورشید","Cyrus the Great with Reza Shah","شاهنشاه آریامهر","the shah of iran in 1970","shahanshah"])assert.equal(decide(t),"iran_royal",t);
+ assert.notEqual(decide("کوروش بزرگ در تظاهرات"),"allow","a protest stays political");
+});
+test("owner (2026-11-07): every refusal says its general reason in one friendly line, never a bare «I won't make this»",()=>{
+ const why:Record<string,RegExp>={iran_politics:/سیاست/,iran_royal:/سیاس/,sexual:/برهنه/,minor:/بچه/,alcohol:/الکلی/,drugs:/مواد مخدر/,violence:/خشن/,religion:/دینی/,language:/توهین/};
+ for(const [k,re] of Object.entries(why)){const m=SAFE_ALTERNATIVES[k as keyof typeof SAFE_ALTERNATIVES].messageFa;assert.match(m,re,k);assert.doesNotMatch(m,/^این یکی رو نمی‌سازم/,k);}
+});

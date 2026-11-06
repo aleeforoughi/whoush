@@ -7,12 +7,13 @@
 export type PhotoReview=
  |{state:"checking";progress:number}
  |{state:"safe";reviewId:string}
- |{state:"blocked";reviewId:string;reasonFa:string;fixFa?:string}
+ |{state:"blocked";reviewId:string;reasonFa:string;fixFa?:string;/** The reason in a word or two, shown on the photo. */labelFa?:string}
  |{state:"failed";reasonFa:string};
 export const REVIEW_ROUTE="/api/media/review";
 export const REVIEWING_FA="بررسی ایمنی…";
 export const REVIEWED_FA="بررسی شد؛ آمادهٔ استفاده";
-export const BLOCKED_SHORT_FA="قابل استفاده نیست";
+/** Shown on a blocked photo when the reason has no short label: calm, not an error. */
+export const BLOCKED_SHORT_FA="استفاده نمی‌شه";
 export const REVIEW_FAILED_FA="بررسی ایمنی انجام نشد. دوباره امتحان کن.";
 export const RETRY_REVIEW_FA="دوباره بررسی کن";
 /** The chat's waiting line while photos of the message are still being checked. */
@@ -57,9 +58,9 @@ export function sendForReview(blob:Blob,onProgress:(p:number)=>void):Promise<Pho
   xhr.upload.onload=()=>{show(.5);creep=window.setInterval(()=>show(shown+(.97-shown)*.12),400);};
   xhr.onload=()=>{
    stop();
-   const b=(xhr.response??{}) as {reviewId?:string;state?:string;message?:string;fix?:string};
+   const b=(xhr.response??{}) as {reviewId?:string;state?:string;message?:string;label?:string;fix?:string};
    if(xhr.status===200&&b.state==="safe"&&b.reviewId){onProgress(1);resolve({state:"safe",reviewId:b.reviewId});}
-   else if(xhr.status===200&&b.state==="blocked"&&b.reviewId)resolve({state:"blocked",reviewId:b.reviewId,reasonFa:typeof b.message==="string"?b.message:BLOCKED_SHORT_FA,...(typeof b.fix==="string"&&b.fix?{fixFa:b.fix}:{})});
+   else if(xhr.status===200&&b.state==="blocked"&&b.reviewId)resolve({state:"blocked",reviewId:b.reviewId,reasonFa:typeof b.message==="string"?b.message:BLOCKED_SHORT_FA,...(typeof b.label==="string"&&b.label?{labelFa:b.label}:{}),...(typeof b.fix==="string"&&b.fix?{fixFa:b.fix}:{})});
    else resolve({state:"failed",reasonFa:typeof b.message==="string"?b.message:REVIEW_FAILED_FA});
   };
   xhr.onerror=xhr.ontimeout=()=>{stop();resolve({state:"failed",reasonFa:REVIEW_FAILED_FA});};
@@ -89,6 +90,6 @@ export async function photoReviewEnabled():Promise<boolean>{
 export function reviewStopFa(items:readonly {tagFa:string;review?:PhotoReview}[]):string{
  const lines=items.map(({tagFa,review:r})=>"• "+tagFa+": "+(r?.state==="blocked"?r.reasonFa+(r.fixFa?" "+r.fixFa:""):REVIEW_FAILED_FA+" «اجرای دوباره» رو بزن تا دوباره بررسی کنم."));
  const blocked=items.some(x=>x.review?.state==="blocked");
- return (blocked?"این عکس‌ها رو نمی‌تونم استفاده کنم، ولی با یه تغییر کوچیک ادامه می‌دیم:":"بررسی ایمنی این عکس‌ها تموم نشد:")+"\n"+lines.join("\n")+
+ return (blocked?"از این عکس‌ها استفاده نمی‌کنیم، ولی با یه تغییر کوچیک ادامه می‌دیم:":"بررسی ایمنی این عکس‌ها تموم نشد:")+"\n"+lines.join("\n")+
   (blocked?"\nعکس رو حذف یا عوض کن و دوباره بفرست؛ بقیه‌ش با من.":"");
 }
