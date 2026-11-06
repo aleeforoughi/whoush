@@ -24,6 +24,7 @@ import type {GenerationProposal,MediaRequirements,ProposalResearch,SuggestedMode
 import {researchReferences,type ResearchReference,type ResearchResult,type TurnReference} from "./research";
 import {inspectReferences,locateEdit,type EditLocation} from "./reference-inspect";
 import {faPlain} from "./format";
+import {devLiveTest} from "./policy";
 import {continuesWork} from "./follow-up";
 import {EDIT_CARDS_FA,EDIT_CARD_FA,EDIT_CARD_FINGLISH,SUGGESTED_FA,SUGGESTED_FINGLISH,mightEditPhoto,wantsEditCard,type SuggestedEdit} from "./edit-card";
 import {safeReview} from "./upload-review";
@@ -508,7 +509,9 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  let label:PrivateAuditRecord["planner"]=deps.planner&&deps.planner!==deterministicPlanner?"live":"deterministic",fallbackReason:string|undefined;
  let result:PlannerResult|undefined,fin:{e?:{plan:CreativePlan;corrections:string[]};reason?:string}={reason:"planner_error"};
  const finalize=(raw:unknown)=>{
-  const v=CreativePlanSchema.safeParse(raw);if(!v.success)return {reason:"invalid_output"};
+  const v=CreativePlanSchema.safeParse(raw);
+  // Owner dev testing only: which fields made a plan invalid (paths and error codes, never content), so a planner that fails can be fixed.
+  if(!v.success){if(devLiveTest().enabled)console.info("[whoush dev-live] planner output invalid at",v.error.issues.slice(0,6).map(i=>i.path.join(".")+":"+i.code).join(", "));return {reason:"invalid_output"};}
   const e=enforce(v.data,req);return leaks(toPublicPlan(e.plan),input.text)?{reason:"leak_filtered"}:{e};
  };
  // One attempt: call a planner, then validate, enforce invariants and leak-filter its output. `refused` is reported, never retried here.

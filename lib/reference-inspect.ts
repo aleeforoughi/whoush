@@ -83,7 +83,8 @@ export const inspectUpload:UploadInspector=async(img)=>{
  const model=inspectionModel();
  if(!llmGate().live||!model||!process.env.ANTHROPIC_API_KEY)throw new Error("Upload inspection unavailable");
  const client=new Anthropic({apiKey:process.env.ANTHROPIC_API_KEY,maxRetries:1,timeout:30_000});
- const r=await client.messages.parse({model,max_tokens:256,system:UPLOAD_INSTRUCTIONS,messages:[{role:"user",content:[
+ // Enough room for the verdict and its Persian fix (live, 2026-11-06: a 256-token cap cut answers mid-JSON and failed five checks).
+ const r=await client.messages.parse({model,max_tokens:1024,system:UPLOAD_INSTRUCTIONS,messages:[{role:"user",content:[
   {type:"image",source:{type:"base64",media_type:img.mime==="image/png"?"image/png":img.mime==="image/webp"?"image/webp":"image/jpeg",data:Buffer.from(img.bytes).toString("base64")}},
   {type:"text",text:"Check this photo."}]}],output_config:{format:zodOutputFormat(UploadVerdictSchema)}});
  if(devLiveTest().enabled)console.info("[whoush dev-live] upload inspection",model,"in",r.usage.input_tokens,"out",r.usage.output_tokens);
@@ -109,7 +110,7 @@ export async function locateEdit(text:string,img:{bytes:Uint8Array;mime:StoredMi
  const model=inspectionModel();
  if(!llmGate().live||!model||!process.env.ANTHROPIC_API_KEY)throw new Error("Edit location unavailable");
  const client=new Anthropic({apiKey:process.env.ANTHROPIC_API_KEY,maxRetries:1,timeout:30_000});
- const r=await client.messages.parse({model,max_tokens:600,system:LOCATE_INSTRUCTIONS,messages:[{role:"user",content:[
+ const r=await client.messages.parse({model,max_tokens:1200,system:LOCATE_INSTRUCTIONS,messages:[{role:"user",content:[
   {type:"image",source:{type:"base64",media_type:img.mime==="image/png"?"image/png":img.mime==="image/webp"?"image/webp":"image/jpeg",data:Buffer.from(img.bytes).toString("base64")}},
   {type:"text",text:"The request: "+text.slice(0,1000)}]}],output_config:{format:zodOutputFormat(EditLocateSchema)}});
  if(devLiveTest().enabled)console.info("[whoush dev-live] edit location",model,"in",r.usage.input_tokens,"out",r.usage.output_tokens);

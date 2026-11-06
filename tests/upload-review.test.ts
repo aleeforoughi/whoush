@@ -107,3 +107,13 @@ test("keeping the thread: a follow-up that corrects the work keeps the photos it
  const fresh=await orchestrateCreativeTurn({text:"یه عکس جدید از یه دریاچه آروم",priorAttachments:prior,continueWith:["image1","image2"]});
  assert.ok(fresh.status!=="planned"||fresh.plan.references.length===0,"a new request does not drag old photos in");
 });
+
+test("a model's content refusal is told as a refusal with a way forward (nothing charged), not a bare failure",async()=>{
+ const {startRun,runStatus,settleRun}=await import("../lib/providers/sync-runner");
+ const id=startRun(async()=>{throw new Error("Google request failed: 400 prohibited_content");});await settleRun(id);
+ assert.equal(runStatus(id).state,"nsfw");
+ const other=startRun(async()=>{throw new Error("Google request failed: 500 internal");});await settleRun(other);
+ assert.equal(runStatus(other).state,"failed");
+ const {REFUSED_FA}=await import("../lib/jobs");
+ assert.ok(REFUSED_FA.includes("نورونی کسر نشد")&&!/google|gemini|byteplus|higgsfield/i.test(REFUSED_FA));
+});

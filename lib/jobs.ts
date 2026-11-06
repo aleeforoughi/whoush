@@ -26,7 +26,7 @@ export type Job={id:string;ownerId:string;idempotencyKey:string;quoteId:string;t
  neurons:number;chargedNeurons:number;state:JobState;providerRequestId?:string;
  /** Private provenance (docs/CANVAS_TO_IMAGE.md section 8): what was asked for and sent, so every result can be traced. Never public. */provenance?:JobProvenance;
  /** Private, only while `submission_unknown`: the exact request to resend with the same key (the same key with other parameters is refused), and how the
-  reconciliation is going. Cleared once the provider answers. */unknownSubmission?:{prompt:string;attempts:number;lastAttemptAt:string;reason:string};outputs:ProviderOutput[];qa:OutputQA;createdAt:string;updatedAt:string};
+  reconciliation is going. Cleared once the provider answers. */unknownSubmission?:{prompt:string;attempts:number;lastAttemptAt:string;reason:string};/** Why a failed job failed, when it is worth telling: the model refused the content. */failure?:"provider_refused";outputs:ProviderOutput[];qa:OutputQA;createdAt:string;updatedAt:string};
 /**
  * What a job asked for and sent: the requested model, the endpoint called, the catalog and prompt-compiler versions, and the SHA-256 of the exact prompt
  * (so a result is traced to it without keeping the prompt on the job). `reportedModelId` is filled only when a provider reports which model ran; the
@@ -159,7 +159,9 @@ export async function pollJob(id:string,ownerId:string,deps:JobDeps={}):Promise<
    const latest=store.get(id)!;if(isTerminal(latest.state))return latest;
    finish(latest,ledger,ok?"completed":"failed",now,outputs);break;
   }
-  case "failed":case "nsfw":finish(cur,ledger,"failed",now);break;
+  case "failed":finish(cur,ledger,"failed",now);break;
+  // The model refused the content: still a failure (nothing charged), told as a refusal with a way forward.
+  case "nsfw":cur.failure="provider_refused";finish(cur,ledger,"failed",now);break;
   case "canceled":finish(cur,ledger,"canceled",now);break;
  }
  store.save(cur);return cur;
@@ -174,6 +176,8 @@ export async function cancelJob(id:string,ownerId:string,deps:JobDeps={}):Promis
  const cur=store.get(id)!;if(isTerminal(cur.state))return {job:cur,canceled:false};
  finish(cur,ledger,"canceled",deps.now?.()??new Date());store.save(cur);return {job:cur,canceled:true};
 }
+/** A model's own content rules refused the request (owner, 2026-11-06: say why, and how to go on). Nothing is charged; no provider is named. */
+export const REFUSED_FA="مدل این درخواست رو طبق قوانین خودش نپذیرفت و نورونی کسر نشد. معمولاً با یه تغییر کوچیک درست می‌شه: توضیح رو ساده‌تر کن، عکس دیگه‌ای بده یا یه مدل دیگه رو انتخاب کن.";
 const MSG:Record<JobState,string>={
  quoted:"درخواست ثبت شد.",approved:"درخواست تأیید شد.",reserved:"نورون رزرو شد و درخواست در حال ارسال است.",
  submission_unknown:"ارسال درخواست قطعی نشد؛ داریم با سرویس بررسی می‌کنیم که رسیده یا نه. دوباره نزن: هیچ نورونی دوبار کسر نمی‌شود.",
@@ -192,5 +196,5 @@ const DEV_COMPLETED_FA="تست توسعه: خروجی واقعی ساخته شد
 export function toPublicJob(j:Job){
  const typical=findMediaModel(j.modelId)?.typicalSeconds;
  return {id:j.id,state:j.state,mode:j.mode,modelId:j.modelId,neurons:j.neurons,chargedNeurons:j.chargedNeurons,...(typical?{typicalMs:typical*1000}:{}),
-  outputs:j.state==="completed"?j.outputs.map(o=>({kind:o.kind,url:o.url})):[],qa:j.qa,messageFa:j.mode==="dev_live"&&j.state==="completed"?DEV_COMPLETED_FA:MSG[j.state]};
+  outputs:j.state==="completed"?j.outputs.map(o=>({kind:o.kind,url:o.url})):[],qa:j.qa,messageFa:j.mode==="dev_live"&&j.state==="completed"?DEV_COMPLETED_FA:j.state==="failed"&&j.failure==="provider_refused"?REFUSED_FA:MSG[j.state]};
 }

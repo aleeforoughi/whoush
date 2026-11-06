@@ -41,7 +41,7 @@ test("Google: the documented interactions request, key only in the header, base6
  },{GEMINI_API_KEY:"g-key"});
  await withFetch(()=>json({error:{code:"image_safety"}},400),async()=>{
   const p=new GoogleMediaProvider(),{providerRequestId}=await p.submit({modelId:"nano-banana-2",prompt:"p",configuration:{},idempotencyKey:"k"});
-  await settleRun(providerRequestId);assert.equal((await p.status(providerRequestId)).state,"failed","a refusal ends the run as failed: no Neurons are charged");
+  await settleRun(providerRequestId);assert.equal((await p.status(providerRequestId)).state,"nsfw","a content refusal is told as one; the job ends it as failed: no Neurons are charged");
  },{GEMINI_API_KEY:"g-key"});
 });
 test("BytePlus Seedream: explicit size for the canvas ratio within the pixel budget, URL mirrored before it expires",async()=>{
