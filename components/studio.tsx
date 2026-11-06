@@ -117,7 +117,8 @@ export function Studio(){
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
  const [storageNote,setStorageNote]=useState("");
- const [loadingProject,setLoadingProject]=useState(false);
+ // Opening a saved chat from its link (?project=) starts as loading, so the empty welcome view never flashes before the chat appears.
+ const [loadingProject,setLoadingProject]=useState(()=>Boolean(projectParam));
  const [projectId,setProjectId]=useState<string|null>(null);
  const [characters,setCharacters]=useState<CharacterProfile[]>([]);
  const [charactersLoaded,setCharactersLoaded]=useState(false);
