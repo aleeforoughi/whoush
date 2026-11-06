@@ -42,8 +42,10 @@ const IRAN_POLITICS=[
 /** Iranian political figures of any era or side. Political figures of other countries are allowed (owner, 2026-11-06). */
 const POLITICAL_FIGURES=[
  "خامنه ای","khamenei","خمینی","khomeini","حسن روحانی","rouhani","پزشکیان","pezeshkian","رئیسی","رییسی","raisi","خاتمی","khatami",
- "احمدی نژاد","ahmadinejad","میرحسین موسوی","mousavi","کروبی","karroubi","ظریف","zarif","قالیباف","ghalibaf","سلیمانی","soleimani","مصدق","mossadegh",
- "بنی صدر","رجوی","rajavi","مجاهدین خلق","منافقین","رفسنجانی","rafsanjani","رهبر ایران"
+ // Names that are also everyday words or common surnames («ظریف» delicate, «مصدق» certified, «پسته رفسنجانی», many a «سلیمانی») count only in full.
+ "احمدی نژاد","ahmadinejad","میرحسین موسوی","میر حسین موسوی","mir hossein mousavi","کروبی","karroubi","جواد ظریف","محمدجواد ظریف","محمد جواد ظریف","javad zarif",
+ "قالیباف","ghalibaf","قاسم سلیمانی","سردار سلیمانی","qasem soleimani","ghasem soleimani","محمد مصدق","دکتر مصدق","mohammad mossadegh","mossadegh",
+ "بنی صدر","رجوی","rajavi","مجاهدین خلق","منافقین","هاشمی رفسنجانی","اکبر هاشمی","hashemi rafsanjani","rafsanjani","رهبر ایران"
 ];
 /** Pre-revolution royal Iran: its symbols, crown and family. The Pahlavi script and language («خط پهلوی») are history, not this. */
 const IRAN_ROYAL=[
@@ -94,7 +96,7 @@ const FINGLISH:Record<"minors"|"violence"|"religion"|"regulated"|"political"|"fi
  religion:["tohin be quran","tohin be ghoran","ehanat be payambar","tohin be adyan"],
  regulated:["ghomarkhane","tablighe shart bandi"],
  political:["siasat","siasi","siyasi","entekhabat","tazahorat","eterazat","raees jomhur","rais jomhur","raeis jomhur","raeise jomhur","jomhuri eslami","majles shoraye eslami","nokhost vazir","koodeta","kudeta","hokumat","shoare siasi","tablighate siasi","rahbar enghelab","rahbare enghelab"],
- figures:["khamenei","khamenehei","khomeini","khomeyni","pezeshkian","raisi","raeisi","raeesi","khatami","rouhani","hasan rohani","ahmadinejad","ahmadi nejad","soleimani","zarif","ghalibaf","mosadegh","rafsanjani"],
+ figures:["khamenei","khamenehei","khomeini","khomeyni","pezeshkian","raisi","raeisi","raeesi","khatami","rouhani","hasan rohani","ahmadinejad","ahmadi nejad","ghasem soleimani","qasem soleimani","javad zarif","ghalibaf","dr mosadegh","hashemi rafsanjani"],
  iran:["sepah","basij","gashte ershad","gasht ershad","hejab ejbari","mahsa amini","zan zendegi azadi","azadi iran","iran azad","hoghoghe bashar","hoghugh bashar","zendani siasi","barandazi","sarnegooni","shoraye negahban","enghelab eslami","oposizion","shuresh","eghteshash","ayatollah"],
  royal:["shir o khorshid","shiro khorshid","shir khorshid","pahlavi","shahanshahi","shahanshah","reza shah","rezashah","mohammadreza shah","mohamad reza shah","reza pahlavi","farah pahlavi","alahazrat","shahbanoo","shahbanu","saltanat talab"],
  sexual:["lokht","lokhti","berahne","berahneh","nime berahne","oryan","oriyan","seksi","sexi","shahvani","tahrik amiz","lebas zir","lebase zir","sutian","sootian","mayo do tekke","lebas badan nama","lebase badan nama","lebas shafaf","raghs berahne","porn","sex"],

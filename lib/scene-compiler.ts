@@ -69,10 +69,13 @@ export type CompiledImagePrompt={prompt:string;content:string;compilerVersion:st
 export function compileImagePrompt(i:{content:string;staging:Staging;aspect:string;operation?:SceneOperation}):CompiledImagePrompt{
  const lock=i.operation?editLockEn(i.operation):undefined;
  // A camera or light edit changes framing or light on purpose: the generic «preserve framing and lighting» rule would contradict it.
- const own=lock?i.content.split(GENERIC_EDIT_RULE_EN+".").join("").split(GENERIC_EDIT_RULE_EN).join(""):i.content;
+ const hadRule=i.content.includes(GENERIC_EDIT_RULE_EN);
+ const own=i.content.split(GENERIC_EDIT_RULE_EN+".").join("").split(GENERIC_EDIT_RULE_EN).join("");
+ // The generic preserve rule is taken out before camera and light words are stripped (it names framing, crop and light, and would be cut mid-sentence),
+ // then put back whole for a content edit; a camera or light edit drops it, since it would contradict the lock.
  const stripped=stripSceneDirection(own);
  // Nothing left means the planner wrote only direction: keep its text rather than send a prompt with no subject.
- const content=stripped||own.trim();
+ const content=(stripped||own.trim())+(hadRule&&!lock?" "+GENERIC_EDIT_RULE_EN+".":"");
  // Only what the crop shows is described: a prop outside the frame is not in the picture, so it is left out of the layout and the people count.
  const props=i.staging.props??[],vis=props.length?sceneVisibility(i.staging,i.aspect):undefined,mainAt=Math.max(0,props.findIndex(p=>p.main));
  const shown:Staging=vis?{...i.staging,props:props.filter((_,j)=>j===mainAt||vis.inFrame[j])}:i.staging;
@@ -91,7 +94,11 @@ export function compileImagePrompt(i:{content:string;staging:Staging;aspect:stri
 export type SceneOperation="create"|"camera_edit"|"relight_edit"|"content_edit";
 export type SceneChange={camera:boolean;light:boolean;layout:boolean};
 /** The edit rule Whoush adds to every edit of a source photo. A camera or light edit changes framing or lighting on purpose, so it is replaced there. */
-export const GENERIC_EDIT_RULE_EN="Preserve all unedited source regions: identity, framing, lighting, color and pixels";
+/**
+ * Every photo edit keeps the rest of the source exactly (owner, 2026-11-06: strict skin-texture, anti-drift, continuity and colour-settings locks). One sentence,
+ * no inner full stop: the compiler finds and removes it by its text.
+ */
+export const GENERIC_EDIT_RULE_EN="Preserve all unedited source regions pixel-faithfully: identity and face geometry; skin texture exactly as in the source (same pores, fine lines, freckles, grain and micro-contrast, never smoothed, airbrushed, waxy or re-detailed); hair strands, body, pose, framing and crop (no zoom, shift or re-composition); background; light direction and quality; and colour settings (same white balance, exposure, contrast, saturation, colour grade, tone curve, sharpness and noise, with no global colour shift)";
 const r3=(v:unknown):unknown=>typeof v==="number"?Math.round(v*1000)/1000:Array.isArray(v)?v.map(r3):v&&typeof v==="object"?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a<b?-1:1).map(([k,x])=>[k,r3(x)])):v;
 const same=(a:unknown,b:unknown)=>JSON.stringify(r3(a))===JSON.stringify(r3(b));
 /**

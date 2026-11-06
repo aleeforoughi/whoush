@@ -27,7 +27,7 @@ test("upload review: a safe photo is stored and known by its id; a blocked one i
  assert.equal(safeReview(ok.reviewId)?.state,"safe");
  const bad=await reviewUpload(JPEG,"image/jpeg",{inspect:async()=>({category:"iran_royal",person:false})});
  assert.equal(bad.state,"blocked");assert.equal(files(),before+1,"a blocked photo is not kept");
- assert.equal(safeReview(bad.reviewId),undefined);assert.ok(BLOCKED_FA.iran_royal.includes("شیر و خورشید"));
+ assert.equal(safeReview(bad.reviewId),undefined);assert.ok(BLOCKED_FA.iran_royal.length<40,"one short line, no details");
  await assert.rejects(reviewUpload(JPEG,"image/jpeg",{inspect:async()=>{throw new Error("down");}}));
  assert.equal(safeReview(crypto.randomUUID()),undefined,"an id the server never gave is unknown");
  assert.equal(safeReview(undefined),undefined);

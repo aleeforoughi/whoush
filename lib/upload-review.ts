@@ -14,16 +14,16 @@ export type ReviewImageMime=(typeof REVIEW_IMAGE_MIMES)[number];
 /** The studio shrinks a photo to 2048 px before sending; this leaves room for an original that is already small. */
 export const MAX_REVIEW_BYTES=12*1024*1024;
 export type UploadReview={reviewId:string;sha256:string;at:string}&({state:"safe";mediaId:string;mime:ReviewImageMime;person:boolean}|{state:"blocked";category:Exclude<UploadCategory,"none">;fixFa:string});
-/** Persian reasons, one per blocked category: plain, never naming a provider or model. */
+/** One short line per blocked category (owner, 2026-11-06: no details, no lecture), never naming a provider or model; the fix says what to do. */
 export const BLOCKED_FA:Record<Exclude<UploadCategory,"none">,string>={
- iran_political:"این عکس یه چهرهٔ سیاسی ایرانی داره و قابل استفاده نیست.",
- iran_royal:"این عکس نماد یا تصویری از ایرانِ سلطنتی پیش از انقلاب (مثل شیر و خورشید) داره و قابل استفاده نیست.",
- sexual:"این عکس محتوای برهنه یا جنسی داره و قابل استفاده نیست.",
- minor:"این عکس کودک یا نوجوان رو در موقعیتی نامناسب نشون می‌ده و قابل استفاده نیست.",
- alcohol:"این عکس نوشیدنی الکلی یا چیزی مربوط به الکل داره و قابل استفاده نیست.",
- drugs:"این عکس مواد مخدر یا چیزی مربوط به اون داره و قابل استفاده نیست.",
- violence:"این عکس خشونت، خون یا آسیب نشون می‌ده و قابل استفاده نیست.",
- public_figure:"به نظر میاد این عکس یه چهرهٔ مشهوره؛ ساختن تصویر از افراد مشهور بدون اجازه‌شون ممکن نیست."
+ iran_political:"اینجا درباره سیاست حرف نمی‌زنیم؛ این عکس قابل استفاده نیست.",
+ iran_royal:"این عکس قابل استفاده نیست.",
+ sexual:"این عکس قابل استفاده نیست.",
+ minor:"این عکس قابل استفاده نیست.",
+ alcohol:"این عکس قابل استفاده نیست.",
+ drugs:"این عکس قابل استفاده نیست.",
+ violence:"این عکس قابل استفاده نیست.",
+ public_figure:"عکس افراد مشهور بدون اجازه‌شون قابل استفاده نیست."
 };
 /**
  * The safe way forward when the check has none to offer (owner, 2026-11-06: Whoush is the user's advocate and always offers a safe change). A suggestion

@@ -608,7 +608,8 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  plan.mediaPrompt=rewriteMentions(plan.mediaPrompt,byTag,genTags).slice(0,3000);
  // An image prompt is compiled once from the final scene: the planner's text without its own camera and light words, then the canvas (lib/scene-compiler.ts).
  let content:SceneContent|undefined;
- if(plan.mediaKind==="image"&&plan.staging){
+ // A brush edit has no scene to compile: its prompt is only the edit and the locks (a camera or light description would invite a re-shoot).
+ if(plan.mediaKind==="image"&&plan.staging&&!files.some(f=>f.regionEdit)){
   const aspect=plan.camera?.aspectRatio??"16:9";
   // A hidden subject: the user's own arrangement is refused with the fix; a scene Whoush arranged moves its prop out of the way (the camera stays as asked).
   if(sceneVisibility(plan.staging,aspect).subject==="occluded"){
@@ -681,11 +682,12 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   // Change only the painted area, as the note says; everything else is locked. The rule leads the plan, the sentence leads the edit in the prompt.
   for(const f of painted){
    const tagFa=displayTag(f.tag),list=f.regionEdit!.regions.map(r=>"#ادیت-"+faPlain(r.n)+" ("+REGION_COLOR_FA[r.color]+"): «"+r.note+"»").join("؛ ");
-   plan.hardConstraints=["فقط ناحیه‌های رنگ‌شدهٔ "+tagFa+" تغییر می‌کنند — "+list+" — و بقیهٔ عکس (چهره، بدن، ژست، کادر، نور، رنگ‌ها و پس‌زمینه) دقیقاً همان می‌ماند",...plan.hardConstraints.filter(c=>!c.startsWith("فقط ناحیه‌های رنگ‌شدهٔ "+tagFa))];
+   plan.hardConstraints=["فقط ناحیه‌های رنگ‌شدهٔ "+tagFa+" تغییر می‌کنند — "+list+" — و بقیهٔ عکس دقیقاً همان می‌ماند: چهره، بافت پوست (منافذ و جزئیات، بدون صاف‌شدن)، بدن، ژست، کادر، نور، تنظیمات رنگ (وایت‌بالانس، نوردهی، کنتراست، اشباع و گریدینگ) و پس‌زمینه",...plan.hardConstraints.filter(c=>!c.startsWith("فقط ناحیه‌های رنگ‌شدهٔ "+tagFa))];
   }
-  const lead=painted.map(f=>"Edit "+describeTagEn(f)+" only inside the areas painted in its marked copy, each as noted: "+f.regionEdit!.regions.map(r=>"the "+r.color+" area: "+r.note).join("; ")+". Keep every pixel outside these areas identical: identity, face, body, pose, framing, lighting, colours and background. Blend each change seamlessly with the surrounding texture and light. The output is the edited photo only, with no paint and no marks.").join(" ");
-  plan.mediaPrompt=(lead+" "+plan.mediaPrompt).slice(0,3000);
-  if(content)content={...content,content:(lead+" "+content.content).slice(0,3000)};
+  const lead=painted.map(f=>"Edit "+describeTagEn(f)+" only inside the areas painted in its marked copy, each as noted: "+f.regionEdit!.regions.map(r=>"the "+r.color+" area: "+r.note).join("; ")+". Do not regenerate the photo: everything outside these areas is copied from the source unchanged. "+GENERIC_EDIT_RULE_EN+". Inside each area, match the surrounding skin texture, grain, light and colour exactly so the change is invisible. The output is the edited photo only, with no paint and no marks.").join(" ");
+  // The provider prompt is the edit and the locks only (owner, 2026-11-06: change only that part, nothing else): no planner scene, camera, light or
+  // style lines, which would read as a re-shoot of the whole photo.
+  plan.mediaPrompt=lead.slice(0,3000);content=undefined;
  }
  if(uploads.length){
   const order=" Attached reference images, in this order: "+photos.flatMap(f=>f.regionEdit?[describeTagEn(f),"the same photo with the areas to change painted in translucent colours (a guide only, never draw the paint)"]:[describeTagEn(f)]).map((d,i)=>(i+1)+" = "+d).join("; ")+".";
@@ -729,7 +731,8 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // into the scene text, so a canvas change keeps them); each risk shown passes the same safety and leak checks as the planner's own text.
  const chosenModel=findMediaModel(proposal.selectedModelId),reviewer=deps.reviewPlan??(reviewAvailable()?reviewPlan:undefined);
  let review:{severity:"high"|"medium"|"low";issueFa:string;fixEn:string}[]|null=null;
- if(chosenModel&&reviewer){
+ // The pre-generation review would add scene-level fixes; a brush edit has no scene, so it is skipped there.
+ if(chosenModel&&reviewer&&!painted.length){
   stage("reviewing");
   review=await reviewer({brief:input.text,kind,mediaPrompt:plan.mediaPrompt,hardConstraints:plan.hardConstraints,
    researchFactsFa:research?.subjects.flatMap(x=>x.factsFa)??[],aspect:content?.aspect??plan.camera?.aspectRatio,

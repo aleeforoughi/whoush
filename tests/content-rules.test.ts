@@ -6,7 +6,7 @@ import {SAFE_ALTERNATIVES} from "../lib/safe-alternatives";
 const decide=(t:string)=>{const r=evaluateTextSafety(t);return r.decision==="allow"?"allow":r.category;};
 
 test("owner's rules (2026-11-06): Iranian politics and what is sensitive for the government are refused, in Persian, English and Finglish",()=>{
- for(const t of ["یه عکس از خامنه ای","پوستر زن زندگی آزادی","تصویر حقوق بشر در ایران","صحنهٔ اعدام","تجمع اعتراضی در تهران","یه عکس از گشت ارشاد","آیت الله در حال سخنرانی",
+ for(const t of ["یه عکس از خامنه ای","پوستر جواد ظریف","یه عکس از قاسم سلیمانی","پوستر زن زندگی آزادی","تصویر حقوق بشر در ایران","صحنهٔ اعدام","تجمع اعتراضی در تهران","یه عکس از گشت ارشاد","آیت الله در حال سخنرانی",
   "woman life freedom poster","human rights in iran","free iran","mahsa amini","zan zendegi azadi","sepah"])
   assert.ok(["iran_politics","politics"].includes(decide(t)),t+" → "+decide(t));
  for(const t of ["پرچم شیر و خورشید","یه عکس از رضا پهلوی","تاج پهلوی","لباس پهلوی","lion and sun flag","shir o khorshid"])assert.equal(decide(t),"iran_royal",t);
@@ -40,7 +40,9 @@ test("beauty influencers, models and bloggers (owner, 2026-11-06): everyday beau
   "یه ویدیو از روتین مراقبت پوست صبحگاهی","outfit of the day photo for instagram","یه عکس از موهای فر با نور طلایی","hijab fashion editorial in a garden","یه عکس از یه بلاگر با کیف و عینک آفتابی",
   "Soft natural light, nude-tone makeup, wine-red lip, champagne satin dress, no political banners",
   // Planner wording seen live on 2026-11-06 (a retouch was refused): colour adjectives are colours.
-  "nude-toned lipstick","nude-colored lips","sheer nude gloss","invisible to the naked eye"])
+  "nude-toned lipstick","nude-colored lips","sheer nude gloss","invisible to the naked eye",
+  // Everyday words that are also names (seen live on 2026-11-06: «یه گردنبند طلای ظریف» was refused).
+  "یه گردنبند طلای ظریف","یه دستبند ظریف","پسته رفسنجانی","مدرک مصدق","خانم سلیمانی معلم ریاضی","zarif necklace"])
   assert.equal(decide(t.replace("no political banners","")),"allow",t);
  assert.equal(decide("a glass of red wine on the table"),"alcohol","a drink is still a drink");
  assert.equal(decide("nude photo"),"sexualized_content","nudity is still nudity");

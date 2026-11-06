@@ -27,7 +27,9 @@ test("brush edit: each painted region (its colour and comment) changes only its 
  assert.equal(p.plan.references[0].role,"edit_reference","a painted photo is the photo to edit");
  assert.ok(p.plan.hardConstraints[0].startsWith("فقط ناحیه‌های رنگ‌شدهٔ #تصویر-۱ تغییر می‌کنند")&&p.plan.hardConstraints[0].includes("#ادیت-۲ (آبی)"),p.plan.hardConstraints[0]);
  const prompt=getPrivateMediaPrompt(p.turnId)!;
- assert.match(prompt,/^Edit \[reference image 1[^\]]*\] only inside the areas painted in its marked copy, each as noted: the red area: رژ لب قرمز مات; the blue area: موها کمی روشن‌تر\. Keep every pixel outside/);
+ assert.match(prompt,/^Edit \[reference image 1[^\]]*\] only inside the areas painted in its marked copy, each as noted: the red area: رژ لب قرمز مات; the blue area: موها کمی روشن‌تر\. Do not regenerate the photo: everything outside these areas is copied from the source unchanged\. Preserve all unedited source regions pixel-faithfully/);
+ assert.ok(!/Camera and light|Key light|Wide shot|golden-hour|horizon/.test(prompt),"no scene, camera or light lines: they would read as a re-shoot");
+ assert.ok(/skin texture exactly as in the source/.test(prompt)&&/same white balance, exposure, contrast, saturation/.test(prompt),"skin-texture and colour-settings locks");
  assert.match(prompt,/1 = \[reference image 1[^\]]*\]; 2 = the same photo with the areas to change painted in translucent colours/);
  assert.deepEqual(getTurnReferences(p.turnId).map(x=>x.id),[safeReview(src.reviewId)!.mediaId,safeReview(guide.reviewId)!.mediaId],"the photo, then its marked copy");
 });
