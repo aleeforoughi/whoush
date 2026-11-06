@@ -18,9 +18,12 @@ export const BRUSH_MISSING_NOTE_FA="برای هر قسمتی که رنگ کرد�
 export const MAX_NOTE=300;
 export const MAX_REGIONS=5;
 /** Five region colours, far apart, each with the English name the prompt uses. */
-export const REGION_COLORS:readonly {name:RegionColor;css:string}[]=[
- {name:"red",css:"#ff1744"},{name:"blue",css:"#2979ff"},{name:"green",css:"#00c853"},{name:"yellow",css:"#ffd600"},{name:"magenta",css:"#d500f9"}
+/** Neon, so the paint stands out on any photo (owner, 2026-11-06); `ink` is the readable text colour on it (dark on the light neons). */
+export const REGION_COLORS:readonly {name:RegionColor;css:string;ink:string}[]=[
+ {name:"red",css:"#ff1f4b",ink:"#fff"},{name:"blue",css:"#1f6bff",ink:"#fff"},{name:"green",css:"#39ff14",ink:"#0a0a0a"},{name:"yellow",css:"#fff01f",ink:"#0a0a0a"},{name:"magenta",css:"#ff00e6",ink:"#fff"}
 ];
+/** The subtle hard shadow that lifts a neon dot off any background: offset, no blur, see-through. */
+export const NEON_SHADOW="1.5px 1.5px 0 rgba(0,0,0,.35)";
 export type RegionColor=RegionColorName;
 /** Five brush sizes, in screen pixels (so zooming in paints finer). */
 export const BRUSH_SIZES=[{id:"xs",px:6,labelFa:"خیلی کوچک"},{id:"s",px:12,labelFa:"کوچک"},{id:"m",px:22,labelFa:"متوسط"},{id:"l",px:38,labelFa:"بزرگ"},{id:"xl",px:64,labelFa:"خیلی بزرگ"}] as const;

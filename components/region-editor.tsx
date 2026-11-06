@@ -3,7 +3,7 @@ import {useEffect,useRef,useState} from "react";
 import {Check,Hand,Redo2,Trash2,Undo2,X} from "lucide-react";
 import {Button,Icon} from "@aleeforoughi/feather-react";
 import {BRUSH_DONE_FA,BRUSH_EDIT_FA,BRUSH_HINT_FA,BRUSH_MISSING_NOTE_FA,BRUSH_NOTE_PLACEHOLDER_FA,BRUSH_SIZES,MAX_NOTE,MAX_REGIONS,REGION_COLORS,
- colorCss,maskHasPaint,regionTagFa,type Region} from "@/lib/region-edit";
+ NEON_SHADOW,colorCss,maskHasPaint,regionTagFa,type Region} from "@/lib/region-edit";
 import {displayTag} from "@/lib/attachments";
 
 /** A region in the editor: its colour slot (0..4, one layer each), its number (#ادیت-n), its comment and where its pin sits. */
@@ -158,8 +158,8 @@ export function RegionEditor({tag,photoUrl,onClose,onDone}:{tag:string;photoUrl:
       className="pointer-events-none absolute inset-0 size-full" style={{opacity:.55}}/>)}
      {/* Pins: each region's tag where it was first painted, the same size on screen at any zoom; the tag picks the region, its ✕ deletes it. */}
      {regions.map(r=><span key={r.slot} onPointerDown={e=>e.stopPropagation()}
-      className={"absolute flex items-center rounded-[4px] text-white shadow-md "+(focus===r.slot?"ring-2 ring-white":"")}
-      style={{left:r.pin.x*100+"%",top:r.pin.y*100+"%",background:REGION_COLORS[r.slot].css,transform:`translate(-50%,-115%) scale(${1/view.s})`,transformOrigin:"bottom center"}}>
+      className={"absolute flex items-center rounded-[4px] "+(focus===r.slot?"ring-2 ring-white":"")}
+      style={{left:r.pin.x*100+"%",top:r.pin.y*100+"%",background:REGION_COLORS[r.slot].css,color:REGION_COLORS[r.slot].ink,boxShadow:NEON_SHADOW,transform:`translate(-50%,-115%) scale(${1/view.s})`,transformOrigin:"bottom center"}}>
       <button type="button" onClick={()=>{pick(r.slot);notes.current.get(r.slot)?.focus({preventScroll:true});}} aria-pressed={focus===r.slot} aria-label={regionTagFa(r.n)+(r.note?": "+r.note:"")}
        className="hit-area py-0.5 ps-2 pe-1 type-caption font-medium"><bdi>{regionTagFa(r.n)}</bdi></button>
       <button type="button" onClick={()=>removeRegion(r.slot)} aria-label={"حذف "+regionTagFa(r.n)} className="hit-area flex size-5 items-center justify-center rounded-[4px] hover:bg-black/20">
@@ -167,16 +167,16 @@ export function RegionEditor({tag,photoUrl,onClose,onDone}:{tag:string;photoUrl:
      </span>)}
     </div>
    </div>
+   {/* The brush cursor: a see-through neon dot the size of the brush, no border, lifted by a hard shadow. */}
    {cursor&&!hand&&<span aria-hidden="true" className="pointer-events-none absolute rounded-full"
-    style={{left:cursor.x,top:cursor.y,width:BRUSH_SIZES[size].px,height:BRUSH_SIZES[size].px,transform:"translate(-50%,-50%)",
-     border:"2px solid "+brushColor,boxShadow:"0 0 0 1px rgba(255,255,255,.9), inset 0 0 0 1px rgba(255,255,255,.9)"}}/>}
+    style={{left:cursor.x,top:cursor.y,width:BRUSH_SIZES[size].px,height:BRUSH_SIZES[size].px,transform:"translate(-50%,-50%)",background:brushColor,opacity:.6,boxShadow:NEON_SHADOW}}/>}
    {view.s>1&&<button type="button" onPointerDown={e=>e.stopPropagation()} onClick={()=>setView({s:1,x:0,y:0})} className="absolute start-2 top-2 rounded-full bg-background/80 px-3 py-1 type-caption text-fg-primary">اندازهٔ اصلی</button>}
    {/* Tools: a vertical card on the photo's left (the end side in RTL), see-through, 8px corners; padding keeps the selected ring whole (nothing clips it). */}
    <div role="toolbar" aria-orientation="vertical" aria-label="ابزار قلم" onPointerDown={e=>e.stopPropagation()} onPointerMove={()=>setCursor(null)}
-    className="absolute end-2 top-1/2 flex -translate-y-1/2 flex-col items-center gap-1.5 rounded-[8px] border border-white/15 bg-background/45 p-2 shadow-lg backdrop-blur-md" style={{cursor:"default"}}>
+    className="absolute end-4 top-1/2 flex -translate-y-1/2 flex-col items-center gap-1.5 rounded-[8px] border border-white/15 bg-background/75 p-2 shadow-lg backdrop-blur-md md:end-6" style={{cursor:"default"}}>
     {BRUSH_SIZES.map((b,i)=><button key={b.id} type="button" onClick={()=>{setSize(i);setHand(false);}} aria-pressed={size===i&&!hand} aria-label={"قلم "+b.labelFa} title={"قلم "+b.labelFa}
      className={"flex size-10 shrink-0 items-center justify-center rounded-[8px] motion-hover hover:bg-white/10 "+(size===i&&!hand?"bg-white/15 ring-2 ring-primary":"")}>
-     <span className="rounded-full ring-1 ring-white/60" style={{width:Math.min(26,4+b.px*.35),height:Math.min(26,4+b.px*.35),background:brushColor}}/></button>)}
+     <span className="rounded-full" style={{width:Math.min(26,4+b.px*.35),height:Math.min(26,4+b.px*.35),background:brushColor,boxShadow:NEON_SHADOW}}/></button>)}
     <span className="my-0.5 h-px w-6 bg-white/25" aria-hidden="true"/>
     <button type="button" onClick={()=>setHand(h=>!h)} aria-pressed={hand} aria-label="جابه‌جایی عکس" title="جابه‌جایی عکس"
      className={"flex size-10 items-center justify-center rounded-[8px] text-fg-primary motion-hover hover:bg-white/10 "+(hand?"bg-white/15 ring-2 ring-primary":"")}><Icon icon={Hand} aria-hidden="true"/></button>
@@ -191,9 +191,8 @@ export function RegionEditor({tag,photoUrl,onClose,onDone}:{tag:string;photoUrl:
    {missing&&regions.some(r=>!r.note.trim())&&<p role="alert" className="type-caption text-error">{BRUSH_MISSING_NOTE_FA}</p>}
    <ul className="flex flex-col gap-2">
     {regions.map(r=><li key={r.slot} onClick={()=>pick(r.slot)} className={"flex items-start gap-2 rounded-control border p-2 "+(focus===r.slot?"border-primary bg-background":"border-line-primary")}>
-     <span className="mt-1.5 size-3 shrink-0 rounded-full" style={{background:REGION_COLORS[r.slot].css}} aria-hidden="true"/>
      <div className="flex min-w-0 flex-1 flex-col gap-1">
-      <bdi className="type-label" style={{color:REGION_COLORS[r.slot].css}}>{regionTagFa(r.n)}</bdi>
+      <bdi className="w-fit rounded-[4px] px-1.5 py-0.5 type-caption font-medium" style={{background:REGION_COLORS[r.slot].css,color:REGION_COLORS[r.slot].ink,boxShadow:NEON_SHADOW}}>{regionTagFa(r.n)}</bdi>
       <textarea ref={el=>{if(el)notes.current.set(r.slot,el);else notes.current.delete(r.slot);}} value={r.note} rows={1} maxLength={MAX_NOTE} placeholder={BRUSH_NOTE_PLACEHOLDER_FA}
        aria-label={"توضیح "+regionTagFa(r.n)} onChange={e=>{const v=e.target.value;setRegions(l=>l.map(x=>x.slot===r.slot?{...x,note:v}:x));}}
        className="w-full resize-none bg-transparent type-body text-fg-primary outline-none placeholder:text-fg-secondary [field-sizing:content]"/>
