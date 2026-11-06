@@ -44,7 +44,9 @@ export type GifSnapshot={id:string;url:string;stillUrl:string;width:number;heigh
 export type QuestionSnapshot={question:string;/** Photos Whoush asked for (one upload slot per angle). */references?:ReferenceRequest;
  /** One-tap answers («عکس»، «ویدیو»، «هر دو»). */choices?:QuestionChoice[]};
 export type StoredMessage=MessageBase&(
- |{kind?:"text"|"restricted";snapshot?:undefined}
+ |{kind?:"text";snapshot?:undefined}
+ /** A refusal, with the safe ideas Whoush offered (one tap each). */
+ |{kind:"restricted";snapshot?:{choices?:QuestionChoice[]}}
  |{kind:"proposal";snapshot:ProposalSnapshot}
  |{kind:"no_model";snapshot:NoModelSnapshot}
  |{kind:"job";snapshot:JobSnapshot}
@@ -129,7 +131,8 @@ function checkMessage(m:unknown,i:number){
  if(m.generationTags!==undefined&&!(Array.isArray(m.generationTags)&&m.generationTags.length<=MAX_GENERATION_REFS&&m.generationTags.every(x=>typeof x==="string"&&isGenerationTag(x))))bad("تولیدهای پیام");
  const s=m.snapshot;
  switch(m.kind){
-  case undefined:case "text":case "restricted":if(s!==undefined)bad("پیام ساده عکس لحظه‌ای ندارد");break;
+  case undefined:case "text":if(s!==undefined)bad("پیام ساده عکس لحظه‌ای ندارد");break;
+  case "restricted":if(s!==undefined&&!(isObject(s)&&(s.choices===undefined||isQuestionChoices(s.choices))))bad("پیشنهادهای جایگزین");break;
   case "proposal":
    if(!isObject(s)||(s.operation!=="generate_image"&&s.operation!=="generate_video")||typeof s.modelName!=="string"||!Number.isSafeInteger(s.neurons)||typeof s.intentSummaryFa!=="string"||!isPlan(s.plan)||(s.tag!==undefined&&!(typeof s.tag==="string"&&isGenerationTag(s.tag)))
     ||(s.focus!==undefined&&!(Array.isArray(s.focus)&&s.focus.length<=5&&s.focus.every(f=>["frame","angle","distance","lens","light","camera"].includes(f as string)))))bad("پیشنهاد");

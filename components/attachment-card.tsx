@@ -4,6 +4,8 @@ import {Icon,Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from "@a
 import {ACCENTS,LANGUAGES,TagBadge,canPreview,type AttachmentPatch} from "@/components/attachment-chip";
 import {INSERT_ICONS} from "@/components/insert-menu";
 import {MainSubjectStar} from "@/components/main-subject-star";
+import {PhotoReviewOverlay} from "@/components/photo-review-badge";
+import type {PhotoReview} from "@/lib/photo-review";
 import {displayTag,isMediaKind,roleLabelFa,rolesFor,type AttachmentKind,type AttachmentRole,type AttachmentSpeech,type LocalAttachment} from "@/lib/attachments";
 import {roleIconKey,type InsertIconKey} from "@/lib/insert-menu";
 import {faBytes,faDuration} from "@/lib/format";
@@ -40,7 +42,7 @@ export function CardRoleRow({icon,label,muted,remove}:{icon:InsertIconKey;label:
 }
 
 /** The card's media area: the thumbnail (a button that opens the full-screen viewer for images and video), or the kind's icon and the file name. */
-function CardMedia({item:a,onPreview}:{item:LocalAttachment;onPreview:()=>void}){
+function CardMedia({item:a,onPreview,review,onRetryReview}:{item:LocalAttachment;onPreview:()=>void;review?:PhotoReview;onRetryReview?:()=>void}){
  const frame=CARD_MEDIA+" bg-surface-hover text-fg-secondary";
  const visual=a.kind==="image"&&a.previewUrl
   // eslint-disable-next-line @next/next/no-img-element -- a local blob: URL; next/image cannot optimize it
@@ -49,9 +51,11 @@ function CardMedia({item:a,onPreview}:{item:LocalAttachment;onPreview:()=>void})
    ?<><video src={a.previewUrl+"#t=0.1"} preload="metadata" muted playsInline aria-hidden="true" tabIndex={-1} className="size-full object-cover"/>
     <span className="absolute inset-0 flex items-center justify-center"><span className="flex size-8 items-center justify-center rounded-control bg-background/70 text-fg-primary"><Icon icon={Play} size={16} aria-hidden="true"/></span></span></>
    :<span className="flex min-w-0 flex-col items-center gap-1 px-3 text-center"><Icon icon={KIND_ICONS[a.kind]} size={32} aria-hidden="true"/><span className="max-w-full truncate type-caption" title={a.name}><bdi>{a.name}</bdi></span></span>;
- return canPreview(a)
+ const view=canPreview(a)
   ?<button type="button" onClick={onPreview} data-viewer-open={a.id} aria-label={"نمایش تمام‌صفحه "+displayTag(a.tag)} title={a.name} className={frame+" motion-hover not-disabled:hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"}>{visual}</button>
   :<span className={frame}>{visual}</span>;
+ // The photo's safety check sits over the thumbnail (lib/photo-review.ts); the overlay is its own layer, so the viewer button stays one control.
+ return a.kind==="image"&&review?<span className="relative block w-full">{view}<span className="pointer-events-none absolute inset-0 overflow-hidden rounded-control"><PhotoReviewOverlay review={review} onRetry={onRetryReview}/></span></span>:view;
 }
 
 /**
@@ -60,7 +64,8 @@ function CardMedia({item:a,onPreview}:{item:LocalAttachment;onPreview:()=>void})
  * row. A role the user chose is fixed text (to change it, remove the card and add another); a file with no role gets the optional role menu in that row. A lip-sync
  * audio also gets language and accent.
  */
-export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention,main,onToggleMain}:{item:LocalAttachment;onChange:(patch:AttachmentPatch)=>void;onRemove:()=>void;onPreview:()=>void;onMention:()=>void;
+export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention,main,onToggleMain,review,onRetryReview}:{item:LocalAttachment;onChange:(patch:AttachmentPatch)=>void;onRemove:()=>void;onPreview:()=>void;onMention:()=>void;
+ /** The photo's safety check: progress, verified badge, or why it cannot be used (and a retry when the check failed). */review?:PhotoReview;onRetryReview?:()=>void;
  /** «سوژه اصلی»: whether this file is the main subject, and the star that toggles it (optional). */main?:boolean;onToggleMain?:()=>void}){
  // On the narrow card the no-role option reads «اتوماتیک» (the full «انتخاب اتوماتیک هووش» would be cut off beside the delete button); the menu items are unchanged otherwise.
  const media=isMediaKind(a.kind),roles=[{value:AUTO_ROLE,label:CARD_AUTO_ROLE_FA},...rolesFor(a.kind).map(r=>({value:r.id,label:r.labelFa}))];
@@ -68,7 +73,7 @@ export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention,mai
  const set=(patch:Partial<AttachmentSpeech>)=>a.speech&&onChange({speech:{...a.speech,...patch}});
  const remove={label:"حذف "+a.name,onClick:onRemove};
  return <li id={"attachment-"+a.id} className={CARD_FRAME+" border-line-primary bg-surface-subtle"}>
-  <CardMedia item={a} onPreview={onPreview}/>
+  <CardMedia item={a} onPreview={onPreview} review={review} onRetryReview={onRetryReview}/>
   <span className={CARD_META} title={a.name+" · "+faBytes(a.bytes)}>
    <TagBadge tag={a.tag} onMention={onMention}/>
    {a.durationSeconds!==undefined&&<span className="type-caption text-fg-secondary"><bdi>{faDuration(a.durationSeconds)}</bdi></span>}
@@ -102,11 +107,11 @@ export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention,mai
  * opens the viewer, the tag inserts itself into the prompt, and there is no delete button or role menu. A file with no role reads «اتوماتیک»; a lip-sync audio
  * adds its language and accent.
  */
-export function SentAttachmentCard({item:a,onPreview,onMention}:{item:LocalAttachment;onPreview:()=>void;onMention:()=>void}){
+export function SentAttachmentCard({item:a,onPreview,onMention,review}:{item:LocalAttachment;onPreview:()=>void;onMention:()=>void;review?:PhotoReview}){
  const media=isMediaKind(a.kind),lip=a.role==="lip_sync"?a.speech:undefined;
  const label=(list:readonly {value:string;label:string}[],v:string)=>list.find(x=>x.value===v)?.label??v;
  return <li className={CARD_FRAME+" border-line-primary bg-surface-subtle"}>
-  <CardMedia item={a} onPreview={onPreview}/>
+  <CardMedia item={a} onPreview={onPreview} review={review}/>
   <span className={CARD_META} title={a.name+" · "+faBytes(a.bytes)}>
    <TagBadge tag={a.tag} onMention={onMention}/>
    {a.durationSeconds!==undefined&&<span className="type-caption text-fg-secondary"><bdi>{faDuration(a.durationSeconds)}</bdi></span>}

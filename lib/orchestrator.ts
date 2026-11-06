@@ -6,7 +6,7 @@ import {CreativePlanSchema,CreativeTurnInputSchema,STYLE_VISUAL,toPublicPlan,typ
 import {llmGate,preparePrivateCreativeRequest} from "./llm";
 import {acquireProviderSlot,countAstraCall,defaultRouterState,estimateTurnCostUsd,loadRoutingConfig,markProviderCooldown,planRoute,profileTask,type RoutingAudit,type RoutingAttempt,type RoutingConfig,type RouterState} from "./llm-routing";
 import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./private-audit";
-import {displayTag,inferAttachmentRoles,isGenerationTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
+import {describeTagEn,displayTag,inferAttachmentRoles,isGenerationTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
 import {providerForModelId} from "./llm-routing";
 import {replyScriptFor} from "./finglish";
 import {clearSightByMovingProp,occlusionMessageFa,sceneVisibility} from "./scene-visibility";
@@ -21,8 +21,10 @@ import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCa
 import {SKILLS,SKILL_REGISTRY_VERSION} from "./skills";
 import {detectReferenceNeeds,type ReferenceRequest} from "./reference-needs";
 import type {GenerationProposal,MediaRequirements,ProposalResearch,SuggestedModel,UnsupportedReason} from "./types";
-import {researchReferences,type ResearchReference,type ResearchResult} from "./research";
+import {researchReferences,type ResearchReference,type ResearchResult,type TurnReference} from "./research";
 import {inspectReferences} from "./reference-inspect";
+import {safeReview} from "./upload-review";
+import {MEDIA_ROUTE} from "./media-store";
 import {reviewAvailable,reviewPlan,promptWithFixes,type PlanReviewer} from "./plan-review";
 import {findMediaModel} from "./catalog";
 import type {ResearchPlan} from "./creative-plan";
@@ -42,8 +44,10 @@ import type {TurnStage} from "./orchestrator-stages";
 export type OrchestratorResult=
  |{status:"planned";turnId:string;proposal:GenerationProposal;plan:PublicCreativePlan;gif?:ChatGif;reaction?:ReactionEmoji}
  |{status:"unsupported";turnId:string;plan:PublicCreativePlan;message:string;suggestedModel?:SuggestedModel;
-  /** Why no proposal: the user's files are not yet inspected (a launch gate, not a missing model), no model fits, or a voice clone was asked. */reason:UnsupportedReason}
- |{status:"restricted";decision:"block"|"review";category:SafetyCategory;message:string}
+  /** Why no proposal: the user's files are not yet inspected (a launch gate, not a missing model), no model fits, or a voice clone was asked. */reason:UnsupportedReason;
+  /** media_review: the photos the server does not know as checked (a restart forgets reviews); the studio checks them again and resends. */unreviewed?:string[]}
+ |{status:"restricted";decision:"block"|"review";category:SafetyCategory;message:string;
+  /** Safe ideas the user can take with one tap (lib/safe-alternatives.ts): Whoush never leaves a refusal as a dead end. */choices?:QuestionChoice[]}
  /** Whoush needs one critical answer before it can offer a generation: no plan card, no price, only the question. */
  |{status:"needs_input";turnId:string;message:string;question:string;reaction?:ReactionEmoji;
   /** The photos Whoush needs to keep something only a photo can (lib/reference-needs.ts): the card shows an upload slot per angle. */references?:ReferenceRequest;
@@ -70,7 +74,8 @@ const REUSE_MARKER_FA="همون عکس‌هایی که قبلاً فرستادی
 const FA_REFUSED="این درخواست در حال حاضر قابل پردازش نیست. لطفاً آن را با توضیح غیرحساس‌تر دوباره بنویس.";
 const FA_NO_REFS="پرامپت تولید با کاراکتر انتخاب‌شده آماده است، اما هنوز هیچ مدل تأییدشده‌ای عکس مرجع کاراکتر را نمی‌پذیرد؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 const FA_TEXT_BLOCKED="یکی از فایل‌های متنیِ پیوست‌شده مسدود شد. ";
-const FA_MEDIA_REVIEW="پرامپت آماده است، اما بررسی ایمنی فایل‌های تصویری، ویدیویی و صوتی هنوز فعال نیست؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
+const FA_MEDIA_REVIEW="پرامپت آماده است، اما بررسی ایمنی همهٔ فایل‌ها تموم نشده (ویدیو و صدا هنوز بررسی نمی‌شن)؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
+const FA_NO_PHOTO_MODEL="پرامپت آماده است، اما الان هیچ مدل فعالی این عکس‌ها رو به‌عنوان مرجع نمی‌گیره (مثلاً تعدادشون بیشتر از حد مدله)؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 const FA_VOICE_CLONE="کلون صدا در هووش پشتیبانی نمی‌شود؛ هووش فقط تصویر و ویدیو می‌سازد و تولید یا شبیه‌سازی صدا ممکن نیست.";
 const faMissingGenerations=(tags:readonly string[])=>tags.map(displayTag).join("، ")+(tags.length===1?" در این گفت‌وگو پیدا نشد؛ تگ را اصلاح کن یا از «اصلاح» روی کارت همان تولید استفاده کن.":" در این گفت‌وگو پیدا نشدند؛ تگ‌ها را اصلاح کن یا از «اصلاح» روی کارت همان تولید استفاده کن.");
 const faMissing=(tags:readonly string[])=>tags.length===1?"پیوست "+displayTag(tags[0])+" در این گفت‌وگو پیدا نشد؛ آن را دوباره اضافه کن یا تگ را اصلاح کن.":"پیوست‌های "+tags.map(displayTag).join("، ")+" در این گفت‌وگو پیدا نشدند؛ آن‌ها را دوباره اضافه کن یا تگ‌ها را اصلاح کن.";
@@ -292,8 +297,10 @@ type SceneContent={content:string;aspect:string;
 const contents=()=>((globalThis as {__whoushPromptContent?:Map<string,SceneContent>}).__whoushPromptContent??=new Map());
 export const getPrivateMediaPrompt=(turnId:string):string|undefined=>store().get(turnId);
 /** The inspected research references of a turn (Whoush-owned copies), private to the server: quotes bind the ones the user kept. */
-const refStore=()=>((globalThis as {__whoushTurnRefs?:Map<string,ResearchReference[]>}).__whoushTurnRefs??=new Map());
-export const getTurnReferences=(turnId:string):readonly ResearchReference[]=>refStore().get(turnId)??[];
+/** A file tag's number (image3 → 3), for the order photos are attached in. */
+const tagOrder=(tag:string)=>Number(tag.replace(/\D/g,""))||0;
+const refStore=()=>((globalThis as {__whoushTurnRefs?:Map<string,TurnReference[]>}).__whoushTurnRefs??=new Map());
+export const getTurnReferences=(turnId:string):readonly TurnReference[]=>refStore().get(turnId)??[];
 /** The draft for a video: the cheapest image model that takes reference images (docs/RESEARCH_PIPELINE.md). */
 export const DRAFT_IMAGE_MODEL="nano-banana-2-1";
 const DRAFT_PREFIX="A single still photograph: the opening frame of this video shot, as it looks at its first moment. ";
@@ -364,7 +371,8 @@ export function mediaRequirements(input:{characterRef?:{angles:readonly string[]
  const operation:MediaRequirements["operation"]=files.some(a=>a.kind==="audio"&&a.role==="lip_sync")?"lip_sync"
   :video("edit_reference")&&images.some(a=>a.role==="character"||a.role==="object")?"replace"
   :video("motion_reference")&&images.some(a=>a.role!=="graphic")?"motion_transfer":undefined;
- return {...(operation?{operation}:{}),referenceImages:refs||undefined,...(refs?{identityReference:true}:{}),lipSync:lips||undefined,
+ return {...(operation?{operation}:{}),referenceImages:refs||undefined,
+  ...(input.characterRef?.angles.length||images.some(a=>a.role==="character")?{identityReference:true}:{}),...(input.characterRef?.angles.length?{savedCharacter:true}:{}),lipSync:lips||undefined,
   ...(video("motion_reference")?{motionReference:true}:{}),...(video("edit_reference")?{videoReference:true}:{}),
   ...(files.some(a=>a.kind==="image"&&a.role==="start_frame")?{startImage:true}:{}),...(files.some(a=>a.kind==="image"&&a.role==="end_frame")?{endImage:true}:{}),...(video("continue")?{videoContinuation:true}:{})};
 }
@@ -376,7 +384,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const stage=(x:TurnStage)=>{try{deps.onStage?.(x);}catch{ /* progress is best effort */ }};
  stage("reading");
  const safety=evaluateTextSafety(parsed.text);
- if(safety.decision!=="allow")return {status:"restricted",decision:safety.decision,category:safety.category,message:safety.message};
+ if(safety.decision!=="allow")return {status:"restricted",decision:safety.decision,category:safety.category,message:safety.message,...(safety.choices?{choices:safety.choices}:{})};
  // A role is optional: media without one gets Whoush's best guess from the words of the brief (no media analysis), before skills resolve.
  // Inferred roles drive the same skills, constraints, kind override and requirements as chosen ones; `voice_clone` is never inferred.
  const given=parsed.attachments??[],roles=new Map(inferAttachmentRoles(parsed.text,given).map(r=>[r.tag,r]));
@@ -432,7 +440,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  for(const f of files){
   if(!f.textExcerpt)continue;
   const r=evaluateTextSafety(f.textExcerpt);
-  if(r.decision!=="allow")return {status:"restricted",decision:r.decision,category:r.category,message:FA_TEXT_BLOCKED+r.message};
+  if(r.decision!=="allow")return {status:"restricted",decision:r.decision,category:r.category,message:FA_TEXT_BLOCKED+r.message,...(r.choices?{choices:r.choices}:{})};
  }
  // Summaries of earlier generations come from the browser: user data like excerpts, with the same preflight.
  const generations=parsed.generations??[];
@@ -441,7 +449,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const script=replyScriptFor(parsed.text);
  for(const g of generations){
   const r=evaluateTextSafety(g.summaryFa);
-  if(r.decision!=="allow")return {status:"restricted",decision:r.decision,category:r.category,message:FA_TEXT_BLOCKED+r.message};
+  if(r.decision!=="allow")return {status:"restricted",decision:r.decision,category:r.category,message:FA_TEXT_BLOCKED+r.message,...(r.choices?{choices:r.choices}:{})};
  }
  // Planners see attachments only through `req.attachments` (kinds and excerpts as data); the audio flags are merged into `input.audio`.
  // An edit_reference (image or video) makes the turn an edit, which brings photo_editor or video_editor.
@@ -639,13 +647,28 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   rec({planner:label,fallbackReason:"voice_clone_unsupported",corrections:corrections.length?corrections:undefined});
   return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,undefined,input.style)),message:FA_VOICE_CLONE,reason:"voice_clone"};
  }
- // TODO(docs/MODERATION_POLICY.md step 4, "Reference inspection"): plug a real multimodal inspector in here. Until one exists, any image, video or
- // audio attachment fails closed: the plan is returned, but no proposal or price, so uninspected media can never reach provider handoff (step 6).
- if(files.some(f=>isMediaKind(f.kind))){
+ // docs/MODERATION_POLICY.md step 4, "Reference inspection": every photo was checked right after upload (POST /api/media/review, lib/upload-review.ts). Only
+ // the server's own record counts, by the review id the photo carries; a photo it does not know as safe (unchecked, blocked, forgotten after a restart) and
+ // every video or audio file (no inspector yet) fail closed: the plan is returned with no proposal or price, so unchecked media never reaches a provider.
+ const unchecked=files.filter(f=>isMediaKind(f.kind)&&!(f.kind==="image"&&safeReview(f.reviewId)));
+ if(unchecked.length){
   rec({planner:label,fallbackReason:"media_review_unavailable",corrections:corrections.length?corrections:undefined});
-  const suggestedModel=suggestModel(requirements,kind);
-  return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,suggestedModel,input.style)),message:FA_MEDIA_REVIEW+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{}),reason:"media_review"};
+  const suggestedModel=suggestModel(requirements,kind),photos=unchecked.filter(f=>f.kind==="image").map(f=>f.tag);
+  return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,suggestedModel,input.style)),message:FA_MEDIA_REVIEW+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{}),reason:"media_review",
+   ...(photos.length===unchecked.length?{unreviewed:photos}:{})};
  }
+ // The checked photos go to the model as reference images, in tag order; the prompt names each by its tag («[reference image 1 · character]»), and the
+ // order note says which attached image is which.
+ const uploads:TurnReference[]=files.filter(f=>f.kind==="image").sort((a,b)=>tagOrder(a.tag)-tagOrder(b.tag)).map(f=>{
+  const r=safeReview(f.reviewId)!;return {id:r.mediaId,url:MEDIA_ROUTE+r.mediaId,subjectFa:displayTag(f.tag),title:displayTag(f.tag),license:"user",creator:"",sourceUrl:"",source:"upload" as const,mime:r.mime};
+ });
+ if(uploads.length){
+  const order=" Attached reference images, in this order: "+files.filter(f=>f.kind==="image").sort((a,b)=>tagOrder(a.tag)-tagOrder(b.tag)).map((f,i)=>(i+1)+" = "+describeTagEn(f)).join("; ")+".";
+  plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-order.length))+order;
+  if(content)content={...content,content:(content.content.slice(0,Math.max(0,3000-order.length))+order)};
+ }
+ // A video model takes no photos (Seedance refuses real faces): the photos serve the video's opening-frame draft, which an image model makes from them.
+ const modelReq:MediaRequirements=kind==="video"&&uploads.length?{...requirements,referenceImages:undefined,identityReference:undefined}:{...requirements,...(uploads.length?{referenceImages:Math.max(requirements.referenceImages??0,uploads.length)}:{})};
  // Research (docs/RESEARCH_PIPELINE.md): what has a real identity or needs research gets open-licensed references, each inspected by a vision model before
  // use. The research text is planner output, so it passes the same plan-text safety check first. A failure leaves a note, never a broken turn.
  let research:ResearchResult|undefined;
@@ -667,14 +690,14 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  let usedAsImages=false;
  try{
   if(refCount&&kind==="image"){
-   try{proposal=buildProposal(input.text,input.preference,{...requirements,referenceImages:Math.max(requirements.referenceImages??0,refCount)},kind);usedAsImages=true;}
-   catch(e){if(!(e instanceof NoCompatibleModelError))throw e;proposal=buildProposal(input.text,input.preference,requirements,kind);}
-  }else proposal=buildProposal(input.text,input.preference,requirements,kind);
+   try{proposal=buildProposal(input.text,input.preference,{...modelReq,referenceImages:Math.max(requirements.referenceImages??0,refCount)},kind);usedAsImages=true;}
+   catch(e){if(!(e instanceof NoCompatibleModelError))throw e;proposal=buildProposal(input.text,input.preference,modelReq,kind);}
+  }else proposal=buildProposal(input.text,input.preference,modelReq,kind);
  }
  catch(e){
   if(!(e instanceof NoCompatibleModelError))throw e;
   rec({planner:label,fallbackReason:"no_compatible_model",corrections:corrections.length?corrections:undefined});
-  const suggestedModel=suggestModel(requirements,kind),base=ref?FA_NO_REFS:lipsMsg;
+  const suggestedModel=suggestModel(modelReq,kind),base=ref?FA_NO_REFS:uploads.length&&!modelReq.lipSync?FA_NO_PHOTO_MODEL:lipsMsg;
   return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,suggestedModel,input.style)),message:base+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{}),reason:"no_model"};
  }
  // Pre-generation risk check: the cheapest model stress-tests the plan for the chosen model before any generation is paid for. Fixes go into the prompt (and
@@ -690,6 +713,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   if(review?.length){plan.mediaPrompt=promptWithFixes(plan.mediaPrompt,review);if(content)content={...content,content:promptWithFixes(content.content,review)};}
  }
  keepPrompt(turnId,plan.mediaPrompt,content);
+ if(uploads.length&&kind==="image")refStore().set(turnId,uploads);
  if(research){
   if(usedAsImages&&refCount)refStore().set(turnId,research.references);
   const notes=[...research.notesFa,...(refCount&&!usedAsImages?[kind==="video"?"برای ویدیو، مرجع‌ها فعلاً در نوشتن صحنه به کار رفتن، نه به‌عنوان تصویر.":"مدل‌های پیشنهادی مرجع تصویری نمی‌گیرن؛ مرجع‌ها در نوشتن صحنه به کار رفتن."]:[])];
@@ -705,7 +729,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
    const draftTurn=randomUUID();
    keepPrompt(draftTurn,(DRAFT_PREFIX+plan.mediaPrompt).slice(0,3000-DRAFT_SUFFIX.length)+DRAFT_SUFFIX);
    // The research references (inspected) go with the draft: the image model takes them even when the video model cannot.
-   const refs=research?.references??[];if(refs.length)refStore().set(draftTurn,refs);
+   const refs=[...uploads,...(research?.references??[])];if(refs.length)refStore().set(draftTurn,refs);
    proposal={...proposal,draft:{turnId:draftTurn,modelId:draftModel.id,modelName:draftModel.name,neurons:draftModel.neurons}};
    // The references now serve the draft: the report says so, and the user can still remove any before drafting.
    if(refs.length&&proposal.research)proposal={...proposal,research:{...proposal.research,usedAsImages:true,
@@ -715,8 +739,9 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  rec({planner:label,fallbackReason,corrections:corrections.length?corrections:undefined,usage:label==="live"?result?.usage:undefined});
  // The proposal speaks in Whoush's voice; a rejected explicit model request keeps its factual note after the reply.
  // «هر دو»: the video's opening-frame draft is the photo, then the video from it.
+ const photoNote=uploads.length&&kind==="video"&&proposal.draft?(script==="finglish"?"\nAksato too pish-nevis (frame-e aval) estefade mikonam; khod-e video felan az roo-ye prompt sakhte mishe.":"\nعکس‌هات توی پیش‌نویس (فریم اول) به کار می‌رن؛ خود ویدیو فعلاً از روی پرامپت ساخته می‌شه."):"";
  const bothNote=wantsBoth&&proposal.draft?(script==="finglish"?"\nHar do ro misazam: aval aks (frame-e aval), baad video.":"\nهر دو رو می‌سازم: اول عکس (فریم اول)، بعد ویدیو از روی همون."):"";
- proposal={...proposal,message:replyText("planned")+bothNote+(proposal.explicitRejected?"\n"+proposal.message:"")};
+ proposal={...proposal,message:replyText("planned")+bothNote+photoNote+(proposal.explicitRejected?"\n"+proposal.message:"")};
  const gif=gifMood?await (deps.findGif??findGif)(gifMood).catch(()=>undefined):undefined;
  return {status:"planned",turnId,proposal,plan:withMain(toPublicPlan(plan,refs,undefined,input.style)),...(gif?{gif}:{}),...(reaction?{reaction}:{})};
 }

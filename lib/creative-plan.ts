@@ -20,7 +20,9 @@ const speechSchema=z.object({hasSpeech:z.boolean(),language:z.enum(["fa","other"
 export const AttachmentSchema=z.object({
  id:z.uuid(),tag:z.string().regex(TAG_PATTERN),kind:z.enum(ATTACHMENT_KIND_IDS),mime:z.string().max(100),bytes:z.number().int().positive(),sha256:z.string().regex(/^[0-9a-f]{64}$/),
  width:z.number().int().min(1).max(20000).optional(),height:z.number().int().min(1).max(20000).optional(),durationSeconds:z.number().min(0).max(MAX_DURATION_SECONDS).optional(),
- textExcerpt:z.string().max(MAX_EXCERPT_CHARS).optional(),role:z.enum(ATTACHMENT_ROLE_IDS).optional(),consent:z.literal(true).optional(),speech:speechSchema.optional()
+ textExcerpt:z.string().max(MAX_EXCERPT_CHARS).optional(),role:z.enum(ATTACHMENT_ROLE_IDS).optional(),consent:z.literal(true).optional(),speech:speechSchema.optional(),
+ /** The server's safety check of this photo (POST /api/media/review): the id it gave. Only the server's record says whether it is safe. */
+ reviewId:z.uuid().optional()
 }).strict().superRefine((a,ctx)=>{
  const bad=(path:string,message:string)=>ctx.addIssue({code:"custom",path:[path],message});
  const def=ATTACHMENT_KINDS[a.kind];
@@ -34,6 +36,7 @@ export const AttachmentSchema=z.object({
  if(a.role==="voice_clone"&&a.consent!==true)bad("consent","voice_clone needs consent: true");
  if(a.consent!==undefined&&a.role!=="voice_clone")bad("consent","only voice_clone carries consent");
  if(a.speech&&a.role!=="lip_sync")bad("speech","only lip_sync audio carries speech details");
+ if(a.reviewId!==undefined&&a.kind!=="image")bad("reviewId","only images are reviewed");
  if((a.width!==undefined||a.height!==undefined)&&a.kind!=="image"&&a.kind!=="video")bad("width","only image and video carry dimensions");
  if(a.durationSeconds!==undefined&&a.kind!=="video"&&a.kind!=="audio")bad("durationSeconds","only video and audio carry a duration");
 });

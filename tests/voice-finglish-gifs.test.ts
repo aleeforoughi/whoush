@@ -24,7 +24,7 @@ test("Finglish is detected from everyday Persian words in Latin letters; English
 test("the safety prefilter reads Finglish: the same categories, whatever the spelling",()=>{
  const cat=(t:string)=>{const r=evaluateTextSafety(t);return r.decision+":"+r.category;};
  assert.equal(cat("ye dokhtare lokht"),"block:sexualized_content");assert.equal(cat("ye aks-e berahneh"),"block:sexualized_content");
- assert.equal(cat("poster-e entekhabat"),"block:politics");assert.equal(cat("aks-e Khamenei"),"block:politics");assert.equal(cat("ye poster siyasi"),"block:politics");
+ assert.equal(cat("poster-e entekhabat"),"block:politics");assert.equal(cat("aks-e Khamenei"),"block:iran_politics");assert.equal(cat("ye poster siyasi"),"block:politics");
  assert.equal(cat("sar borideh"),"block:graphic_violence");assert.equal(cat("sigar mikeshe"),"review:regulated_content");
  for(const ok of ["ye aks az shab-e tehran besaz","mikham ye video az daryache besazi koni","ye gorbe-ye khoshgel","a photo of a lake"])assert.equal(cat(ok),"allow:none",ok);
 });

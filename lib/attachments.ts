@@ -477,8 +477,9 @@ export function withRole(a:LocalAttachment,role:AttachmentRole):LocalAttachment{
  return next;
 }
 /** The request payload: metadata and text excerpts only. No bytes, no file name, no object URL. Speech details travel only with the `lip_sync` role. */
-export function toWireAttachment(a:LocalAttachment){
- return {id:a.id,tag:a.tag,kind:a.kind,mime:a.mime,bytes:a.bytes,sha256:a.sha256,...(a.role?{role:a.role}:{}),
+/** The attachment as the agent receives it (details only, never the bytes); `reviewId`: the server's safety check of a photo, when it was found safe. */
+export function toWireAttachment(a:LocalAttachment,reviewId?:string){
+ return {...(reviewId&&a.kind==="image"?{reviewId}:{}),id:a.id,tag:a.tag,kind:a.kind,mime:a.mime,bytes:a.bytes,sha256:a.sha256,...(a.role?{role:a.role}:{}),
   ...(a.width!==undefined?{width:a.width}:{}),...(a.height!==undefined?{height:a.height}:{}),
   ...(a.durationSeconds!==undefined?{durationSeconds:a.durationSeconds}:{}),
   ...(a.textExcerpt!==undefined?{textExcerpt:a.textExcerpt}:{}),...(a.speech&&a.role==="lip_sync"?{speech:a.speech}:{})};

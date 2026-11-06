@@ -4,7 +4,34 @@
 ## Goal and intended audience
 Persian-speaking users, Iranian influencers, modern/traditional cultural creators, local businesses and everyday content makers. Allow genuine nonpolitical Iranian landscapes, culture, cities, weddings, apparel, beauty, portraits, sports, advertising and accessible creative expression.
 
-## Absolute bans for generation
+## Owner content rules (2026-11-06)
+The same rules apply to chat text (`lib/safety.ts`) and to every uploaded photo (`lib/reference-inspect.ts`, checked right after upload). Code: `lib/safe-alternatives.ts`, tests: `tests/content-rules.test.ts`, `tests/upload-review.test.ts`.
+
+**Refused:**
+- Iranian political figures of any era or side.
+- Iranian protests, human rights, executions, government, politics, opposition statements, «freedom» slogans, and anything sensitive for the Iranian government.
+- Symbols and imagery of pre-revolution royal Iran: the Lion and Sun, and the Pahlavi crown and family.
+- Nudity, pornography and sexual content.
+- Alcohol.
+- Drugs.
+- Violence and blood.
+- Sexualized minors.
+- Famous people without their permission (photos).
+
+**Allowed:**
+- The official flag of Iran.
+- Iranian culture, history (ancient Persia, Persepolis, the Pahlavi script), palaces as architecture, cities and landmarks (Azadi Tower), food, and anything positive and peaceful about Iran.
+- Everyday photos of women in casual summer clothes.
+- Beauty and fashion content: makeup, skincare, hair, nails, model poses, gowns and outfits. Colour names such as «nude», «wine red» and «champagne» are colours.
+
+**Owner decision: non-Iranian political figures.** Political figures of other countries are allowed, by owner decision. This replaces the zero-tolerance line below and in `CLAUDE.md` for them. Generic political words (election, protest, government) stay refused for any country. Whoush's own reaction GIFs never show any politician.
+
+**Whoush is the user's advocate.** Every refusal is kind and comes with safe ideas, one tap each. Each idea leaves the restricted subject out entirely and points somewhere safe. An idea never says how to keep the subject and pass a check.
+- **Chat text:** for alcohol, the user's own scene comes back with tea, coffee or sherbet.
+- **Photos:** a refused photo says why and how to replace it.
+
+Refusals are only refusals: nothing about the user is reported, and the audit keeps a prompt hash, never the text.
+
 1. **Politics / public political figures (zero tolerance)**: no political advocacy/opposition, campaigns, election graphics, public political figure likeness, speeches, protest imagery, party slogans, or political propaganda of any position. Enforce neutrally across perspectives. A political name or direct political request is blocked regardless of persuasion direction.
 2. **Sexualized visual content**: no nudity, sexual display, overtly sensual/erotic poses or clearly revealing outfits (including lingerie and bikinis), sexualization of minors, or sexualized deepfakes. Normal everyday clothing and nonsexual fashion, sportswear, weddings and portrait photography are permitted.
 3. **Explicit severe harms**: no sexual exploitation of minors, graphic dismemberment, explicit religious hostility or direct advertising of illicit/high-risk regulated activities. Add and validate further harms under provider policy before production.
@@ -24,7 +51,7 @@ Persian-speaking users, Iranian influencers, modern/traditional cultural creator
 1. **Input normalization:** Unicode NFKC, Arabic/Kaf/Yeh normalization, Persian half-space, letter elongation, punctuation and common multilingual spelling aliases. Retain raw input securely for processing; do not store unnecessary personally sensitive logs.
 2. **Fast deterministic preflight:** `evaluateTextSafety` in `lib/safety.ts`. Decisions `allow`, `block`, `review`; blocks/reviews never reach paid generation. Fast pass does NOT certify the prompt as production-safe.
 3. **Context-aware semantic moderation:** private, cost-conscious model specialized for Persian language and local slang, with stable structured taxonomy and confidence, calibrated on Iranian colloquial input. Use independent media-policy checker; user-provided content cannot override rules.
-4. **Reference inspection:** inspect image/video/audio uploads and their metadata before analysis/generation. Detect political figures, sexualization, sensitive real-person manipulation, copyright/consent and misleading edits. If the inspection service is unavailable, fail closed for generation.
+4. **Reference inspection (photos: implemented 2026-11-06, `lib/upload-review.ts`; video and audio: not yet, they fail closed):** inspect image/video/audio uploads and their metadata before analysis/generation. Detect political figures, sexualization, sensitive real-person manipulation, copyright/consent and misleading edits. If the inspection service is unavailable, fail closed for generation.
 5. **Plan inspection:** re-evaluate expanded prompts, proposed storyboards, every scene and action manifest, media model configuration and output risk.
    Planner-written text is checked with `evaluatePlanTextSafety` (lib/safety.ts): a generic category word (political, propaganda, protest, سیاسی، تظاهرات، nudity terms…) is ignored when a negation sits within four words of it («هیچ نماد سیاسی نباشد», "no political banners"), because planners write such avoidance lines to obey this policy. Named political figures and explicit terms are never neutralized, user input keeps the strict check, and Enghelab/Revolution Square and Enghelab Street are treated as places. Found in the 2026-11-04 planner eval, where «میدان انقلاب» turns were blocked by the planners' own compliance lines.
 6. **Provider handoff:** validate safety + eligibility again at immutable quote approval and immediately before provider submission. Higgsfield's own moderation rules are additive, not replaced.

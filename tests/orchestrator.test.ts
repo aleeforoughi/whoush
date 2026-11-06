@@ -89,7 +89,7 @@ test("legacy {text,preference} bodies still work; restricted gives 422 with the 
  const post=(b:unknown)=>POST(new Request("http://x/api/agent",{method:"POST",body:typeof b==="string"?b:JSON.stringify(b)}));
  const ok=await post({text:"generate an image of a lake",preference:"speed"});assert.equal(ok.status,200);
  const bad=await post({text:"campaign poster for President Trump"});assert.equal(bad.status,422);
- const j=await bad.json();assert.deepEqual(Object.keys(j).sort(),["category","decision","error","message"]);assert.equal(j.error,"content_restricted");assert.equal(j.category,"politics");
+ const j=await bad.json();assert.deepEqual(Object.keys(j).sort(),["category","choices","decision","error","message"],"the old shape plus the safe ideas");assert.equal(j.error,"content_restricted");assert.equal(j.category,"politics");
  assert.equal((await post("{nope")).status,400);assert.equal((await post({text:"a",junk:1})).status,400);
 });
 test("oversized text is rejected by the route schema with 400",async()=>{
@@ -362,14 +362,14 @@ const att=(kind:string,over:Record<string,unknown>={})=>{
  return {id:crypto.randomUUID(),kind,bytes:2048,sha256:"c".repeat(64),...base[kind],...over};
 };
 const spyPlanner=():{planner:PrivatePlanner;seen:PlannerRequest[]}=>{const seen:PlannerRequest[]=[];return {seen,planner:r=>{seen.push(r);return {plan:deterministicPlanner(r).plan};}};};
-const MEDIA_REVIEW=/بررسی ایمنی فایل‌های تصویری، ویدیویی و صوتی هنوز فعال نیست/;
+const MEDIA_REVIEW=/بررسی ایمنی همهٔ فایل‌ها تموم نشده/;
 
 test("attachments: a text attachment with a blocked term is restricted and no planner runs",async()=>{
  const {planner,seen}=spyPlanner();
  const r=await orchestrateCreativeTurn({text:"a photo of a lake",attachments:[att("md",{textExcerpt:"# campaign poster for the election and the president"})]},{planner});
  assert.equal(r.status,"restricted");assert.equal((r as {category:string}).category,"politics");
  assert.match((r as {message:string}).message,/فایل‌های متنیِ پیوست‌شده مسدود شد/);assert.equal(seen.length,0);
- const j=await orchestrateCreativeTurn({text:"a photo of a lake",attachments:[att("json",{textExcerpt:'{"note":"ترامپ"}'})]},{planner});
+ const j=await orchestrateCreativeTurn({text:"a photo of a lake",attachments:[att("json",{textExcerpt:'{"note":"خامنه ای"}'})]},{planner});
  assert.equal(j.status,"restricted");assert.equal(seen.length,0);
  const res=await POST(new Request("http://x/api/agent",{method:"POST",body:JSON.stringify({text:"a photo of a lake",attachments:[att("md",{textExcerpt:"political propaganda"})]})}));
  assert.equal(res.status,422);assert.equal((await res.json()).error,"content_restricted");
@@ -446,10 +446,10 @@ test("attachments: the audit keeps only tag, role, kind, size and sha256",async(
  await orchestrateCreativeTurn({text:"a photo of a lake",attachments:[att("image")]});assert.deepEqual(last().attachments,[{tag:"image1",role:"character",roleSource:"user",kind:"image",bytes:2048,sha256:"c".repeat(64)}]);
  await orchestrateCreativeTurn({text:"a photo of a river"});assert.equal(last().attachments,undefined);
 });
-test("attachments: every image counts as a reference image, video and audio roles raise their own requirements",()=>{
+test("attachments: every image counts as a reference image (only a person photo or saved character needs a face-keeping model), video and audio roles raise their own requirements",()=>{
  const refs={attachments:[{kind:"image",role:"character"},{kind:"image",role:"environment"},{kind:"image",role:"edit_reference"},{kind:"video",role:"edit_reference"},{kind:"audio",role:"music"},{kind:"md"}]};
  assert.deepEqual(mediaRequirements(refs,false),{operation:"replace",referenceImages:3,identityReference:true,lipSync:undefined,videoReference:true});
- assert.deepEqual(mediaRequirements({...refs,characterRef:{angles:["front","profile_left"]}},true),{operation:"replace",referenceImages:5,identityReference:true,lipSync:true,videoReference:true});
+ assert.deepEqual(mediaRequirements({...refs,characterRef:{angles:["front","profile_left"]}},true),{operation:"replace",referenceImages:5,identityReference:true,savedCharacter:true,lipSync:true,videoReference:true});
  assert.deepEqual(mediaRequirements({attachments:[{kind:"video",role:"motion_reference"}]},false),{referenceImages:undefined,lipSync:undefined,motionReference:true});
  assert.deepEqual(mediaRequirements({attachments:[{kind:"audio",role:"lip_sync"}]},false),{operation:"lip_sync",referenceImages:undefined,lipSync:true});
  assert.deepEqual(mediaRequirements({attachments:[{kind:"audio",role:"voice_clone"},{kind:"audio",role:"music"}]},false),{referenceImages:undefined,lipSync:undefined});
@@ -780,7 +780,7 @@ test("P5: video edit_reference + character/object image suggests Genjutsu; motio
  }
  const m=await orchestrateCreativeTurn({text:"make her dance like the clip",attachments:[att("video",{role:"motion_reference"}),att("image",{role:"character"})]}) as Extract<OrchestratorResult,{status:"unsupported"}>;
  assert.equal(m.suggestedModel?.name,"Genjutsu");assert.ok(m.message.endsWith(SUGGEST("Genjutsu")));
- assert.deepEqual(mediaRequirements({attachments:[{kind:"video",role:"motion_reference"},{kind:"image",role:"graphic"}]},false),{referenceImages:1,identityReference:true,lipSync:undefined,motionReference:true});
+ assert.deepEqual(mediaRequirements({attachments:[{kind:"video",role:"motion_reference"},{kind:"image",role:"graphic"}]},false),{referenceImages:1,lipSync:undefined,motionReference:true});
  // an environment image does not make an edit a replacement
  const env=await orchestrateCreativeTurn({text:"change the sky in the clip",attachments:[att("video",{role:"edit_reference"}),att("image",{role:"environment"})]}) as Extract<OrchestratorResult,{status:"unsupported"}>;
  assert.equal(env.suggestedModel,undefined);assert.ok(!env.message.includes("مدل مناسب این کار"));
@@ -802,7 +802,7 @@ test("curated roles: start_frame makes a video with the first-frame constraint a
  assert.ok(skillsOf().includes("anti_drift")&&skillsOf().includes("continuity")&&skillsOf().includes("cinematographer"));
  assert.deepEqual(r.plan.references,[{tag:"image1",kind:"image",role:"start_frame",roleSource:"user",labelFa:"فریم اول"}]);
  assert.equal(r.suggestedModel,undefined);
- assert.deepEqual(mediaRequirements({attachments:[{kind:"image",role:"start_frame"}]},false),{referenceImages:1,identityReference:true,lipSync:undefined,startImage:true});
+ assert.deepEqual(mediaRequirements({attachments:[{kind:"image",role:"start_frame"}]},false),{referenceImages:1,lipSync:undefined,startImage:true});
  assert.equal(getPrivateMediaPrompt(r.turnId),undefined);
  assert.equal(describeTagEn({tag:"image1",kind:"image",role:"start_frame"}),"[start frame image 1]");
 });
@@ -847,7 +847,7 @@ test("curated roles: end_frame makes a video that ends on the image; start and e
  assert.equal(r.plan.mediaKind,"video");
  assert.ok(r.plan.hardConstraints.includes("#تصویر-۱ فریم آخر ویدیوست؛ ویدیو با همین ترکیب‌بندی، سوژه و نور تمام می‌شود"),JSON.stringify(r.plan.hardConstraints));
  assert.equal(r.plan.references[0].labelFa,"فریم آخر");assert.equal(r.suggestedModel,undefined);
- assert.deepEqual(mediaRequirements({attachments:[{kind:"image",role:"start_frame"},{kind:"image",role:"end_frame"}]},false),{referenceImages:2,identityReference:true,lipSync:undefined,startImage:true,endImage:true});
+ assert.deepEqual(mediaRequirements({attachments:[{kind:"image",role:"start_frame"},{kind:"image",role:"end_frame"}]},false),{referenceImages:2,lipSync:undefined,startImage:true,endImage:true});
  assert.equal(describeTagEn({tag:"image2",kind:"image",role:"end_frame"}),"[end frame image 2]");
  const both=unsupported(await orchestrateCreativeTurn({text:"از #تصویر-۱ شروع کن و به #تصویر-۲ برسه",attachments:[att("image",{tag:"image1",role:undefined}),att("image",{tag:"image2",role:undefined})]}));
  assert.deepEqual(both.plan.references.map(x=>[x.tag,x.role,x.roleSource]),[["image1","start_frame","inferred"],["image2","end_frame","inferred"]]);

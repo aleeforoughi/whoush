@@ -12,6 +12,8 @@ export interface ModelCapabilities {
   verified: boolean;
   evidence?: string; // private pointer into docs/HIGGSFIELD_EVIDENCE.md; never serialized to consumers
   referenceImages: { supported: boolean; max: number | null };
+  /** How many people the model documents keeping from the user's own photos (Google: "4 characters" on Nano Banana 2 and 2.1, docs/evidence/GOOGLE.md). Absent: none. */
+  identityReferences?: number;
   aspectRatios: readonly string[];
   durationsSeconds?: readonly number[]; // video SKU durations
   audio: boolean;
@@ -30,7 +32,9 @@ export interface ModelCapabilities {
 export interface MediaRequirements { operation?: Exclude<MediaOperation, "generate">; referenceImages?: number;
   /** The references are the user's own photos of a person or thing (a character, uploads), not Whoush's inspected research images: only a model built to keep
    * identity from them qualifies (none of the direct-provider models: their reference input carries research images only). */
-  identityReference?: boolean; aspectRatio?: string; durationSeconds?: number; lipSync?: boolean; motionReference?: boolean; videoReference?: boolean; startImage?: boolean; endImage?: boolean; videoContinuation?: boolean; }
+  identityReference?: boolean;
+  /** A saved character: its photos stay on the user's device, so no direct-provider model can receive them yet. */
+  savedCharacter?: boolean; aspectRatio?: string; durationSeconds?: number; lipSync?: boolean; motionReference?: boolean; videoReference?: boolean; startImage?: boolean; endImage?: boolean; videoContinuation?: boolean; }
 /** The direct provider whose API runs a model (docs/PROVIDERS.md). Private: never serialized to consumers. */
 export type MediaProviderId = "higgsfield" | "google" | "byteplus" | "kling";
 export interface MediaModel {

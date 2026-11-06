@@ -21,6 +21,8 @@ const THUMB_WIDTH=512,MAX_IMAGE_BYTES=2_000_000,REQUEST_TIMEOUT_MS=6_000,CACHE_M
 
 export type ReferenceCandidate={source:"wikimedia"|"openverse";title:string;imageUrl:string;sourceUrl:string;license:string;creator:string;mime?:string};
 export type ResearchReference={id:string;url:string;subjectFa:string;title:string;license:string;creator:string;sourceUrl:string;source:"wikimedia"|"openverse";mime:StoredMime};
+/** A reference image of a turn: a researched one, or the user's own photo checked after upload (lib/upload-review.ts). */
+export type TurnReference=Omit<ResearchReference,"source">&{source:ResearchReference["source"]|"upload"};
 export type ResearchSubjectReport={labelFa:string;factsFa:string[];found:number;kept:number};
 export type ResearchResult={subjects:ResearchSubjectReport[];references:ResearchReference[];
  /** Why fewer references than hoped (none found, inspection unavailable): shown in the report, never a provider or model name. */notesFa:string[]};

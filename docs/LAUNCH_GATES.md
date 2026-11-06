@@ -8,7 +8,7 @@
 5. **Payments:** Choose lawful Iran-appropriate payment method and legal entity; secure verified fulfillment, refunds, consumer disclosures, checkout snapshots, AML/fraud controls.
 6. **Data privacy:** Clarify where prompts/media/user PII reside and retention; obtain appropriate consents for faces and likenesses; enforce platform content restrictions and user rights.
 7. **Security:** Account auth, ownership checks, rate limits, CSRF/abuse mitigation, upload validation, private storage, managed secrets, webhook signatures, audit and incident response.
-8a. **Content policy and expert skills:** Every live creative LLM request includes mandatory core skills and relevant domain experts through the private skills compiler. Production moderation requires Persian contextual classification, attachment inspection (including OCR/ASR when applicable), a repeat check of expanded action plans immediately before media submission, generated-output screening, human review for borderline requests, and measured false-positive/false-negative rates. The lexical preflight alone is NOT authorization for generation. **Status: attachment media inspection not implemented; media attachments fail closed** (any image, video or audio attachment returns the plan with no proposal or price; see `docs/CREATIVE_SKILLS.md`, Attachments).
+8a. **Content policy and expert skills:** Every live creative LLM request includes mandatory core skills and relevant domain experts through the private skills compiler. Production moderation requires Persian contextual classification, attachment inspection (including OCR/ASR when applicable), a repeat check of expanded action plans immediately before media submission, generated-output screening, human review for borderline requests, and measured false-positive/false-negative rates. The lexical preflight alone is NOT authorization for generation. **Status: photo inspection implemented for development (2026-11-06, see below); video and audio attachments fail closed** (any image, video or audio attachment returns the plan with no proposal or price; see `docs/CREATIVE_SKILLS.md`, Attachments).
 8. **Engineering:** Durable database queue, concurrency-safe financial ledger, retry + cancellation handling, outputs mirrored to owned storage, observability, backpressure and rate caps, tested mobile RTL.
 9. **Business:** All SKU configurations with minimum margin after max bonus and internal chat overhead, reconciliation and negative-margin alerts. Verify high-tier discounts don't breach 20% target.
 10. **Go-live decision:** Human sign-off on provider permissions, payment, regional availability, policy, tests, recovery plan, and terms.
@@ -25,7 +25,17 @@ Higgsfield API facts as of Nov 2026: USD prepaid API billing (separate from its 
 ## Status: P4 chat attachments
 - Attachments are verified in the browser by magic bytes (not by name or declared type) and again as strict metadata on the server. Only metadata and text excerpts of Markdown and JSON files are sent; bytes and file names never leave the browser.
 - Markdown and JSON excerpts pass the lexical safety preflight before any planner and reach the planner only as untrusted `<attachment>` data.
-- Image, video and audio attachments are NOT inspected (no multimodal inspector exists, `docs/MODERATION_POLICY.md` step 4), so they fail closed: the plan is shown, no proposal or price is produced, and the audit records `media_review_unavailable`. This must stay until a verified inspector is wired in at the marked TODO in `lib/orchestrator.ts`.
+- **Photos:** checked right after upload (owner, 2026-11-06), so the check never blocks.
+  - The studio sends each photo, shrunk to 2048 px, to `POST /api/media/review`.
+  - A private vision check (`lib/reference-inspect.ts`) applies the owner's content rules.
+  - Only a safe photo is stored, and only the server's record, named by its review id, lets a turn use it (`lib/upload-review.ts`).
+  - Unknown, forged, blocked or forgotten reviews fail closed with `media_review_unavailable`, and the studio checks again.
+  - Checked photos go to the model as reference images in tag order, with an order note in the prompt.
+  - Person photos go only to models documented to keep a face: Nano Banana 2 and 2.1 ("4 characters", `docs/evidence/GOOGLE.md`).
+  - Seedance rejects real faces, so for video the photos serve the opening-frame draft.
+  - A saved character's photos stay on the device and still route nowhere.
+- **Video and audio attachments:** still NOT inspected, so they fail closed with the plan and no price.
+- **Before production:** the review registry must be durable and session-bound (it is in memory now), and photo inspection needs measured false-positive and false-negative rates.
 - Voice cloning (`voice_clone` role) is never supported: the turn returns `unsupported` before media review, audit reason `voice_clone_unsupported`, and the schema requires the owner/permission consent flag. Do not add a provider for it without a separate policy decision.
 - PDF files are accepted and counted but not read (no parser dependency yet); the plan says so.
 - Open: upload storage, signed URLs, retention and rate limits for attachments (`docs/IMPLEMENTATION_PLAN.md` Security QA) are not built because nothing is uploaded yet.

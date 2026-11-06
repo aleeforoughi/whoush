@@ -10,7 +10,8 @@ export type ProviderState="queued"|"running"|"completed"|"completed_demo"|"faile
 /** `reportedModelId`: the model the provider says ran, only when it reports one (the documented Higgsfield status has no such field). */
 export type ProviderStatus={state:ProviderState;outputs:ProviderOutput[];expiresAt?:string;reportedModelId?:string};
 /** Appended to the prompt when research references go with it: what they are for, so the model takes details from them and not their composition. */
-export const REFERENCE_PROMPT_NOTE=" Reference images are attached: open-licensed photos of the real subjects (artifacts, places, period dress). Follow them for authentic details of clothing, architecture and objects; do not copy their composition, framing or any text in them.";
+/** Neutral, for both kinds of reference: researched photos of real subjects, and the user's own photos (whose order the prompt itself lists). */
+export const REFERENCE_PROMPT_NOTE=" Reference images are attached. Use each one only for what the prompt says it shows: a person's face and identity (keep it exact), an outfit, a place, an object, or authentic period details. Do not copy their composition, framing or any text in them.";
 /** `references`: inspected, Whoush-owned research reference images the user kept (docs/RESEARCH_PIPELINE.md), for models that take them inline. */
 export type ProviderJob={modelId:string;prompt:string;configuration:MediaConfiguration;idempotencyKey:string;references?:{bytes:Uint8Array;mime:string}[]};
 /**

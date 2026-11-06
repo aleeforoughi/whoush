@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
 import Link from "next/link";
 import {useRouter,useSearchParams} from "next/navigation";
-import {ArrowUp,ChevronLeft,CircleAlert,Clapperboard,Eye,Hash,Info,LoaderCircle,MessageCircle,Mic,Smile,Star,Upload as UploadIcon,UserRound,X} from "lucide-react";
+import {ArrowUp,ChevronLeft,CircleAlert,Clapperboard,Eye,Hash,Info,LoaderCircle,MessageCircle,Mic,Smile,Sparkles,Star,Upload as UploadIcon,UserRound,X} from "lucide-react";
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Tabs,TabsContent,TabsList,TabsTrigger,Label,Tooltip,TooltipContent,TooltipTrigger} from "@aleeforoughi/feather-react";
 import {BACK_TO_CHAT_FA,CLOSE_PREVIEW_FA,OPEN_PREVIEW_FA,PreviewCard} from "@/components/preview-card";
 import {GalleryThumbs,GenerationGallery,galleryFocusOn,type GalleryFocus,type GalleryItem} from "@/components/generation-gallery";
@@ -30,6 +30,8 @@ import type {AgentProposal,JobView,NoModelResult} from "@/lib/studio-types";
 import {getLocalCharacter,listLocalCharacters} from "@/lib/character-store";
 import {characterCoverage,characterUsability,type CharacterProfile} from "@/lib/characters";
 import {fa} from "@/lib/format";
+import {REVIEW_FAILED_FA,WAITING_FA,photoReviewEnabled,reviewPhoto,reviewStopFa,type PhotoReview} from "@/lib/photo-review";
+import {PhotoReviewOverlay,ReviewRing} from "@/components/photo-review-badge";
 import {STORAGE_FULL_FA,getProject,listAssets,saveAsset,saveProject} from "@/lib/project-store";
 import {MAX_MESSAGES,assetToAttachment,attachmentToAsset,autoTitle,rerunSource,uniqueById,answerBrief,historyFor,toggleReaction,generationTagsIn,referencedGenerations,toGenerationRef,withGenerationTags,type GifSnapshot,type ProposalSnapshot,type JobSnapshot,type Project,type StoredMessage} from "@/lib/projects";
 import {MAX_GENERATION_REFS,type ReactionEmoji,type Staging} from "@/lib/creative-plan";
@@ -155,6 +157,13 @@ export function Studio(){
  const loadSeq=useRef(0);
  /** The files of this conversation: their bytes (to store with the project) and which ones are already stored. Replaced, never cleared, so a save in flight keeps its own. */
  const blobs=useRef(new Map<string,Blob>());
+ // The photo safety check (lib/photo-review.ts): each photo's state by attachment id, the checks still running, and the photos a sent message waits for.
+ const [reviewOn,setReviewOn]=useState(false);
+ const [reviews,setReviews]=useState<Record<string,PhotoReview>>({});
+ const reviewsRef=useRef<Record<string,PhotoReview>>({});
+ const reviewJobs=useRef(new Map<string,Promise<PhotoReview>>());
+ const [waitingFor,setWaitingFor]=useState<LocalAttachment[]|null>(null);
+ useEffect(()=>{let alive=true;void photoReviewEnabled().then(on=>{if(alive)setReviewOn(on);});return()=>{alive=false;};},[]);
  const savedAssets=useRef(new Set<string>());
  const latest=useRef({messages,mode,style,character:null as CharacterProfile|null});
  const character=characters.find(c=>c.id===characterId)??null;
@@ -356,6 +365,28 @@ export function Studio(){
   if(index>=0)setViewer({items,index,title:active.current?.title});
  }
  function releaseUrl(a:LocalAttachment){if(a.previewUrl){URL.revokeObjectURL(a.previewUrl);urls.current.delete(a.previewUrl);}}
+ function setReview(id:string,r:PhotoReview){reviewsRef.current={...reviewsRef.current,[id]:r};setReviews(reviewsRef.current);}
+ /**
+  * Checks one photo (right after it is added, or when a message needs it): a known verdict is reused, a running check is joined, a failed one is tried again.
+  * `force`: check again even when known (the server forgot it after a restart). A blocked photo says why and how to replace it, right away under the chat box.
+  */
+ function checkPhoto(a:LocalAttachment,force=false):Promise<PhotoReview>{
+  const known=reviewsRef.current[a.id];
+  if(!force&&known&&(known.state==="safe"||known.state==="blocked"))return Promise.resolve(known);
+  const running=reviewJobs.current.get(a.id);if(running&&!force)return running;
+  const blob=blobs.current.get(a.id);
+  if(!blob){const r:PhotoReview={state:"failed",reasonFa:REVIEW_FAILED_FA};setReview(a.id,r);return Promise.resolve(r);}
+  setReview(a.id,{state:"checking",progress:0});
+  const job=reviewPhoto(blob,p=>{if(reviewJobs.current.get(a.id)===job)setReview(a.id,{state:"checking",progress:p});}).then(r=>{
+   if(reviewJobs.current.get(a.id)!==job)return r;
+   reviewJobs.current.delete(a.id);setReview(a.id,r);
+   if(r.state==="blocked")setProblems(list=>[...list,{key:crypto.randomUUID(),name:displayTag(a.tag),message:r.reasonFa+(r.fixFa?" "+r.fixFa:"")}]);
+   return r;
+  });
+  reviewJobs.current.set(a.id,job);return job;
+ }
+ /** The id a photo's safe check got, sent with it so the server can find its own record. */
+ const reviewIdOf=(a:LocalAttachment)=>{const r=reviewsRef.current[a.id];return r?.state==="safe"?r.reviewId:undefined;};
  /** Verifies the picked files one by one; the good ones join the tray, each rejected one gets its own Persian reason. Returns how many were added. */
  async function addFiles(files:File[],upload?:Upload,reservedTag?:string):Promise<LocalAttachment[]>{
   if(!files.length||readingRef.current)return [];
@@ -382,6 +413,8 @@ export function Studio(){
    }catch(err){fail(err instanceof Error?err.message:ATTACHMENT_ERRORS_FA.unreadable);}
   }
   setAttachments(cur=>[...cur,...added]);setProblems(bad);
+  // Each photo is checked right away, so it is ready by the time the message goes.
+  if(reviewOn)for(const a of added)if(a.kind==="image")void checkPhoto(a);
   setAnnounce((added.length?fa(added.length)+" فایل اضافه شد. ":"")+(bad.length?fa(bad.length)+" فایل رد شد.":""));
   readingRef.current=false;setReading(false);
   return added;
@@ -565,10 +598,41 @@ export function Studio(){
   const whoushReacts=(emoji?:ReactionEmoji)=>{if(emoji)react(userMsg.id,emoji,"whoush");};
   const characterRef=current?{id:current.id,name:current.name,angles:characterCoverage(current.references).uploaded,version:current.version}:undefined;
   try{
+   // The photos this turn sends must be checked first (lib/photo-review.ts). Usually they already are (checked right after upload); otherwise Whoush waits
+   // in the chat with their progress and then goes on by itself. Earlier photos that cannot be used are simply left out.
+   let prior=priorPhotos;
+   if(reviewOn){
+    const mine=outgoing.filter(a=>a.kind==="image"),unsure=[...mine,...prior].filter(a=>reviewsRef.current[a.id]?.state!=="safe");
+    if(unsure.length){
+     setWaitingFor(unsure);
+     await Promise.all(unsure.map(a=>checkPhoto(a)));
+     setWaitingFor(null);
+     const bad=mine.filter(a=>reviewsRef.current[a.id]?.state!=="safe");
+     if(bad.length){
+      setMessages(m=>[...m,agentItem({role:"agent",text:reviewStopFa(bad.map(a=>({tagFa:displayTag(a.tag),review:reviewsRef.current[a.id]}))),kind:"text"})]);
+      adoptProject(firstText,characterId);return;
+     }
+     prior=prior.filter(a=>reviewsRef.current[a.id]?.state==="safe");
+    }
+   }
    setThinking({stage:"reading",done:[],script:replyScriptFor(sentText)});
-   const r=await postAgentTurn(JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(toWireAttachment)}:{}),...(priorPhotos.length?{priorAttachments:priorPhotos.map(toWireAttachment)}:{}),...(main?{mainSubject:main}:{}),...(generations.length?{generations}:{})}),stage=>setThinking(t=>t&&(t.stage===stage?t:{...t,done:[...t.done,t.stage],stage})));
+   const body=()=>JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(a=>toWireAttachment(a,reviewIdOf(a)))}:{}),...(prior.length?{priorAttachments:prior.map(a=>toWireAttachment(a,reviewIdOf(a)))}:{}),...(main?{mainSubject:main}:{}),...(generations.length?{generations}:{})}),onStage=(stage:TurnStage)=>setThinking(t=>t&&(t.stage===stage?t:{...t,done:[...t.done,t.stage],stage}));
+   type ErrorBody={error?:string;reason?:UnsupportedReason;unreviewed?:unknown;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"];references?:unknown;choices?:unknown};
+   const postTurn=async()=>{const res=await postAgentTurn(body(),onStage);return {r:res,errorBody:(res.ok?{}:await res.json().catch(()=>({}))) as ErrorBody};};
+   // The server no longer knows a check (it restarted): check those photos again, then send once more.
+   const recheck=async(first:Awaited<ReturnType<typeof postTurn>>)=>{
+    const unreviewed=Array.isArray(first.errorBody.unreviewed)?first.errorBody.unreviewed:[];
+    const again=reviewOn&&first.r.status===422&&first.errorBody.reason==="media_review"?uniqueById([...outgoing,...prior]).filter(a=>unreviewed.includes(a.tag)):[];
+    if(!again.length)return first;
+    setThinking(null);setWaitingFor(again);
+    await Promise.all(again.map(a=>checkPhoto(a,true)));
+    setWaitingFor(null);
+    if(!again.every(a=>reviewsRef.current[a.id]?.state==="safe"))return first;
+    setThinking({stage:"reading",done:[],script:replyScriptFor(sentText)});
+    return postTurn();
+   };
+   const {r,errorBody}=await recheck(await postTurn());
    if(!r.ok){
-    const errorBody=await r.json().catch(()=>({})) as {error?:string;reason?:UnsupportedReason;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"];references?:unknown;choices?:unknown};
     if(r.status===422&&errorBody.error==="no_compatible_model"){
      const message=typeof errorBody.message==="string"?errorBody.message:"مدل سازگاری برای این درخواست پیدا نشد.";
      const reason=errorBody.reason&&UNSUPPORTED_REASONS.includes(errorBody.reason)?errorBody.reason:undefined;
@@ -583,7 +647,8 @@ export function Studio(){
      return;
     }
     if(r.status===422&&errorBody.error==="content_restricted"){
-     setMessages(m=>[...m,agentItem({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"این درخواست را نمی‌توانم انجام بدهم.",kind:"restricted"})]);
+     const choices=isQuestionChoices(errorBody.choices)?errorBody.choices:undefined;
+     setMessages(m=>[...m,agentItem({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"این درخواست را نمی‌توانم انجام بدهم.",kind:"restricted",...(choices?{snapshot:{choices}}:{})})]);
      adoptProject(firstText,characterId);
      return;
     }
@@ -751,7 +816,7 @@ export function Studio(){
        if(m.role==="user")return <div key={m.id} className="group flex flex-col items-start gap-2">
         {((m.attachments?.length??0)>0||(m.generationTags?.length??0)>0)&&<ul aria-label="پیوست‌های این پیام" className="flex max-w-full flex-wrap gap-2">
          {(m.generationTags??[]).flatMap(t=>{const g=generationMap.get(t);return g?[<GenerationRefCard key={t} snapshot={g} onMention={()=>mentionTag(t)} onOpen={()=>showGeneration(t)}/>]:[];})}
-         {(m.attachments??[]).map(a=><SentAttachmentCard key={a.id} item={a} onPreview={()=>openViewer(a)} onMention={()=>mentionTag(a.tag)}/>)}
+         {(m.attachments??[]).map(a=><SentAttachmentCard key={a.id} item={a} onPreview={()=>openViewer(a)} onMention={()=>mentionTag(a.tag)} review={reviews[a.id]}/>)}
         </ul>}
         {m.kind==="gif"
          ?<div><span className="sr-only">شما: </span><ChatGif gif={m.snapshot}/></div>
@@ -765,7 +830,13 @@ export function Studio(){
         {m.kind==="restricted"
          ?<div role="status" className="flex items-start gap-2 type-body-sm text-fg-primary">
           <Icon icon={Info} size={16} aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-fg-secondary"/>
-          <p className="min-w-0 whitespace-pre-wrap break-words"><span className="sr-only">هووش: </span><span className="type-label">این درخواست قابل انجام نیست.</span> {m.text}</p>
+          <div className="flex min-w-0 flex-col gap-2">
+           <p className="whitespace-pre-wrap break-words"><span className="sr-only">هووش: </span>{m.text}</p>
+           {/* Safe ideas, one tap each (lib/safe-alternatives.ts): each is sent as a new message. Only under the latest message. */}
+           {m.snapshot?.choices&&i===messages.length-1&&!busy&&<div role="group" aria-label="پیشنهادهای جایگزین" className="flex flex-wrap gap-2">
+            {m.snapshot.choices.map((c,k)=><Button key={k} type="button" size="sm" variant="secondary" onClick={()=>void runTurn(c.replyFa,[],[],false)}><Icon icon={Sparkles} aria-hidden="true"/>{c.labelFa}</Button>)}
+           </div>}
+          </div>
          </div>
          :m.kind==="gif"?<div><span className="sr-only">هووش: </span><ChatGif gif={m.snapshot}/></div>
          :m.kind!=="job"&&<p className="whitespace-pre-wrap break-words type-body-sm text-fg-primary">
@@ -798,6 +869,14 @@ export function Studio(){
         <div className="-mt-2">{actions}</div>
        </div>;
       })}
+      {waitingFor&&<div role="status" aria-live="polite" className="flex max-w-prose flex-col gap-2 rounded-card bg-surface-subtle p-3">
+       <span className="type-body text-fg-primary">{WAITING_FA}</span>
+       <ul className="flex flex-wrap gap-2">{waitingFor.map(a=>{const r=reviews[a.id];return <li key={a.id} className="relative size-16 overflow-hidden rounded-control bg-surface-hover">
+        {/* eslint-disable-next-line @next/next/no-img-element -- a local blob: URL */}
+        {a.previewUrl&&<img src={a.previewUrl} alt={displayTag(a.tag)} className="size-full object-cover"/>}
+        {r?.state==="checking"?<span className="absolute inset-0 flex items-center justify-center bg-background/60"><ReviewRing progress={r.progress}/></span>:<PhotoReviewOverlay review={r}/>}
+       </li>;})}</ul>
+      </div>}
       {thinking&&<TurnProgress current={STAGE_TEXT[thinking.script][thinking.stage]} done={thinking.done} doneText={thinking.done.map(d=>STAGE_DONE_TEXT[thinking.script][d])} why={PLAN_FIRST_FA[thinking.script]}/>}
       <div ref={endRef}/>
      </div>
@@ -829,7 +908,7 @@ export function Studio(){
       top={cards.length>0?<ul aria-label="پیوست‌ها" className="flex items-stretch gap-2 overflow-x-auto pb-2">
        {cards.map(c=>c.type==="slot"
         ?<UploadSlotCard key={c.slot.id} slot={c.slot} disabled={reading} onUpload={()=>openSlotPicker(c.slot)} onDropFiles={f=>void fillSlot(c.slot,f)} onRemove={()=>dropSlot(c.slot.id)}/>
-        :<AttachmentCard key={c.attachment.id} item={c.attachment} onChange={patch=>patchAttachment(c.attachment.id,patch)} onRemove={()=>removeAttachment(c.attachment.id)} onPreview={()=>openViewer(c.attachment)} onMention={()=>mentionTag(c.attachment.tag)}
+        :<AttachmentCard key={c.attachment.id} item={c.attachment} review={reviews[c.attachment.id]} onRetryReview={()=>void checkPhoto(c.attachment,true)} onChange={patch=>patchAttachment(c.attachment.id,patch)} onRemove={()=>removeAttachment(c.attachment.id)} onPreview={()=>openViewer(c.attachment)} onMention={()=>mentionTag(c.attachment.tag)}
          main={mainSubject===c.attachment.tag} onToggleMain={()=>toggleMain(c.attachment.tag)}/>)}
       </ul>:undefined}
       endPad={voice.enabled?"pe-24":"pe-14"}
