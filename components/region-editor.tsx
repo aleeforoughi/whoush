@@ -176,7 +176,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone}:{tag:string;photoUrl:
     className="absolute end-4 top-1/2 flex -translate-y-1/2 flex-col items-center gap-1.5 rounded-[8px] border border-white/15 bg-background/75 p-2 shadow-lg backdrop-blur-md md:end-6" style={{cursor:"default"}}>
     {BRUSH_SIZES.map((b,i)=><button key={b.id} type="button" onClick={()=>{setSize(i);setHand(false);}} aria-pressed={size===i&&!hand} aria-label={"قلم "+b.labelFa} title={"قلم "+b.labelFa}
      className={"flex size-10 shrink-0 items-center justify-center rounded-[8px] motion-hover hover:bg-white/10 "+(size===i&&!hand?"bg-white/15 ring-2 ring-primary":"")}>
-     <span className="rounded-full" style={{width:Math.min(26,4+b.px*.35),height:Math.min(26,4+b.px*.35),background:brushColor,boxShadow:NEON_SHADOW}}/></button>)}
+     <span className="rounded-full" style={{width:Math.min(26,4+b.px*.35),height:Math.min(26,4+b.px*.35),background:brushColor}}/></button>)}
     <span className="my-0.5 h-px w-6 bg-white/25" aria-hidden="true"/>
     <button type="button" onClick={()=>setHand(h=>!h)} aria-pressed={hand} aria-label="جابه‌جایی عکس" title="جابه‌جایی عکس"
      className={"flex size-10 items-center justify-center rounded-[8px] text-fg-primary motion-hover hover:bg-white/10 "+(hand?"bg-white/15 ring-2 ring-primary":"")}><Icon icon={Hand} aria-hidden="true"/></button>
