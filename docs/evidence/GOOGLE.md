@@ -82,3 +82,6 @@
 - **No image could be made.** Two in-app submits of `nano-banana-2-1`, then one direct call, all returned HTTP 429 `too_many_requests`: "limit: 0 requests per day on Free Tier".
 - **The fix is the owner's:** turn on billing for the key's Google project (a paid tier). Nothing was billed.
 - **The adapter now logs Google's error reason** to the server log. It never logs the prompt or the key.
+- **Second run, 2026-11-06:** still 429, "limit: 0 requests per day on Free Tier", after the owner enabled billing.
+  - Billing may take time to apply, or it may be on a different Google Cloud project from the one that owns this key.
+  - The new server log line showed Google's reason as intended.

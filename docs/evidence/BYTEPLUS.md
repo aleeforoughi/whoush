@@ -103,3 +103,17 @@ Slugs cited below are relative to `S = https://ai.byteplus.com/ark/region:ap-sou
   - Seedream 5.0 Lite and 5.0 Pro
   - Seedance 2.0 and 2.0 Mini, which also need a balance of at least USD 30 or a resource pack
 - Nothing was billed.
+
+## Live check, 2026-11-06, second run: first successful image
+
+- **Seedream 5.0 Pro** (`dola-seedream-5-0-pro-260628`) is now activated.
+  - A no-prompt request returns 400 `MissingParameter` instead of `ModelNotOpen`.
+- **Seedream 5.0 Lite** (`seedream-5-0-260128`) still returns 404 `ModelNotOpen`.
+- **One in-app dev-live run of `seedream-5-pro-2k` completed end to end:**
+  - Persian request, then planner, then quote (2 Neurons, `dev_live`), then `POST /images/generations`.
+  - Then the output link was copied into Whoush's store (`/api/generation/media/<id>`) and the job completed. 0 Neurons charged.
+  - About 2.5 minutes from submit to completion.
+  - Output: a 2048×2048 PNG with BytePlus's visible "AI generated" mark in the lower right (`watermark:true`).
+- **Finding:** the brief's aspect ratio was not one Seedream offers, so the quote returned 422 `invalid_configuration`.
+  - The studio then quoted again with no ratio (`components/studio.tsx`), and the image came out square (the SKU's default).
+  - It should fall back to the nearest ratio the model supports.
