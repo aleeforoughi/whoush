@@ -26,6 +26,34 @@ export function shareableFile(f:ShareFile):File|undefined{
  try{return navigator.canShare({files:[file]})?file:undefined;}catch{return undefined;}
 }
 
+/** A touch phone (no hover, coarse pointer): where «دانلود» means the photo library, not the Files app. */
+const isPhone=()=>typeof window!=="undefined"&&window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+/** The file's label for the save button: «ذخیره در گالری» once the file is ready for a second tap. */
+export const SAVE_AGAIN_FA="ذخیره در گالری";
+/**
+ * «دانلود» (owner, 2026-11-08): on a phone that can share files (iPhone Safari), the native share sheet with the file only (a title or text can hide
+ * «Save Image» on iOS), where «Save Image» / «Save Video» puts it in Photos; elsewhere, a normal download. "needs_tap": the browser refused the sheet
+ * because the tap was spent while the file was fetched; the caller offers one more tap with the file ready (the sheet then opens at once).
+ */
+export async function saveFile(f:ShareFile):Promise<"saved"|"needs_tap"|"none">{
+ if(!f.blob)return "none";
+ const sf=isPhone()?shareableFile(f):undefined;
+ if(!sf){triggerDownload(f);return "saved";}
+ try{await navigator.share({files:[sf]});return "saved";}
+ catch(e){return e instanceof DOMException&&e.name==="NotAllowedError"?"needs_tap":"saved";} // AbortError: the user closed the sheet
+}
+/** «دانلود» for a file at a URL: fetched on the first tap and kept, so a second tap (when iOS asks for one) opens the sheet at once. */
+export function useSaveFromUrl(url:string,file:Omit<ShareFile,"blob">){
+ const [blob,setBlob]=useState<Blob>();
+ const [again,setAgain]=useState(false);
+ const save=async()=>{
+  let b=blob;
+  if(!b){try{b=await fetch(url).then(r=>r.ok?r.blob():undefined);}catch{b=undefined;}if(!b)return;setBlob(b);}
+  setAgain(await saveFile({...file,blob:b})==="needs_tap");
+ };
+ return {save,again};
+}
+
 /**
  * «دانلود» and «اشتراک‌گذاری» for one file, plus the Instagram dialog. Nothing is uploaded and nothing is posted: sharing is the device's share sheet
  * (where Instagram appears when installed) or a download. `reason` disables the buttons and says why (no stored file, or generated outputs that are not available yet).
@@ -45,7 +73,7 @@ export function ShareActions({file,compact=false,reason,overlay=false,instagram=
   const f=shareableFile(file);
   if(!f)return false;
   setMessage(tip??"");
-  try{await navigator.share({files:[f],title:"هووش"});setMessage("");}
+  try{await navigator.share({files:[f]});setMessage("");}
   catch(err){
    if(err instanceof DOMException&&err.name==="AbortError")setMessage("");
    else{setMessage("اشتراک‌گذاری انجام نشد. فایل را دانلود کن و از گالری بفرست.");if(overlay)setOpen(true);}
@@ -102,7 +130,7 @@ export function ShareActions({file,compact=false,reason,overlay=false,instagram=
    </div>}
    {message&&<p role="status" className="type-caption text-fg-secondary">{message}</p>}
    <ol className="list-[persian] ps-5 type-body-sm text-fg-primary marker:text-fg-secondary">{GENERIC_STEPS.map(s=><li key={s}>{s}</li>)}</ol>
-   <Button type="button" variant="outline" disabled={blocked} onClick={()=>triggerDownload(file)} aria-label={"دانلود "+tag}><Icon icon={Download} aria-hidden="true"/>دانلود</Button>
+   <Button type="button" variant="outline" disabled={blocked} onClick={()=>void saveFile(file)} aria-label={"دانلود "+tag}><Icon icon={Download} aria-hidden="true"/>دانلود</Button>
    <div className="flex flex-col gap-2">
     <Label htmlFor={fitId+"-caption"}>متن پست (اختیاری)</Label>
     <Textarea id={fitId+"-caption"} value={caption} onChange={e=>{setCaption(e.target.value);setCopied("");}} rows={3} maxLength={2200} placeholder="کپشن را اینجا بنویس"/>
@@ -116,7 +144,7 @@ export function ShareActions({file,compact=false,reason,overlay=false,instagram=
  </>;
  return <div className={compact||overlay?"flex min-w-0 flex-col gap-1":"flex min-w-0 flex-col gap-2"}>
   <div className={overlay?"flex items-center gap-2":"flex flex-wrap items-center gap-2"}>
-   {btn("دانلود",Download,()=>triggerDownload(file),"دانلود")}
+   {btn("دانلود",Download,()=>void saveFile(file),"دانلود")}
    {btn("اشتراک‌گذاری",Share2,()=>void share(),"اشتراک‌گذاری")}
    {/* Instagram is a phone app: hidden on a computer (a device that can hover), shown on phones (owner, 2026-11-06). */}
    {instagram&&btn("اشتراک‌گذاری در اینستاگرام",Instagram,()=>setOpen(true),"اینستاگرام","[@media(hover:hover)]:hidden")}

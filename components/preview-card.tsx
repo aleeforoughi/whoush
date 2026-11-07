@@ -1,5 +1,5 @@
 "use client";
-import {downloadFromUrl} from "@/components/edit-image-button";
+import {SAVE_AGAIN_FA,useSaveFromUrl} from "@/components/share-actions";
 import {Brush,Clapperboard,Download,Image as ImageIcon,Maximize2,RotateCcw,TriangleAlert} from "lucide-react";
 import {Badge,Button,Icon} from "@aleeforoughi/feather-react";
 import {displayTag} from "@/lib/attachments";
@@ -27,6 +27,8 @@ export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,o
  /** «ویرایش با قلم» on a finished image. */onEdit?:()=>void;
  /** «دوباره بساز» on a generation that stopped without an output (owner, 2026-11-07), with its price when known. */onRetry?:()=>void;retryNeurons?:number}){
  const label=OPEN_PREVIEW_FA+(tag?" "+displayTag(tag):"");
+ // «دانلود» (owner, 2026-11-08): on a phone, the share sheet with «Save Image» / «Save Video»; elsewhere a download (components/share-actions.tsx).
+ const saveOutput=useSaveFromUrl(output?.url??"",{name:"output",mime:output?.kind==="video"?"video/mp4":"image/png",kind:output?.kind==="video"?"video":"image",tag:tag??"generation1"});
  const live=useJobLive(job??{state,messageFa},video?"video":"image",model),line=live.active?live.status:messageFa;
  // While it works (no output yet): the same sweep and progress foot as the preview panel (owner, 2026-11-07).
  const working=live.active&&!output&&live.percent!==null;
@@ -56,7 +58,7 @@ export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,o
   {/* In the chat (owner, 2026-11-06): «ادیت» and «دانلود» as action buttons under the picture, not on hover. */}
   {output&&<div className="flex flex-wrap items-center gap-2 px-1">
    {onEdit&&output.kind!=="video"&&<Button type="button" size="sm" variant="secondary" onClick={onEdit}><Icon icon={Brush} aria-hidden="true"/>ادیت</Button>}
-   <Button type="button" size="sm" variant="outline" onClick={()=>void downloadFromUrl(output.url,{name:"output",mime:output.kind==="video"?"video/mp4":"image/png",kind:output.kind==="video"?"video":"image",tag:tag??"generation1"})}><Icon icon={Download} aria-hidden="true"/>دانلود</Button>
+   <Button type="button" size="sm" variant="outline" onClick={()=>void saveOutput.save()}><Icon icon={Download} aria-hidden="true"/>{saveOutput.again?SAVE_AGAIN_FA:"دانلود"}</Button>
   </div>}
   <button type="button" onClick={onOpen} aria-label={label+": "+jobStateFa(state)}
    className="group/preview flex w-full items-center gap-2 rounded-control px-1 py-1 text-start motion-hover hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">

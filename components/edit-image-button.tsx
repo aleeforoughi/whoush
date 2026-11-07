@@ -3,7 +3,7 @@ import {useState} from "react";
 import {Brush,Download,Instagram,Share2,type LucideIcon} from "lucide-react";
 import {Icon} from "@aleeforoughi/feather-react";
 import {BRUSH_EDIT_FA} from "@/lib/region-edit";
-import {shareableFile,triggerDownload,type ShareFile} from "@/components/share-actions";
+import {SAVE_AGAIN_FA,saveFile,shareableFile,triggerDownload,type ShareFile} from "@/components/share-actions";
 
 /** One small action on a picture: icon and label, 4px corners, a see-through background (the same look for every action in the stack). */
 function ActionChip({icon,label,aria,onClick}:{icon:LucideIcon;label:string;aria:string;onClick:()=>void}){
@@ -34,6 +34,7 @@ export function EditImageButton({label,onClick}:{label:string;onClick:()=>void})
 export function ImageActionStack({label,onEdit,file,url,under=false}:{label:string;onEdit?:()=>void;file:Omit<ShareFile,"blob">;url:string;
  /** The phone row, placed after the picture (the computer stack is placed before it, over the picture). */under?:boolean}){
  const [blob,setBlob]=useState<Blob>();
+ const [again,setAgain]=useState(false);
  const get=async():Promise<ShareFile|undefined>=>{
   if(blob)return {...file,blob};
   try{const b=await fetch(url).then(r=>r.ok?r.blob():undefined);if(!b)return undefined;setBlob(b);return {...file,blob:b};}catch{return undefined;}
@@ -41,19 +42,14 @@ export function ImageActionStack({label,onEdit,file,url,under=false}:{label:stri
  const share=async()=>{
   const f=await get();if(!f)return;
   const sf=shareableFile(f);
-  if(sf){try{await navigator.share({files:[sf],title:"هووش"});}catch{/* closed or refused */}return;}
+  if(sf){try{await navigator.share({files:[sf]});}catch{/* closed or refused */}return;}
   triggerDownload(f);
  };
  return <div className={under?UNDER:OVER}>
   {onEdit&&<ActionChip icon={Brush} label={BRUSH_EDIT_FA} aria={BRUSH_EDIT_FA+" "+label} onClick={onEdit}/>}
-  <ActionChip icon={Download} label="دانلود" aria={"دانلود "+label} onClick={()=>void get().then(f=>f&&triggerDownload(f))}/>
+  <ActionChip icon={Download} label={again?SAVE_AGAIN_FA:"دانلود"} aria={(again?SAVE_AGAIN_FA:"دانلود")+" "+label} onClick={()=>void get().then(async f=>{if(f)setAgain(await saveFile(f)==="needs_tap");})}/>
   <ActionChip icon={Share2} label="اشتراک" aria={"اشتراک‌گذاری "+label} onClick={()=>void share()}/>
   {/* Instagram is a phone app: offered on phones only (owner, 2026-11-06). */}
   {under&&<ActionChip icon={Instagram} label="اینستاگرام" aria={"اشتراک‌گذاری در اینستاگرام "+label} onClick={()=>void share()}/>}
  </div>;
-}
-
-/** Downloads a generated file by its URL (fetched when asked). */
-export async function downloadFromUrl(url:string,file:Omit<ShareFile,"blob">){
- try{const b=await fetch(url).then(r=>r.ok?r.blob():undefined);if(b)triggerDownload({...file,blob:b});}catch{/* nothing to save */}
 }
