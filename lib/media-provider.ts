@@ -9,7 +9,11 @@ export type ProviderOutput={kind:"image"|"video"|"audio";url:string;needsMirrori
 export type ProviderState="queued"|"running"|"completed"|"completed_demo"|"failed"|"nsfw"|"canceled";
 /** `reportedModelId`: the model the provider says ran, only when it reports one (the documented Higgsfield status has no such field). */
 export type ProviderStatus={state:ProviderState;outputs:ProviderOutput[];expiresAt?:string;reportedModelId?:string};
-export type ProviderJob={modelId:string;prompt:string;configuration:MediaConfiguration;idempotencyKey:string};
+/** Appended to the prompt when research references go with it: what they are for, so the model takes details from them and not their composition. */
+/** Neutral, for both kinds of reference: researched photos of real subjects, and the user's own photos (whose order the prompt itself lists). */
+export const REFERENCE_PROMPT_NOTE=" Reference images are attached. Use each one only for what the prompt says it shows: a person's face and identity (keep it exact), an outfit, a place, an object, or authentic period details. Do not copy their composition, framing or any text in them.";
+/** `references`: inspected, Whoush-owned research reference images the user kept (docs/RESEARCH_PIPELINE.md), for models that take them inline. */
+export type ProviderJob={modelId:string;prompt:string;configuration:MediaConfiguration;idempotencyKey:string;references?:{bytes:Uint8Array;mime:string}[]};
 /**
  * `resendSafe(modelId)`: whether resending the same request after an unclear outcome is safe, because the provider honors an idempotency key (Higgsfield).
  * Absent means safe. Providers with no idempotency (Google, BytePlus, docs/evidence) answer false, and an unknown submission then waits for the owner.
@@ -18,6 +22,7 @@ export interface MediaProvider{submit(job:ProviderJob):Promise<{providerRequestI
 export {NotCancelableError};
 import {SubmissionUnknownError} from "./provider-errors";
 import {BytePlusMediaProvider} from "./providers/byteplus";
+import {isStoredMediaUrl,mirrorMedia} from "./media-store";
 import {GoogleMediaProvider} from "./providers/google";
 import {KlingMediaProvider} from "./providers/kling";
 export {SubmissionUnknownError};
@@ -62,6 +67,16 @@ function mapOutputs(r:HiggsfieldStatus):ProviderOutput[]{
  for(const i of r.images??[])add("image",i);add("video",r.video);add("audio",r.audio);for(const a of r.audios??[])add("audio",a);
  return o;
 }
+/** Copies each image and video output into Whoush's store; a failed copy throws, so the status check is tried again rather than finishing without media. */
+export async function mirrorOutputs(outputs:ProviderOutput[]):Promise<ProviderOutput[]>{
+ const out:ProviderOutput[]=[];
+ for(const o of outputs){
+  if(o.kind==="audio"||isStoredMediaUrl(o.url)){out.push(o);continue;}
+  const m=await mirrorMedia(o.url,undefined,o.kind==="video"?"video/mp4":"image/png");
+  out.push({...o,url:m.url,mime:m.mime});
+ }
+ return out;
+}
 /** Only usable when generationGate(model).live, or devGenerationGate for owner-only dev testing; re-checked on every submit. */
 export class HiggsfieldMediaProvider implements MediaProvider{
  constructor(private readonly mode:"live"|"dev_live"="live"){}
@@ -84,7 +99,9 @@ export class HiggsfieldMediaProvider implements MediaProvider{
   const r=await getHiggsfieldStatus(id);
   const m:Record<string,ProviderState>={queued:"queued",in_progress:"running",completed:"completed",failed:"failed",nsfw:"nsfw",canceled:"canceled"};
   const state=m[r.status];if(!state)throw new Error("Unknown provider status"); // never guess an undocumented status
-  return {state,outputs:state==="completed"?mapOutputs(r):[],expiresAt:r.expires_at??undefined};
+  // Finished images and videos are copied into Whoush's own store (as the direct providers do): the studio shows only Whoush-owned media (launch gate 8),
+  // and provider links can expire. Audio is not stored yet (it is never requested: generated audio is not moderated).
+  return {state,outputs:state==="completed"?await mirrorOutputs(mapOutputs(r)):[],expiresAt:r.expires_at??undefined};
  }
  async cancel(id:string):Promise<void>{await cancelHiggsfield(id);}
 }

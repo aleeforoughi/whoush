@@ -7,14 +7,16 @@ import type {ProviderOutput,ProviderStatus} from "../media-provider";
  * (these providers have no idempotency): any failure ends the run as failed, and the job releases its Neurons.
  * Development only: runs live in this server process. Production needs the durable queue (docs/ARCHITECTURE.md).
  */
-type Run={state:"running"|"completed"|"failed";outputs:ProviderOutput[];startedAt:number};
+type Run={state:"running"|"completed"|"failed"|"nsfw";outputs:ProviderOutput[];startedAt:number};
+/** A provider's content refusal (Google answers `prohibited_content`), kept apart from other failures so the user is told why and what to try. */
+const REFUSAL=/prohibited_content|PROHIBITED|SAFETY|blocked due to|content polic|sensitive content/i;
 const MAX_RUNS=500;
 const runs=()=>((globalThis as {__whoushSyncRuns?:Map<string,Run>}).__whoushSyncRuns??=new Map());
 export function startRun(work:()=>Promise<ProviderOutput[]>):string{
  const id=randomUUID(),m=runs(),run:Run={state:"running",outputs:[],startedAt:Date.now()};
  m.set(id,run);while(m.size>MAX_RUNS)m.delete(m.keys().next().value as string);
  work().then(o=>{run.outputs=o;run.state=o.length?"completed":"failed";},
-  e=>{run.state="failed";console.warn("[whoush] provider call failed:",e instanceof Error?e.message.slice(0,200):"unknown");}); // message only: no key, no prompt
+  e=>{const msg=e instanceof Error?e.message:"";run.state=REFUSAL.test(msg)?"nsfw":"failed";console.warn("[whoush] provider call failed:",msg.slice(0,200)||"unknown");}); // message only: no key, no prompt
  return id;
 }
 export function runStatus(id:string):ProviderStatus{

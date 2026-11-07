@@ -92,3 +92,44 @@
   - About 20 seconds from submit to completion.
   - Output: a 1264×848 JPEG, the 3:2 ratio from the brief at 1K, with no visible mark (Google's SynthID is invisible).
   - It followed the Persian brief closely: a waisted estekan on a saucer, with sugar cubes, steam and morning window light.
+
+## Voice transcription (`gemini-3.5-transcribe`) {#voice-transcription}
+
+**Read 2026-11-06** from `aistudio.google.com/docs/speech-to-text.md`, `audio.md`, `pricing.md` and `models.md`. Checked live with the owner's key.
+
+**Model:** `gemini-3.5-transcribe` (Stable). It is listed on the key with `generateContent` and an input limit of 98,304 tokens. `gemini-3.5-transcribe-live` is a WebSocket streaming variant and is not used.
+
+**Request:** the same `POST /v1beta/interactions` endpoint as images, with the key in the `x-goog-api-key` header.
+```json
+{"model":"gemini-3.5-transcribe","input":[{"type":"audio","mime_type":"audio/webm","data":"<base64>"}],
+ "generation_config":{"transcription_config":{"language_codes":["fa-IR","en-US"],"mode":"smart","custom_vocabulary":["…"]}},"store":false}
+```
+- **Languages:** Farsi is `fa-IR`. Without `language_codes` the model detects the language and handles code-switching. Specifying the languages is Google's advice when they are known.
+- **`mode: "smart"`:** removes fillers and repetitions and resolves spoken self-corrections. The default is `verbatim`.
+- **`custom_vocabulary`:** up to 1,000 terms, with best results at up to 100. It can't be combined with speaker diarization or word timestamps (Whoush uses neither).
+- **Audio types:** WAV, MP3, AIFF, AAC, OGG, FLAC, MPEG, M4A, L16, Opus, ALAW, MULAW and WebM. Inline audio is allowed up to 20 MB total request size. Recordings can be up to 1 hour long.
+- **Reply:** `steps[]` holds a step of `type:"model_output"`, whose `content[]` has `{type:"text",text}` blocks.
+- **Price:** Google's estimate is about **$0.005 per minute** (25 audio tokens per second in, 175 text tokens per minute out).
+- **Data and terms:** the region, 18+ and 55-day retention findings above apply to voice too, and the audio is personal data.
+
+**Whoush's use (`lib/voice.ts`, `app/api/voice/route.ts`, `components/voice-mode.tsx`):**
+- **Limits:** recordings are at most 60 seconds and 2 MB. The audio is sent once, inline, and stored and logged nowhere. Only error codes are logged.
+- **The transcript is sent as the user's chat message,** through the normal path: safety prefilter, then planner, then quote.
+- **Vocabulary:** `lib/voice-vocabulary.ts`, 100 terms. It covers model names and the AI, camera, light and social jargon users say as loanwords, in Latin and Persian script.
+- **Gate:** owner dev testing needs only the key. Customers also need `VOICE_TRANSCRIPTION_AUTHORIZED=true`, which stands for clearing the regions and 18+ terms.
+
+**Live checks, 2026-11-06:**
+- **English clip** made with macOS `say`: transcribed exactly. "Nano Banana", "Seedream", "85mm" and "Instagram Reels" were all spelled correctly.
+- **Persian sentence read by the macOS Arabic voice:** the result was wrong. That voice can't pronounce Persian sounds, so this says nothing about real Persian speech.
+- **Not yet tested:**
+  - **Real Persian speech:** the owner should test with their own voice.
+  - **Safari's `audio/mp4` recordings:** sent as `audio/m4a`.
+
+## Image search for references: not available (read 2026-11-06)
+
+From `developers.google.com/custom-search/v1/overview`:
+- "The Custom Search JSON API is closed to new customers."
+- "Existing Custom Search JSON API customers have until January 1, 2027 to transition."
+- The suggested replacement, Vertex AI Search, searches up to 50 domains.
+
+The API's `rights` filter (`cc_publicdomain`, `cc_attribute`, `cc_sharealike` and others) would have suited licensed reference search, but it cannot be used. Whoush uses Wikimedia Commons and Openverse instead (docs/RESEARCH_PIPELINE.md).

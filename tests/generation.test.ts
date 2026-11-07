@@ -14,6 +14,11 @@ import {evaluateOutputQA} from "../lib/output-qa";
 import {orchestrateCreativeTurn} from "../lib/orchestrator";
 import {GET as publicCatalog} from "../app/api/public/catalog/route";
 import {POST as quoteRoute} from "../app/api/generation/quote/route";
+import {mkdtempSync} from "node:fs";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
+// Media the adapters store goes to a temporary folder, never the real `.media/` store.
+process.env.WHOUSH_MEDIA_DIR=mkdtempSync(join(tmpdir(),"whoush-media-test-"));
 const GATE_ENV=["PROVIDER_END_USER_AUTHORIZED","PROVIDER_RESELLER_AUTHORIZED","ALLOW_LIVE_GENERATION","HIGGSFIELD_API_KEY","PRODUCTION_MODERATION_VERIFIED","BILLING_LEDGER_VERIFIED","QUOTE_SIGNING_SECRET","DEMO_FX_TOMAN_PER_USD","OWNED_MEDIA_STORAGE_VERIFIED","GEMINI_API_KEY","BYTEPLUS_API_KEY","KLING_API_KEY"];
 async function withEnv<T>(vars:Record<string,string|undefined>,fn:()=>Promise<T>|T):Promise<T>{
  const saved:Record<string,string|undefined>={};
@@ -214,7 +219,10 @@ test("live path: lexical moderation is not enough; settle exactly once on verifi
 test("Higgsfield adapter maps documented statuses exactly and never guesses",async()=>{
  await withEnv(LIVE_ENV,async()=>{
   const realFetch=globalThis.fetch,calls:{url:string;init?:RequestInit}[]=[];let reply:{status:number;body?:unknown}={status:200,body:{}};
-  globalThis.fetch=(async(url:string,init?:RequestInit)=>{calls.push({url:String(url),init});if(reply.status===-1)throw new TypeError("fetch failed");return new Response(reply.body===undefined?null:JSON.stringify(reply.body),{status:reply.status});}) as typeof fetch;
+  globalThis.fetch=(async(url:string,init?:RequestInit)=>{
+   // Output downloads (Whoush copies finished media into its own store): real bytes with a media type.
+   if(String(url).startsWith("https://a/"))return new Response(new Uint8Array([137,80,78,71,1,2,3]),{status:200,headers:{"content-type":String(url).endsWith(".mp4")?"video/mp4":"image/png"}});
+   calls.push({url:String(url),init});if(reply.status===-1)throw new TypeError("fetch failed");return new Response(reply.body===undefined?null:JSON.stringify(reply.body),{status:reply.status});}) as typeof fetch;
   try{
    const p=new HiggsfieldMediaProvider();
    // An ambiguous outcome (5xx, a dropped connection, an unreadable 2xx) is unknown, never "not sent"; a 4xx is a definite refusal.
@@ -243,7 +251,9 @@ test("Higgsfield adapter maps documented statuses exactly and never guesses",asy
    for(const [raw,mapped] of [["queued","queued"],["in_progress","running"],["failed","failed"],["nsfw","nsfw"],["canceled","canceled"]] as const){reply={status:200,body:{status:raw}};assert.equal((await p.status("abc-123")).state,mapped);}
    reply={status:200,body:{status:"completed",images:[{url:"https://a/1.png"},{url:"https://a/2.png"}],expires_at:"2026-11-11T00:00:00Z"}};
    const c=await p.status("abc-123");assert.equal(c.state,"completed");assert.equal(c.outputs.length,2);assert.ok(c.outputs.every(o=>o.needsMirroring&&o.kind==="image"));assert.equal(c.expiresAt,"2026-11-11T00:00:00Z");
-   reply={status:200,body:{status:"completed",video:{url:"https://a/v.mp4"}}};assert.equal((await p.status("abc-123")).outputs[0].kind,"video");
+   // Finished media is copied into Whoush's own store: the studio shows only Whoush-owned outputs, and provider links expire.
+   assert.ok(c.outputs.every(o=>/^\/api\/generation\/media\/[0-9a-f-]{36}$/.test(o.url)),"outputs are Whoush-stored copies");
+   reply={status:200,body:{status:"completed",video:{url:"https://a/v.mp4"}}};const v=(await p.status("abc-123")).outputs[0];assert.equal(v.kind,"video");assert.equal(v.mime,"video/mp4");
    reply={status:200,body:{status:"processing"}};await assert.rejects(()=>p.status("abc-123"),/Unknown provider status/);
    reply={status:202};await p.cancel("abc-123");assert.equal(calls.at(-1)?.url,"https://api.higgsfield.ai/requests/abc-123/cancel");
    reply={status:400,body:{detail:"started"}};await assert.rejects(()=>p.cancel("abc-123"),NotCancelableError);
@@ -261,7 +271,12 @@ test("router: ineligible explicit model is rejected with reason and compatible a
  const img=recommendMediaModels("generate an image with nano banana","quality",{aspectRatio:"16:9"});
  assert.equal(img.explicit,"nano-banana-pro-2k","16:9 is a Nano Banana Pro ratio (direct Google API, docs/evidence/GOOGLE.md)");assert.equal(img.explicitRejected,undefined);
  const ref=recommendMediaModels("generate an image with soul","quality",{referenceImages:1});
- assert.equal(ref.explicitRejected?.id,"soul-image");assert.deepEqual(ref.alternatives,[]); // nothing verified supports reference images
+ assert.equal(ref.explicitRejected?.id,"soul-image");
+ // Research images go to the direct models that take reference images; a person's own checked photos (identityReference) only to the models documented to
+ // keep a face (Nano Banana 2 and 2.1, "4 characters", docs/evidence/GOOGLE.md); a saved character's photos (on the device) still route nowhere.
+ assert.ok(ref.alternatives.length>0&&ref.alternatives.every(m=>m.capabilities.referenceImages.supported&&m.provider!=="higgsfield"),ref.alternatives.map(m=>m.id).join());
+ assert.deepEqual(recommendMediaModels("generate an image with soul","quality",{referenceImages:1,identityReference:true}).alternatives.map(m=>m.id).sort(),["nano-banana-2","nano-banana-2-1"]);
+ assert.deepEqual(recommendMediaModels("generate an image with soul","quality",{referenceImages:1,identityReference:true,savedCharacter:true}).alternatives,[]);
  const lip=recommendMediaModels("video with seedance lip sync","quality",{lipSync:true});
  assert.equal(lip.explicitRejected?.id,"seedance-2-5-5s");
  const p=buildProposal("make a 10 second video with kling","quality",{durationSeconds:10});

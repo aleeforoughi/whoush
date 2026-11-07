@@ -33,7 +33,7 @@ type RoleDef={id:AttachmentRole;labelFa:string;hintFa:string;en:string};
 export const ATTACHMENT_ROLES={
  image:[
   {id:"reference",labelFa:"عکس رفرنس",hintFa:"ظاهر، سبک یا محتوا؛ هووش از متنت می‌فهمه",en:"image reference"},
-  {id:"character",labelFa:"کاراکتر",hintFa:"چهره و هویت ثابت می‌مونه",en:"character"},
+  {id:"character",labelFa:"شخص",hintFa:"چهره و هویت ثابت می‌مونه",en:"character"},
   {id:"hairstyle",labelFa:"پیرایش",hintFa:"مدل مو و فرم ریش",en:"hairstyle and beard reference"},
   {id:"outfit",labelFa:"پوشاک",hintFa:"لباس، کفش و استایل پوشش روی سوژه",en:"outfit reference"},
   {id:"environment",labelFa:"محیط",hintFa:"فضا، پس‌زمینه و نور",en:"environment"},
@@ -264,7 +264,9 @@ const wordsRe=(l:readonly string[])=>new RegExp("(?<![\\p{L}\\p{N}])(?:"+l.map(w
 /** First match wins, in this order. Keywords are matched as whole words on the normalized text. */
 const INFER_RULES={
  image:[
-  ["edit_reference",wordsRe(["ویرایش","ادیت","حذف کن","پاک کن","جایگزین","عوض کن","تغییر بده","رتوش","edit","remove","replace","retouch"])],
+  // Retouch, makeup and beautify requests on a photo edit that photo in place (owner, 2026-11-06: influencers' everyday edits).
+  ["edit_reference",wordsRe(["ویرایش","ادیت","حذف کن","پاک کن","جایگزین","عوض کن","تغییر بده","رتوش","روتوش","روتوشش","روتوش کن","زیباتر کن","زیباترش کن","خوشگل تر کن","خوشگلترش کن","خوشگلم کن",
+   "آرایش کن","آرایشش کن","آرایشم کن","میکاپ کن","میکاپش کن","لاغرتر کن","لاغرترم کن","صاف کن","صافش کن","پولیش کن","edit","remove","replace","retouch","touch up","beautify","polish","slim"])],
   ["end_frame",wordsRe(["فریم آخر","آخر ویدیو","تهش","پایان ویدیو","ختم بشه به","ختم بشه","ختم شود","ختم شه","تموم بشه","برسه","برسد","تمام بشه","end frame","last frame","ending"])],
   ["start_frame",wordsRe(["شروع کن","شروع کن از","شروع از","شروع بشه","start from","starts from","متحرکش کن","زنده‌اش کن","جون بده","انیمیت","متحرک کن","تبدیل به ویدیو","animate","bring to life","make it move"])],
   ["outfit",wordsRe(["لباس","مانتو","کت","شلوار","پیراهن","دامن","کفش","پوشش","ست لباس","استایل لباس","outfit","dress","clothes","wardrobe"])],
@@ -461,6 +463,10 @@ export function validateAttachmentSet(list:readonly {bytes:number}[]):{ok:true}|
 export type LocalAttachment={
  id:string;tag:string;kind:AttachmentKind;mime:string;bytes:number;sha256:string;name:string;role?:AttachmentRole;
  width?:number;height?:number;durationSeconds?:number;textExcerpt?:string;speech?:AttachmentSpeech;previewUrl?:string;
+ /** «ویرایش با قلم» (lib/region-edit.ts): each painted region (number, colour, what to change) and the marked copy (its blob kept by the studio under `guideId`). Memory only. */
+ regionEdit?:{regions:{n:number;color:RegionColorName;note:string}[];guideId:string;guideUrl:string};
+ /** The generation this photo is a copy of (opened for «ادیت»): one copy per generation, and the # list shows the generation once. */
+ fromGeneration?:string;
 };
 /** Goes back to "Whoush picks automatically": no role, and no speech details that belonged to one. */
 export function withoutRole(a:LocalAttachment):LocalAttachment{
@@ -477,8 +483,13 @@ export function withRole(a:LocalAttachment,role:AttachmentRole):LocalAttachment{
  return next;
 }
 /** The request payload: metadata and text excerpts only. No bytes, no file name, no object URL. Speech details travel only with the `lip_sync` role. */
-export function toWireAttachment(a:LocalAttachment){
- return {id:a.id,tag:a.tag,kind:a.kind,mime:a.mime,bytes:a.bytes,sha256:a.sha256,...(a.role?{role:a.role}:{}),
+/** The attachment as the agent receives it (details only, never the bytes); `reviewId`: the server's safety check of a photo, when it was found safe. */
+/** The five region colours of «ویرایش با قلم», by the English name the prompt uses (lib/region-edit.ts draws them). */
+export const REGION_COLOR_NAMES=["red","blue","green","yellow","magenta"] as const;
+export type RegionColorName=(typeof REGION_COLOR_NAMES)[number];
+export const REGION_COLOR_FA:Record<RegionColorName,string>={red:"قرمز",blue:"آبی",green:"سبز",yellow:"زرد",magenta:"بنفش"};
+export function toWireAttachment(a:LocalAttachment,reviewId?:string,guideReviewId?:string){
+ return {...(reviewId&&a.kind==="image"?{reviewId}:{}),...(a.regionEdit&&guideReviewId&&a.kind==="image"?{regionEdit:{guideReviewId,regions:a.regionEdit.regions.map(r=>({n:r.n,color:r.color,note:r.note}))}}:{}),id:a.id,tag:a.tag,kind:a.kind,mime:a.mime,bytes:a.bytes,sha256:a.sha256,...(a.role?{role:a.role}:{}),
   ...(a.width!==undefined?{width:a.width}:{}),...(a.height!==undefined?{height:a.height}:{}),
   ...(a.durationSeconds!==undefined?{durationSeconds:a.durationSeconds}:{}),
   ...(a.textExcerpt!==undefined?{textExcerpt:a.textExcerpt}:{}),...(a.speech&&a.role==="lip_sync"?{speech:a.speech}:{})};

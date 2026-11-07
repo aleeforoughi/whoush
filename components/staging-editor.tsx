@@ -287,7 +287,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     </>}
     {/* Lens and aperture: Whoush's pick for the scene (lib/staging.ts, lensFor) until the user moves a slider; bokeh is the aperture opened wide. */}
     {editable&&show("lens")&&(show("angle")||show("distance"))&&<SectionRule/>}
-    {editable&&show("lens")&&(()=>{const l=lensFor(draft),auto=(on:boolean)=>on?" · خودکار":"";
+    {editable&&show("lens")&&(()=>{const l=lensFor(draft),auto=(on:boolean)=>on?" · اتوماتیک":"";
      return <>
       {/* Right after the distance: Whoush Autopilot (on: Whoush keeps the lens and aperture right for the scene; off: fully manual). The bokeh toggle is
           off the canvas for now (the aperture slider still sets the background blur). */}

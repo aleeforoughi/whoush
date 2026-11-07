@@ -1,7 +1,7 @@
 "use client";
 import {useCallback,useEffect,useLayoutEffect,useRef,useState,type KeyboardEvent,type PointerEvent,type RefObject} from "react";
 import Link from "next/link";
-import {AudioLines,ChevronLeft,ChevronRight,Download,FileJson,FileQuestion,FileText,FolderOpen,Images,Film,X,type LucideIcon} from "lucide-react";
+import {AudioLines,Brush,ChevronLeft,Info,ChevronRight,Download,FileJson,FileQuestion,FileText,FolderOpen,Images,Film,X,type LucideIcon} from "lucide-react";
 import {Dialog as DialogPrimitive} from "@base-ui/react/dialog";
 import {Badge,Button,Dialog,DialogPortal,Icon} from "@aleeforoughi/feather-react";
 import {ATTACHMENT_KINDS,displayTag,roleLabelFa,type AttachmentKind,type AttachmentRole} from "@/lib/attachments";
@@ -13,7 +13,45 @@ import {MISSING_FILE_FA,ShareActions,triggerDownload,type ShareFile} from "@/com
 export type ViewerItem={
  id:string;kind:AttachmentKind;mime:string;bytes:number;name:string;tag:string;role?:AttachmentRole;
  width?:number;height?:number;durationSeconds?:number;projectId?:string;url?:string;blob?:Blob;
+ /** The essentials shown over the picture (owner, 2026-11-06): title, date, the brief, the model and a few facts. */info?:ViewerInfo;
 };
+export type ViewerInfo={titleFa:string;dateIso?:string;briefFa?:string;model?:string;facts:{labelFa:string;value:string}[]};
+const faDate=(iso:string)=>{try{return new Intl.DateTimeFormat("fa-IR",{dateStyle:"medium",timeStyle:"short"}).format(new Date(iso));}catch{return "";}};
+/** A file known only by its URL (a generation): its bytes are fetched once the viewer shows it, so download and share work too. */
+function useFetchedBlob(item:ViewerItem):Blob|undefined{
+ const [got,setGot]=useState<{id:string;blob:Blob}|null>(null);
+ useEffect(()=>{
+  if(item.blob||!item.url||item.url.startsWith("blob:"))return;
+  let alive=true;
+  fetch(item.url).then(r=>r.ok?r.blob():undefined).then(b=>{if(alive&&b)setGot({id:item.id,blob:b});}).catch(()=>undefined);
+  return()=>{alive=false;};
+ },[item.id,item.url,item.blob]);
+ return item.blob??(got?.id===item.id?got.blob:undefined);
+}
+/**
+ * «جزییات» (owner, 2026-11-06): nothing lies over the picture; a fixed button opens this sheet, which scrolls and closes: the title and date, the model and the
+ * facts, and the whole brief.
+ */
+export const DETAILS_BUTTON_FA="جزییات";
+function DetailsSheet({info,onClose}:{info:ViewerInfo;onClose:()=>void}){
+ return <div data-viewer-chrome role="dialog" aria-label={DETAILS_BUTTON_FA} className="absolute inset-x-0 bottom-0 z-20 flex max-h-[70dvh] flex-col rounded-t-[12px] border-t border-white/10 bg-background shadow-2xl">
+  <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
+   <span className="type-label text-fg-primary">{DETAILS_BUTTON_FA}</span>
+   <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label="بستن جزییات"><Icon icon={X} aria-hidden="true"/></Button>
+  </div>
+  <div className="flex flex-col gap-3 overflow-y-auto p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+    <span className="type-title text-fg-primary"><bdi>{info.titleFa}</bdi></span>
+    {info.dateIso&&<span className="type-caption text-fg-secondary">{faDate(info.dateIso)}</span>}
+   </div>
+   {(info.model||info.facts.length>0)&&<ul className="flex flex-wrap gap-1.5">
+    {info.model&&<li className="rounded-[4px] bg-primary/15 px-1.5 py-0.5 type-caption text-fg-primary"><bdi>{info.model}</bdi></li>}
+    {info.facts.map(f=><li key={f.labelFa} className="rounded-[4px] bg-white/10 px-1.5 py-0.5 type-caption text-fg-secondary">{f.labelFa}: <bdi className="text-fg-primary">{f.value}</bdi></li>)}
+   </ul>}
+   {info.briefFa&&<p className="whitespace-pre-wrap type-body text-fg-primary">{info.briefFa}</p>}
+  </div>
+ </div>;
+}
 const KIND_ICONS:Record<AttachmentKind,LucideIcon>={image:Images,video:Film,audio:AudioLines,pdf:FileText,json:FileJson,md:FileText};
 export const VIEWER_LABEL_FA="نمایش تمام‌صفحه";
 const shareFile=(item:ViewerItem,projectTitle:string|undefined):ShareFile=>({blob:item.blob,name:item.name,mime:item.mime,kind:item.kind,tag:item.tag,width:item.width,height:item.height,durationSeconds:item.durationSeconds,projectTitle});
@@ -45,7 +83,7 @@ const isRtl=()=>typeof document!=="undefined"&&getComputedStyle(document.documen
 
 function Meta({item}:{item:ViewerItem}){
  return <span className="type-caption text-fg-secondary">
-  {ATTACHMENT_KINDS[item.kind].labelFa} · {faBytes(item.bytes)}
+  {ATTACHMENT_KINDS[item.kind].labelFa}{item.bytes>0&&<> · {faBytes(item.bytes)}</>}
   {item.durationSeconds!==undefined&&<> · <bdi>{faDuration(item.durationSeconds)}</bdi></>}
   {item.width!==undefined&&item.height!==undefined&&<> · <bdi>{faDimensions(item.width,item.height)}</bdi></>}
  </span>;
@@ -57,14 +95,45 @@ function Missing(){
  </div>;
 }
 
+/**
+ * A picture you can explore (owner, 2026-11-06): pinch to zoom and drag to move on a phone, the wheel and drag on a computer, double-tap or double-click to
+ * zoom in or back. While zoomed (or mid-pinch) the gestures are the picture's, so a drag never turns into a swipe to the next item (`onBusy`).
+ */
+function ZoomableImage({src,alt,onBusy}:{src:string;alt:string;onBusy:(busy:boolean)=>void}){
+ const [v,setV]=useState({s:1,x:0,y:0});
+ const pts=useRef(new Map<number,{x:number;y:number}>());
+ const pinch=useRef<{d:number;mx:number;my:number;v:{s:number;x:number;y:number}}|null>(null);
+ const drag=useRef<{x:number;y:number;v:{s:number;x:number;y:number}}|null>(null);
+ const lastTap=useRef(0);
+ const [moving,setMoving]=useState(false);
+ const set=(n:{s:number;x:number;y:number})=>{const s=Math.min(6,Math.max(1,n.s));const next=s===1?{s:1,x:0,y:0}:{...n,s};setV(next);onBusy(next.s>1);};
+ const dist=(a:{x:number;y:number},b:{x:number;y:number})=>Math.hypot(a.x-b.x,a.y-b.y);
+ function down(e:PointerEvent<HTMLDivElement>){
+  pts.current.set(e.pointerId,{x:e.clientX,y:e.clientY});const p=[...pts.current.values()];
+  if(p.length===2){pinch.current={d:dist(p[0],p[1]),mx:(p[0].x+p[1].x)/2,my:(p[0].y+p[1].y)/2,v};drag.current=null;setMoving(true);onBusy(true);e.stopPropagation();return;}
+  const now=Date.now();if(now-lastTap.current<300){set(v.s>1?{s:1,x:0,y:0}:{s:2.5,x:0,y:0});lastTap.current=0;e.stopPropagation();return;}lastTap.current=now;
+  if(v.s>1){drag.current={x:e.clientX,y:e.clientY,v};setMoving(true);try{e.currentTarget.setPointerCapture(e.pointerId);}catch{/* no capture */}e.stopPropagation();}
+ }
+ function move(e:PointerEvent<HTMLDivElement>){
+  if(!pts.current.has(e.pointerId))return;pts.current.set(e.pointerId,{x:e.clientX,y:e.clientY});const p=[...pts.current.values()];
+  if(pinch.current&&p.length>=2){const c=pinch.current,d=dist(p[0],p[1]),mx=(p[0].x+p[1].x)/2,my=(p[0].y+p[1].y)/2;set({s:c.v.s*d/c.d,x:c.v.x+(mx-c.mx),y:c.v.y+(my-c.my)});return;}
+  if(drag.current){const c=drag.current;set({...c.v,x:c.v.x+e.clientX-c.x,y:c.v.y+e.clientY-c.y});}
+ }
+ function up(e:PointerEvent<HTMLDivElement>){pts.current.delete(e.pointerId);if(pts.current.size<2)pinch.current=null;if(!pts.current.size){drag.current=null;setMoving(false);onBusy(v.s>1);}}
+ return <div onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
+  onWheel={e=>set({...v,s:v.s*(e.deltaY<0?1.15:1/1.15)})} className="flex size-full touch-none items-center justify-center" style={{cursor:v.s>1?"grab":"zoom-in"}}>
+  {/* eslint-disable-next-line @next/next/no-img-element -- a local blob: URL or an owned output */}
+  <img src={src} alt={alt} draggable={false} className="max-h-dvh max-w-full select-none object-contain" style={{transform:`translate(${v.x}px,${v.y}px) scale(${v.s})`,transition:moving?"none":"transform .15s ease-out"}}/>
+ </div>;
+}
+
 /** The file itself, as large as fits: images and video are contained, never cropped. */
-function Media({item,autoPlay}:{item:ViewerItem;autoPlay:boolean}){
+function Media({item,autoPlay,onBusy}:{item:ViewerItem;autoPlay:boolean;onBusy:(busy:boolean)=>void}){
  const url=useItemUrl(item);
  if(!item.blob&&!item.url)return <Missing/>;
  if(!url)return null;
  if(item.kind==="image")
-  // eslint-disable-next-line @next/next/no-img-element -- a local blob: URL; next/image cannot optimize it
-  return <img src={url} alt={displayTag(item.tag)} draggable={false} className="max-h-dvh max-w-full select-none object-contain"/>;
+  return <ZoomableImage src={url} alt={displayTag(item.tag)} onBusy={onBusy}/>;
  // The bottom strip stays free for the native controls and the counter.
  if(item.kind==="video")return <video src={url} controls playsInline muted autoPlay={autoPlay} aria-label={displayTag(item.tag)} className="max-h-[calc(100dvh-4rem)] max-w-full object-contain"/>;
  if(item.kind==="audio")return <div className="flex w-full max-w-md flex-col items-center gap-6 p-6">
@@ -87,8 +156,15 @@ function focusInChrome(root:HTMLElement|null):boolean{
  try{return el.matches(":focus-visible");}catch{return true;}
 }
 
-function ViewerBody({items,index,onIndexChange,onClose,projectTitleOf,stageRef}:{items:ViewerItem[];index:number;onIndexChange:(i:number)=>void;onClose:()=>void;projectTitleOf?:(item:ViewerItem)=>string|undefined;stageRef:RefObject<HTMLDivElement|null>}){
+function ViewerBody({items,index,onIndexChange,onClose,projectTitleOf,stageRef,onEdit}:{items:ViewerItem[];index:number;onIndexChange:(i:number)=>void;onClose:()=>void;projectTitleOf?:(item:ViewerItem)=>string|undefined;stageRef:RefObject<HTMLDivElement|null>;
+ onEdit?:(item:ViewerItem)=>void}){
  const item=items[index],n=items.length;
+ const blob=useFetchedBlob(item);
+ const busy=useRef(false);
+ // The sheet belongs to the item it was opened on: moving to another item closes it.
+ const [detailsFor,setDetailsFor]=useState<string|null>(null);
+ const details=detailsFor===item.id,setDetails=(open:boolean)=>setDetailsFor(open?item.id:null);
+ useEffect(()=>{busy.current=false;},[item.id]);
  const [rtl]=useState(isRtl);
  const reduced=useReducedMotion();
  const [shown,setShown]=useState(true);
@@ -142,7 +218,8 @@ function ViewerBody({items,index,onIndexChange,onClose,projectTitleOf,stageRef}:
  }
  function onPointerUp(e:PointerEvent<HTMLDivElement>){
   const s=swipe.current;swipe.current=null;
-  if(!s||s.id!==e.pointerId)return;
+  // A zoomed or pinched picture keeps its gestures: no swipe to the next item.
+  if(!s||s.id!==e.pointerId||busy.current)return;
   const step=swipeStep(e.clientX-s.x,rtl,SWIPE_THRESHOLD,e.clientY-s.y);
   if(step)go(step);
  }
@@ -152,7 +229,7 @@ function ViewerBody({items,index,onIndexChange,onClose,projectTitleOf,stageRef}:
  const projectHref=item.projectId?"/studio?project="+item.projectId:undefined;
  return <div ref={rootRef} onKeyDown={onKeyDown} onPointerMove={wake} onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={()=>{swipe.current=null;}} onFocusCapture={wake} className="absolute inset-0 overflow-hidden">
   <div ref={stageRef} tabIndex={-1} className="absolute inset-0 flex touch-pan-y items-center justify-center outline-none">
-   <Media key={item.id} item={item} autoPlay={!reduced}/>
+   <Media key={item.id} item={item} autoPlay={!reduced} onBusy={b=>{busy.current=b;}}/>
   </div>
   <p className="sr-only" aria-live="polite">{displayTag(item.tag)} · {viewerCounter(index,n)}</p>
   <div data-viewer-chrome className={"absolute inset-x-0 top-0 z-10 flex flex-wrap items-start gap-2 bg-linear-to-b from-background/80 to-background/0 p-4 "+fade}>
@@ -167,21 +244,17 @@ function ViewerBody({items,index,onIndexChange,onClose,projectTitleOf,stageRef}:
      :<span className="max-w-full truncate type-label text-fg-primary"><bdi>{projectTitle}</bdi></span>)}
    </div>
    <div className="order-2 ms-auto flex items-center gap-2 sm:order-3 sm:ms-0">
-    <ShareActions overlay instagram file={shareFile(item,projectTitle)}/>
+    {onEdit&&item.kind==="image"&&<Button type="button" variant="secondary" onClick={()=>onEdit(item)} aria-label={"ادیت "+displayTag(item.tag)}><Icon icon={Brush} aria-hidden="true"/>ادیت</Button>}
+    <ShareActions overlay instagram file={shareFile({...item,blob},projectTitle)}/>
     {projectHref&&<Button variant="secondary" size="icon" aria-label="باز کردن پروژه" title="باز کردن پروژه" render={<Link href={projectHref} onClick={onClose}/>} nativeButton={false}><Icon icon={FolderOpen} aria-hidden="true"/></Button>}
    </div>
   </div>
-  {n>1&&<>
-   <div data-viewer-chrome className={"absolute start-3 top-1/2 z-10 -translate-y-1/2 "+fade}>
-    <Button type="button" variant="secondary" size="icon" disabled={!hasPrev(index)} onClick={()=>go("prev")} aria-label="قبلی"><Icon icon={PrevIcon} aria-hidden="true"/></Button>
-   </div>
-   <div data-viewer-chrome className={"absolute end-3 top-1/2 z-10 -translate-y-1/2 "+fade}>
-    <Button type="button" variant="secondary" size="icon" disabled={!hasNext(index,n)} onClick={()=>go("next")} aria-label="بعدی"><Icon icon={NextIcon} aria-hidden="true"/></Button>
-   </div>
-  </>}
-  <div aria-hidden="true" className={"pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-center bg-linear-to-t from-background/80 to-background/0 p-4 "+fade}>
-   <span className="type-label text-fg-primary">{viewerCounter(index,n)}</span>
-  </div>
+  {/* Nothing lies over the picture: a fixed «جزییات» button (always visible, not faded) opens the details sheet. */}
+  {item.info&&!details&&<div data-viewer-chrome className="absolute bottom-0 end-0 z-10 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+   <Button type="button" variant="secondary" size="sm" onClick={()=>setDetails(true)} aria-haspopup="dialog"><Icon icon={Info} aria-hidden="true"/>{DETAILS_BUTTON_FA}</Button>
+  </div>}
+  {n>1&&!details&&<div aria-hidden="true" className={"pointer-events-none absolute bottom-0 start-0 z-10 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] "+fade}><span className="type-caption text-fg-secondary">{viewerCounter(index,n)}</span></div>}
+  {details&&item.info&&<DetailsSheet info={item.info} onClose={()=>setDetails(false)}/>}
  </div>;
 }
 
@@ -192,8 +265,9 @@ function ViewerBody({items,index,onIndexChange,onClose,projectTitleOf,stageRef}:
  * `index` is the open item or null; moves are reported through `onIndexChange`, closing through `onClose`.
  * `restoreFocusTo` picks the element that gets focus back on close (default: whatever opened the viewer).
  */
-export function MediaViewer({items,index,onIndexChange,onClose,projectTitleOf,restoreFocusTo}:{
+export function MediaViewer({items,index,onIndexChange,onClose,projectTitleOf,restoreFocusTo,onEdit}:{
  items:ViewerItem[];index:number|null;onIndexChange:(index:number)=>void;onClose:()=>void;
+ /** «ادیت» on an image: closes the viewer and opens it in the brush editor. */onEdit?:(item:ViewerItem)=>void;
  projectTitleOf?:(item:ViewerItem)=>string|undefined;restoreFocusTo?:(item:ViewerItem)=>HTMLElement|null;
 }){
  const stageRef=useRef<HTMLDivElement>(null);
@@ -227,7 +301,7 @@ export function MediaViewer({items,index,onIndexChange,onClose,projectTitleOf,re
     finalFocus={finalFocus}
     className="dark motion-dialog fixed inset-0 z-50 m-0 h-dvh w-screen max-w-none overflow-hidden rounded-none border-0 bg-background p-0 text-fg-primary opacity-100 outline-none data-starting-style:opacity-0"
    >
-    {current&&index!==null&&<ViewerBody items={items} index={index} onIndexChange={onIndexChange} onClose={onClose} projectTitleOf={projectTitleOf} stageRef={stageRef}/>}
+    {current&&index!==null&&<ViewerBody items={items} index={index} onIndexChange={onIndexChange} onClose={onClose} projectTitleOf={projectTitleOf} stageRef={stageRef} onEdit={onEdit}/>}
    </DialogPrimitive.Popup>
   </DialogPortal>
  </Dialog>;

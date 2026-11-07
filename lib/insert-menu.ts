@@ -11,8 +11,8 @@ export type InsertAction=
 export type InsertItem={id:string;titleFa:string;hintFa:string;icon:InsertIconKey;action:InsertAction};
 export type InsertGroup={id:"popular"|"image"|"video"|"audio"|"file";/** True for «پرکاربردترین»: shortcuts that repeat entries of the kind groups below. */featured?:true;labelFa:string;items:readonly InsertItem[]};
 
-export const AUTO_UPLOAD_FA={titleFa:"آپلود با نقش خودکار",hintFa:"هر فایلی؛ نقش را هووش انتخاب می‌کند"} as const;
-export const MY_CHARACTERS_FA={titleFa:"کاراکترهای من",hintFa:"انتخاب از استودیوی کاراکتر"} as const;
+export const AUTO_UPLOAD_FA={titleFa:"رفرنس اتوماتیک",hintFa:"هر فایلی؛ نقش را هووش انتخاب می‌کند"} as const;
+export const MY_CHARACTERS_FA={titleFa:"کاراکتر",hintFa:"انتخاب از استودیوی کاراکتر"} as const;
 const ROLE_ICON:Record<string,InsertIconKey>={
  "image:reference":"reference_image","image:frame":"frame","video:reference":"reference_video",
  "image:character":"character","image:start_frame":"start_frame","image:end_frame":"end_frame","image:environment":"environment","image:object":"object","image:outfit":"outfit","image:hairstyle":"hairstyle","image:makeup":"makeup","image:graphic":"graphic","image:edit_reference":"edit_image",
@@ -25,7 +25,7 @@ export const POPULAR_IDS=["image:reference","image:character","image:frame","ima
 const byId=new Map([...imageItems,...roleItems("video"),...roleItems("audio")].map(i=>[i.id,i]));
 export const INSERT_MENU:readonly InsertGroup[]=[
  {id:"popular",featured:true,labelFa:"پرکاربردترین",items:[{id:"auto",...AUTO_UPLOAD_FA,icon:"auto",action:{type:"auto"}},...POPULAR_IDS.map(id=>({...byId.get(id)!,id:"popular:"+id}))]},
- // «کاراکترهای من» comes right after کاراکتر
+ // The saved characters («کاراکتر») come right after the character role («شخص»)
  {id:"image",labelFa:"تصویر",items:[...imageItems.slice(0,characterAt+1),{id:"characters",...MY_CHARACTERS_FA,icon:"characters",action:{type:"characters"}},...imageItems.slice(characterAt+1)]},
  {id:"video",labelFa:"ویدیو",items:roleItems("video")},
  {id:"audio",labelFa:"صدا",items:roleItems("audio")},

@@ -16,7 +16,8 @@ import {evaluateTextSafety} from "./safety";
 export type ChatGif={id:string;url:string;stillUrl:string;width:number;height:number;title:string};
 export const GIF_QUERIES:Record<GifMood,string>={celebrate:"celebration confetti",high_five:"high five",mind_blown:"mind blown",thinking:"thinking hmm",on_it:"lets do this",oops:"oops",cool:"cool sunglasses",thumbs_up:"thumbs up"};
 /** Words that drop a result even when the prefilter allows it: politics, flags and countries, religion, alcohol and drugs, weapons, romance and bodies. */
-const DENY=["president","politic","election","vote","protest","flag","country","america","usa","iran","israel","russia","china","army","military","war","gun","weapon","blood","fight",
+/** Whoush's own reaction GIFs never show a politician of any country (stricter than what users may ask for, which allows foreign figures). */
+const DENY=["trump","biden","obama","putin","netanyahu","zelensky","macron","erdogan","kim jong","xi jinping","president","politic","election","vote","protest","flag","country","america","usa","iran","israel","russia","china","army","military","war","gun","weapon","blood","fight",
  "church","mosque","pray","jesus","allah","god","bible","quran","beer","wine","drunk","alcohol","smoke","weed","drug","sexy","hot","kiss","bikini","butt","booty","twerk","nsfw","love"];
 const MEDIA=/^https:\/\/media\d*\.giphy\.com\/media\//;
 export function gifsEnabled(env:Record<string,string|undefined>=process.env):boolean{

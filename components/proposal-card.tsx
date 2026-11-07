@@ -1,26 +1,28 @@
 "use client";
 import type React from "react";
-import {Box,CircleOff,Clapperboard,Image as ImageIcon,Sparkles} from "lucide-react";
+import {Box,CircleOff,Clapperboard,Image as ImageIcon,ShieldAlert,Sparkles} from "lucide-react";
 import {Badge,Button,Card,Icon,Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from "@aleeforoughi/feather-react";
 import {SuggestedModelNote} from "@/components/plan-details";
 import {TagBadge} from "@/components/attachment-chip";
 import type {AgentProposal,NoModelResult} from "@/lib/studio-types";
+import type {UnsupportedReason} from "@/lib/types";
 import {PAST_PROPOSAL_FA,type ProposalSnapshot} from "@/lib/projects";
 import {fa} from "@/lib/format";
 import {nearestAspectRatio} from "@/lib/aspect";
+import {ResearchReport,ReviewNote} from "@/components/research-report";
 
-export const GENERATE_FA="بسازش",DEMO_NOTE_FA="نسخهٔ نمایشی: نه پولی کسر می‌شود و نه رسانهٔ واقعی ساخته می‌شود.";
+export const GENERATE_FA="بسازش",GENERATE_WITH_REFS_FA="با این مرجع‌ها بسازش",DRAFT_FA="اول پیش‌نویس ارزون",SKIP_DRAFT_FA="بدون پیش‌نویس بساز",VIDEO_NOW_FA="حالا ویدیو رو بساز",DEMO_NOTE_FA="نسخهٔ نمایشی: نه پولی کسر می‌شود و نه رسانهٔ واقعی ساخته می‌شود.";
 const RECOMMENDED_FA="پیشنهاد هووش",ALTERNATE_FA="جایگزین";
 /** Latin model names keep their own direction inside Persian text. */
 const ModelName=({name}:{name:string})=><bdi dir="ltr">{name}</bdi>;
 
 /** The card's top row: the kind's icon, «تصویر» or «ویدیو», the generation's tag (a button that puts it in the prompt) and the demo badge. */
-function Head({kind,tag,onMention}:{kind:"image"|"video";tag?:string;onMention?:()=>void}){
+function Head({kind,tag,onMention,demo}:{kind:"image"|"video";tag?:string;onMention?:()=>void;/** Only a real demo (no media made) is labelled. */demo?:boolean}){
  return <div className="flex items-center gap-2">
   <span className="flex size-9 shrink-0 items-center justify-center rounded-control bg-surface-hover text-fg-secondary"><Icon icon={kind==="video"?Clapperboard:ImageIcon} size={20} aria-hidden="true"/></span>
   <span className="type-label text-fg-primary">{kind==="video"?"ساخت ویدیو":"ساخت تصویر"}</span>
   {tag&&<TagBadge tag={tag} onMention={onMention}/>}
-  <Badge variant="outline" className="ms-auto">نسخه نمایشی</Badge>
+  {demo&&<Badge variant="outline" className="ms-auto">نسخه نمایشی</Badge>}
  </div>;
 }
 
@@ -29,10 +31,12 @@ function Head({kind,tag,onMention}:{kind:"image"|"video";tag?:string;onMention?:
  * alternates marked «جایگزین», each with its fixed Neurons), its settings, its notes, then a full-width bar at its very bottom: [✦ بسازش] on the right, its cost
  * («۱۰ نورون») on the left. Tapping the tag mentions it in the chat to ask for changes.
  */
-export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onAspect,busy,onApprove,onMention}:{proposal:AgentProposal;tag?:string;
+export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onAspect,busy,onApprove,onMention,excludedReferences,onToggleReference,onDraft,drafted}:{proposal:AgentProposal;tag?:string;
  /** The scene was arranged in «بوم»: «بساز» builds exactly that scene. */adjusted?:boolean;selected:string;onSelect:(id:string)=>void;
  /** The aspect ratio the generation will use (Whoush's from the brief or «بوم», unless the user picked one here). */aspect?:string;onAspect?:(r:string)=>void;
- busy:boolean;onApprove:()=>void;onMention?:()=>void}){
+ busy:boolean;onApprove:()=>void;onMention?:()=>void;
+ /** Research references the user removed from the package, and the toggle (remove or restore). */excludedReferences?:ReadonlySet<string>;onToggleReference?:(id:string)=>void;
+ /** Video: make the cheap opening-frame draft first (the default), and whether it has been made. */onDraft?:()=>void;drafted?:boolean}){
  const chosen=proposal.suggestions.find(s=>s.modelId===selected);
  const price=chosen?.neurons??proposal.fixedNeurons;
  const ordered=[...proposal.suggestions].sort((a,b)=>Number(b.modelId===proposal.recommendedModelId)-Number(a.modelId===proposal.recommendedModelId));
@@ -50,7 +54,7 @@ export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onA
  // The ratio that will really be used: the wanted one, or the nearest this model offers (the same rule as the quote in studio.tsx).
  const shownAspect=nearestAspectRatio(aspect,ratios)??aspect;
  return <Card size="sm" data-testid="proposal" data-generation={tag} className="gap-3 p-3">
-  <Head kind={proposal.operation==="generate_video"?"video":"image"} tag={tag} onMention={onMention}/>
+  <Head kind={proposal.operation==="generate_video"?"video":"image"} tag={tag} onMention={onMention} demo={proposal.quoteMode==="demo"}/>
   {heads.length>1
    ?<Select value={headOf(selected)} onValueChange={v=>onSelect(String(v))} items={items}>
     <SelectTrigger size="sm" aria-label="مدل تولید" className="w-full"><span className="text-fg-secondary">مدل</span><SelectValue/></SelectTrigger>
@@ -69,14 +73,27 @@ export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onA
    {durations.length>0&&<Setting label="مدت">{durations.map(d=><Opt key={d} on={chosen?.durationSeconds===d} onClick={()=>pick(chosen?.resolution,d)} disabled={durations.length<2}>{fa(d)} ثانیه</Opt>)}</Setting>}
   </div>}
   {adjusted&&<p role="status" className="flex items-center gap-2 type-caption text-fg-primary"><Icon icon={Box} size={16} aria-hidden="true" className="size-4 text-primary"/>با صحنه‌ای که توی «بوم» چیدی ساخته می‌شه.</p>}
-  <p className="type-caption text-fg-secondary">{DEMO_NOTE_FA}</p>
+  {proposal.research&&<ResearchReport research={proposal.research} excluded={excludedReferences} onToggle={onToggleReference}/>}
+  {proposal.review&&<ReviewNote review={proposal.review}/>}
+  {proposal.quoteMode==="demo"&&<p className="type-caption text-fg-secondary">{DEMO_NOTE_FA}</p>}
+  {/* Video drafts first (owner, 2026-11-06): a cheap still of the opening frame to check the look before the expensive video; the user may skip it. */}
+  {proposal.draft&&onDraft&&!drafted&&<div className="-mx-3 -mb-3 mt-1 flex flex-col gap-2 rounded-b-[inherit] border-t border-line-secondary bg-surface-subtle px-3 py-2.5">
+   <p className="type-caption text-fg-secondary">پیشنهادم اینه اول یه پیش‌نویس ارزون بسازیم: یه عکس از فریم اول، تا قبل از خرج اصلی ظاهرش رو ببینی و اگه چیزی اشتباهه درستش کنیم. اگه نمی‌خوای، مستقیم بساز.</p>
+   <div className="flex flex-wrap items-center justify-between gap-2">
+    <Button type="button" onClick={onDraft} disabled={busy||!proposal.turnId} className="shrink-0"><Icon icon={Sparkles} aria-hidden="true"/>{DRAFT_FA}<span className="type-caption opacity-80">· {fa(proposal.draft.neurons)} نورون</span></Button>
+    <Button type="button" variant="outline" onClick={onApprove} disabled={busy||!proposal.turnId} className="shrink-0"><Icon icon={Clapperboard} aria-hidden="true"/>{SKIP_DRAFT_FA}<span className="type-caption text-fg-secondary">· {fa(price)} نورون</span></Button>
+   </div>
+  </div>}
   {/* The call to action, full width at the card's very bottom: [✦ بسازش] on the right (as Persian reads), the cost on the left. */}
-  <div className="-mx-3 -mb-3 mt-1 flex items-center justify-between gap-3 rounded-b-[inherit] border-t border-line-secondary bg-surface-subtle px-3 py-2.5">
+  {!(proposal.draft&&onDraft&&!drafted)&&<div className="-mx-3 -mb-3 mt-1 flex flex-col gap-2 rounded-b-[inherit] border-t border-line-secondary bg-surface-subtle px-3 py-2.5">
+   {drafted&&<p className="type-caption text-fg-secondary">پیش‌نویس آماده‌ست. اگه ظاهرش درسته ویدیو رو بساز؛ وگرنه توی چت بگو چی عوض بشه.</p>}
+   <div className="flex items-center justify-between gap-3">
    <Button type="button" onClick={onApprove} disabled={busy||!proposal.turnId} className="shrink-0">
-    <Icon icon={Sparkles} aria-hidden="true"/>{GENERATE_FA}
+    <Icon icon={Sparkles} aria-hidden="true"/>{drafted?VIDEO_NOW_FA:!proposal.draft&&proposal.research?.usedAsImages&&proposal.research.references.some(r=>!excludedReferences?.has(r.id))?GENERATE_WITH_REFS_FA:GENERATE_FA}
    </Button>
    <span className="type-label text-fg-primary" aria-label={"هزینه: "+fa(price)+" نورون"}>{fa(price)} نورون</span>
-  </div>
+   </div>
+  </div>}
  </Card>;
 }
 
@@ -107,13 +124,26 @@ export function PastProposalCard({snapshot,onMention,adjusted,onBuildScene,busy}
 }
 
 /** 422 no_compatible_model: no price and nothing to generate; the model that fits but is not active yet, if any. The plan is in the conversation. */
+/**
+ * Why a plan came with no price, said as it is (owner, 2026-11-06: the iPhone session read «مدل سازگار پیدا نشد» when the real stop was its five photos,
+ * which no safety check can inspect yet). Older saved chats have no reason: they read as before.
+ */
+const NO_MODEL_COPY:Record<UnsupportedReason|"unknown",{title:string;body:string}>={
+ media_review:{title:"عکس‌هات هنوز بررسی ایمنی نمی‌شن",body:"ساخت با عکس یا ویدیوی خودت هنوز فعال نیست، چون بررسی ایمنی فایل‌ها هنوز آماده نیست. برنامه آماده‌ست؛ اگه بدون فایل‌ها بفرستی، فقط از روی توضیحت ساخته می‌شه."},
+ no_model:{title:"مدل سازگاری پیدا نشد",body:"تا پیدا شدن مدل سازگار، قیمتی نمایش داده نمی‌شود و چیزی برای ساخت وجود ندارد."},
+ voice_clone:{title:"ساخت صدا پشتیبانی نمی‌شه",body:"هووش فقط عکس و ویدیو می‌سازه و صدای کسی رو تقلید نمی‌کنه."},
+ unknown:{title:"مدل سازگاری پیدا نشد",body:"تا پیدا شدن مدل سازگار، قیمتی نمایش داده نمی‌شود و چیزی برای ساخت وجود ندارد."}
+};
+/** The card's title, also the chat's preview line. */
+export const noModelTitle=(reason?:UnsupportedReason)=>NO_MODEL_COPY[reason??"unknown"].title;
 export function NoModelCard({result}:{result:NoModelResult}){
+ const copy=NO_MODEL_COPY[result.reason??"unknown"];
  return <Card size="sm" className="gap-3 p-3">
   <div className="flex items-center gap-2">
-   <span className="flex size-9 shrink-0 items-center justify-center rounded-control bg-surface-hover text-fg-secondary"><Icon icon={CircleOff} size={20} aria-hidden="true"/></span>
-   <span className="type-label text-fg-primary">مدل سازگاری پیدا نشد</span>
+   <span className="flex size-9 shrink-0 items-center justify-center rounded-control bg-surface-hover text-fg-secondary"><Icon icon={result.reason==="media_review"?ShieldAlert:CircleOff} size={20} aria-hidden="true"/></span>
+   <span className="type-label text-fg-primary">{copy.title}</span>
   </div>
   {result.plan?.suggestedModel&&<SuggestedModelNote model={result.plan.suggestedModel}/>}
-  <p className="type-caption text-fg-secondary">تا پیدا شدن مدل سازگار، قیمتی نمایش داده نمی‌شود و چیزی برای ساخت وجود ندارد.</p>
+  <p className="type-caption text-fg-secondary">{copy.body}</p>
  </Card>;
 }

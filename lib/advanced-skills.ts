@@ -25,7 +25,9 @@ export const ADVANCED_SKILLS={
   checks:[
    "Explicitly separate immutable subject attributes, source region locks, requested edits and permissible environmental changes.",
    "Preserve approved appearance and framing; use consistent user-provided multi-angle reference IDs with verified model support.",
-   "Measure/review changes across first, middle, last frames and iterations; no claim of zero drift without inspection."
+   "Measure/review changes across first, middle, last frames and iterations; no claim of zero drift without inspection.",
+   "STRICT on every edit and regeneration (owner, 2026-11-06): only the requested change happens; the face, identity, body, pose, framing, background and every unmentioned detail stay as in the source; never re-imagine, re-light or re-compose the whole image.",
+   "Skin texture lock: keep the exact pores, fine lines, freckles, peach fuzz, grain and micro-contrast of the source skin; never smooth, airbrush, wax or re-detail skin that was not asked to change, including on a second or third regeneration."
   ]
  },
  anti_teleport:{
@@ -43,7 +45,8 @@ export const ADVANCED_SKILLS={
   checks:[
    "Track canonical identities, wardrobe, props, lighting direction, environment, camera axis, left/right hand interactions and time of day.",
    "Respect reference first/middle/last frame state and deliberate state transitions; maintain a per-shot continuity ledger.",
-   "For video edits preserve exact source FPS, frame count, PTS, shot timing, crop, audio and color settings unless explicitly changed."
+   "For video edits preserve exact source FPS, frame count, PTS, shot timing, crop, audio and color settings unless explicitly changed.",
+   "Colour-settings lock for photo edits and revisions: same white balance, exposure, contrast, saturation, colour grade, tone curve, sharpness and noise as the source; no global colour shift, filter or re-grade unless asked."
   ]
  },
  hyper_realism:{
@@ -54,7 +57,8 @@ export const ADVANCED_SKILLS={
    "For every scene, model true material properties: fabric weave/seams, metal, water, glass, wood, stone, soil and naturally imperfect environment textures.",
    "Balance white balance, exposure, contrast, shadow detail, highlight roll-off, saturation, dynamic range and physically plausible directional light.",
    "Avoid oversmoothing, synthetic CGI sheen, excessive sharpening and oily skin, plus arbitrary mist/grain/glow/vintage/light leaks; use filters only when requested and physically plausible.",
-   "Do not impose pores or realism on cartoons, typography, fantasy illustrations, pure graphics or user-requested stylized work."
+   "Do not impose pores or realism on cartoons, typography, fantasy illustrations, pure graphics or user-requested stylized work.",
+   "On edits and regenerations the source skin is the reference: carry its exact texture through unchanged outside the requested change, and match it inside the change (no texture drift between versions)."
   ]
  },
  character_creation:{

@@ -16,7 +16,7 @@ export function openAIUnavailable(e:InstanceType<typeof OpenAI.APIError>):Planne
  return new PlannerUnavailableError();
 }
 /** Live private planner (OpenAI Responses API, Structured Outputs). Errors map to vendor-neutral types; usage is normalized for the private audit only. */
-export async function planWithOpenAI(req:{systemInstructions:string;userText:string;attachments?:readonly BriefAttachment[];generations?:readonly BriefGeneration[];history?:readonly BriefTurn[];replyScript?:"fa"|"finglish";stagingOverride?:unknown},modelId:string):Promise<{plan:CreativePlan;usage:{input_tokens:number;output_tokens:number};modelId:string}>{
+export async function planWithOpenAI(req:{systemInstructions:string;userText:string;attachments?:readonly BriefAttachment[];generations?:readonly BriefGeneration[];history?:readonly BriefTurn[];replyScript?:"fa"|"finglish";stagingOverride?:unknown},modelId:string,signal?:AbortSignal):Promise<{plan:CreativePlan;usage:{input_tokens:number;output_tokens:number};modelId:string}>{
  const rl=loadRoutingConfig().rateLimits;
  // The SDK retries 408/409/429/5xx and connection errors itself (exponential backoff, honouring Retry-After up to 60 s) before we see the error.
  const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY,maxRetries:rl.sdkMaxRetries,timeout:rl.requestTimeoutMs});
@@ -27,8 +27,9 @@ export async function planWithOpenAI(req:{systemInstructions:string;userText:str
    instructions:req.systemInstructions,
    input:buildBriefMessage(req.userText,req.attachments,req.generations,req.history,req.replyScript,req.stagingOverride),
    text:{format:zodTextFormat(CreativePlanWireSchema,"creative_plan")}
-  });
+  },signal?{signal}:undefined);
  }catch(e){
+  if(signal?.aborted)throw e; // cancelled by the turn: not an outage, so no provider cooldown
   if(e instanceof OpenAI.APIError)throw openAIUnavailable(e); // rate limit, quota, connection, timeout, auth, 5xx
   if(e instanceof OpenAI.OpenAIError||e instanceof SyntaxError||e instanceof ZodError)throw new PlannerInvalidOutputError(); // unparseable structured output
   throw e;

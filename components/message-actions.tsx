@@ -1,5 +1,5 @@
 "use client";
-import {useEffect,useRef,useState,type ReactElement,type ReactNode} from "react";
+import {useEffect,useRef,useState,type ReactElement,type ReactNode,type RefObject} from "react";
 import {Check,Copy,RotateCcw,SmilePlus,type LucideIcon} from "lucide-react";
 import {Icon,Tooltip,TooltipContent,TooltipTrigger} from "@aleeforoughi/feather-react";
 import {faDateTime,faRelativeTime} from "@/lib/format";
@@ -15,6 +15,27 @@ export function useNow(ms=30_000){
  return now;
 }
 
+/** The focus band on a touch screen: 200px tall, centred at 60% of the screen's height, where the eye rests while reading a chat. */
+export const FOCUS_BAND={heightPx:200,centre:.6};
+/**
+ * Whether the element is inside the focus band now (touch screens only: with hover there is no band, and this stays false). Measured on scroll (any scroll
+ * area: the listener captures them all), on resize and once at start, at most once a frame. Plain geometry, so it works the same in a frame or a page.
+ */
+export function useInFocusBand(ref:RefObject<HTMLElement|null>):boolean{
+ const [inside,setInside]=useState(false);
+ useEffect(()=>{
+  const el=ref.current;
+  if(!el||!window.matchMedia("(hover: none)").matches)return;
+  let frame=0;
+  const measure=()=>{frame=0;const r=el.getBoundingClientRect(),mid=window.innerHeight*FOCUS_BAND.centre,half=FOCUS_BAND.heightPx/2;
+   setInside(r.height>0&&r.bottom>=mid-half&&r.top<=mid+half);};
+  const schedule=()=>{if(!frame)frame=window.requestAnimationFrame(measure);};
+  schedule();
+  document.addEventListener("scroll",schedule,{capture:true,passive:true});window.addEventListener("resize",schedule);
+  return()=>{document.removeEventListener("scroll",schedule,{capture:true});window.removeEventListener("resize",schedule);if(frame)window.cancelAnimationFrame(frame);};
+ },[ref]);
+ return inside;
+}
 /** A tooltip that opens on hover and on keyboard focus; the trigger is rendered as `render`. */
 function Hint({label,render,children}:{label:string;render:ReactElement;children:ReactNode}){
  return <Tooltip><TooltipTrigger render={render}>{children}</TooltipTrigger><TooltipContent side="bottom">{label}</TooltipContent></Tooltip>;
@@ -30,10 +51,13 @@ function ActionButton({label,icon,onClick,disabled}:{label:string;icon:LucideIco
 /**
  * The action bar under a chat message (user and agent alike): react with an emoji (Slack-style), copy the text, run it again, and when it was sent («۶ دقیقه پیش»; the full date and time on hover
  * or focus). Only icons; each one's name is its tooltip. The bar keeps its space but stays invisible until the pointer is over the message (the nearest `group`)
- * or focus is inside it, so keyboard users reach it too; on touch screens, which have no hover, it is always shown.
+ * or focus is inside it, so keyboard users reach it too. On touch screens, which have no hover (owner, 2026-11-07: always showing every bar is crowded and
+ * repetitive), a bar fades in quickly only while its message passes through the focus band (useInFocusBand), and on the newest message (`pinned`).
  */
-export function MessageActions({text,at,now,onRerun,rerunDisabled,onReact}:{text:string;at:string;now:number;onRerun?:()=>void;rerunDisabled?:boolean;
- /** Slack-style reaction: opens the reaction palette; picking toggles the user's reaction on this message. */onReact?:(emoji:ReactionEmoji)=>void}){
+export function MessageActions({text,at,now,onRerun,rerunDisabled,onReact,pinned=false}:{text:string;at:string;now:number;onRerun?:()=>void;rerunDisabled?:boolean;
+ /** Slack-style reaction: opens the reaction palette; picking toggles the user's reaction on this message. */onReact?:(emoji:ReactionEmoji)=>void;
+ /** The newest message: its bar stays shown on a touch screen (it often cannot scroll up into the focus band). */pinned?:boolean}){
+ const bar=useRef<HTMLDivElement>(null),near=useInFocusBand(bar);
  const [copied,setCopied]=useState(false);
  const timer=useRef(0);
  useEffect(()=>()=>window.clearTimeout(timer.current),[]);
@@ -42,7 +66,7 @@ export function MessageActions({text,at,now,onRerun,rerunDisabled,onReact}:{text
    setCopied(true);window.clearTimeout(timer.current);timer.current=window.setTimeout(()=>setCopied(false),2000);
   }).catch(()=>{ /* clipboard blocked: nothing copied, nothing claimed */ });
  };
- return <div className="flex h-8 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100">
+ return <div ref={bar} data-near={near||pinned} className="flex h-8 items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-none [@media(hover:none)]:data-[near=true]:pointer-events-auto [@media(hover:none)]:data-[near=true]:opacity-100">
   {onReact&&<EmojiPalette emojis={REACTION_EMOJIS} label={REACT_FA} columns={8} onPick={e=>onReact(e as ReactionEmoji)}
    trigger={<button type="button" aria-label={REACT_FA} title={REACT_FA} className="hit-area flex size-8 shrink-0 items-center justify-center rounded-control text-fg-secondary motion-hover hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><Icon icon={SmilePlus} size={16} aria-hidden="true" className="size-4"/></button>}/>}
   {text&&<ActionButton label={copied?COPIED_FA:COPY_FA} icon={copied?Check:Copy} onClick={copy}/>}

@@ -4,7 +4,7 @@ import {randomUUID} from "node:crypto";
 import {claimDevSubmit,devGenerationGate,devLiveTest,devSubmitCount,generationGate,generationModeFor} from "../lib/policy";
 import {llmPolicy} from "../lib/llm";
 import {findMediaModel} from "../lib/catalog";
-import {createQuote} from "../lib/quotes";
+import {createQuote,FA_DEV_CAP_REACHED,QuoteError} from "../lib/quotes";
 import {InMemoryJobStore,executeApprovedQuote,pollJob,toPublicJob} from "../lib/jobs";
 import {ReservationLedger} from "../lib/ledger";
 import type {MediaProvider,ProviderStatus} from "../lib/media-provider";
@@ -50,6 +50,19 @@ test("dev live submissions are capped per process",async()=>{
   assert.equal(generationModeFor(soul),"demo","cap reached falls back to mock");
  });
  for(const bad of ["0","-1","51","abc"])await withEnv({...DEV,WHOUSH_DEV_LIVE_MAX_SUBMITS:bad},()=>assert.equal(devLiveTest().maxSubmits,5,bad));
+});
+test("a used-up dev cap refuses the quote with the reason instead of a silent demo that makes nothing",async()=>{
+ await withEnv({...DEV,WHOUSH_DEV_LIVE_MAX_SUBMITS:"1"},async()=>{
+  resetCap();
+  const t=await orchestrateCreativeTurn({text:"یک عکس از دریاچه در غروب با soul"});assert.equal(t.status,"planned");
+  const turnId=(t as {turnId:string}).turnId;
+  assert.equal(createQuote({modelId:"soul-image",turnId}).mode,"dev_live");
+  assert.equal(claimDevSubmit(),true);
+  assert.throws(()=>createQuote({modelId:"soul-image",turnId}),(e:unknown)=>e instanceof QuoteError&&e.code==="dev_cap_reached"&&e.status===429);
+  assert.match(FA_DEV_CAP_REACHED,/سقف تولید آزمایشی/);
+  assert.equal(createQuote({modelId:"kling-4-0-5s",turnId:(await orchestrateCreativeTurn({text:"یک ویدیو از دریاچه در غروب با kling"}) as {turnId:string}).turnId}).mode,"demo","an unverified model is still a demo, as before");
+ });
+ await withEnv({...DEV,NODE_ENV:"test"},async()=>{resetCap();assert.equal(devLiveTest().enabled,false);});
 });
 test("a dev_live job submits to the real provider once, returns outputs, and never charges Neurons",async()=>{
  await withEnv(DEV,async()=>{

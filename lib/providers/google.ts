@@ -3,6 +3,7 @@ import {findMediaModel,type MediaConfiguration} from "../catalog";
 import {storeMedia,type StoredMime} from "../media-store";
 import type {MediaProvider,ProviderJob,ProviderOutput,ProviderStatus} from "../media-provider";
 import {NotCancelableError} from "../provider-errors";
+import {REFERENCE_PROMPT_NOTE} from "../media-provider";
 import {runStatus,startRun} from "./sync-runner";
 import type {MediaModel} from "../types";
 /**
@@ -13,11 +14,15 @@ import type {MediaModel} from "../types";
 const BASE="https://generativelanguage.googleapis.com/v1beta/interactions";
 const IMAGE_MIME:readonly string[]=["image/png","image/jpeg","image/webp"];
 export class GoogleHttpError extends Error{constructor(readonly status:number,readonly code:string){super("Google request failed: "+status+(code?" "+code:""));this.name="GoogleHttpError";}}
-export function buildGoogleImageRequest(model:MediaModel,prompt:string,c:MediaConfiguration):Record<string,unknown>{
+/** With references, `input` is typed blocks: the prompt, then each image inline (docs/evidence/GOOGLE.md, "Editing and references"). */
+export function buildGoogleImageRequest(model:MediaModel,prompt:string,c:MediaConfiguration,references:readonly {bytes:Uint8Array;mime:string}[]=[]):Record<string,unknown>{
  if(model.provider!=="google"||model.kind!=="image"||!model.providerModel)throw new Error("Not a Google image model");
  const size=model.providerParams?.image_size;if(typeof size!=="string")throw new Error("SKU has no image size");
  const aspect=c.aspectRatio&&model.capabilities.aspectRatios.includes(c.aspectRatio)?{aspect_ratio:c.aspectRatio}:{};
- return {model:model.providerModel,input:prompt,response_format:{type:"image",image_size:size,...aspect},store:false};
+ const max=model.capabilities.referenceImages.supported?model.capabilities.referenceImages.max??0:0;
+ if(references.length>max)throw new Error("Too many reference images for this model");
+ const input=references.length?[{type:"text",text:prompt+REFERENCE_PROMPT_NOTE},...references.map(r=>({type:"image",mime_type:r.mime,data:Buffer.from(r.bytes).toString("base64")}))]:prompt;
+ return {model:model.providerModel,input,response_format:{type:"image",image_size:size,...aspect},store:false};
 }
 type Block={type?:string;mime_type?:string;data?:string};
 /** The generated image blocks of a completed interaction (the model_output steps). */
@@ -33,7 +38,7 @@ export class GoogleMediaProvider implements MediaProvider{
  async submit(job:ProviderJob):Promise<{providerRequestId:string}>{
   const model=findMediaModel(job.modelId),key=process.env.GEMINI_API_KEY;
   if(!model||!key)throw new Error("Google generation unavailable");
-  const body=buildGoogleImageRequest(model,job.prompt,job.configuration); // a mapping error is definite: nothing was sent
+  const body=buildGoogleImageRequest(model,job.prompt,job.configuration,job.references); // a mapping error is definite: nothing was sent
   return {providerRequestId:startRun(async()=>{
    const r=await fetch(BASE,{method:"POST",headers:{"x-goog-api-key":key,"Content-Type":"application/json","Api-Revision":"2026-05-20"},body:JSON.stringify(body),cache:"no-store",signal:AbortSignal.timeout(180_000)});
    const json=await r.json().catch(()=>undefined) as {error?:{code?:string;message?:string}}|undefined;

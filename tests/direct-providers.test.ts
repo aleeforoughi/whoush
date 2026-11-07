@@ -7,6 +7,11 @@ import {KlingMediaProvider,buildKlingVideoRequest} from "../lib/providers/kling"
 import {settleRun} from "../lib/providers/sync-runner";
 import {readMedia} from "../lib/media-store";
 import {NotCancelableError,SubmissionUnknownError} from "../lib/provider-errors";
+import {mkdtempSync} from "node:fs";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
+// Media the adapters store goes to a temporary folder, never the real `.media/` store.
+process.env.WHOUSH_MEDIA_DIR=mkdtempSync(join(tmpdir(),"whoush-media-test-"));
 
 type Call={url:string;method:string;headers:Record<string,string>;body?:unknown};
 async function withFetch(handler:(c:Call)=>Response|Promise<Response>,run:(calls:Call[])=>Promise<void>,env:Record<string,string>){
@@ -36,7 +41,7 @@ test("Google: the documented interactions request, key only in the header, base6
  },{GEMINI_API_KEY:"g-key"});
  await withFetch(()=>json({error:{code:"image_safety"}},400),async()=>{
   const p=new GoogleMediaProvider(),{providerRequestId}=await p.submit({modelId:"nano-banana-2",prompt:"p",configuration:{},idempotencyKey:"k"});
-  await settleRun(providerRequestId);assert.equal((await p.status(providerRequestId)).state,"failed","a refusal ends the run as failed: no Neurons are charged");
+  await settleRun(providerRequestId);assert.equal((await p.status(providerRequestId)).state,"nsfw","a content refusal is told as one; the job ends it as failed: no Neurons are charged");
  },{GEMINI_API_KEY:"g-key"});
 });
 test("BytePlus Seedream: explicit size for the canvas ratio within the pixel budget, URL mirrored before it expires",async()=>{

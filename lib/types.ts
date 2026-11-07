@@ -12,6 +12,8 @@ export interface ModelCapabilities {
   verified: boolean;
   evidence?: string; // private pointer into docs/HIGGSFIELD_EVIDENCE.md; never serialized to consumers
   referenceImages: { supported: boolean; max: number | null };
+  /** How many people the model documents keeping from the user's own photos (Google: "4 characters" on Nano Banana 2 and 2.1, docs/evidence/GOOGLE.md). Absent: none. */
+  identityReferences?: number;
   aspectRatios: readonly string[];
   durationsSeconds?: readonly number[]; // video SKU durations
   audio: boolean;
@@ -27,7 +29,12 @@ export interface ModelCapabilities {
   /** Continues a supplied video from its last frame. No API-docs evidence for our ids: false everywhere. */
   videoContinuation: boolean;
 }
-export interface MediaRequirements { operation?: Exclude<MediaOperation, "generate">; referenceImages?: number; aspectRatio?: string; durationSeconds?: number; lipSync?: boolean; motionReference?: boolean; videoReference?: boolean; startImage?: boolean; endImage?: boolean; videoContinuation?: boolean; }
+export interface MediaRequirements { operation?: Exclude<MediaOperation, "generate">; referenceImages?: number;
+  /** The references are the user's own photos of a person or thing (a character, uploads), not Whoush's inspected research images: only a model built to keep
+   * identity from them qualifies (none of the direct-provider models: their reference input carries research images only). */
+  identityReference?: boolean;
+  /** A saved character: its photos stay on the user's device, so no direct-provider model can receive them yet. */
+  savedCharacter?: boolean; aspectRatio?: string; durationSeconds?: number; lipSync?: boolean; motionReference?: boolean; videoReference?: boolean; startImage?: boolean; endImage?: boolean; videoContinuation?: boolean; }
 /** The direct provider whose API runs a model (docs/PROVIDERS.md). Private: never serialized to consumers. */
 export type MediaProviderId = "higgsfield" | "google" | "byteplus" | "kling";
 export interface MediaModel {
@@ -85,6 +92,16 @@ export interface MediaSuggestion {
   durationSeconds?: number;
   aspectRatios?: readonly string[];
 }
+/** One open-licensed reference Whoush found and inspected (docs/RESEARCH_PIPELINE.md). `url` is Whoush-owned; the rest is the attribution. */
+export interface ProposalReference { id: string; url: string; subjectFa: string; title: string; license: string; creator: string; sourceUrl: string; source: "wikimedia" | "openverse"; }
+/** Whoush's research report on a proposal: what had to look right, the references kept, and honest notes (never a provider or model name). */
+export interface ProposalResearch {
+  subjects: { labelFa: string; factsFa: string[]; kept: number }[];
+  references: ProposalReference[];
+  notesFa: string[];
+  /** Whether the offered models take the references as images; otherwise they only shaped the written plan. */
+  usedAsImages: boolean;
+}
 export interface GenerationProposal {
   operation: "generate_image" | "generate_video";
   intentSummary: string;
@@ -92,9 +109,19 @@ export interface GenerationProposal {
   recommendedModelId: string;
   selectedModelId: string;
   fixedNeurons: number;
+  /** Present when the plan needed research: the report the proposal card shows, and the reference package the user confirms. */
+  research?: ProposalResearch;
+  /** The pre-generation risk check, when it ran: what could have gone wrong, each already fixed in the prompt (Persian; the fixes stay private). */
+  review?: { risks: { severity: "high" | "medium" | "low"; issueFa: string }[] };
+  /**
+   * Video only: a cheap draft first (owner, 2026-11-06). A still of the opening frame on the cheapest image model, from the same plan and references, to check
+   * the look before the expensive video. `turnId` is the draft's own private turn; the user may skip it.
+   */
+  draft?: { turnId: string; modelId: string; modelName: string; neurons: number };
   explicitRejected?: { modelId: string; reasonFa: string }; // user named a model that cannot satisfy the request
   requiresApproval: true;
-  quoteMode: "demo";
+  /** How the selected model would run now: `demo` makes no real media; `dev_live` is owner testing; `live` is production. */
+  quoteMode: "demo" | "dev_live" | "live";
   message: string;
 }
 export interface PackageQuote {
@@ -105,3 +132,6 @@ export interface PackageQuote {
   totalNeurons: number;
   bonusPercent: number;
 }
+/** Why a turn got a plan but no proposal: the user's files are not yet safety-inspected (a launch gate), no model fits, or a voice clone was asked. */
+export type UnsupportedReason="media_review"|"no_model"|"voice_clone";
+export const UNSUPPORTED_REASONS:readonly UnsupportedReason[]=["media_review","no_model","voice_clone"];

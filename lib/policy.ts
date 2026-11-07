@@ -1,7 +1,10 @@
 import type { MediaModel } from "./types";
 import {hasProviderCredentials} from "./provider-credentials";
-/** Models that take user media (a source video, reference images, audio) need public provider-fetchable URLs; Whoush has no hosted media yet (docs/LAUNCH_GATES.md). */
-export const needsHostedMedia=(m:MediaModel)=>m.operations.some(o=>o!=="generate")||m.capabilities.referenceImages.supported;
+/**
+ * Models whose media inputs (a source video, reference images, audio) the provider fetches from public URLs: Higgsfield. Whoush has no public hosted media
+ * yet (docs/LAUNCH_GATES.md). Google and BytePlus take reference images inline in the request (docs/evidence/GOOGLE.md, BYTEPLUS.md), so they need none.
+ */
+export const needsHostedMedia=(m:MediaModel)=>m.provider==="higgsfield"&&(m.operations.some(o=>o!=="generate")||m.capabilities.referenceImages.supported);
 export interface LaunchPolicy { liveGeneration:boolean; reason:string; }
 export function providerPolicy():LaunchPolicy {
  const authorized=process.env.PROVIDER_END_USER_AUTHORIZED==="true" && process.env.PROVIDER_RESELLER_AUTHORIZED==="true";
