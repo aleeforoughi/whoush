@@ -1,4 +1,5 @@
 "use client";
+import {VideoThumb} from "@/components/video-poster";
 import {AudioLines,Brush,FileJson,FileText,Image as ImageIcon,Play,Video,X,type LucideIcon} from "lucide-react";
 import {Icon,Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from "@aleeforoughi/feather-react";
 import {ACCENTS,LANGUAGES,TagBadge,canPreview,type AttachmentPatch} from "@/components/attachment-chip";
@@ -51,7 +52,7 @@ function CardMedia({item:a,onPreview,review,onRetryReview}:{item:LocalAttachment
   // eslint-disable-next-line @next/next/no-img-element -- a local blob: URL; next/image cannot optimize it
   ?<img src={a.regionEdit?.guideUrl??a.previewUrl} alt="" className="size-full object-cover"/>
   :a.kind==="video"&&a.previewUrl
-   ?<><video src={a.previewUrl+"#t=0.1"} preload="metadata" muted playsInline aria-hidden="true" tabIndex={-1} className="size-full object-cover"/>
+   ?<><VideoThumb url={a.previewUrl} className="size-full object-cover"/>
     <span className="absolute inset-0 flex items-center justify-center"><span className="flex size-8 items-center justify-center rounded-control bg-background/70 text-fg-primary"><Icon icon={Play} size={16} aria-hidden="true"/></span></span></>
    :<span className="flex min-w-0 flex-col items-center gap-1 px-3 text-center"><Icon icon={KIND_ICONS[a.kind]} size={32} aria-hidden="true"/><span className="max-w-full truncate type-caption" title={a.name}><bdi>{a.name}</bdi></span></span>;
  const view=canPreview(a)

@@ -1,4 +1,5 @@
 "use client";
+import {VideoThumb} from "@/components/video-poster";
 import {useEffect,useMemo,useState} from "react";
 import Link from "next/link";
 import {useRouter,useSearchParams} from "next/navigation";
@@ -30,7 +31,7 @@ function MediaFill({asset,url}:{asset:StoredAsset;url?:string}){
  // eslint-disable-next-line @next/next/no-img-element -- a local blob: URL; next/image cannot optimize it
  if(asset.kind==="image")return <img src={url} alt="" className="size-full object-cover"/>;
  if(asset.kind==="video")return <span className="relative block size-full bg-surface-subtle">
-  <video src={url+"#t=0.1"} preload="metadata" muted playsInline aria-hidden="true" tabIndex={-1} className="size-full object-cover"/>
+  <VideoThumb url={url} className="size-full object-cover"/>
   <span className="absolute inset-0 flex items-center justify-center">
    <span className="flex size-16 items-center justify-center rounded-card bg-background/70 text-fg-primary"><Icon icon={Play} size={32} aria-hidden="true"/></span>
   </span>
