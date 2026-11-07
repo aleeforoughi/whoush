@@ -4,7 +4,7 @@ import {execFileSync} from "node:child_process";
 import {mkdtempSync,readFileSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {parseDuration,reviewVideoUpload,sniffVideo,VIDEO_REVIEW_FRAMES,VideoTooLongError,type VideoReviewDeps} from "../lib/video-review";
+import {framesFor,parseDuration,reviewVideoUpload,sniffVideo,VideoTooLongError,type VideoReviewDeps} from "../lib/video-review";
 import {forgetReviewsForTests,safeReview} from "../lib/upload-review";
 import {hasFfmpeg} from "../lib/audio-check";
 import {orchestrateCreativeTurn,deterministicPlanner,faMediaReview,type OrchestratorResult} from "../lib/orchestrator";
@@ -20,8 +20,9 @@ test("owner (2026-11-08): an uploaded video is checked like a photo: every frame
  assert.equal(safeReview(r.reviewId)?.kind,"video","the turn finds it by its review id");
 });
 test("one frame that fails blocks the video, with the video's own wording and a safe way forward",async()=>{
- let n=0;
- const r=await reviewVideoUpload(VIDEO,"video/mp4",deps({inspect:async()=>++n===2?{category:"alcohol",person:false}:{category:"none",person:false}}));
+ let given=0;
+ const r=await reviewVideoUpload(VIDEO,"video/mp4",deps({inspect:async frames=>{given=frames.length;return {category:"alcohol",person:false};}}));
+ assert.equal(given,3,"every sampled frame goes in the one call");
  assert.equal(r.state,"blocked");
  if(r.state==="blocked"){assert.equal(r.category,"alcohol");assert.match(r.messageFa!,/این ویدیو/);assert.doesNotMatch(r.fixFa,/عکس/);}
 });
@@ -44,17 +45,21 @@ test("the container is read from the bytes: MP4, QuickTime and WebM; anything el
  assert.equal(sniffVideo(new Uint8Array([0xff,0xd8,0xff,0])),undefined);
  assert.equal(parseDuration("  Duration: 00:01:02.50, start: 0"),62.5);
 });
-test("real ffmpeg: frames are sampled across the clip and each goes to the photo check",async t=>{
+test("owner (2026-11-08): one frame every 5 seconds, never fewer than 3, at most 24",()=>{
+ assert.equal(framesFor(3),3);assert.equal(framesFor(15),3);assert.equal(framesFor(16),4);assert.equal(framesFor(30),6);assert.equal(framesFor(120),24);assert.equal(framesFor(600),24);
+});
+test("real ffmpeg: frames are sampled across the clip and all go to the check together",async t=>{
  if(!(await hasFfmpeg())){t.skip("ffmpeg not installed");return;}
  const dir=mkdtempSync(join(tmpdir(),"whoush-video-test-"));
  try{
   const clip=join(dir,"c.mp4");
-  execFileSync("ffmpeg",["-hide_banner","-loglevel","error","-f","lavfi","-i","testsrc=size=320x240:rate=10:duration=4","-c:v","libx264","-pix_fmt","yuv420p",clip]);
-  const seen:number[]=[];
-  const r=await reviewVideoUpload(new Uint8Array(readFileSync(clip)),"video/mp4",{inspect:async img=>{seen.push(img.bytes.byteLength);return {category:"none",person:false};},
+  execFileSync("ffmpeg",["-hide_banner","-loglevel","error","-f","lavfi","-i","testsrc=size=320x240:rate=10:duration=22","-c:v","libx264","-pix_fmt","yuv420p",clip]);
+  let seen:number[]=[],calls=0;
+  const r=await reviewVideoUpload(new Uint8Array(readFileSync(clip)),"video/mp4",{inspect:async frames=>{calls++;seen=frames.map(f=>f.bytes.byteLength);return {category:"none",person:false};},
    soundtrack:async()=>"none",store:async()=>({id:"22222222-2222-4222-8222-222222222222",url:"/x"})});
   assert.equal(r.state,"safe");
-  assert.ok(seen.length>=VIDEO_REVIEW_FRAMES-1&&seen.length<=VIDEO_REVIEW_FRAMES,"about "+VIDEO_REVIEW_FRAMES+" frames: "+seen.length);
+  assert.equal(calls,1,"one call for the whole video");
+  assert.ok(seen.length>=framesFor(22)-1&&seen.length<=framesFor(22),"a 22 s clip: about "+framesFor(22)+" frames, got "+seen.length);
   assert.ok(seen.every(b=>b>500),"real JPEG frames");
  }finally{rmSync(dir,{recursive:true,force:true});}
 });

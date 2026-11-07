@@ -14,16 +14,19 @@ import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {hasFfmpeg,soundtrackVerdict,type AudioCategory,type AudioCheckDeps} from "./audio-check";
 import {storeMedia} from "./media-store";
-import {inspectUpload,inspectionAvailable,type UploadCategory,type UploadInspector} from "./reference-inspect";
+import {inspectFrames,inspectionAvailable,type FramesInspector,type UploadCategory} from "./reference-inspect";
 import {BLOCKED_LABEL_FA,FIX_FA,keep,type ReviewVideoMime,type UploadReview} from "./upload-review";
 import {voiceGate} from "./voice";
 
 export const MAX_VIDEO_REVIEW_BYTES=100*1024*1024;
 /** The longest video checked: past this, more frames would be needed than a quick check allows. */
 export const MAX_VIDEO_REVIEW_SECONDS=120;
-/** Frames sampled from a video: spread evenly over its length (a 10 s clip: one a little more than every second). */
-export const VIDEO_REVIEW_FRAMES=8;
-const FRAME_CONCURRENCY=4;
+/**
+ * Frames sampled from a video (owner, 2026-11-08: one every 5 seconds): a 30 s video gets 6, a 2 minute one 24; never fewer than 3 (start, middle and end),
+ * so a short clip is not judged on a single frame. All of them are checked in one call (lib/reference-inspect.ts inspectFrames).
+ */
+export const FRAME_EVERY_SECONDS=5,MIN_FRAMES=3,MAX_FRAMES=24;
+export const framesFor=(seconds:number)=>Math.min(MAX_FRAMES,Math.max(MIN_FRAMES,Math.ceil(seconds/FRAME_EVERY_SECONDS)));
 
 /** The video's own reasons, in the photo wording's tone (lib/upload-review.ts BLOCKED_FA). */
 export const VIDEO_BLOCKED_FA:Record<Exclude<UploadCategory,"none">,string>={
@@ -76,8 +79,8 @@ async function sampleFrames(dir:string,video:string):Promise<{seconds:number;fra
  const seconds=parseDuration(probe.stderr);
  if(!seconds||!Number.isFinite(seconds)||seconds<=0)throw new Error("unreadable_video");
  if(seconds>MAX_VIDEO_REVIEW_SECONDS)throw new VideoTooLongError();
- const fps=Math.max(VIDEO_REVIEW_FRAMES/seconds,0.05);
- const r=await ff(["-hide_banner","-nostdin","-y","-i",video,"-vf","fps="+fps.toFixed(4)+",scale='if(gt(iw,ih),768,-2)':'if(gt(iw,ih),-2,768)'","-frames:v",String(VIDEO_REVIEW_FRAMES),"-q:v","4",join(dir,"f_%02d.jpg")],90_000);
+ const n=framesFor(seconds),fps=Math.max(n/seconds,0.01);
+ const r=await ff(["-hide_banner","-nostdin","-y","-i",video,"-vf","fps="+fps.toFixed(4)+",scale='if(gt(iw,ih),768,-2)':'if(gt(iw,ih),-2,768)'","-frames:v",String(n),"-q:v","4",join(dir,"f_%02d.jpg")],90_000);
  if(r.code!==0)throw new Error("frames_failed");
  const names=(await readdir(dir)).filter(n=>/^f_\d+\.jpg$/.test(n)).sort();
  if(!names.length)throw new Error("no_frames");
@@ -86,14 +89,8 @@ async function sampleFrames(dir:string,video:string):Promise<{seconds:number;fra
 export class VideoTooLongError extends Error{constructor(){super("video_too_long");this.name="VideoTooLongError";}}
 export const VIDEO_TOO_LONG_FA="ویدیو برای بررسی حداکثر دو دقیقه می‌تونه باشه؛ یه تکهٔ کوتاه‌ترش رو بفرست.";
 
-/** Runs `fn` over the items, at most `n` at a time; the first rejection rejects the whole. */
-async function pool<T,R>(items:readonly T[],n:number,fn:(x:T)=>Promise<R>):Promise<R[]>{
- const out:R[]=new Array(items.length);let next=0;
- await Promise.all(Array.from({length:Math.min(n,items.length)},async()=>{while(next<items.length){const i=next++;out[i]=await fn(items[i]);}}));
- return out;
-}
 
-export type VideoReviewDeps={inspect?:UploadInspector;sample?:(videoBytes:Uint8Array)=>Promise<Uint8Array[]>;audio?:AudioCheckDeps;
+export type VideoReviewDeps={inspect?:FramesInspector;sample?:(videoBytes:Uint8Array)=>Promise<Uint8Array[]>;audio?:AudioCheckDeps;
  soundtrack?:(videoBytes:Uint8Array)=>Promise<Awaited<ReturnType<typeof soundtrackVerdict>>>;store?:typeof storeMedia;now?:()=>Date};
 
 /** Checks and (when safe) stores one video. Throws when the check cannot run: the video stays unchecked, and is never used. */
@@ -103,17 +100,15 @@ export async function reviewVideoUpload(bytes:Uint8Array,mime:ReviewVideoMime,de
  // The picture and the soundtrack are checked at the same time (the soundtrack's answer is used only when every frame passes).
  const soundP=(deps.soundtrack??(b=>soundtrackVerdict(b,deps.audio)))(bytes);soundP.catch(()=>{});
  const frames=await sample(bytes);
- const inspect=deps.inspect??inspectUpload;
- const verdicts=await pool(frames,FRAME_CONCURRENCY,f=>inspect({bytes:f,mime:"image/jpeg"}));
+ const v=await (deps.inspect??inspectFrames)(frames.map(f=>({bytes:f,mime:"image/jpeg" as const})));
  const base={reviewId:randomUUID(),sha256:createHash("sha256").update(bytes).digest("hex"),at:(deps.now?.()??new Date()).toISOString(),kind:"video" as const};
- const bad=verdicts.find(v=>v.category!=="none");
  let r:UploadReview;
- if(bad&&bad.category!=="none")r={...base,state:"blocked",category:bad.category,fixFa:FIX_FA[bad.category].replace(/عکس/g,"ویدیو"),messageFa:VIDEO_BLOCKED_FA[bad.category],labelFa:BLOCKED_LABEL_FA[bad.category]};
+ if(v.category!=="none")r={...base,state:"blocked",category:v.category,fixFa:FIX_FA[v.category].replace(/عکس/g,"ویدیو"),messageFa:VIDEO_BLOCKED_FA[v.category],labelFa:BLOCKED_LABEL_FA[v.category]};
  else{
   const sound=await soundP;
   if(sound==="unchecked")throw new Error("soundtrack_unchecked");
   if(sound!=="none"&&sound!=="clean"){const x=SPEECH_FA[sound];r={...base,state:"blocked",category:x.as,fixFa:SPEECH_FIX_FA,messageFa:x.fa,labelFa:x.label};}
-  else r={...base,state:"safe",mediaId:(await (deps.store??storeMedia)(bytes,mime)).id,mime,person:verdicts.some(v=>v.person)};
+  else r={...base,state:"safe",mediaId:(await (deps.store??storeMedia)(bytes,mime)).id,mime,person:v.person};
  }
  keep(r);return r;
 }
