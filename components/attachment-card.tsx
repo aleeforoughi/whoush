@@ -58,7 +58,7 @@ function CardMedia({item:a,onPreview,review,onRetryReview}:{item:LocalAttachment
   ?<button type="button" onClick={onPreview} data-viewer-open={a.id} aria-label={"نمایش تمام‌صفحه "+displayTag(a.tag)} title={a.name} className={frame+" motion-hover not-disabled:hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"}>{visual}</button>
   :<span className={frame}>{visual}</span>;
  // The photo's safety check sits over the thumbnail (lib/photo-review.ts); the overlay is its own layer, so the viewer button stays one control.
- return a.kind==="image"&&review?<span className="relative block w-full">{view}<span className="pointer-events-none absolute inset-0 overflow-hidden rounded-control"><PhotoReviewOverlay review={review} onRetry={onRetryReview}/></span></span>:view;
+ return (a.kind==="image"||a.kind==="video")&&review?<span className="relative block w-full">{view}<span className="pointer-events-none absolute inset-0 overflow-hidden rounded-control"><PhotoReviewOverlay review={review} onRetry={onRetryReview}/></span></span>:view;
 }
 
 /**

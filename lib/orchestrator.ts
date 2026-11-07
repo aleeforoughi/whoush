@@ -55,7 +55,8 @@ export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;no
  plannerFor?:(modelId:string,provider:"anthropic"|"openai")=>PrivatePlanner;routing?:RoutingConfig;routerState?:RouterState;
  /** Turn triage (reply, ask or make) before planning: the cheapest private model by default when no test planner is given; tests pass a stub. */
  triage?:TurnTriager;
- /** Whether generated sound can be checked here (tests pass a stub). */audioCheckAvailable?:()=>Promise<boolean>};
+ /** Whether generated sound can be checked here (tests pass a stub). */audioCheckAvailable?:()=>Promise<boolean>;
+ /** Tests only: plan even with unchecked files (fixtures that exercise the planner's role invariants); the turn still stops before a price. */planUncheckedMedia?:boolean};
 export {TURN_STAGES,type TurnStage,type TurnNote} from "./orchestrator-stages";
 import type {TurnNote,TurnStage} from "./orchestrator-stages";
 export type OrchestratorResult=
@@ -94,7 +95,16 @@ const REUSE_MARKER_FA="همون عکس‌هایی که قبلاً فرستادی
 const FA_REFUSED="این درخواست در حال حاضر قابل پردازش نیست. لطفاً آن را با توضیح غیرحساس‌تر دوباره بنویس.";
 const FA_NO_REFS="پرامپت تولید با کاراکتر انتخاب‌شده آماده است، اما هنوز هیچ مدل تأییدشده‌ای عکس مرجع کاراکتر را نمی‌پذیرد؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 const FA_TEXT_BLOCKED="یکی از فایل‌های متنیِ پیوست‌شده مسدود شد. ";
-const FA_MEDIA_REVIEW="پرامپت آماده است، اما بررسی ایمنی همهٔ فایل‌ها تموم نشده (ویدیو و صدا هنوز بررسی نمی‌شن)؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
+/**
+ * Why files of this message cannot be used yet (owner, 2026-11-08: calm and general, never like a malfunction): photos and videos are used only once
+ * checked after upload; audio has no check yet. Names the files and gives the way forward.
+ */
+export function faMediaReview(tags:readonly string[],kinds:readonly string[]):string{
+ const audio=kinds.includes("audio");
+ return "از "+tags.join("، ")+" فعلاً استفاده نمی‌کنم: "+(audio?"فایل صوتی هنوز بررسی ایمنی نمی‌شه. ":"")+
+  (kinds.some(k=>k!=="audio")?"عکس و ویدیو رو فقط بعد از بررسی ایمنی که موقع آپلود انجام می‌شه به کار می‌برم؛ اگه بررسیش هنوز تموم نشده، چند لحظه صبر کن و دوباره بفرست. ":"")+
+  "یا بدون "+(tags.length>1?"این فایل‌ها":"این فایل")+" بگو چی بسازم.";
+}
 const FA_NO_PHOTO_MODEL="پرامپت آماده است، اما الان هیچ مدل فعالی این عکس‌ها رو به‌عنوان مرجع نمی‌گیره (مثلاً تعدادشون بیشتر از حد مدله)؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 const FA_VOICE_CLONE="کلون صدا در هووش پشتیبانی نمی‌شود؛ هووش فقط تصویر و ویدیو می‌سازد و تولید یا شبیه‌سازی صدا ممکن نیست.";
 const faMissingGenerations=(tags:readonly string[])=>tags.map(displayTag).join("، ")+(tags.length===1?" در این گفت‌وگو پیدا نشد؛ تگ را اصلاح کن یا از «اصلاح» روی کارت همان تولید استفاده کن.":" در این گفت‌وگو پیدا نشدند؛ تگ‌ها را اصلاح کن یا از «اصلاح» روی کارت همان تولید استفاده کن.");
@@ -305,6 +315,12 @@ const FORBIDDEN=["claude","anthropic","openai","gpt","sonnet","opus","haiku","sy
 // Model-family words are only forbidden as standalone Latin tokens (so "solid" or "terrain" never trip it), and only when the user did not type them.
 const FAMILY_WORDS=["sol","astra","luna","terra"].map(w=>new RegExp("(?<![a-z0-9])"+w+"(?![a-z0-9])"));
 /** The same filter for a single customer-facing text (the chat reply). */
+/**
+ * Whether an attached media file is not known as checked: a photo (and a painted photo's marked copy) or a video (frames and soundtrack, lib/video-review.ts)
+ * with a safe review on the server is checked; every other media file (audio has no check yet) is not, and is never sent anywhere.
+ */
+const isUnchecked=(f:{kind:string;reviewId?:string;regionEdit?:{guideReviewId?:string}})=>isMediaKind(f.kind as never)&&!(
+ (f.kind==="image"&&safeReview(f.reviewId)&&(!f.regionEdit||safeReview(f.regionEdit.guideReviewId)))||(f.kind==="video"&&safeReview(f.reviewId)?.kind==="video"));
 /** Fill-ins the enforcer makes on every plan that lacks them: routine, never a sign the planner misread the brief. */
 const ROUTINE_CORRECTIONS=new Set(["camera_filled","shot_filled","continuity_filled","style_directives","role_directives","realism_mode"]);
 /** How many corrections mean a misread brief (the escalation test). */
@@ -630,12 +646,16 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // Started at once only when the message already reads as a request to make something (it names a photo or video, brings files or #tags, or continues
  // earlier work), so a greeting never pays for a cancelled plan. The routing then uses the brief's own score: a light or deep effort from the triage
  // only moves the band when planning starts after it.
+ // A file that cannot be used (unchecked, blocked, forgotten after a restart, or audio, which has no check yet) is known before planning: the turn says so
+ // at once with Whoush's own plan (owner, 2026-11-08: no 40-second paid plan that ends in a refusal), and the paid planner never runs.
+ const mediaUnchecked=files.some(isUnchecked)&&!deps.planUncheckedMedia;
+ if(mediaUnchecked)fallbackReason="media_review_unavailable";
  const cancel=new AbortController();
  const likelyMake=Boolean(said||videoFile||files0.length||parsed.generations?.length||parseMentions(parsed.text).length);
- const planP=likelyMake?runPlanning(cancel.signal):undefined;
+ const planP=likelyMake&&!mediaUnchecked?runPlanning(cancel.signal):undefined;
  const triaged=await triageP;
  if(triaged){cancel.abort();if(planP)await planP.catch(()=>undefined);return triaged;}
- const ended=await (planP??runPlanning(cancel.signal));
+ const ended=mediaUnchecked?undefined:await (planP??runPlanning(cancel.signal));
  if(ended)return ended;
  if(!fin.e){
   if(!fallbackReason)fallbackReason=fin.reason;
@@ -753,11 +773,11 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // docs/MODERATION_POLICY.md step 4, "Reference inspection": every photo was checked right after upload (POST /api/media/review, lib/upload-review.ts). Only
  // the server's own record counts, by the review id the photo carries; a photo it does not know as safe (unchecked, blocked, forgotten after a restart) and
  // every video or audio file (no inspector yet) fail closed: the plan is returned with no proposal or price, so unchecked media never reaches a provider.
- const unchecked=files.filter(f=>isMediaKind(f.kind)&&!(f.kind==="image"&&safeReview(f.reviewId)&&(!f.regionEdit||safeReview(f.regionEdit.guideReviewId))));
+ const unchecked=files.filter(isUnchecked);
  if(unchecked.length){
   rec({planner:label,fallbackReason:"media_review_unavailable",corrections:corrections.length?corrections:undefined});
   const suggestedModel=suggestModel(requirements,kind),photos=unchecked.filter(f=>f.kind==="image").map(f=>f.tag);
-  return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,suggestedModel,input.style)),message:FA_MEDIA_REVIEW+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{}),reason:"media_review",
+  return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,suggestedModel,input.style)),message:faMediaReview(unchecked.map(f=>displayTag(f.tag)),unchecked.map(f=>f.kind))+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{}),reason:"media_review",
    ...(photos.length===unchecked.length?{unreviewed:photos}:{})};
  }
  // The checked photos go to the model as reference images, in tag order; the prompt names each by its tag («[reference image 1 · character]»), and the

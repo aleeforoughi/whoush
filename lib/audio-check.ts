@@ -113,24 +113,31 @@ export type AudioCheckDeps={transcribe?:(mp3:Uint8Array)=>Promise<string>;review
  extract?:(videoBytes:Uint8Array)=>Promise<Uint8Array|null>;strip?:(videoBytes:Uint8Array)=>Promise<Uint8Array>};
 
 /**
- * The verdict for one video and the bytes to keep: the original, or the silent copy when its sound is removed. It throws only when the sound must go and
- * cannot be removed: the caller must then not show the video at all.
+ * What a soundtrack's words are: "none" (no soundtrack), "clean" (no words, or words that pass both checks), the category they fail, or "unchecked"
+ * (any step could not run). Never throws. Shared by generated videos (below) and uploaded ones (lib/video-review.ts).
+ */
+export async function soundtrackVerdict(videoBytes:Uint8Array,deps:AudioCheckDeps={}):Promise<"none"|"clean"|"unchecked"|Exclude<AudioCategory,"none">>{
+ const extract=deps.extract??(b=>withTemp(async dir=>{const v=join(dir,"in.mp4");await writeFile(v,b);return extractSoundtrack(dir,v);}));
+ let mp3:Uint8Array|null;
+ try{mp3=await extract(videoBytes);}catch{return "unchecked";}
+ if(!mp3)return "none";
+ let words:string;
+ try{words=(await (deps.transcribe??(b=>transcribeMedia(b,"audio/mpeg")))(mp3)).trim();}catch{return "unchecked";}
+ if(!words)return "clean"; // music or ambience: no words to judge
+ const lexical=evaluateTextSafety(words);
+ if(lexical.decision!=="allow"){const c=FROM_LEXICAL[lexical.category];return c&&c!=="none"?c:"hate";}
+ let category:AudioCategory;
+ try{category=await (deps.review??reviewWords)(words);}catch{return "unchecked";}
+ return category==="none"?"clean":category;
+}
+
+/**
+ * The verdict for one generated video and the bytes to keep: the original, or the silent copy when its sound is removed. It throws only when the sound
+ * must go and cannot be removed: the caller must then not show the video at all.
  */
 export async function checkVideoAudio(videoBytes:Uint8Array,deps:AudioCheckDeps={}):Promise<{verdict:AudioVerdict;bytes:Uint8Array}>{
- const extract=deps.extract??(b=>withTemp(async dir=>{const v=join(dir,"in.mp4");await writeFile(v,b);return extractSoundtrack(dir,v);}));
- const strip=deps.strip??stripSoundtrack;
- const remove=async(reason:AudioRemovedReason)=>{
-  return {verdict:{audio:"removed",reason} as AudioVerdict,bytes:await strip(videoBytes)};
- };
- let mp3:Uint8Array|null;
- try{mp3=await extract(videoBytes);}catch{return remove("unchecked");}
- if(!mp3)return {verdict:{audio:"none"},bytes:videoBytes};
- let words:string;
- try{words=(await (deps.transcribe??(b=>transcribeMedia(b,"audio/mpeg")))(mp3)).trim();}catch{return remove("unchecked");}
- if(!words)return {verdict:{audio:"checked"},bytes:videoBytes}; // music or ambience: no words to judge
- const lexical=evaluateTextSafety(words);
- if(lexical.decision!=="allow"){const c=FROM_LEXICAL[lexical.category];return remove(c&&c!=="none"?c:"hate");}
- let category:AudioCategory;
- try{category=await (deps.review??reviewWords)(words);}catch{return remove("unchecked");}
- return category==="none"?{verdict:{audio:"checked"},bytes:videoBytes}:remove(category);
+ const v=await soundtrackVerdict(videoBytes,deps);
+ if(v==="none")return {verdict:{audio:"none"},bytes:videoBytes};
+ if(v==="clean")return {verdict:{audio:"checked"},bytes:videoBytes};
+ return {verdict:{audio:"removed",reason:v},bytes:await (deps.strip??stripSoundtrack)(videoBytes)};
 }

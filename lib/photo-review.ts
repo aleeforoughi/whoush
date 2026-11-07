@@ -17,7 +17,7 @@ export const BLOCKED_SHORT_FA="استفاده نمی‌شه";
 export const REVIEW_FAILED_FA="بررسی ایمنی انجام نشد. دوباره امتحان کن.";
 export const RETRY_REVIEW_FA="دوباره بررسی کن";
 /** The chat's waiting line while photos of the message are still being checked. */
-export const WAITING_FA="یه لحظه، عکس‌هات در حال بررسی ایمنی‌ان. تموم شد، خودم ادامه می‌دم.";
+export const WAITING_FA="یه لحظه، فایل‌هات در حال بررسی ایمنی‌ان. تموم شد، خودم ادامه می‌دم.";
 const MAX_SIDE=2048;
 
 /**
@@ -47,12 +47,12 @@ export async function shrinkForReview(blob:Blob):Promise<Blob>{
  * Sends one photo for checking. `onProgress` gets 0..1: the upload is the first half, the check itself creeps on until the answer. A network or server error
  * is `failed` (the photo stays unused, and can be checked again).
  */
-export function sendForReview(blob:Blob,onProgress:(p:number)=>void):Promise<PhotoReview>{
+export function sendForReview(blob:Blob,onProgress:(p:number)=>void,timeoutMs=60_000):Promise<PhotoReview>{
  return new Promise(resolve=>{
   const xhr=new XMLHttpRequest();let creep=0,shown=0;
   const show=(p:number)=>{shown=Math.max(shown,Math.min(p,.97));onProgress(shown);};
   const stop=()=>window.clearInterval(creep);
-  xhr.open("POST",REVIEW_ROUTE);xhr.setRequestHeader("Content-Type",blob.type||"application/octet-stream");xhr.responseType="json";xhr.timeout=60_000;
+  xhr.open("POST",REVIEW_ROUTE);xhr.setRequestHeader("Content-Type",blob.type||"application/octet-stream");xhr.responseType="json";xhr.timeout=timeoutMs;
   xhr.upload.onprogress=e=>{if(e.lengthComputable)show(.5*e.loaded/e.total);};
   // After the upload, the check: about 5 seconds, so the bar moves on towards the end and waits there for the answer.
   xhr.upload.onload=()=>{show(.5);creep=window.setInterval(()=>show(shown+(.97-shown)*.12),400);};
@@ -78,9 +78,21 @@ export async function reviewPhoto(blob:Blob,onProgress:(p:number)=>void):Promise
  return sendForReview(small,onProgress);
 }
 
-/** Whether the server checks photos now (otherwise uploads stay as before: unchecked, and a turn with them stops before a price). */
-export async function photoReviewEnabled():Promise<boolean>{
- try{const r=await fetch(REVIEW_ROUTE,{cache:"no-store"});return r.ok&&Boolean(((await r.json()) as {enabled?:boolean}).enabled);}catch{return false;}
+/**
+ * A video's check (owner, 2026-11-08: like a photo, right after upload): the file is sent as it is (MP4, MOV or WebM, up to 100 MB); the server samples its
+ * frames and checks its soundtrack. A long upload and check get a longer limit, and one retry like a photo.
+ */
+export async function reviewVideo(blob:Blob,onProgress:(p:number)=>void):Promise<PhotoReview>{
+ const first=await sendForReview(blob,onProgress,240_000);
+ if(first.state!=="failed")return first;
+ await new Promise(r=>setTimeout(r,1500));
+ return sendForReview(blob,onProgress,240_000);
+}
+
+/** Whether the server checks photos (and videos) now (otherwise uploads stay as before: unchecked, and a turn with them stops before a price). */
+export async function photoReviewEnabled():Promise<{photos:boolean;videos:boolean}>{
+ try{const r=await fetch(REVIEW_ROUTE,{cache:"no-store"});if(!r.ok)return {photos:false,videos:false};const b=(await r.json()) as {enabled?:boolean;video?:boolean};return {photos:Boolean(b.enabled),videos:Boolean(b.video)};}
+ catch{return {photos:false,videos:false};}
 }
 
 /**

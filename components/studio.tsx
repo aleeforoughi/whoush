@@ -32,7 +32,7 @@ import type {AgentProposal,JobView,NoModelResult} from "@/lib/studio-types";
 import {getLocalCharacter,listLocalCharacters} from "@/lib/character-store";
 import {characterCoverage,characterUsability,type CharacterProfile} from "@/lib/characters";
 import {fa,faBytes,faDimensions,faDuration} from "@/lib/format";
-import {REVIEW_FAILED_FA,WAITING_FA,photoReviewEnabled,reviewPhoto,reviewStopFa,type PhotoReview} from "@/lib/photo-review";
+import {REVIEW_FAILED_FA,WAITING_FA,photoReviewEnabled,reviewPhoto,reviewStopFa,reviewVideo,type PhotoReview} from "@/lib/photo-review";
 import {PhotoReviewOverlay,ReviewRing} from "@/components/photo-review-badge";
 import {RegionEditor} from "@/components/region-editor";
 import {renderGuide,type Region} from "@/lib/region-edit";
@@ -174,13 +174,15 @@ export function Studio(){
  const [carriedPhotos,setCarriedPhotos]=useState<LocalAttachment[]>([]);
  // The photo safety check (lib/photo-review.ts): each photo's state by attachment id, the checks still running, and the photos a sent message waits for.
  const [reviewOn,setReviewOn]=useState(false);
+ /** Uploaded videos are checked too (frames and soundtrack), right after upload like photos (owner, 2026-11-08). */
+ const [videoReviewOn,setVideoReviewOn]=useState(false);
  const [reviews,setReviews]=useState<Record<string,PhotoReview>>({});
  const reviewsRef=useRef<Record<string,PhotoReview>>({});
  const reviewJobs=useRef(new Map<string,Promise<PhotoReview>>());
  const [waitingFor,setWaitingFor]=useState<LocalAttachment[]|null>(null);
  // «ویرایش با قلم» (lib/region-edit.ts): the photo open in the full-screen editor, and whether it came from the chat box.
  const [editing,setEditing]=useState<{a:LocalAttachment;fromTray:boolean;suggested?:readonly SuggestedEdit[]}|null>(null);
- useEffect(()=>{let alive=true;void photoReviewEnabled().then(on=>{if(alive)setReviewOn(on);});return()=>{alive=false;};},[]);
+ useEffect(()=>{let alive=true;void photoReviewEnabled().then(on=>{if(alive){setReviewOn(on.photos);setVideoReviewOn(on.videos);}});return()=>{alive=false;};},[]);
  const savedAssets=useRef(new Set<string>());
  const latest=useRef({messages,mode,style,character:null as CharacterProfile|null});
  const character=characters.find(c=>c.id===characterId)??null;
@@ -450,7 +452,7 @@ export function Studio(){
   const blob=blobs.current.get(a.id);
   if(!blob){const r:PhotoReview={state:"failed",reasonFa:REVIEW_FAILED_FA};setReview(a.id,r);return Promise.resolve(r);}
   setReview(a.id,{state:"checking",progress:0});
-  const job=reviewPhoto(blob,p=>{if(reviewJobs.current.get(a.id)===job)setReview(a.id,{state:"checking",progress:p});}).then(r=>{
+  const job=(a.kind==="video"?reviewVideo:reviewPhoto)(blob,p=>{if(reviewJobs.current.get(a.id)===job)setReview(a.id,{state:"checking",progress:p});}).then(r=>{
    if(reviewJobs.current.get(a.id)!==job)return r;
    reviewJobs.current.delete(a.id);setReview(a.id,r);
    if(r.state==="blocked")setProblems(list=>[...list,{key:crypto.randomUUID(),name:displayTag(a.tag),message:r.reasonFa+(r.fixFa?" "+r.fixFa:"")}]);
@@ -497,7 +499,7 @@ export function Studio(){
   }
   setAttachments(cur=>[...cur,...added]);setProblems(bad);
   // Each photo is checked right away, so it is ready by the time the message goes.
-  if(reviewOn)for(const a of added)if(a.kind==="image"&&reviewsRef.current[a.id]?.state!=="safe")void checkPhoto(a);
+  if(reviewOn)for(const a of added)if((a.kind==="image"||(a.kind==="video"&&videoReviewOn))&&reviewsRef.current[a.id]?.state!=="safe")void checkPhoto(a);
   setAnnounce((added.length?fa(added.length)+" فایل اضافه شد. ":"")+(bad.length?fa(bad.length)+" فایل رد شد.":""));
   readingRef.current=false;setReading(false);
   return added;
@@ -757,7 +759,7 @@ export function Studio(){
    let prior=priorPhotos;
    if(reviewOn){
     // A painted photo's marked copy is checked like the photo itself.
-    const mine=outgoing.filter(a=>a.kind==="image").flatMap(a=>{const g=guideOf(a);return g?[a,g]:[a];}),unsure=[...mine,...prior].filter(a=>reviewsRef.current[a.id]?.state!=="safe");
+    const mine=outgoing.filter(a=>a.kind==="image"||(a.kind==="video"&&videoReviewOn)).flatMap(a=>{const g=guideOf(a);return g?[a,g]:[a];}),unsure=[...mine,...prior].filter(a=>reviewsRef.current[a.id]?.state!=="safe");
     if(unsure.length){
      setWaitingFor(unsure);
      await Promise.all(unsure.map(a=>checkPhoto(a)));

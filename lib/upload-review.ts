@@ -13,7 +13,11 @@ export const REVIEW_IMAGE_MIMES=["image/jpeg","image/png","image/webp"] as const
 export type ReviewImageMime=(typeof REVIEW_IMAGE_MIMES)[number];
 /** The studio shrinks a photo to 2048 px before sending; this leaves room for an original that is already small. */
 export const MAX_REVIEW_BYTES=12*1024*1024;
-export type UploadReview={reviewId:string;sha256:string;at:string}&({state:"safe";mediaId:string;mime:ReviewImageMime;person:boolean}|{state:"blocked";category:Exclude<UploadCategory,"none">;fixFa:string});
+export const REVIEW_VIDEO_MIMES=["video/mp4","video/quicktime","video/webm"] as const satisfies readonly StoredMime[];
+export type ReviewVideoMime=(typeof REVIEW_VIDEO_MIMES)[number];
+/** A video's review (lib/video-review.ts) is kept here too, under the same kind of id: `kind` says which; `messageFa`/`labelFa` override the photo wording. */
+export type UploadReview={reviewId:string;sha256:string;at:string;kind?:"video"}&({state:"safe";mediaId:string;mime:ReviewImageMime|ReviewVideoMime;person:boolean}
+ |{state:"blocked";category:Exclude<UploadCategory,"none">;fixFa:string;messageFa?:string;labelFa?:string});
 /** One short line per blocked category with its general reason (owner, 2026-11-07: say why in a word, never like an error; no details, no lecture), never naming a provider or model; the fix says what to do. */
 export const BLOCKED_FA:Record<Exclude<UploadCategory,"none">,string>={
  iran_political:"این عکس سیاسیه؛ اینجا سراغ سیاست نمی‌ریم.",
@@ -51,7 +55,7 @@ function safeFix(fix:string|undefined,category:Exclude<UploadCategory,"none">):s
 export const REVIEW_UNAVAILABLE_FA="بررسی ایمنی عکس الان در دسترس نیست. چند لحظه بعد دوباره امتحان کن.";
 const MAX_KEPT=500;
 const registry=()=>((globalThis as {__whoushUploadReviews?:Map<string,UploadReview>}).__whoushUploadReviews??=new Map());
-function keep(r:UploadReview){const m=registry();m.set(r.reviewId,r);if(m.size>MAX_KEPT)m.delete(m.keys().next().value!);}
+export function keep(r:UploadReview){const m=registry();m.set(r.reviewId,r);if(m.size>MAX_KEPT)m.delete(m.keys().next().value!);}
 export const reviewAvailable=()=>inspectionAvailable();
 /** Checks and (when safe) stores one photo. Throws when the check cannot run: the photo stays unchecked, and is never used. */
 export async function reviewUpload(bytes:Uint8Array,mime:ReviewImageMime,deps:{inspect?:UploadInspector;store?:typeof storeMedia;now?:()=>Date}={}):Promise<UploadReview>{

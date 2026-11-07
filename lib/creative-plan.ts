@@ -38,7 +38,7 @@ export const AttachmentSchema=z.object({
  if(a.role==="voice_clone"&&a.consent!==true)bad("consent","voice_clone needs consent: true");
  if(a.consent!==undefined&&a.role!=="voice_clone")bad("consent","only voice_clone carries consent");
  if(a.speech&&a.role!=="lip_sync")bad("speech","only lip_sync audio carries speech details");
- if(a.reviewId!==undefined&&a.kind!=="image")bad("reviewId","only images are reviewed");
+ if(a.reviewId!==undefined&&a.kind!=="image"&&a.kind!=="video")bad("reviewId","only images and videos are reviewed"); // videos too (owner, 2026-11-08: lib/video-review.ts)
  if(a.regionEdit!==undefined&&a.kind!=="image")bad("regionEdit","only photos are painted");
  if((a.width!==undefined||a.height!==undefined)&&a.kind!=="image"&&a.kind!=="video")bad("width","only image and video carry dimensions");
  if(a.durationSeconds!==undefined&&a.kind!=="video"&&a.kind!=="audio")bad("durationSeconds","only video and audio carry a duration");

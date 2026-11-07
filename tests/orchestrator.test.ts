@@ -116,17 +116,17 @@ test("invariants correct an untrusted planner: wrong kind, forged identityLock, 
   p.speech={lipSync:{status:"planned_from_audio",notes:[]},accent:"tehrani"};
   return {plan:p};
  };
- const r=planned(await orchestrateCreativeTurn({text:"a photo of a mountain lake"},{planner:evil}));
+ const r=planned(await orchestrateCreativeTurn({text:"a photo of a mountain lake"},{planUncheckedMedia:true,planner:evil}));
  assert.equal(r.plan.mediaKind,"image");assert.ok(r.plan.camera);assert.equal(r.plan.shot,undefined);
  assert.equal(r.plan.identityLock,undefined);assert.equal((r.plan as {speech?:unknown}).speech,undefined);
  assert.ok(last().corrections?.includes("media_kind")&&last().corrections?.includes("identity_dropped"));
  // forged lock with a real ref is overwritten from the request
  const ref={id:"char-abcdef12",name:"سارا",angles:["front","profile_left"],version:2};
- const r2=planOf(await orchestrateCreativeTurn({text:"a photo of a woman in a garden",characterRef:ref},{planner:evil}));
+ const r2=planOf(await orchestrateCreativeTurn({text:"a photo of a woman in a garden",characterRef:ref},{planUncheckedMedia:true,planner:evil}));
  assert.deepEqual(r2.plan.identityLock?.providedAngles,["front","profile_left"]);assert.equal(r2.plan.identityLock?.characterId,ref.id);
  // video missing shot/antiTeleport and a stylized lie get filled/forced
  const lazy:PrivatePlanner=r=>{const p=structuredClone(deterministicPlanner(r).plan) as CreativePlan;delete p.shot;p.continuity.antiTeleport=[];p.realism={mode:"photoreal",directives:["pores"]};return {plan:p};};
- const v=planned(await orchestrateCreativeTurn({text:"cartoon video of a dog",visualStyle:"stylized"},{planner:lazy}));
+ const v=planned(await orchestrateCreativeTurn({text:"cartoon video of a dog",visualStyle:"stylized"},{planUncheckedMedia:true,planner:lazy}));
  assert.ok(v.plan.shot);assert.ok(v.plan.continuity.antiTeleport.length>0);assert.equal(v.plan.realism.mode,"stylized");
 });
 test("image plans carry a camera with integer iso/focal length; video plans carry shot and anti-teleport",async()=>{
@@ -172,30 +172,30 @@ test("character reference locks exactly the provided angles and notes missing re
 test("political prompt is restricted and the planner is never called",async()=>{
  let calls=0;const spy:PrivatePlanner=r=>{calls++;return deterministicPlanner(r);};
  for(const text of ["campaign poster for President Trump","پوستر انتخاباتی با رئیس جمهور","a woman in lingerie","پهلوی"]){
-  const r=await orchestrateCreativeTurn({text},{planner:spy});assert.equal(r.status,"restricted",text);
+  const r=await orchestrateCreativeTurn({text},{planUncheckedMedia:true,planner:spy});assert.equal(r.status,"restricted",text);
  }
  assert.equal(calls,0);
 });
 test("a planner emitting a blocked political term in the media prompt or a hard constraint is restricted",async()=>{
  const poison=(f:(p:CreativePlan)=>void):PrivatePlanner=>r=>{const p=structuredClone(deterministicPlanner(r).plan) as CreativePlan;f(p);return {plan:p};};
- const a=await orchestrateCreativeTurn({text:"a photo of a crowd in a square"},{planner:poison(p=>{p.mediaPrompt+=" with protest banners";})});
+ const a=await orchestrateCreativeTurn({text:"a photo of a crowd in a square"},{planUncheckedMedia:true,planner:poison(p=>{p.mediaPrompt+=" with protest banners";})});
  assert.equal(a.status,"restricted");assert.equal((a as {category:string}).category,"politics");
- const b=await orchestrateCreativeTurn({text:"a photo of a crowd in a square"},{planner:poison(p=>{p.hardConstraints.push("show an election rally");})});
+ const b=await orchestrateCreativeTurn({text:"a photo of a crowd in a square"},{planUncheckedMedia:true,planner:poison(p=>{p.hardConstraints.push("show an election rally");})});
  assert.equal(b.status,"restricted");
  assert.equal(last().fallbackReason,"plan_restricted");
 });
 test("planner errors: unavailable and invalid fall back to the deterministic plan; refusal is restricted",async()=>{
  const thrower=(e:Error):PrivatePlanner=>()=>{throw e;};
- const u=planned(await orchestrateCreativeTurn({text:"a photo of a lake"},{planner:thrower(new PlannerUnavailableError())}));
+ const u=planned(await orchestrateCreativeTurn({text:"a photo of a lake"},{planUncheckedMedia:true,planner:thrower(new PlannerUnavailableError())}));
  assert.equal(u.plan.mediaKind,"image");assert.equal(last().planner,"deterministic");assert.equal(last().fallbackReason,"planner_unavailable");
- planned(await orchestrateCreativeTurn({text:"a photo of a lake"},{planner:thrower(new PlannerInvalidOutputError())}));assert.equal(last().fallbackReason,"invalid_output");
- planned(await orchestrateCreativeTurn({text:"a photo of a lake"},{planner:()=>({plan:{junk:true}})}));assert.equal(last().fallbackReason,"invalid_output");
- const ref=await orchestrateCreativeTurn({text:"a photo of a lake"},{planner:thrower(new PlannerRefusedError())});
+ planned(await orchestrateCreativeTurn({text:"a photo of a lake"},{planUncheckedMedia:true,planner:thrower(new PlannerInvalidOutputError())}));assert.equal(last().fallbackReason,"invalid_output");
+ planned(await orchestrateCreativeTurn({text:"a photo of a lake"},{planUncheckedMedia:true,planner:()=>({plan:{junk:true}})}));assert.equal(last().fallbackReason,"invalid_output");
+ const ref=await orchestrateCreativeTurn({text:"a photo of a lake"},{planUncheckedMedia:true,planner:thrower(new PlannerRefusedError())});
  assert.deepEqual({s:ref.status,d:(ref as {decision:string}).decision,c:(ref as {category:string}).category},{s:"restricted",d:"review",c:"none"});
 });
 test("a planner that leaks vendor or skill names into the public plan is replaced by the deterministic plan",async()=>{
  const leaky:PrivatePlanner=r=>{const p=structuredClone(deterministicPlanner(r).plan) as CreativePlan;p.qaChecklist.push("Planned by Claude Opus using Professional Media QA");return {plan:p};};
- const r=planned(await orchestrateCreativeTurn({text:"a photo of a lake"},{planner:leaky}));
+ const r=planned(await orchestrateCreativeTurn({text:"a photo of a lake"},{planUncheckedMedia:true,planner:leaky}));
  assert.ok(!JSON.stringify(r).toLowerCase().includes("claude"));assert.equal(last().fallbackReason,"leak_filtered");
 });
 test("audit stores a sha256, the registry version and skill ids, never the raw prompt; injected sink and clock work",async()=>{
@@ -366,8 +366,8 @@ const att=(kind:string,over:Record<string,unknown>={})=>{
  };
  return {id:crypto.randomUUID(),kind,bytes:2048,sha256:"c".repeat(64),...base[kind],...over};
 };
-const spyPlanner=():{planner:PrivatePlanner;seen:PlannerRequest[]}=>{const seen:PlannerRequest[]=[];return {seen,planner:r=>{seen.push(r);return {plan:deterministicPlanner(r).plan};}};};
-const MEDIA_REVIEW=/بررسی ایمنی همهٔ فایل‌ها تموم نشده/;
+const spyPlanner=():{planUncheckedMedia:true;planner:PrivatePlanner;seen:PlannerRequest[]}=>{const seen:PlannerRequest[]=[];return {seen,planUncheckedMedia:true,planner:r=>{seen.push(r);return {plan:deterministicPlanner(r).plan};}};};
+const MEDIA_REVIEW=/فعلاً استفاده نمی‌کنم/;
 
 test("attachments: a text attachment with a blocked term is restricted and no planner runs",async()=>{
  const {planner,seen}=spyPlanner();
@@ -490,7 +490,7 @@ test("anthropic adapter: attachment excerpts go inside <user_brief> as <attachme
 const LAKE="a photo of a lake";
 const FA_MISSING_3="پیوست #تصویر-۳ در این گفت‌وگو پیدا نشد؛ آن را دوباره اضافه کن یا تگ را اصلاح کن.";
 const unsupported=(r:OrchestratorResult)=>{assert.equal(r.status,"unsupported",JSON.stringify(r));return r as Extract<OrchestratorResult,{status:"unsupported"}>;};
-const seenBy=async(text:string,attachments:unknown[])=>{const {planner,seen}=spyPlanner();const r=await orchestrateCreativeTurn({text,attachments},{planner});return {r,req:seen[0]};};
+const seenBy=async(text:string,attachments:unknown[])=>{const {planner,seen}=spyPlanner();const r=await orchestrateCreativeTurn({text,attachments},{planUncheckedMedia:true,planner});return {r,req:seen[0]};};
 
 const asks=(r:OrchestratorResult)=>{assert.equal(r.status,"needs_input",JSON.stringify(r));return (r as Extract<OrchestratorResult,{status:"needs_input"}>).question;};
 test("mentions: a tag with no file in the chat is a critical question: no plan card or price until the user answers",async()=>{
@@ -524,7 +524,7 @@ test("mentions: the provider-facing prompt describes attachments in English, the
  assert.ok(mp.length<=3000);
  // a live planner that writes the tag into its own prompt is rewritten after the fact
  const live:PrivatePlanner=r2=>{const plan=structuredClone(deterministicPlanner(r2).plan) as CreativePlan;plan.mediaPrompt="lake scene following @FILE1 closely";return {plan};};
- const l=planned(await orchestrateCreativeTurn({text:"a lake per @file1",attachments:[att("md")]},{planner:live}));
+ const l=planned(await orchestrateCreativeTurn({text:"a lake per @file1",attachments:[att("md")]},{planUncheckedMedia:true,planner:live}));
  {const lp=getPrivateMediaPrompt(l.turnId)!;assert.ok(lp.startsWith("Camera and light, exactly as arranged:")&&lp.includes(" lake scene following [attached document 1] closely Scene (must match): Staging:"),lp);}
  // a long brief still leaves room for every role line at the end of the prompt
  const longText="a lake. ".repeat(450)+"@image1";
@@ -569,7 +569,7 @@ test("Persian mentions: rewritten in the private media prompt, kept in the publi
  assertNoLeak(JSON.stringify(pub),"persian media mention");
  // a live planner that writes the Persian tag into its own prompt is rewritten after the fact
  const live:PrivatePlanner=r2=>{const plan=structuredClone(deterministicPlanner(r2).plan) as CreativePlan;plan.mediaPrompt="lake scene following #فایل-۱ closely";return {plan};};
- const l=planned(await orchestrateCreativeTurn({text:"a lake per #فایل-۱",attachments:[att("md")]},{planner:live}));
+ const l=planned(await orchestrateCreativeTurn({text:"a lake per #فایل-۱",attachments:[att("md")]},{planUncheckedMedia:true,planner:live}));
  {const lp=getPrivateMediaPrompt(l.turnId)!;assert.ok(lp.startsWith("Camera and light, exactly as arranged:")&&lp.includes(" lake scene following [attached document 1] closely Scene (must match): Staging:"),lp);}
 });
 
@@ -740,10 +740,10 @@ test("the live planner's attachment blocks carry role and role_source",async()=>
 });
 test("roles: a planner that drops a role constraint gets it back from the invariants",async()=>{
  const lazy:PrivatePlanner=r=>{const plan=structuredClone(deterministicPlanner(r).plan) as CreativePlan;plan.hardConstraints=["do the brief"];plan.continuity.locks=["keep it consistent"];plan.softPreferences=[];return {plan};};
- const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("image",{role:"character"}),att("audio",{role:"music"})]},{planner:lazy}));
+ const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("image",{role:"character"}),att("audio",{role:"music"})]},{planUncheckedMedia:true,planner:lazy}));
  assert.ok(r.plan.hardConstraints.includes(CONSTRAINT.character)&&r.plan.softPreferences.some(x=>x.startsWith("#صدا-۱:")));
  assert.ok(last().corrections?.includes("role_directives"));
- const env=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("image",{role:"environment"})]},{planner:lazy}));
+ const env=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("image",{role:"environment"})]},{planUncheckedMedia:true,planner:lazy}));
  assert.ok(env.plan.continuity.locks.some(x=>x.startsWith("#تصویر-۱:")));
  // a planner that already has them is not corrected
  await orchestrateCreativeTurn({text:LAKE,attachments:[att("image",{role:"character"})]});assert.ok(!last().corrections?.includes("role_directives"));
@@ -838,7 +838,7 @@ test("curated roles: outfit, hairstyle and makeup add their constraints, count a
 test("curated roles: the provider-facing prompt describes the new references in English",async()=>{
  let seen="";
  const planner:PrivatePlanner=r=>{seen=r.input.text;return {plan:deterministicPlanner(r).plan};};
- const out=await orchestrateCreativeTurn({text:"apply #تصویر-۱ and #تصویر-۲ to her",attachments:[att("image",{tag:"image1",role:"outfit"}),att("image",{tag:"image2",role:"makeup"})]},{planner});
+ const out=await orchestrateCreativeTurn({text:"apply #تصویر-۱ and #تصویر-۲ to her",attachments:[att("image",{tag:"image1",role:"outfit"}),att("image",{tag:"image2",role:"makeup"})]},{planUncheckedMedia:true,planner});
  const o=unsupported(out);assert.ok(o.plan.hardConstraints.some(c=>c.includes("#تصویر-۲")&&c.startsWith("آرایش")));assert.ok(seen.length>0);
 });
 test("curated roles: the server still refuses voice_clone without consent and answers unsupported with it",async()=>{
@@ -878,10 +878,10 @@ test("style: it wins over visualStyle and over the words of the text, and the au
 test("style: Persian directives in the plan, English in the provider prompt, and the public plan carries the style",async()=>{
  let seen:CreativePlan|undefined;
  const spy:PrivatePlanner=r=>{const out=deterministicPlanner(r);seen=out.plan as CreativePlan;return out;};
- const t=planned(await orchestrateCreativeTurn({text:"an image of a toy robot on a desk",style:"three_d"},{planner:spy}));
+ const t=planned(await orchestrateCreativeTurn({text:"an image of a toy robot on a desk",style:"three_d"},{planUncheckedMedia:true,planner:spy}));
  assert.ok(seen!.realism.directives.includes("رندر سه‌بعدی تمیز با متریال فیزیکی، نور نرم و سایهٔ طبیعی؛ بدون بافت پوست عکاسی یا نویز"));assert.equal(t.plan.style,"three_d");
  assert.ok(getPrivateMediaPrompt(t.turnId)!.includes("3D render style: physically based materials, soft global illumination, clean shading"));
- const c=planned(await orchestrateCreativeTurn({text:"an image of a fox in the snow",style:"cartoon"},{planner:spy}));
+ const c=planned(await orchestrateCreativeTurn({text:"an image of a fox in the snow",style:"cartoon"},{planUncheckedMedia:true,planner:spy}));
  assert.ok(seen!.realism.directives.includes("سبک کارتونی: خطوط تمیز، فرم‌های ساده و پالت رنگی هماهنگ"));
  assert.ok(getPrivateMediaPrompt(c.turnId)!.includes("cartoon style: clean outlines, simplified shapes, harmonious vivid palette"));
  const r=planned(await orchestrateCreativeTurn({text:"an image of a lake at dawn",style:"realistic"}));
@@ -905,7 +905,7 @@ test("style: a character reference in a stylized look keeps its identity recogni
  assert.ok(withRole.plan.hardConstraints.includes(IDENT));assert.equal(withRole.plan.style,"cartoon");
  // a planner that drops the style lines gets them back
  const dropper:PrivatePlanner=r=>{const p=deterministicPlanner(r).plan;return {plan:{...p,hardConstraints:p.hardConstraints.filter(h=>h!==IDENT),realism:{...p.realism,directives:["x"]}}};};
- const fixed=planOf(await orchestrateCreativeTurn({text:"an image of a girl in a garden",characterRef:ref,style:"cartoon"},{planner:dropper}));
+ const fixed=planOf(await orchestrateCreativeTurn({text:"an image of a girl in a garden",characterRef:ref,style:"cartoon"},{planUncheckedMedia:true,planner:dropper}));
  assert.ok(fixed.plan.hardConstraints.includes(IDENT));assert.ok(last().corrections?.includes("style_directives"));
 });
 test("owner role list: a chosen reference or frame reaches the planner as a concrete role",async()=>{
