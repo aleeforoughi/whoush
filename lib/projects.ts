@@ -34,9 +34,9 @@ export type JobSnapshot={state:string;messageFa:string;tag?:string;jobId?:string
  /** Why a finished video is silent (its soundtrack failed the check and was removed). */audioNoteFa?:string;
  /** What was quoted (owner, 2026-11-07: a failed generation can be run again): the same plan's turn, model and settings. A rerun asks for a NEW quote and a
   *  new approval with these; nothing is charged again without them. */rerun?:JobRerun};
-export type JobRerun={turnId:string;modelId:string;aspectRatio?:string;stagingOverride?:unknown;aspectOverride?:string;excludeReferences?:string[]};
+export type JobRerun={turnId:string;modelId:string;aspectRatio?:string;audio?:boolean;stagingOverride?:unknown;aspectOverride?:string;excludeReferences?:string[]};
 const isJobRerun=(v:unknown)=>isObject(v)&&typeof v.turnId==="string"&&v.turnId.length<=64&&typeof v.modelId==="string"&&v.modelId.length<=128
- &&(v.aspectRatio===undefined||(typeof v.aspectRatio==="string"&&v.aspectRatio.length<=16))&&(v.aspectOverride===undefined||(typeof v.aspectOverride==="string"&&v.aspectOverride.length<=16))
+ &&(v.aspectRatio===undefined||(typeof v.aspectRatio==="string"&&v.aspectRatio.length<=16))&&(v.audio===undefined||typeof v.audio==="boolean")&&(v.aspectOverride===undefined||(typeof v.aspectOverride==="string"&&v.aspectOverride.length<=16))
  &&(v.excludeReferences===undefined||(Array.isArray(v.excludeReferences)&&v.excludeReferences.length<=20&&v.excludeReferences.every(x=>typeof x==="string"&&x.length<=64)));
 const OWNED_MEDIA_PATH=/^\/api\/generation\/media\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const isJobOutputs=(v:unknown)=>Array.isArray(v)&&v.length<=4&&v.every(o=>isObject(o)&&(o.kind==="image"||o.kind==="video")&&typeof o.url==="string"&&OWNED_MEDIA_PATH.test(o.url));

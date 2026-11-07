@@ -101,6 +101,8 @@ export function Studio(){
  const [selected,setSelected]=useState("");
  // The aspect ratio picked on the generation card (null: Whoush's, from the brief or «بوم»).
  const [aspectChoice,setAspectChoice]=useState<string|null>(null);
+ /** The video card's sound toggle (owner, 2026-11-08); null: what the brief said, else on. */
+ const [soundChoice,setSoundChoice]=useState<boolean|null>(null);
  const [busy,setBusy]=useState(false);
  const [preview,setPreview]=useState(idlePreview);
  const [job,setJob]=useState<JobView|null>(null);
@@ -832,7 +834,7 @@ export function Studio(){
    const named=mentioned.find(t=>generationSet.has(t)),prevSnap=named?generationMap.get(named):[...messages].reverse().find(m=>m.kind==="proposal")?.snapshot as ProposalSnapshot|undefined;
    const focus=followUpFocus(normalizePersian(sentText),prevSnap?.plan.staging,data.plan.staging);
    const reply=agentItem({role:"agent",text:data.message,kind:"proposal",snapshot:{...(tag?{tag}:{}),...(focus?{focus}:{}),operation:data.operation,modelName:picked?.name??"",neurons:picked?.neurons??data.fixedNeurons,intentSummaryFa:data.plan.intentSummaryFa,plan:data.plan}});
-   setProposal(data);setLiveId(reply.id);setSelected(data.selectedModelId);setAspectChoice(null);setExcludedRefs(new Set());setDraftedFor(null);setPreview("در انتظار تأیید تولید");setJob(null);
+   setProposal(data);setLiveId(reply.id);setSelected(data.selectedModelId);setAspectChoice(null);setSoundChoice(null);setExcludedRefs(new Set());setDraftedFor(null);setPreview("در انتظار تأیید تولید");setJob(null);
    // Like a friend: the reply, then (sometimes) a GIF as its own message.
    setMessages(m=>[...m,reply,...(data.gif?[agentItem({role:"agent",text:"",kind:"gif",snapshot:data.gif})]:[])]);whoushReacts(data.reaction);
    adoptProject(firstText,characterId);
@@ -859,8 +861,10 @@ export function Studio(){
    // A draft quotes the draft model on the draft's own turn (no canvas override: that belongs to the video turn).
    const quoteBody={modelId:d?d.modelId:selected,turnId,...(!d&&edit?{stagingOverride:edit.staging,...(edit.aspect!==planAspect?{aspectOverride:edit.aspect}:{})}:{}),
     ...(excludedRefs.size?{excludeReferences:[...excludedRefs]}:{})};
-   let q=await post("/api/generation/quote",{...quoteBody,...(aspect?{configuration:{aspectRatio:aspect}}:{})});
-   if(q.status===422&&aspect)q=await post("/api/generation/quote",quoteBody); // last resort if the ratio is still refused (invalid_configuration): the prompt still carries it
+   // Sound goes with the quote only for a video model with checked sound (never for the draft still): the toggle, else what the brief said, else on.
+   const audio=!d&&proposal.suggestions.find(s=>s.modelId===selected)?.audio?(soundChoice??proposal.soundWanted??true):undefined,withSound=audio!==undefined?{audio}:{};
+   let q=await post("/api/generation/quote",{...quoteBody,...(aspect||audio!==undefined?{configuration:{...(aspect?{aspectRatio:aspect}:{}),...withSound}}:{})});
+   if(q.status===422&&aspect)q=await post("/api/generation/quote",{...quoteBody,...(audio!==undefined?{configuration:withSound}:{})}); // last resort if the ratio is still refused (invalid_configuration): the prompt still carries it
    if(!q.ok){
     // A refusal that says why (a photo edit that changes the camera and the light together; a prop hiding the subject) is shown as is.
     const why=await q.json().then((b:{error?:string;message?:string})=>b.error==="edit_scope_mixed"||b.error==="composition_occluded"||b.error==="dev_cap_reached"||b.error==="price_pending"?b.message:undefined).catch(()=>undefined);
@@ -874,7 +878,7 @@ export function Studio(){
    // The job's message goes into the transcript now (with its id), and is updated in place as the job moves: a project saved or reopened mid-generation
    // still knows which job to follow, and a finished one keeps its outputs.
    // What was quoted goes with the job, so a failed one can be run again from its card (a new quote and a new approval, never the old charge).
-   const rerun:JobRerun={turnId,modelId:quoteBody.modelId,...(aspect?{aspectRatio:aspect}:{}),...(!d&&edit?{stagingOverride:edit.staging,...(edit.aspect!==planAspect?{aspectOverride:edit.aspect}:{})}:{}),...(excludedRefs.size?{excludeReferences:[...excludedRefs]}:{})};
+   const rerun:JobRerun={turnId,modelId:quoteBody.modelId,...(aspect?{aspectRatio:aspect}:{}),...withSound,...(!d&&edit?{stagingOverride:edit.staging,...(edit.aspect!==planAspect?{aspectOverride:edit.aspect}:{})}:{}),...(excludedRefs.size?{excludeReferences:[...excludedRefs]}:{})};
    const snap:JobSnapshot={...jobSnapshot(current,genTag),...(d?{draft:{modelName:d.modelName}}:{}),rerun},msg=item({role:"agent",text:current.messageFa,kind:"job",snapshot:snap});
    // On a phone the preview would cover the chat: the generation stays in the chat as its card, and «نمایش» opens the preview when wanted (owner, 2026-11-06).
    setPreview(current.messageFa);setJob(snap);setPreviewOpen(previewFits());setGalleryFocus(galleryFocusOn(msg.id));
@@ -897,8 +901,9 @@ export function Studio(){
   try{
    const post=(url:string,body:unknown)=>fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
    const quoteBody={modelId:r.modelId,turnId:r.turnId,...(r.stagingOverride?{stagingOverride:r.stagingOverride}:{}),...(r.aspectOverride?{aspectOverride:r.aspectOverride}:{}),...(r.excludeReferences?.length?{excludeReferences:r.excludeReferences}:{})};
-   let q=await post("/api/generation/quote",{...quoteBody,...(r.aspectRatio?{configuration:{aspectRatio:r.aspectRatio}}:{})});
-   if(q.status===422&&r.aspectRatio)q=await post("/api/generation/quote",quoteBody);
+   const withSound=r.audio!==undefined?{audio:r.audio}:{};
+   let q=await post("/api/generation/quote",{...quoteBody,...(r.aspectRatio||r.audio!==undefined?{configuration:{...(r.aspectRatio?{aspectRatio:r.aspectRatio}:{}),...withSound}}:{})});
+   if(q.status===422&&r.aspectRatio)q=await post("/api/generation/quote",{...quoteBody,...(r.audio!==undefined?{configuration:withSound}:{})});
    if(!q.ok){
     const b=await q.json().catch(()=>({})) as {error?:string;message?:string};
     throw new Error(b.error==="unknown_turn"||q.status===410?RERUN_GONE_FA:b.error==="dev_cap_reached"||b.error==="price_pending"?b.message??"مشکل در محاسبه هزینه":"مشکل در محاسبه هزینه");
@@ -1062,7 +1067,7 @@ export function Studio(){
          ?<ProposalCard proposal={proposal} tag={m.snapshot.tag} adjusted={sceneEdit?.id===m.id} selected={selected} onSelect={setSelected}
           drafted={draftedFor===m.id} onDraft={proposal.draft?()=>void approve(true):undefined}
           excludedReferences={excludedRefs} onToggleReference={id=>setExcludedRefs(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n;})}
-          aspect={aspectChoice??(sceneEdit?.id===m.id?sceneEdit.aspect:undefined)??m.snapshot.plan.camera?.aspectRatio} onAspect={setAspectChoice} busy={busy} onApprove={()=>void approve()} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>
+          aspect={aspectChoice??(sceneEdit?.id===m.id?sceneEdit.aspect:undefined)??m.snapshot.plan.camera?.aspectRatio} sound={soundChoice??proposal?.soundWanted??true} onSound={setSoundChoice} onAspect={setAspectChoice} busy={busy} onApprove={()=>void approve()} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>
          :<PastProposalCard snapshot={m.snapshot} adjusted={Boolean(pastEdits[m.id])} busy={busy||reading||loadingProject}
           onBuildScene={pastEdits[m.id]&&m.snapshot.tag&&m.snapshot.plan.staging?()=>buildScene(m.id,m.snapshot.tag!,m.snapshot.plan.staging!,m.snapshot.plan.camera?.aspectRatio):undefined} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>)}
         {m.kind==="no_model"&&<NoModelCard result={m.snapshot}/>}

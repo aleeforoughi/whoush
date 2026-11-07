@@ -33,6 +33,8 @@ import {MEDIA_ROUTE,readMedia} from "./media-store";
 import {reviewAvailable,reviewPlan,promptWithFixes,type PlanReviewer} from "./plan-review";
 import {findMediaModel} from "./catalog";
 import {triageAvailable,triageTurn,type TriageEffort,type TurnTriager} from "./turn-triage";
+import {audioCheckAvailable} from "./audio-check";
+import {soundLineFa,soundWanted} from "./sound-intent";
 import type {ResearchPlan} from "./creative-plan";
 export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;now?:()=>Date;
  /** Edit or reference, with the areas to change (a private vision check by default; tests pass a stub). */
@@ -52,7 +54,8 @@ export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;no
  /** Test hook: the planner for one routed model. Defaults to the real Anthropic or OpenAI adapter. */
  plannerFor?:(modelId:string,provider:"anthropic"|"openai")=>PrivatePlanner;routing?:RoutingConfig;routerState?:RouterState;
  /** Turn triage (reply, ask or make) before planning: the cheapest private model by default when no test planner is given; tests pass a stub. */
- triage?:TurnTriager};
+ triage?:TurnTriager;
+ /** Whether generated sound can be checked here (tests pass a stub). */audioCheckAvailable?:()=>Promise<boolean>};
 export {TURN_STAGES,type TurnStage,type TurnNote} from "./orchestrator-stages";
 import type {TurnNote,TurnStage} from "./orchestrator-stages";
 export type OrchestratorResult=
@@ -868,7 +871,16 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // «هر دو»: the video's opening-frame draft is the photo, then the video from it.
  const photoNote=uploads.length&&kind==="video"&&proposal.draft?(script==="finglish"?"\nAksato too pish-nevis (frame-e aval) estefade mikonam; khod-e video felan az roo-ye prompt sakhte mishe.":"\nعکس‌هات توی پیش‌نویس (فریم اول) به کار می‌رن؛ خود ویدیو فعلاً از روی پرامپت ساخته می‌شه."):"";
  const bothNote=wantsBoth&&proposal.draft?(script==="finglish"?"\nHar do ro misazam: aval aks (frame-e aval), baad video.":"\nهر دو رو می‌سازم: اول عکس (فریم اول)، بعد ویدیو از روی همون."):"";
- proposal={...proposal,message:replyText("planned")+bothNote+photoNote+(proposal.explicitRejected?"\n"+proposal.message:"")};
+ // Sound (owner, 2026-11-08): a video model with checked sound gets the card's toggle, and Whoush asks (or confirms what the brief said). Without the
+ // check here no model is offered sound: the toggle is hidden and the video stays silent.
+ let soundNote="";
+ if(kind==="video"){
+  const ready=proposal.suggestions.some(s=>s.audio)&&await (deps.audioCheckAvailable??audioCheckAvailable)();
+  if(!ready)proposal={...proposal,suggestions:proposal.suggestions.map(({audio:_a,...s})=>s)};
+  else{const w=soundWanted(parsed.text);proposal={...proposal,...(w!==undefined?{soundWanted:w}:{})};
+   if(proposal.suggestions.find(s=>s.modelId===proposal.selectedModelId)?.audio)soundNote="\n"+soundLineFa(w,script);}
+ }
+ proposal={...proposal,message:replyText("planned")+soundNote+bothNote+photoNote+(proposal.explicitRejected?"\n"+proposal.message:"")};
  const gif=gifMood?await (deps.findGif??findGif)(gifMood).catch(()=>undefined):undefined;
  return {status:"planned",turnId,proposal,plan:withMain(toPublicPlan(plan,refs,undefined,input.style)),...(gif?{gif}:{}),...(reaction?{reaction}:{})};
 }

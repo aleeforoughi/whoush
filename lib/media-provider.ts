@@ -85,7 +85,7 @@ export class HiggsfieldMediaProvider implements MediaProvider{
  async submit(job:ProviderJob):Promise<{providerRequestId:string}>{
   const model=findMediaModel(job.modelId);
   if(!model||!model.verifiedApiPath||!(this.mode==="live"?generationGate(model).live:devGenerationGate(model).live))throw new Error("Live generation blocked");
-  const payload=buildHiggsfieldPayload(model,job.prompt,job.configuration,model.capabilities.audio&&await audioCheckAvailable()); // a mapping error happens before anything is sent: definite
+  const payload=buildHiggsfieldPayload(model,job.prompt,job.configuration,model.capabilities.audio&&job.configuration.audio!==false&&await audioCheckAvailable()); // the card's sound toggle // a mapping error happens before anything is sent: definite
   let r:Awaited<ReturnType<typeof submitHiggsfieldVerifiedPath>>;
   try{r=await submitHiggsfieldVerifiedPath(model.verifiedApiPath,payload,job.idempotencyKey);}
   catch(e){

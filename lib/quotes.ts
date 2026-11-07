@@ -20,7 +20,7 @@ export const QUOTE_TTL_MS=5*60*1000;
 export type CharacterRefDigest={id:string;version:number;angles:readonly string[]};
 const payloadSchema=z.object({
  quoteId:z.string().min(1).max(64),modelId:z.string().min(1).max(128),turnId:z.string().min(1).max(64),
- configuration:z.object({aspectRatio:z.string().max(12).optional(),durationSeconds:z.number().int().positive().optional()}).strict(),
+ configuration:z.object({aspectRatio:z.string().max(12).optional(),durationSeconds:z.number().int().positive().optional(),audio:z.boolean().optional()}).strict(),
  characterRef:z.object({id:z.string().max(80),version:z.number().int().positive(),angles:z.array(z.string().max(32)).max(6)}).strict().optional(),
  inputsDigest:z.string().regex(/^[0-9a-f]{64}$/),neurons:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),catalogVersion:z.string().max(64),
  issuedAt:z.string().max(40),expiresAt:z.string().max(40),mode:z.enum(["demo","live","dev_live"]),

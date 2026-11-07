@@ -91,6 +91,8 @@ export interface MediaSuggestion {
   resolution?: string;
   durationSeconds?: number;
   aspectRatios?: readonly string[];
+  /** Video: this SKU makes sound that is checked before it is shown (lib/audio-check.ts), so the card offers the sound toggle. */
+  audio?: boolean;
 }
 /** One open-licensed reference Whoush found and inspected (docs/RESEARCH_PIPELINE.md). `url` is Whoush-owned; the rest is the attribution. */
 export interface ProposalReference { id: string; url: string; subjectFa: string; title: string; license: string; creator: string; sourceUrl: string; source: "wikimedia" | "openverse"; }
@@ -119,6 +121,8 @@ export interface GenerationProposal {
    */
   draft?: { turnId: string; modelId: string; modelName: string; neurons: number };
   explicitRejected?: { modelId: string; reasonFa: string }; // user named a model that cannot satisfy the request
+  /** Video: what the brief said about sound (lib/sound-intent.ts); the card's toggle starts there, else on. */
+  soundWanted?: boolean;
   requiresApproval: true;
   /** How the selected model would run now: `demo` makes no real media; `dev_live` is owner testing; `live` is production. */
   quoteMode: "demo" | "dev_live" | "live";

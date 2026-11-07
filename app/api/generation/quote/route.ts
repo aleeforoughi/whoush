@@ -9,7 +9,7 @@ const VIEW_IDS=CHARACTER_VIEWS.map(v=>v.id) as [string,...string[]];
 // The prompt is NEVER accepted from the client: it is looked up server-side by turnId.
 const schema=z.object({
  modelId:z.string().min(1).max(128),turnId:z.string().min(1).max(64),
- configuration:z.object({aspectRatio:z.string().max(12).optional(),durationSeconds:z.number().int().positive().max(600).optional()}).strict().optional(),
+ configuration:z.object({aspectRatio:z.string().max(12).optional(),durationSeconds:z.number().int().positive().max(600).optional(),audio:z.boolean().optional()}).strict().optional(),
  characterRef:z.object({id:z.string().regex(/^[a-z0-9-]{8,80}$/i),version:z.number().int().min(1),angles:z.array(z.enum(VIEW_IDS)).min(1).max(6)}).strict().optional(),
  /** The scene arranged in «بوم» (structured, enum values only): applied to the turn's private plan on the server before quoting. */
  stagingOverride:StagingSchema.optional(),

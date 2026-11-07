@@ -69,11 +69,13 @@ export const MEDIA_CATALOG: readonly MediaModel[] = [
 ] as const;
 export function findMediaModel(id: string): MediaModel | undefined { return MEDIA_CATALOG.find(x => x.id===id); }
 /** `sourceVideoSeconds` is the source video's length, rounded up to whole seconds. It must come from server-side media inspection, never from the client. */
-export type MediaConfiguration = { aspectRatio?: string; durationSeconds?: number; sourceVideoSeconds?: number };
+/** `audio` (owner, 2026-11-08): the user's sound toggle on a video card; only for SKUs with checked sound. Absent means on where offered. */
+export type MediaConfiguration = { aspectRatio?: string; durationSeconds?: number; sourceVideoSeconds?: number; audio?: boolean };
 /** Returns a Persian reason when the configuration is not offered by this SKU, else undefined. */
 export function configurationProblem(m: MediaModel, c: MediaConfiguration = {}): string | undefined {
   if (c.aspectRatio !== undefined && !m.capabilities.aspectRatios.includes(c.aspectRatio)) return "نسبت تصویر درخواستی برای این مدل در دسترس نیست.";
   if (c.durationSeconds !== undefined && !(m.capabilities.durationsSeconds ?? []).includes(c.durationSeconds)) return "مدت‌زمان درخواستی برای این مدل در دسترس نیست.";
+  if (c.audio === true && !m.capabilities.audio) return "صدا برای این مدل در دسترس نیست.";
   if (m.sourceSecondsSkus) {
     const s = c.sourceVideoSeconds, [min, max] = m.sourceVideoSecondsRange ?? [1, 0];
     if (s === undefined) return "طول ویدیوی منبع باید پیش از قیمت‌گذاری مشخص شود.";

@@ -61,7 +61,7 @@ export class BytePlusMediaProvider implements MediaProvider{
     return outputs;
    })};
   }
-  const body=buildSeedanceRequest(model,job.prompt,job.configuration,model.capabilities.audio&&await audioCheckAvailable());
+  const body=buildSeedanceRequest(model,job.prompt,job.configuration,model.capabilities.audio&&job.configuration.audio!==false&&await audioCheckAvailable()); // the card's sound toggle
   let r:{id?:unknown};
   try{r=await call("POST","/contents/generations/tasks",body,model.id) as {id?:unknown};}
   catch(e){

@@ -20,7 +20,7 @@ export function buildProposal(trimmed:string,preference:AgentPreference="quality
   operation:kind==="image"?"generate_image":"generate_video",
   intentSummary:trimmed,
   // Up to three model families, each with all its eligible versions (resolutions, durations), so the card can offer them as settings.
-  suggestions:withFamilies(ranked,3).map((m,i)=>({modelId:m.id,name:m.name,neurons:m.neurons,resolution:m.resolution,...(m.durationSeconds?{durationSeconds:m.durationSeconds}:{}),aspectRatios:[...m.capabilities.aspectRatios],reason:explicit===m.id?"انتخاب شما":explicitRejected?"جایگزین سازگار":i===0?"پیشنهاد هووش":"گزینه جایگزین"})),
+  suggestions:withFamilies(ranked,3).map((m,i)=>({modelId:m.id,name:m.name,neurons:m.neurons,resolution:m.resolution,...(m.durationSeconds?{durationSeconds:m.durationSeconds}:{}),aspectRatios:[...m.capabilities.aspectRatios],...(m.kind==="video"&&m.capabilities.audio?{audio:true}:{}),reason:explicit===m.id?"انتخاب شما":explicitRejected?"جایگزین سازگار":i===0?"پیشنهاد هووش":"گزینه جایگزین"})),
   recommendedModelId:ranked[0].id,selectedModelId:selected.id,fixedNeurons:selected.neurons,
   explicitRejected:explicitRejected?{modelId:explicitRejected.id,reasonFa:explicitRejected.reasonFa}:undefined,
   requiresApproval:true,quoteMode:generationModeFor(selected),

@@ -1,7 +1,7 @@
 "use client";
 import type React from "react";
-import {Box,CircleOff,Clapperboard,Image as ImageIcon,ShieldAlert,Sparkles} from "lucide-react";
-import {Badge,Button,Card,Icon,Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from "@aleeforoughi/feather-react";
+import {Box,CircleOff,Clapperboard,Image as ImageIcon,ShieldAlert,Sparkles,Volume2,VolumeX} from "lucide-react";
+import {Badge,Button,Card,Icon,Select,SelectContent,SelectItem,SelectTrigger,SelectValue,Switch} from "@aleeforoughi/feather-react";
 import {SuggestedModelNote} from "@/components/plan-details";
 import {TagBadge} from "@/components/attachment-chip";
 import type {AgentProposal,NoModelResult} from "@/lib/studio-types";
@@ -31,7 +31,8 @@ function Head({kind,tag,onMention,demo}:{kind:"image"|"video";tag?:string;onMent
  * alternates marked «جایگزین», each with its fixed Neurons), its settings, its notes, then a full-width bar at its very bottom: [✦ بسازش] on the right, its cost
  * («۱۰ نورون») on the left. Tapping the tag mentions it in the chat to ask for changes.
  */
-export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onAspect,busy,onApprove,onMention,excludedReferences,onToggleReference,onDraft,drafted}:{proposal:AgentProposal;tag?:string;
+export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onAspect,sound,onSound,busy,onApprove,onMention,excludedReferences,onToggleReference,onDraft,drafted}:{proposal:AgentProposal;tag?:string;
+ /** Video: sound on or off (owner, 2026-11-08), shown only when the chosen model makes checked sound. */sound?:boolean;onSound?:(on:boolean)=>void;
  /** The scene was arranged in «بوم»: «بساز» builds exactly that scene. */adjusted?:boolean;selected:string;onSelect:(id:string)=>void;
  /** The aspect ratio the generation will use (Whoush's from the brief or «بوم», unless the user picked one here). */aspect?:string;onAspect?:(r:string)=>void;
  busy:boolean;onApprove:()=>void;onMention?:()=>void;
@@ -67,9 +68,15 @@ export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onA
    </Select>
    :chosen&&<p className="flex items-center gap-2 type-body-sm text-fg-secondary">مدل: <span className="text-fg-primary"><ModelName name={familyOf(chosen.name)}/></span><Badge variant="secondary">{RECOMMENDED_FA}</Badge></p>}
   {/* The model's settings: Whoush's choice is selected (from the brief, «بوم» and the mode) until the user picks another. Only what this model really offers. */}
-  {(ratios.length>0||resolutions.length>0||durations.length>0)&&<div className="flex flex-col gap-2">
+  {(ratios.length>0||resolutions.length>0||durations.length>0||chosen?.audio)&&<div className="flex flex-col gap-2">
    {ratios.length>0&&<Setting label="نسبت تصویر">{ratios.map(r=><Opt key={r} on={shownAspect===r} onClick={()=>onAspect?.(r)} disabled={!onAspect}><bdi dir="ltr">{r}</bdi></Opt>)}</Setting>}
    {resolutions.length>0&&<Setting label="کیفیت">{resolutions.map(r=><Opt key={r} on={chosen?.resolution===r} onClick={()=>pick(r,chosen?.durationSeconds)} disabled={resolutions.length<2}><bdi dir="ltr">{r.toUpperCase()}</bdi></Opt>)}</Setting>}
+   {chosen?.audio&&<div className="flex items-center gap-1.5"><span className="min-w-14 type-caption text-fg-secondary">صدا</span>
+    <label className="flex h-8 items-center gap-2 type-caption text-fg-primary">
+     <Switch checked={sound!==false} onCheckedChange={v=>onSound?.(Boolean(v))} disabled={!onSound} aria-label="صدای ویدیو"/>
+     <Icon icon={sound!==false?Volume2:VolumeX} size={16} aria-hidden="true" className="size-4 text-fg-secondary"/>{sound!==false?"روشن":"خاموش"}
+    </label>
+   </div>}
    {durations.length>0&&<Setting label="مدت">{durations.map(d=><Opt key={d} on={chosen?.durationSeconds===d} onClick={()=>pick(chosen?.resolution,d)} disabled={durations.length<2}>{fa(d)} ثانیه</Opt>)}</Setting>}
   </div>}
   {adjusted&&<p role="status" className="flex items-center gap-2 type-caption text-fg-primary"><Icon icon={Box} size={16} aria-hidden="true" className="size-4 text-primary"/>با صحنه‌ای که توی «بوم» چیدی ساخته می‌شه.</p>}
