@@ -1,6 +1,6 @@
 "use client";
 import {SAVE_AGAIN_FA,useSaveFromUrl} from "@/components/share-actions";
-import {Brush,Clapperboard,Download,Image as ImageIcon,Maximize2,RotateCcw,TriangleAlert} from "lucide-react";
+import {Brush,Clapperboard,Download,Image as ImageIcon,Maximize2,RotateCcw,TriangleAlert,VolumeX} from "lucide-react";
 import {Badge,Button,Icon} from "@aleeforoughi/feather-react";
 import {displayTag} from "@/lib/attachments";
 import {jobStateFa} from "@/lib/projects";
@@ -55,6 +55,8 @@ export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,o
    <span role="alert" className="type-caption text-destructive">{messageFa}</span>
    {onRetry&&<Button type="button" size="sm" variant="destructive" onClick={onRetry}><Icon icon={RotateCcw} aria-hidden="true"/>دوباره بساز{retryNeurons?" · "+fa(retryNeurons)+" نورون":""}</Button>}
   </div>}
+  {/* A silent video says why (its soundtrack failed the check and was removed): calm, never an error. */}
+  {output?.kind==="video"&&job?.audioNoteFa&&<p className="flex items-center gap-1.5 px-1 type-caption text-fg-secondary"><Icon icon={VolumeX} size={16} aria-hidden="true" className="size-3.5 shrink-0"/>{job.audioNoteFa}</p>}
   {/* In the chat (owner, 2026-11-06): «ادیت» and «دانلود» as action buttons under the picture, not on hover. */}
   {output&&<div className="flex flex-wrap items-center gap-2 px-1">
    {onEdit&&output.kind!=="video"&&<Button type="button" size="sm" variant="secondary" onClick={onEdit}><Icon icon={Brush} aria-hidden="true"/>ادیت</Button>}

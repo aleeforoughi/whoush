@@ -25,6 +25,7 @@ import {BytePlusMediaProvider} from "./providers/byteplus";
 import {isStoredMediaUrl,mirrorMedia} from "./media-store";
 import {GoogleMediaProvider} from "./providers/google";
 import {KlingMediaProvider} from "./providers/kling";
+import {audioCheckAvailable} from "./audio-check";
 export {SubmissionUnknownError};
 /** Deterministic, offline: queued -> running -> completed_demo over polls. It never returns media URLs. */
 export class MockMediaProvider implements MediaProvider{
@@ -47,7 +48,8 @@ export class MockMediaProvider implements MediaProvider{
  * Payloads only for models whose per-model input schema was read (docs/HIGGSFIELD_EVIDENCE.md). Every field is set explicitly so the billed
  * configuration is the SKU's, never a provider default. Anything else throws, including models that need hosted media inputs (Genjutsu).
  */
-export function buildHiggsfieldPayload(model:MediaModel,prompt:string,c:MediaConfiguration):Record<string,unknown>{
+/** `withAudio`: only when the soundtrack check can run (lib/audio-check.ts) and the SKU has sound at its approved price; otherwise silent. */
+export function buildHiggsfieldPayload(model:MediaModel,prompt:string,c:MediaConfiguration,withAudio=false):Record<string,unknown>{
  const aspect=c.aspectRatio?{aspect_ratio:c.aspectRatio}:{};
  if(model.verifiedApiPath==="/higgsfield-ai/soul/standard"){
   if(model.resolution!=="720p"&&model.resolution!=="1080p")throw new Error("Unsupported SKU resolution");
@@ -57,7 +59,7 @@ export function buildHiggsfieldPayload(model:MediaModel,prompt:string,c:MediaCon
   const duration=c.durationSeconds??model.durationSeconds;
   if(!duration||!(model.capabilities.durationsSeconds??[]).includes(duration))throw new Error("Unsupported SKU duration");
   if(!["480p","720p","1080p"].includes(model.resolution))throw new Error("Unsupported SKU resolution");
-  return {prompt,duration,resolution:model.resolution,generate_audio:false,...aspect}; // audio off: generated audio is not moderated yet
+  return {prompt,duration,resolution:model.resolution,generate_audio:withAudio&&model.capabilities.audio,...aspect}; // sound only when it will be checked before it is shown
  }
  throw new Error("No verified payload mapping for model");
 }
@@ -83,7 +85,7 @@ export class HiggsfieldMediaProvider implements MediaProvider{
  async submit(job:ProviderJob):Promise<{providerRequestId:string}>{
   const model=findMediaModel(job.modelId);
   if(!model||!model.verifiedApiPath||!(this.mode==="live"?generationGate(model).live:devGenerationGate(model).live))throw new Error("Live generation blocked");
-  const payload=buildHiggsfieldPayload(model,job.prompt,job.configuration); // a mapping error happens before anything is sent: definite
+  const payload=buildHiggsfieldPayload(model,job.prompt,job.configuration,model.capabilities.audio&&await audioCheckAvailable()); // a mapping error happens before anything is sent: definite
   let r:Awaited<ReturnType<typeof submitHiggsfieldVerifiedPath>>;
   try{r=await submitHiggsfieldVerifiedPath(model.verifiedApiPath,payload,job.idempotencyKey);}
   catch(e){

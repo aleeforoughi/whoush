@@ -6,7 +6,8 @@ import {findMediaModel,MEDIA_CATALOG_VERSION,type MediaConfiguration} from "./ca
 import {ReservationLedger} from "./ledger";
 import {NotCancelableError,providerForMode,SubmissionUnknownError,type MediaProvider,type ProviderOutput,type ProviderStatus} from "./media-provider";
 import {getPrivateMediaPrompt,getTurnReferences,privatePromptCompilerVersion} from "./orchestrator";
-import {isStoredMediaUrl,readMedia} from "./media-store";
+import {isStoredMediaUrl,MEDIA_ROUTE,readMedia,storeMedia} from "./media-store";
+import {AUDIO_REMOVED_FA,checkVideoAudio,hasFfmpeg,type AudioCheckDeps,type AudioVerdict} from "./audio-check";
 import {evaluateOutputQA,type OutputQA} from "./output-qa";
 import {claimDevSubmit,devGenerationGate,generationGate,type GenerationMode} from "./policy";
 import {verifyQuote,verifyQuoteSignature,QuoteError,type CharacterRefDigest} from "./quotes";
@@ -29,6 +30,7 @@ export type Job={id:string;ownerId:string;idempotencyKey:string;quoteId:string;t
  /** Private, only while `submission_unknown`: the exact request to resend with the same key (the same key with other parameters is refused), and how the
   reconciliation is going. Cleared once the provider answers. */unknownSubmission?:{prompt:string;attempts:number;lastAttemptAt:string;reason:string};/** Why a failed job failed, when it is worth telling: the model refused the content. */failure?:"provider_refused";
  /** Live progress lines written for this job (lib/progress-narration.ts), shown while the model works. Public: they describe the user's own piece. */progressFa?:string[];
+ /** The soundtrack check (lib/audio-check.ts): kept after it passed, removed (the video is shown silent, with why), or none. */audio?:AudioVerdict;
  outputs:ProviderOutput[];qa:OutputQA;createdAt:string;updatedAt:string};
 /**
  * What a job asked for and sent: the requested model, the endpoint called, the catalog and prompt-compiler versions, and the SHA-256 of the exact prompt
@@ -50,7 +52,8 @@ export type JobErrorCode="not_approved"|"moderation_blocked"|"idempotency_confli
 const JSTATUS:Record<JobErrorCode,number>={not_approved:400,moderation_blocked:422,idempotency_conflict:409,quote_already_used:409,illegal_transition:409,insufficient_balance:402};
 export class JobError extends Error{readonly status:number;constructor(readonly code:JobErrorCode){super(code);this.name="JobError";this.status=JSTATUS[code];}}
 export type Moderation={decision:"allow"|"block"|"review";source?:"lexical_demo"|"production"};
-export type JobDeps={store?:JobStore;ledger?:ReservationLedger;provider?:MediaProvider;now?:()=>Date;/** Writes the live progress lines (tests pass a stub). */narrate?:ProgressNarrator};
+export type JobDeps={store?:JobStore;ledger?:ReservationLedger;provider?:MediaProvider;now?:()=>Date;/** Writes the live progress lines (tests pass a stub). */narrate?:ProgressNarrator;
+ /** The soundtrack check (tests pass stubs and `available`). */audioCheck?:AudioCheckDeps&{available?:boolean}};
 const G=globalThis as {__whoushJobStore?:JobStore;__whoushLedger?:ReservationLedger};
 // TODO(plan phase 02/03): durable DB store and transactional wallet ledger; these in-memory singletons are demo-only.
 const dStore=()=>(G.__whoushJobStore??=new InMemoryJobStore());
@@ -167,9 +170,18 @@ export async function pollJob(id:string,ownerId:string,deps:JobDeps={}):Promise<
    if(cur.state==="submitted")transition(cur,"running",now);
    const ok=s.outputs.length>0&&s.outputs.every(o=>httpsUrl(o.url));
    // A brush edit's image is restored outside its edited areas before it is shown (lib/region-restore.ts); a failure keeps the model's image.
-   const outputs=ok?await restoreTurnOutputs(cur.turnId,s.outputs):[];
-   const latest=store.get(id)!;if(isTerminal(latest.state))return latest;
-   finish(latest,ledger,ok?"completed":"failed",now,outputs);break;
+   // One completion at a time per job: the soundtrack check takes seconds, and the browser keeps polling meanwhile.
+   const busy=completing();if(busy.has(id))return cur;
+   busy.add(id);
+   try{
+    const restored=ok?await restoreTurnOutputs(cur.turnId,s.outputs):[];
+    // Every video's soundtrack is checked before it is shown (lib/audio-check.ts); a soundtrack that must go but cannot be removed fails the job.
+    let outputs=restored,audio:AudioVerdict|undefined,audioFailed=false;
+    if(ok){try{({outputs,audio}=await checkOutputsAudio(restored,deps.audioCheck));}catch{audioFailed=true;}}
+    const latest=store.get(id)!;if(isTerminal(latest.state))return latest;
+    if(audio)latest.audio=audio;
+    finish(latest,ledger,ok&&!audioFailed?"completed":"failed",now,outputs);store.save(latest);return latest;
+   }finally{busy.delete(id);}
   }
   case "failed":finish(cur,ledger,"failed",now);break;
   // The model refused the content: still a failure (nothing charged), told as a refusal with a way forward.
@@ -204,6 +216,23 @@ async function loadReferences(job:Job):Promise<{bytes:Uint8Array;mime:string}[]>
  for(const id of job.references??[]){const m=await readMedia(id);if(!m)throw new Error("Reference missing");out.push({bytes:new Uint8Array(m.bytes),mime:m.mime});}
  return out;
 }
+const completing=()=>((globalThis as {__whoushCompleting?:Set<string>}).__whoushCompleting??=new Set());
+/**
+ * The soundtrack check over a job's outputs: each stored video is checked, and one whose sound must go is replaced by its silent copy. Without ffmpeg no
+ * model was asked for sound (lib/audio-check.ts audioCheckAvailable), so there is nothing to check. Throws when a sound cannot be removed.
+ */
+async function checkOutputsAudio(outputs:ProviderOutput[],deps?:AudioCheckDeps&{available?:boolean}):Promise<{outputs:ProviderOutput[];audio?:AudioVerdict}>{
+ if(!outputs.some(o=>o.kind==="video"&&isStoredMediaUrl(o.url))||!(deps?.available??await hasFfmpeg()))return {outputs};
+ const out:ProviderOutput[]=[];let audio:AudioVerdict|undefined;
+ for(const o of outputs){
+  if(o.kind!=="video"||!isStoredMediaUrl(o.url)){out.push(o);continue;}
+  const m=await readMedia(o.url.slice(MEDIA_ROUTE.length));if(!m)throw new Error("video_missing");
+  const r=await checkVideoAudio(new Uint8Array(m.bytes),deps);
+  audio=r.verdict.audio==="removed"||!audio?r.verdict:audio;
+  if(r.verdict.audio==="removed"){const stored=await storeMedia(r.bytes,"video/mp4");out.push({...o,url:stored.url});}else out.push(o);
+ }
+ return {outputs:out,audio};
+}
 const DEV_COMPLETED_FA="تست توسعه: خروجی واقعی ساخته شد و هیچ نورونی کسر نشد. خروجی باید بازبینی شود.";
 export function toPublicJob(j:Job){
  const typical=findMediaModel(j.modelId)?.typicalSeconds;
@@ -211,5 +240,5 @@ export function toPublicJob(j:Job){
  const active=!isTerminal(j.state),refs=j.references?.length??0,brush=active&&Boolean(regionEditFor(j.turnId));
  return {id:j.id,state:j.state,mode:j.mode,modelId:j.modelId,neurons:j.neurons,chargedNeurons:j.chargedNeurons,...(typical?{typicalMs:typical*1000}:{}),
   ...(active&&j.progressFa?.length?{progressFa:[...j.progressFa]}:{}),...(active&&(refs||brush)?{progressFacts:{references:brush?Math.max(0,refs-1):refs,...(brush?{brushEdit:true}:{})}}:{}),
-  outputs:j.state==="completed"?j.outputs.map(o=>({kind:o.kind,url:o.url})):[],qa:j.qa,messageFa:j.mode==="dev_live"&&j.state==="completed"?DEV_COMPLETED_FA:j.state==="failed"&&j.failure==="provider_refused"?REFUSED_FA:MSG[j.state]};
+  outputs:j.state==="completed"?j.outputs.map(o=>({kind:o.kind,url:o.url})):[],qa:j.qa,...(j.state==="completed"&&j.audio?{audio:j.audio.audio,...(j.audio.audio==="removed"?{audioNoteFa:AUDIO_REMOVED_FA[j.audio.reason]}:{})}:{}),messageFa:j.mode==="dev_live"&&j.state==="completed"?DEV_COMPLETED_FA:j.state==="failed"&&j.failure==="provider_refused"?REFUSED_FA:MSG[j.state]};
 }

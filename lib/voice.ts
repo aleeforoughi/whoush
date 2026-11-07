@@ -78,3 +78,21 @@ export async function transcribeVoice(bytes:Uint8Array,browserMime:string):Promi
  }
  return transcriptText(json);
 }
+
+/** A generated soundtrack is at most this large once extracted (a 30 s mono MP3 is ~200 KB); far under the provider's 20 MB inline limit. */
+export const SOUNDTRACK_MAX_BYTES=8_000_000;
+/**
+ * Transcribes a generated video's soundtrack for the audio check (lib/audio-check.ts): verbatim (the provider's default mode, every word kept, which is what
+ * a moderation check needs) and with the language detected by the model (a video model may speak any language). The same gate as voice messages.
+ * Throws on any failure (the caller then removes the sound); logs only status codes, never audio or text.
+ */
+export async function transcribeMedia(bytes:Uint8Array,mime:"audio/mpeg"):Promise<string>{
+ if(!voiceGate().live)throw new VoiceError("voice_off");
+ if(bytes.byteLength>SOUNDTRACK_MAX_BYTES)throw new VoiceError("too_long");
+ const r=await fetch(TRANSCRIBE_URL,{method:"POST",headers:{"x-goog-api-key":process.env.GEMINI_API_KEY!,"Content-Type":"application/json"},
+  body:JSON.stringify({model:TRANSCRIBE_MODEL,input:[{type:"audio",mime_type:mime,data:Buffer.from(bytes).toString("base64")}],
+   generation_config:{transcription_config:{mode:"verbatim"}},store:false}),cache:"no-store",signal:AbortSignal.timeout(60_000)});
+ const json=await r.json().catch(()=>undefined) as {error?:{code?:string}}|undefined;
+ if(!r.ok){console.warn("[whoush] soundtrack transcription error",r.status,json?.error?.code??"");throw new VoiceError("transcription_failed");}
+ return transcriptText(json);
+}

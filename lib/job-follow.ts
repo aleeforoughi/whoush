@@ -4,12 +4,12 @@ import type {JobSnapshot} from "./projects";
 
 export const UNTRACKED_JOB_FA="وضعیت پایانی این تولید ثبت نشده است.";
 export const LOST_JOB_FA="وضعیت این تولید دیگر در دسترس نیست (سرور دوباره راه‌اندازی شده).";
-type JobReply={id?:string;state:string;messageFa:string;outputs?:{kind:"image"|"video";url:string}[];typicalMs?:number;progressFa?:string[];progressFacts?:JobSnapshot["progressFacts"]};
+type JobReply={id?:string;state:string;messageFa:string;outputs?:{kind:"image"|"video";url:string}[];typicalMs?:number;progressFa?:string[];progressFacts?:JobSnapshot["progressFacts"];audioNoteFa?:string};
 
 /** The transcript's record of a job from the server's view of it (only Whoush-owned output paths are kept). */
 export function jobSnapshot(v:JobReply,tag?:string):JobSnapshot{
  return {state:v.state,messageFa:v.messageFa,...(v.id?{jobId:v.id}:{}),...(v.outputs?.length?{outputs:v.outputs.filter(o=>isOwnedOutputUrl(o.url))}:{}),
-  ...(v.typicalMs?{typicalMs:v.typicalMs}:{}),...(tag?{tag}:{}),
+  ...(v.typicalMs?{typicalMs:v.typicalMs}:{}),...(tag?{tag}:{}),...(v.audioNoteFa?{audioNoteFa:v.audioNoteFa.slice(0,200)}:{}),
   ...(v.progressFa?.length?{progressFa:[...v.progressFa]}:{}),...(v.progressFacts?{progressFacts:{...v.progressFacts}}:{})};
 }
 
@@ -26,7 +26,7 @@ export async function followJobUntilDone(start:JobSnapshot,onUpdate:(next:JobSna
  const apply=(next:JobSnapshot)=>{
   // The progress lines arrive a few seconds after the job starts: a change in them is an update too.
   if(next.state===last.state&&next.messageFa===last.messageFa&&(next.outputs?.length??0)===(last.outputs?.length??0)
-   &&(next.progressFa??[]).join("\n")===(last.progressFa??[]).join("\n")&&JSON.stringify(next.progressFacts??{})===JSON.stringify(last.progressFacts??{}))return;
+   &&(next.progressFa??[]).join("\n")===(last.progressFa??[]).join("\n")&&JSON.stringify(next.progressFacts??{})===JSON.stringify(last.progressFacts??{})&&next.audioNoteFa===last.audioNoteFa)return;
   last=next;onUpdate(next);
  };
  for(let n=0;io.now()<deadline&&!isFinalJobState(last.state);n++){

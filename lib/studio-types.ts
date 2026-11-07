@@ -15,4 +15,5 @@ export type JobView={state:string;messageFa:string;outputs?:{kind:"image"|"video
  /** While it works: the lines written for this job, and the facts the stage lines state (lib/job-progress.ts liveStatusFa). */
  progressFa?:string[];progressFacts?:ProgressFacts;
  /** Client only: the generation this job belongs to (#تولید-۱), for the preview's status line. */
- tag?:string};
+ tag?:string;
+ /** Why a finished video is silent: its soundtrack failed the check and was removed (lib/audio-check.ts). */audioNoteFa?:string};

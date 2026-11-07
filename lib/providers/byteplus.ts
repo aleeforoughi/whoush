@@ -7,6 +7,7 @@ import {NotCancelableError,SubmissionUnknownError} from "../provider-errors";
 import {runStatus,startRun} from "./sync-runner";
 import type {MediaModel} from "../types";
 import {markModelNotOpen} from "../model-availability";
+import {audioCheckAvailable} from "../audio-check";
 /**
  * BytePlus ModelArk (ByteDance), docs/evidence/BYTEPLUS.md. Base https://ark.ap-southeast.bytepluses.com/api/v3, `Authorization: Bearer <key>`.
  * Seedream images: POST /images/generations, synchronous, result URL valid 24 h (mirrored at once). Seedance video: POST /contents/generations/tasks,
@@ -32,12 +33,13 @@ export function buildSeedreamRequest(model:MediaModel,prompt:string,c:MediaConfi
  return {model:model.providerModel,prompt:references.length?prompt+REFERENCE_PROMPT_NOTE:prompt,size:seedreamSize(px,c.aspectRatio),response_format:"url",output_format:"png",watermark:true,...(image.length?{image}:{})};
 }
 const SEEDANCE_RATIOS=["16:9","4:3","1:1","3:4","9:16","21:9"];
-export function buildSeedanceRequest(model:MediaModel,prompt:string,c:MediaConfiguration):Record<string,unknown>{
+/** `withAudio`: only when the soundtrack check can run (lib/audio-check.ts) and the SKU has sound at its approved price; otherwise silent. */
+export function buildSeedanceRequest(model:MediaModel,prompt:string,c:MediaConfiguration,withAudio=false):Record<string,unknown>{
  if(model.provider!=="byteplus"||model.kind!=="video"||!model.providerModel)throw new Error("Not a Seedance model");
  const res=model.providerParams?.resolution,dur=c.durationSeconds??model.durationSeconds;
  if(typeof res!=="string"||!dur)throw new Error("SKU has no resolution or duration");
  return {model:model.providerModel,content:[{type:"text",text:prompt}],resolution:res,ratio:c.aspectRatio&&SEEDANCE_RATIOS.includes(c.aspectRatio)?c.aspectRatio:"16:9",
-  duration:dur,generate_audio:false,watermark:false}; // audio off: generated audio is not moderated yet
+  duration:dur,generate_audio:withAudio&&model.capabilities.audio,watermark:false}; // sound only when it will be checked before it is shown
 }
 /** `modelId`: a refusal as not open for the account stops Whoush offering that model (lib/model-availability.ts). */
 async function call(method:string,path:string,body?:unknown,modelId?:string):Promise<unknown>{
@@ -59,7 +61,7 @@ export class BytePlusMediaProvider implements MediaProvider{
     return outputs;
    })};
   }
-  const body=buildSeedanceRequest(model,job.prompt,job.configuration);
+  const body=buildSeedanceRequest(model,job.prompt,job.configuration,model.capabilities.audio&&await audioCheckAvailable());
   let r:{id?:unknown};
   try{r=await call("POST","/contents/generations/tasks",body,model.id) as {id?:unknown};}
   catch(e){

@@ -88,7 +88,8 @@ Facts below come from the per-model API reference pages (second retrieval). Wher
 ### Seedance 2.5 — VERIFIED (text-to-video) <a id="seedance-2-5"></a>
 - Path: `POST /bytedance/seedance-2.5/text-to-video`.
 - Input: `prompt` (string, required, non-blank); `duration` (integer 4-30, default 5); `resolution` (`480p,720p,1080p`, default `720p`); `aspect_ratio` (`16:9,4:3,1:1,3:4,9:16,21:9`, default `16:9`); `bitrate_mode` (`standard,high`, default `high`); `output_format` (`mp4,mov`, default `mp4`); `generate_audio` (bool, default **true**). `additionalProperties: false`. No media inputs.
-- Whoush SKUs `seedance-2-5-5s` and `seedance-2-5-10s` send `{prompt, duration, resolution: "1080p", generate_audio: false, aspect_ratio?}`. Audio is turned off on purpose: generated audio is not inspected by moderation yet.
+- Whoush SKUs `seedance-2-5-5s` and `seedance-2-5-10s` send `{prompt, duration, resolution: "1080p", generate_audio, aspect_ratio?}`. **2026-11-08 (owner):** `generate_audio` is `true` only when the soundtrack check can run (`lib/audio-check.ts`, docs/MODERATION_POLICY.md step 7), else `false`.
+- **Audio price, re-read 2026-11-08** (playground page): billable video tokens = `ceil(height × width × (input video duration + generated duration) × 24 / 1024)`: no audio term, and the listed rates are for the default configuration, where `generate_audio` is `true`. The docs page states no audio cost. The approved SKUs (from those rates) therefore already cover sound; a separate audio charge is not stated anywhere.
 - Other workflows exist (image-to-video, reference-to-video, video-edit, video-extend). reference-to-video takes up to 30 image, 10 video and 10 audio URLs (50 total), public URLs only, `asset://` rejected. Not used: user media is not hosted.
 
 ### Genjutsu — VERIFIED (object swap, motion transfer); not submittable yet <a id="genjutsu"></a>
