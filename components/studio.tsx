@@ -4,7 +4,7 @@ import Link from "next/link";
 import {useRouter,useSearchParams} from "next/navigation";
 import {ArrowUp,ChevronLeft,CircleAlert,Clapperboard,Eye,Hash,Info,LoaderCircle,MessageCircle,Mic,Smile,Sparkles,Star,Upload as UploadIcon,UserRound,X} from "lucide-react";
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Tabs,TabsContent,TabsList,TabsTrigger,Label,Tooltip,TooltipContent,TooltipTrigger} from "@aleeforoughi/feather-react";
-import {BACK_TO_CHAT_FA,CLOSE_PREVIEW_FA,OPEN_PREVIEW_FA,PreviewCard} from "@/components/preview-card";
+import {BACK_TO_CHAT_FA,CLOSE_PREVIEW_FA,OPEN_PREVIEW_FA,PreviewCard,RERUN_GONE_FA} from "@/components/preview-card";
 import {ChatEmpty} from "@/components/chat-empty";
 import {asStartFrame,continuedGeneration,type EarlierWork} from "@/lib/follow-up";
 import {GalleryThumbs,GenerationGallery,galleryFocusOn,type GalleryFocus,type GalleryItem} from "@/components/generation-gallery";
@@ -38,7 +38,7 @@ import {RegionEditor} from "@/components/region-editor";
 import {renderGuide,type Region} from "@/lib/region-edit";
 import type {SuggestedEdit} from "@/lib/edit-card";
 import {STORAGE_FULL_FA,getProject,listAssets,saveAsset,saveProject} from "@/lib/project-store";
-import {MAX_MESSAGES,assetToAttachment,attachmentToAsset,autoTitle,rerunSource,uniqueById,answerBrief,historyFor,toggleReaction,generationTagsIn,referencedGenerations,toGenerationRef,withGenerationTags,type GifSnapshot,type ProposalSnapshot,type JobSnapshot,type Project,type StoredMessage} from "@/lib/projects";
+import {MAX_MESSAGES,assetToAttachment,attachmentToAsset,autoTitle,rerunSource,uniqueById,answerBrief,historyFor,toggleReaction,generationTagsIn,referencedGenerations,toGenerationRef,withGenerationTags,type GifSnapshot,type ProposalSnapshot,type JobRerun,type JobSnapshot,type Project,type StoredMessage} from "@/lib/projects";
 import {MAX_GENERATION_REFS,type ReactionEmoji,type Staging} from "@/lib/creative-plan";
 import {LIGHT_SOURCE_FA,describeStagingChangesFa,followUpFocus,lightTags,propTags,sectionsFromWords} from "@/lib/staging";
 import {normalizePersian} from "@/lib/safety";
@@ -46,7 +46,7 @@ import {isReferenceRequest,type ReferenceRequest} from "@/lib/reference-needs";
 import {isQuestionChoices} from "@/lib/media-intent";
 import {MAIN_SUBJECT_FA,shownTag} from "@/lib/main-subject";
 import {PLAN_FIRST_FA,STAGE_DONE_TEXT,STAGE_TEXT,postAgentTurn} from "@/lib/agent-stream";
-import type {TurnStage} from "@/lib/orchestrator-stages";
+import type {TurnNote,TurnStage} from "@/lib/orchestrator-stages";
 import {replyScriptFor} from "@/lib/finglish";
 import {TurnProgress,TypeOut} from "@/components/type-out";
 import {ChatGif} from "@/components/chat-gif";
@@ -187,7 +187,7 @@ export function Studio(){
  const conversation=uniqueById([...messages.flatMap(m=>m.attachments??[]),...attachments]);
  /** While a turn runs: the real stage the server reports, in the script of the user's message. Shown at once as «هووش داره کار می‌کنه». */
  /** The turn in progress: its current stage and the stages already done (the expandable progress list). */
- const [thinking,setThinking]=useState<{stage:TurnStage;done:TurnStage[];script:"fa"|"finglish"}|null>(null);
+ const [thinking,setThinking]=useState<{stage:TurnStage;done:TurnStage[];script:"fa"|"finglish";notes:Partial<Record<TurnStage,{story:string[];facts:string[]}>>}|null>(null);
  /** Agent messages that arrived in this session: their text types out once. */
  const [fresh,setFresh]=useState<ReadonlySet<string>>(()=>new Set());
  /** The live generation's scene as the user arranged it in «بوم» (only while it differs from Whoush's): «بساز» builds exactly this scene. */
@@ -765,7 +765,7 @@ export function Studio(){
      prior=prior.filter(a=>reviewsRef.current[a.id]?.state==="safe");
     }
    }
-   setThinking({stage:"reading",done:[],script:replyScriptFor(sentText)});
+   setThinking({stage:"reading",done:[],script:replyScriptFor(sentText),notes:{}});
  // Keeping the thread (lib/follow-up.ts): the photos the latest plan was built on, with the roles that plan gave them; the server keeps them for a
    // follow-up that continues the work.
    let lastPlan:AgentProposal["plan"]|undefined;
@@ -773,9 +773,10 @@ export function Studio(){
    const planRoles=new Map<string,string>((lastPlan?.references??[]).map(r=>[r.tag,r.role]));
    const continueWith=outgoing.length?[]:prior.filter(a=>planRoles.has(a.tag)).map(a=>a.tag);
    const withPlanRole=(a:LocalAttachment)=>{const r=planRoles.get(a.tag);return !a.role&&r&&roleAllowed(a.kind,r as AttachmentRole)?withRole(a,r as AttachmentRole):a;};
-   const body=()=>JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(a=>toWireAttachment(a,reviewIdOf(a),a.regionEdit?reviewIdOf(guideOf(a)!):undefined))}:{}),...(prior.length?{priorAttachments:prior.map(a=>toWireAttachment(withPlanRole(a),reviewIdOf(a)))}:{}),...(continueWith.length?{continueWith}:{}),...(main?{mainSubject:main}:{}),...(generations.length?{generations}:{})}),onStage=(stage:TurnStage)=>setThinking(t=>t&&(t.stage===stage?t:{...t,done:[...t.done,t.stage],stage}));
+   const body=()=>JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(a=>toWireAttachment(a,reviewIdOf(a),a.regionEdit?reviewIdOf(guideOf(a)!):undefined))}:{}),...(prior.length?{priorAttachments:prior.map(a=>toWireAttachment(withPlanRole(a),reviewIdOf(a)))}:{}),...(continueWith.length?{continueWith}:{}),...(main?{mainSubject:main}:{}),...(generations.length?{generations}:{})}),onStage=(stage:TurnStage)=>setThinking(t=>t&&(t.stage===stage?t:{...t,done:[...t.done,t.stage],stage})),
+    onNote=(n:TurnNote)=>setThinking(t=>{if(!t)return t;const had=t.notes[n.stage]??{story:[],facts:[]};return {...t,notes:{...t.notes,[n.stage]:{...had,[n.kind]:[...had[n.kind],...n.lines].slice(0,8)}}};});
    type ErrorBody={editCards?:unknown;error?:string;reason?:UnsupportedReason;unreviewed?:unknown;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"];references?:unknown;choices?:unknown};
-   const postTurn=async()=>{const res=await postAgentTurn(body(),onStage);return {r:res,errorBody:(res.ok?{}:await res.json().catch(()=>({}))) as ErrorBody};};
+   const postTurn=async()=>{const res=await postAgentTurn(body(),onStage,onNote);return {r:res,errorBody:(res.ok?{}:await res.json().catch(()=>({}))) as ErrorBody};};
    // The server no longer knows a check (it restarted): check those photos again, then send once more.
    const recheck=async(first:Awaited<ReturnType<typeof postTurn>>)=>{
     const unreviewed=Array.isArray(first.errorBody.unreviewed)?first.errorBody.unreviewed:[];
@@ -785,7 +786,7 @@ export function Studio(){
     await Promise.all(again.map(a=>checkPhoto(a,true)));
     setWaitingFor(null);
     if(!again.every(a=>reviewsRef.current[a.id]?.state==="safe"))return first;
-    setThinking({stage:"reading",done:[],script:replyScriptFor(sentText)});
+    setThinking({stage:"reading",done:[],script:replyScriptFor(sentText),notes:{}});
     return postTurn();
    };
    const {r,errorBody}=await recheck(await postTurn());
@@ -814,7 +815,13 @@ export function Studio(){
     }
     throw new Error(typeof errorBody.message==="string"?errorBody.message:"خطا در آماده‌سازی پیشنهاد");
    }
-   const data=await r.json() as AgentProposal&{message:string;gif?:GifSnapshot;reaction?:ReactionEmoji};
+   const data=await r.json() as AgentProposal&{kind?:"reply";message:string;gif?:GifSnapshot;reaction?:ReactionEmoji};
+   // A direct answer (a greeting, a question about Whoush): a plain message, no plan card, and the current proposal stays as it was.
+   if(data.kind==="reply"){
+    setMessages(m=>[...m,agentItem({role:"agent",text:typeof data.message==="string"?data.message:"",kind:"text"})]);whoushReacts(data.reaction);
+    adoptProject(firstText,characterId);
+    return;
+   }
    const picked=data.suggestions.find(s=>s.modelId===data.recommendedModelId)??data.suggestions[0];
    const tag=nextGenerationTag(generationTagsIn(messages));
    // A follow-up about one part of the scene (the camera angle, the light...): «بوم» opens on just that part. The previous scene is the generation the
@@ -863,13 +870,45 @@ export function Studio(){
    const genTag=liveId?(messages.find(m=>m.id===liveId)?.snapshot as ProposalSnapshot|undefined)?.tag:undefined;
    // The job's message goes into the transcript now (with its id), and is updated in place as the job moves: a project saved or reopened mid-generation
    // still knows which job to follow, and a finished one keeps its outputs.
-   const snap:JobSnapshot={...jobSnapshot(current,genTag),...(d?{draft:{modelName:d.modelName}}:{})},msg=item({role:"agent",text:current.messageFa,kind:"job",snapshot:snap});
+   // What was quoted goes with the job, so a failed one can be run again from its card (a new quote and a new approval, never the old charge).
+   const rerun:JobRerun={turnId,modelId:quoteBody.modelId,...(aspect?{aspectRatio:aspect}:{}),...(!d&&edit?{stagingOverride:edit.staging,...(edit.aspect!==planAspect?{aspectOverride:edit.aspect}:{})}:{}),...(excludedRefs.size?{excludeReferences:[...excludedRefs]}:{})};
+   const snap:JobSnapshot={...jobSnapshot(current,genTag),...(d?{draft:{modelName:d.modelName}}:{}),rerun},msg=item({role:"agent",text:current.messageFa,kind:"job",snapshot:snap});
    // On a phone the preview would cover the chat: the generation stays in the chat as its card, and «نمایش» opens the preview when wanted (owner, 2026-11-06).
    setPreview(current.messageFa);setJob(snap);setPreviewOpen(previewFits());setGalleryFocus(galleryFocusOn(msg.id));
    setMessages(m=>[...m,msg]);
    if(d)setDraftedFor(liveId);else{setProposal(null);setLiveId(null);}
    touch();
    followJob(msg.id,snap);
+  }catch(err){setError(err instanceof Error?err.message:"خطای ناشناخته");}
+  finally{setBusy(false);}
+ }
+ /**
+  * Runs a failed (or stopped) generation again from its card (owner, 2026-11-07): the same plan, model and settings, with a NEW quote and a new approval
+  * (the tap on «دوباره بساز», which shows the price). The card keeps its place and tag and follows the new job. A plan the server no longer has (it
+  * restarted) cannot be quoted: the user is asked to send the request again.
+  */
+ async function rerunJob(messageId:string){
+  const m=messages.find(x=>x.id===messageId);
+  if(busy||!m||m.kind!=="job"||!m.snapshot.rerun)return;
+  const r=m.snapshot.rerun;setBusy(true);setError("");
+  try{
+   const post=(url:string,body:unknown)=>fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+   const quoteBody={modelId:r.modelId,turnId:r.turnId,...(r.stagingOverride?{stagingOverride:r.stagingOverride}:{}),...(r.aspectOverride?{aspectOverride:r.aspectOverride}:{}),...(r.excludeReferences?.length?{excludeReferences:r.excludeReferences}:{})};
+   let q=await post("/api/generation/quote",{...quoteBody,...(r.aspectRatio?{configuration:{aspectRatio:r.aspectRatio}}:{})});
+   if(q.status===422&&r.aspectRatio)q=await post("/api/generation/quote",quoteBody);
+   if(!q.ok){
+    const b=await q.json().catch(()=>({})) as {error?:string;message?:string};
+    throw new Error(b.error==="unknown_turn"||q.status===410?RERUN_GONE_FA:b.error==="dev_cap_reached"||b.error==="price_pending"?b.message??"مشکل در محاسبه هزینه":"مشکل در محاسبه هزینه");
+   }
+   const quote=await q.json() as {token:string};
+   const execution=await post("/api/generation/execute",{token:quote.token,approved:true,idempotencyKey:crypto.randomUUID()});
+   if(!execution.ok)throw new Error("خطا در شروع تولید");
+   const current=await execution.json() as {id:string;state:string;messageFa:string;outputs?:JobView["outputs"];typicalMs?:number;progressFacts?:JobView["progressFacts"]};
+   const snap:JobSnapshot={...jobSnapshot(current,m.snapshot.tag),...(m.snapshot.draft?{draft:m.snapshot.draft}:{}),rerun:r};
+   setMessages(ms=>ms.map(x=>x.id===messageId&&x.kind==="job"?{...x,text:current.messageFa,snapshot:snap} as TranscriptItem:x));
+   setPreview(current.messageFa);setJob(snap);setGalleryFocus(galleryFocusOn(messageId));
+   touch();
+   followJob(messageId,snap);
   }catch(err){setError(err instanceof Error?err.message:"خطای ناشناخته");}
   finally{setBusy(false);}
  }
@@ -1008,6 +1047,7 @@ export function Studio(){
         {m.kind==="job"&&<PreviewCard tag={m.snapshot.tag} state={m.snapshot.state} messageFa={m.snapshot.messageFa} job={m.snapshot} model={m.snapshot.draft?"پیش‌نویس · "+m.snapshot.draft.modelName:m.snapshot.tag?generationMap.get(m.snapshot.tag)?.modelName:undefined}
          output={(m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined))?.find(o=>isOwnedOutputUrl(o.url,window.location.origin))} video={m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false} onOpen={()=>openPreview(m.snapshot,m.id)}
          onView={m.snapshot.tag?()=>openGenerationViewer(m.snapshot.tag!):undefined}
+         onRetry={m.snapshot.rerun&&!busy?()=>void rerunJob(m.id):undefined} retryNeurons={m.snapshot.draft?undefined:m.snapshot.tag?generationMap.get(m.snapshot.tag)?.neurons:undefined}
          onEdit={m.snapshot.tag&&!busy?()=>void editGeneration(m.snapshot.tag!):undefined}/>}
         {/* «بوم» is adjustable on every generation: on the live one it feeds «بساز» directly; on an older one its card offers a revision with that scene. */}
         {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan&&<PlanStory plan={m.snapshot.plan} focus={m.kind==="proposal"?refineFocus(m.snapshot.focus,messages.slice(0,i).reverse().find(x=>x.role==="user")?.text):undefined}
@@ -1045,7 +1085,8 @@ export function Studio(){
         {r?.state==="checking"?<span className="absolute inset-0 flex items-center justify-center bg-background/60"><ReviewRing progress={r.progress}/></span>:<PhotoReviewOverlay review={r}/>}
        </li>;})}</ul>
       </div>}
-      {thinking&&<TurnProgress current={STAGE_TEXT[thinking.script][thinking.stage]} done={thinking.done} doneText={thinking.done.map(d=>STAGE_DONE_TEXT[thinking.script][d])} why={PLAN_FIRST_FA[thinking.script]}/>}
+      {thinking&&<TurnProgress current={STAGE_TEXT[thinking.script][thinking.stage]} live={[...(thinking.notes[thinking.stage]?.story??[]),...(thinking.notes[thinking.stage]?.facts??[])]}
+       done={thinking.done.map(d=>({text:STAGE_DONE_TEXT[thinking.script][d],details:thinking.notes[d]?.facts??[]}))} why={PLAN_FIRST_FA[thinking.script]}/>}
       <div ref={endRef}/>
      </div>
     </ScrollArea>

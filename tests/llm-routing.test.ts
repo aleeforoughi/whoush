@@ -144,10 +144,15 @@ test("a leaked model name on rung 1 escalates; the leak never reaches the custom
  const r=await runTurn({"claude-haiku-5-5":leaky,"gpt-6-luna":good});
  assert.equal(r.status,"planned");assert.deepEqual(last().routing!.attempts.map(x=>x.outcome),["leak_filtered","ok"]);assert.ok(!JSON.stringify(r).includes("Sol"));
 });
-test("many invariant corrections on rung 1 escalate to rung 2",async()=>{
+test("many invariant corrections on rung 1 escalate to rung 2; routine fill-ins never do (owner, 2026-11-07)",async()=>{
  Object.assign(process.env,LIVE);
- const sloppy:PrivatePlanner=r=>({plan:{...deterministicPlanner(r).plan,camera:undefined,qaChecklist:["a one","a two","a three"],hardConstraints:[]},usage});
  const c=mech({escalation:{maxAttemptsPerTurn:2,escalateOnCorrectionsAtLeast:1,escalateOn:["invalid_output"]}});
+ // A missing camera is filled in here anyway: no second paid plan for it.
+ const routine:PrivatePlanner=r=>({plan:{...deterministicPlanner(r).plan,camera:undefined},usage});
+ await runTurn({"claude-haiku-5-5":routine,"gpt-6-luna":good},{routing:c});
+ assert.deepEqual(calls,["claude-haiku-5-5"]);
+ // The wrong media kind is a misread brief.
+ const sloppy:PrivatePlanner=r=>({plan:{...deterministicPlanner(r).plan,mediaKind:r.kind==="image"?"video":"image",qaChecklist:["a one","a two","a three"],hardConstraints:[]},usage});
  await runTurn({"claude-haiku-5-5":sloppy,"gpt-6-luna":good},{routing:c});
  assert.deepEqual(calls,["claude-haiku-5-5","gpt-6-luna"]);assert.equal(last().routing!.chosenModelId,"gpt-6-luna");
  // below the threshold the first answer stands

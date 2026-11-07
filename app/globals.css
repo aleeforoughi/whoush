@@ -180,3 +180,15 @@ html[dir="rtl"] [data-slot="scroll-area-scrollbar"][data-orientation="vertical"]
   background-color: color-mix(in oklab, var(--color-fg-primary) 3%, var(--background));
 }
 
+
+/* A live progress line (owner, 2026-11-07: alive, with a soft flash): it fades in, and a light sweep passes across the text while Whoush works. */
+@keyframes whoush-line-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+@keyframes whoush-shimmer-sweep { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+.whoush-shimmer {
+  animation: whoush-line-in 280ms ease-out, whoush-shimmer-sweep 2.2s linear infinite;
+  background-image: linear-gradient(100deg, currentColor 40%, var(--color-fg-primary) 50%, currentColor 60%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text; background-clip: text;
+  color: var(--color-fg-secondary); -webkit-text-fill-color: transparent;
+}
+@media (prefers-reduced-motion: reduce) { .whoush-shimmer { animation: none; -webkit-text-fill-color: currentColor; background: none; } }

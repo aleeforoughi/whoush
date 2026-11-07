@@ -32,12 +32,17 @@ import {rememberRegionEdit} from "./region-restore";
 import {MEDIA_ROUTE,readMedia} from "./media-store";
 import {reviewAvailable,reviewPlan,promptWithFixes,type PlanReviewer} from "./plan-review";
 import {findMediaModel} from "./catalog";
+import {triageAvailable,triageTurn,type TriageEffort,type TurnTriager} from "./turn-triage";
 import type {ResearchPlan} from "./creative-plan";
 export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;now?:()=>Date;
  /** Edit or reference, with the areas to change (a private vision check by default; tests pass a stub). */
  locateEdit?:(text:string,img:{bytes:Uint8Array;mime:import("./media-store").StoredMime})=>Promise<EditLocation>;
  /** Progress for the chat's live status: called as each real stage of the turn starts (never invented, never with private details). */
  onStage?:(stage:TurnStage)=>void;
+ /** Detail lines for a stage (owner, 2026-11-07: alive, specific progress): `story` lines about what Whoush is working out for this brief, shown while the
+  *  stage runs; `facts` from the turn itself (the lens and frame chosen, what is researched, the model, the risks found). Every line passed the plan-text
+  *  safety check and the leak filter; none names a private model or provider. */
+ onNote?:(note:TurnNote)=>void;
  /** Finds a chat GIF for a mood (GIPHY by default; tests pass a stub). */
  findGif?:(mood:GifMood)=>Promise<ChatGif|undefined>;
  /** Researches what the plan marked as needing research (open-licensed references, inspected). Tests pass a stub; the default searches and inspects. */
@@ -45,10 +50,14 @@ export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;no
  /** The pre-generation risk check (the cheapest private model by default; tests pass a stub). */
  reviewPlan?:PlanReviewer;
  /** Test hook: the planner for one routed model. Defaults to the real Anthropic or OpenAI adapter. */
- plannerFor?:(modelId:string,provider:"anthropic"|"openai")=>PrivatePlanner;routing?:RoutingConfig;routerState?:RouterState};
-export {TURN_STAGES,type TurnStage} from "./orchestrator-stages";
-import type {TurnStage} from "./orchestrator-stages";
+ plannerFor?:(modelId:string,provider:"anthropic"|"openai")=>PrivatePlanner;routing?:RoutingConfig;routerState?:RouterState;
+ /** Turn triage (reply, ask or make) before planning: the cheapest private model by default when no test planner is given; tests pass a stub. */
+ triage?:TurnTriager};
+export {TURN_STAGES,type TurnStage,type TurnNote} from "./orchestrator-stages";
+import type {TurnNote,TurnStage} from "./orchestrator-stages";
 export type OrchestratorResult=
+ /** A message that needs no picture or video (a greeting, thanks, a question about Whoush): a direct answer, with no plan, price or card. */
+ |{status:"reply";turnId:string;message:string;reaction?:ReactionEmoji}
  |{status:"planned";turnId:string;proposal:GenerationProposal;plan:PublicCreativePlan;gif?:ChatGif;reaction?:ReactionEmoji}
  |{status:"unsupported";turnId:string;plan:PublicCreativePlan;message:string;suggestedModel?:SuggestedModel;
   /** Why no proposal: the user's files are not yet inspected (a launch gate, not a missing model), no model fits, or a voice clone was asked. */reason:UnsupportedReason;
@@ -293,6 +302,10 @@ const FORBIDDEN=["claude","anthropic","openai","gpt","sonnet","opus","haiku","sy
 // Model-family words are only forbidden as standalone Latin tokens (so "solid" or "terrain" never trip it), and only when the user did not type them.
 const FAMILY_WORDS=["sol","astra","luna","terra"].map(w=>new RegExp("(?<![a-z0-9])"+w+"(?![a-z0-9])"));
 /** The same filter for a single customer-facing text (the chat reply). */
+/** Fill-ins the enforcer makes on every plan that lacks them: routine, never a sign the planner misread the brief. */
+const ROUTINE_CORRECTIONS=new Set(["camera_filled","shot_filled","continuity_filled","style_directives","role_directives","realism_mode"]);
+/** How many corrections mean a misread brief (the escalation test). */
+export const seriousCorrections=(c:readonly string[])=>c.filter(x=>!ROUTINE_CORRECTIONS.has(x)).length;
 const leakText=(text:string,userText:string)=>{const j=text.toLowerCase(),u=userText.toLowerCase();return FORBIDDEN.some(t=>j.includes(t)&&!u.includes(t))||FAMILY_WORDS.some(r=>r.test(j)&&!r.test(u));};
 const leaks=(pub:PublicCreativePlan,userText:string)=>{const j=JSON.stringify(pub).toLowerCase(),u=userText.toLowerCase();return FORBIDDEN.some(t=>j.includes(t)&&!u.includes(t))||FAMILY_WORDS.some(r=>r.test(j)&&!r.test(u));};
 // ---- private prompt store for the generation phase (bounded, server memory only) ----
@@ -390,6 +403,11 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // Mappings typed in the brief («#زن:تصویر-۱»: this prop looks like that file) are kept aside; the planner reads them as «#زن (#تصویر-۱)», an ordinary mention.
  const typed=typedMappings(raw.text),parsed={...raw,text:expandMappings(raw.text)},audit=deps.audit??defaultAuditSink,now=deps.now??(()=>new Date());
  const stage=(x:TurnStage)=>{try{deps.onStage?.(x);}catch{ /* progress is best effort */ }};
+ // Detail lines are model or plan text: each passes the plan-text safety check and the leak filter, or is left out.
+ const note=(st:TurnStage,kind:TurnNote["kind"],lines:readonly (string|undefined|false)[])=>{
+  try{const ok=lines.filter((l):l is string=>typeof l==="string"&&l.trim().length>0).map(l=>l.replace(/\s+/g," ").trim().slice(0,140)).filter(l=>evaluatePlanTextSafety(l).decision==="allow"&&!leakText(l,raw.text));
+   if(ok.length)deps.onNote?.({stage:st,kind,lines:ok});}catch{ /* best effort */ }
+ };
  stage("reading");
  // A painted edit's note («ویرایش با قلم») is the user's words too: the same check, even when the message text does not repeat it.
  const notes=(parsed.attachments??[]).flatMap(a=>a.regionEdit?a.regionEdit.regions.map(r=>r.note):[]);
@@ -432,6 +450,20 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
    const suggested:SuggestedEdit[]=regions.map(r=>({note:r.noteFa.trim().slice(0,300),boxes:[[r.box[0],r.box[1],r.box[2],r.box[3]]]}));
    return {status:"needs_input",turnId:askTurn,message:finglish?SUGGESTED_FINGLISH:SUGGESTED_FA,question:SUGGESTED_FA,editCards:[{tag:photo.tag,suggested}]};
   }
+ }
+ // Triage (owner, 2026-11-07, lib/turn-triage.ts): not every message needs a plan. A greeting or a question gets a direct answer; a request missing something
+ // that would change the result a lot (or that needs a link Whoush cannot open) gets one follow-up; the rest is planned, with effort to match the brief.
+ // An answer to Whoush's own question, an arranged scene and a brushed edit always go on to planning: they already say what to make.
+ let effort:TriageEffort="standard";
+ const triager=deps.triage??(!deps.planner&&triageAvailable()?triageTurn:undefined);
+ if(triager&&!parsed.answersQuestion&&!parsed.stagingOverride&&parsed.task!=="character"&&!files0.some(f=>f.regionEdit)){
+  const t=await triager({text:parsed.text,history:safeHistory,generations:parsed.generations?.length??0,script:finglish?"finglish":"fa"}).catch(()=>null);
+  // Its texts are model output: the same plan-text safety check and leak filter as the planner's reply, else the turn goes on to planning.
+  const ok=(x:string)=>evaluatePlanTextSafety(x).decision==="allow"&&!leakText(x,parsed.text)&&!(finglish&&/[\u0600-\u06ff]/.test(x.replace(/[#@][^\s]+/g," ")));
+  if(t?.mode==="reply"&&ok(t.replyFa))return {status:"reply",turnId:askTurn,message:t.replyFa,...(t.react?{reaction:t.react}:{})};
+  if(t?.mode==="ask"&&ok(t.leadFa+" "+t.questionFa)&&t.choices.every(c=>ok(c.labelFa+" "+c.replyFa)))
+   return {status:"needs_input",turnId:askTurn,message:t.leadFa||t.questionFa,question:t.questionFa,...(t.choices.length?{choices:t.choices.map((c,i)=>({id:"triage"+(i+1),labelFa:c.labelFa,replyFa:c.replyFa}))}:{}),...(t.react?{reaction:t.react}:{})};
+  if(t?.mode==="make"){effort=t.effort;note("planning","story",t.storyFa);}
  }
  // Photo or video (owner, 2026-11-06): what this message says wins; then a file that only a video can use; then the generation it changes; then what the
  // user said earlier in this chat. When nothing says, Whoush asks once, before any planning (an answer that still says nothing gets a photo).
@@ -540,7 +572,9 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   else{
    // Task-based routing: profile the task, take the band's ladder (minus unavailable rungs), try rungs in order within the attempt budget.
    // A refusal is a safety signal: it ends the turn as restricted and never moves to another model, unless the owner lists `refused` in `escalateOn`.
-   const cfg=deps.routing??loadRoutingConfig(),state=deps.routerState??defaultRouterState(),prof=profileTask(input,kind,prep.activeSkillIds,req.attachments);
+   const cfg=deps.routing??loadRoutingConfig(),state=deps.routerState??defaultRouterState(),prof0=profileTask(input,kind,prep.activeSkillIds,req.attachments);
+   // The triage's effort moves the score: a light brief plans on the quick band, a deep one a band higher (owner, 2026-11-07: effort follows the input).
+   const prof=effort==="light"?{...prof0,score:Math.min(prof0.score,20),signals:[...prof0.signals,"triage:light"]}:effort==="deep"?{...prof0,score:Math.min(100,prof0.score+25),signals:[...prof0.signals,"triage:deep:+25"]}:prof0;
    const chars=req.systemInstructions.length+req.userText.length+(req.attachments??[]).reduce((n,x)=>n+(x.textExcerpt?.length??0),0)+(req.generations??[]).reduce((n,g)=>n+g.summaryFa.length,0)+(req.history??[]).reduce((n,t)=>n+t.text.length,0);
    const route=planRoute(prof,{cfg,now:now(),state,inputChars:chars});
    routing={...prof,band:route.band,ladder:route.ladder,skipped:route.skipped,attempts:[],chosenModelId:null};
@@ -562,12 +596,16 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
     const usage=o.result?.usage,u=usage as {input_tokens?:number;output_tokens?:number}|undefined;
     routing.attempts.push({modelId,provider,outcome:o.outcome,latencyMs:Date.now()-t0,...(usage?{usage}:{}),estCostUsd:u&&typeof u.input_tokens==="number"&&cfg.prices[modelId]?(u.input_tokens*cfg.prices[modelId][0]+(u.output_tokens??0)*cfg.prices[modelId][1])/1e6:null,...(o.limit?{limit:o.limit}:{}),...(o.retryAfterMs!==undefined?{retryAfterMs:o.retryAfterMs}:{})} as RoutingAttempt);
     last=o.outcome;
+    // Owner dev testing only: why a rung ended (outcome, corrections count, latency), never content, so a turn that escalates can be traced.
+    if(devLiveTest().enabled)console.info("[whoush dev-live] rung",modelId,o.outcome,"corrections",o.fin?.e?.corrections.join("|")||"-","ms",Date.now()-t0,"fallback",o.fin?.reason??"-");
     if(o.outcome==="planner_unavailable")markProviderCooldown(provider,now(),cfg,state,{limit:o.limit,retryAfterMs:o.retryAfterMs});
     if(o.outcome==="refused"&&!cfg.escalation.escalateOn.includes("refused")){rec({planner:"live",fallbackReason:"planner_refused",routing});return refusedResult();}
     const more=i+1<route.ladder.length&&made<cfg.escalation.maxAttemptsPerTurn;
     if(o.outcome==="ok"){
      best=o.fin?.e?{o,modelId}:best;
-     if(more&&(o.fin!.e!.corrections.length>=cfg.escalation.escalateOnCorrectionsAtLeast))continue;
+     // Only corrections that mean the planner misread the brief count (owner, 2026-11-07: no second paid plan for routine fill-ins): a missing camera, shot
+     // or continuity block and the style or role directives are filled here anyway, so they never send the turn to a second model.
+     if(more&&seriousCorrections(o.fin!.e!.corrections)>=cfg.escalation.escalateOnCorrectionsAtLeast)continue;
      break;
     }
     if(!(more&&(cfg.escalation.escalateOn as string[]).includes(o.outcome)))break;
@@ -649,6 +687,9 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   const operation="conflict" in op?"content_edit":op.operation;
   content={content:plan.mediaPrompt,aspect,staging:plan.staging,sourceImage};plan.mediaPrompt=compileImagePrompt({content:plan.mediaPrompt,staging:plan.staging,aspect,operation}).prompt;
  }
+ // What the plan decided, said as facts while the turn goes on: the goal, the lens and the frame.
+ const cam=plan.camera,lensFa=cam?.focalLengthMm?"لنز "+faPlain(cam.focalLengthMm)+" میلی‌متری"+(cam.aperture?"، دیافراگم "+cam.aperture:""):undefined;
+ note("planning","facts",[plan.intentSummaryFa,[lensFa,cam?.aspectRatio?"کادر "+cam.aspectRatio:undefined].filter(Boolean).join("، ")]);
  stage("checking");
  // plan inspection: LLM output never bypasses the safety layer
  for(const t of [plan.mediaPrompt,...plan.hardConstraints]){
@@ -737,10 +778,12 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
    if(r.decision!=="allow"){rec({planner:label,fallbackReason:"plan_restricted",corrections,usage:result?.usage});return {status:"restricted",decision:r.decision,category:r.category,message:r.message};}
   }
   stage("researching");
+  note("researching","facts",plan.research.subjects.slice(0,3).map(x=>"دنبال مرجع برای «"+x.labelFa+"»"));
   research=await (deps.research??(rp=>researchReferences(rp,{inspect:inspectReferences})))(plan.research)
    .catch(()=>({subjects:plan.research!.subjects.map(x=>({labelFa:x.labelFa,factsFa:[...x.factsFa],found:0,kept:0})),references:[],notesFa:["جست‌وجوی مرجع این بار انجام نشد؛ جزئیات تحقیق فقط در نوشتن صحنه به کار رفت."]}));
  }
  const refCount=research?.references.length??0;
+ if(research)note("researching","facts",[refCount?faPlain(refCount)+" مرجع بررسی‌شده نگه داشتم":"مرجع مناسبی پیدا نشد؛ از دانسته‌ها می‌سازم"]);
  stage("pricing");
  let proposal:GenerationProposal;
  // With references, an image is offered on models that take them as images; when none fits, the usual models are offered and the references only shaped the plan.
@@ -757,17 +800,20 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   const suggestedModel=suggestModel(modelReq,kind),base=ref?FA_NO_REFS:uploads.length&&!modelReq.lipSync?FA_NO_PHOTO_MODEL:lipsMsg;
   return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,suggestedModel,input.style)),message:base+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{}),reason:"no_model"};
  }
+ {const m=findMediaModel(proposal.selectedModelId);if(m)note("pricing","facts",["مدل پیشنهادی: "+m.name]);}
  // Pre-generation risk check: the cheapest model stress-tests the plan for the chosen model before any generation is paid for. Fixes go into the prompt (and
  // into the scene text, so a canvas change keeps them); each risk shown passes the same safety and leak checks as the planner's own text.
  const chosenModel=findMediaModel(proposal.selectedModelId),reviewer=deps.reviewPlan??(reviewAvailable()?reviewPlan:undefined);
  let review:{severity:"high"|"medium"|"low";issueFa:string;fixEn:string}[]|null=null;
  // The pre-generation review would add scene-level fixes; a brush edit has no scene, so it is skipped there.
- if(chosenModel&&reviewer&&!painted.length){
+ // A light brief (triage) skips it: one subject, nothing to stress-test that is worth the wait.
+ if(chosenModel&&reviewer&&!painted.length&&effort!=="light"){
   stage("reviewing");
   review=await reviewer({brief:input.text,kind,mediaPrompt:plan.mediaPrompt,hardConstraints:plan.hardConstraints,
    researchFactsFa:research?.subjects.flatMap(x=>x.factsFa)??[],aspect:content?.aspect??plan.camera?.aspectRatio,
    model:{name:chosenModel.name,kind:chosenModel.kind,resolution:chosenModel.resolution,durationSeconds:chosenModel.durationSeconds,takesReferences:usedAsImages,referenceCount:usedAsImages?refCount:0}}).catch(()=>null);
   if(review)review=review.filter(x=>evaluatePlanTextSafety(x.issueFa).decision==="allow"&&evaluatePlanTextSafety(x.fixEn).decision==="allow"&&!leakText(x.issueFa,input.text)&&!leakText(x.fixEn,input.text));
+  if(review)note("reviewing","facts",review.length?review.slice(0,3).map(x=>x.issueFa):["ریسک جدی‌ای پیدا نشد"]);
   if(review?.length){plan.mediaPrompt=promptWithFixes(plan.mediaPrompt,review);if(content)content={...content,content:promptWithFixes(content.content,review)};}
  }
  keepPrompt(turnId,plan.mediaPrompt,content);

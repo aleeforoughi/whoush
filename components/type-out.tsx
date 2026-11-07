@@ -20,24 +20,40 @@ export function TypeOut({text,animate}:{text:string;animate:boolean}){
 }
 
 
+/** How long each live line stays before the next one types in. */
+export const LIVE_LINE_MS=3400;
 /**
- * The turn's progress, conversational and expandable: collapsed, the current step with the typing dots; opened, the steps already done (ticked), the
- * current one, and why Whoush plans first.
+ * The turn's progress, conversational and expandable (owner, 2026-11-07: alive and specific, never one static line). Collapsed: the current step, and when
+ * the server sent lines for it (what Whoush is working out for this brief, then what it chose or found), those lines one after another, each typed in with
+ * a soft shimmer. Opened: the steps already done (ticked), each with what it decided, the current one, and why Whoush plans first.
  */
-export function TurnProgress({current,done,doneText,why}:{current:string;done:string[];doneText:string[];why:string}){
+export function TurnProgress({current,live,done,why}:{current:string;live:string[];done:{text:string;details:string[]}[];why:string}){
  const [open,setOpen]=useState(false);
+ const [tick,setTick]=useState(0);
+ // A new step starts its lines from the first one; the lines then cycle at an even pace.
+ const key=current+"|"+(live[0]??"");
+ const [shownKey,setShownKey]=useState(key);
+ if(shownKey!==key){setShownKey(key);setTick(0);}
+ useEffect(()=>{if(live.length<2)return;const id=window.setInterval(()=>setTick(t=>t+1),LIVE_LINE_MS);return()=>window.clearInterval(id);},[live.length,key]);
+ const line=live.length?live[tick%live.length]:current;
  return <div role="status" aria-live="polite" className="flex flex-col gap-1.5 type-body-sm text-fg-secondary">
   <button type="button" onClick={()=>setOpen(o=>!o)} aria-expanded={open} className="flex items-center gap-2 self-start rounded-control text-start motion-hover hover:text-fg-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
-   <span aria-hidden="true" className="flex items-center gap-1">
+   <span aria-hidden="true" className="flex shrink-0 items-center gap-1">
     {[0,1,2].map(i=><span key={i} className="size-1.5 animate-bounce rounded-full bg-current motion-reduce:animate-none" style={{animationDelay:i*120+"ms"}}/>)}
    </span>
-   <span>{current}</span>
-   {done.length>0&&<Icon icon={ChevronDown} size={16} aria-hidden="true" className={"size-4 motion-state "+(open?"rotate-180":"")}/>}
+   <span key={line} className="whoush-shimmer"><TypeOut text={line} animate/></span>
+   {(done.length>0||live.length>0)&&<Icon icon={ChevronDown} size={16} aria-hidden="true" className={"size-4 shrink-0 motion-state "+(open?"rotate-180":"")}/>}
   </button>
-  {open&&done.length>0&&<ul className="flex flex-col gap-1 ps-6">
-   {doneText.map(t=><li key={t} className="flex items-center gap-1.5 type-caption text-fg-secondary"><Icon icon={Check} size={16} aria-hidden="true" className="size-3.5 text-primary"/>{t}</li>)}
+  {open&&<ul className="flex flex-col gap-1.5 ps-6">
+   {done.map(d=><li key={d.text} className="flex flex-col gap-0.5 type-caption text-fg-secondary">
+    <span className="flex items-center gap-1.5"><Icon icon={Check} size={16} aria-hidden="true" className="size-3.5 text-primary"/>{d.text}</span>
+    {d.details.map(x=><span key={x} className="ps-5 text-fg-tertiary">{x}</span>)}
+   </li>)}
+   <li className="flex flex-col gap-0.5 type-caption text-fg-primary">
+    <span>{current}</span>
+    {live.map(x=><span key={x} className="ps-5 text-fg-tertiary">{x}</span>)}
+   </li>
    <li className="type-caption text-fg-secondary">{why}</li>
   </ul>}
  </div>;
 }
-

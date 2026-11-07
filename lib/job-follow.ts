@@ -37,7 +37,7 @@ export async function followJobUntilDone(start:JobSnapshot,onUpdate:(next:JobSna
   if(r.status===404){apply({...last,state:"lost",messageFa:LOST_JOB_FA});break;}
   if(!r.ok)continue;
   const v=await r.json().catch(()=>undefined) as JobReply|undefined;
-  if(v)apply({...jobSnapshot({...v,id:start.jobId,typicalMs:v.typicalMs??start.typicalMs},start.tag),...(start.draft?{draft:start.draft}:{})});
+  if(v)apply({...jobSnapshot({...v,id:start.jobId,typicalMs:v.typicalMs??start.typicalMs},start.tag),...(start.draft?{draft:start.draft}:{}),...(start.rerun?{rerun:start.rerun}:{})});
  }
  return last;
 }
