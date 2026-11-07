@@ -411,7 +411,7 @@ export function Studio(){
   const gens:ViewerItem[]=messages.flatMap(m=>{
    if(m.kind!=="job"||!m.snapshot.tag)return [];
    const tag=m.snapshot.tag,g=generationMap.get(tag),outs=(m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined))??[];
-   return outs.filter(o=>(o.kind==="image"||o.kind==="video")&&isOwnedOutputUrl(o.url,window.location.origin)).map((o,k):ViewerItem=>({id:"gen-"+tag+"-"+k,kind:o.kind as "image"|"video",mime:o.kind==="video"?"video/mp4":"image/png",bytes:0,
+   return outs.filter(o=>(o.kind==="image"||o.kind==="video")&&isOwnedOutputUrl(o.url,window.location.origin)).map((o,k):ViewerItem=>({id:"gen-"+m.id+"-"+k,kind:o.kind as "image"|"video",mime:o.kind==="video"?"video/mp4":"image/png",bytes:0,
     name:displayTag(tag).slice(1)+(o.kind==="video"?".mp4":".png"),tag,url:o.url,info:{titleFa:displayTag(tag),dateIso:m.at,briefFa:g?.plan.intentSummaryFa,model:g?.modelName||undefined,facts:[
      {labelFa:"نوع",value:o.kind==="video"?"ویدیو":"عکس"},...(g?.plan.camera?.aspectRatio?[{labelFa:"نسبت",value:g.plan.camera.aspectRatio==="original"?"اصلی":g.plan.camera.aspectRatio}]:[]),
      ...(g?.plan.shot?.durationSeconds?[{labelFa:"مدت",value:fa(g.plan.shot.durationSeconds)+" ثانیه"}]:[]),...(g?.neurons?[{labelFa:"هزینه",value:fa(g.neurons)+" نورون"}]:[])]}}));
@@ -423,8 +423,11 @@ export function Studio(){
   // A repeated file opens as the one picture it is (the # list keeps the latest #).
   const same=distinctFiles.find(c=>c.kind===a.kind&&c.sha256===a.sha256);openViewerAt(same?.id??a.id);
  }
- /** A generated image or video, full screen (from the chat or the preview). */
- const openGenerationViewer=(tag:string)=>openViewerAt("gen-"+tag+"-0");
+ /**
+  * A generated image or video, full screen (from the chat or the preview), by its own job message: a video and its opening-frame draft share one tag
+  * (owner, 2026-11-08: tapping the video opened the draft photo), so the tag alone cannot say which output was tapped.
+  */
+ const openGenerationViewer=(messageId:string)=>openViewerAt("gen-"+messageId+"-0");
  /** «ادیت» in the viewer: the viewer closes and the picture opens in the brush editor. */
  function editFromViewer(item:ViewerItem){
   setViewer(null);
@@ -1045,8 +1048,8 @@ export function Studio(){
           <span className="sr-only">هووش: </span><TypeOut text={m.text} animate={fresh.has(m.id)}/>
          </p>}
         {m.kind==="job"&&<PreviewCard tag={m.snapshot.tag} state={m.snapshot.state} messageFa={m.snapshot.messageFa} job={m.snapshot} model={m.snapshot.draft?"پیش‌نویس · "+m.snapshot.draft.modelName:m.snapshot.tag?generationMap.get(m.snapshot.tag)?.modelName:undefined}
-         output={(m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined))?.find(o=>isOwnedOutputUrl(o.url,window.location.origin))} video={m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false} onOpen={()=>openPreview(m.snapshot,m.id)}
-         onView={m.snapshot.tag?()=>openGenerationViewer(m.snapshot.tag!):undefined}
+         output={(m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined))?.find(o=>isOwnedOutputUrl(o.url,window.location.origin))} video={!m.snapshot.draft&&(m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false)} onOpen={()=>openPreview(m.snapshot,m.id)}
+         onView={()=>openGenerationViewer(m.id)}
          onRetry={m.snapshot.rerun&&!busy?()=>void rerunJob(m.id):undefined} retryNeurons={m.snapshot.draft?undefined:m.snapshot.tag?generationMap.get(m.snapshot.tag)?.neurons:undefined}
          onEdit={m.snapshot.tag&&!busy?()=>void editGeneration(m.snapshot.tag!):undefined}/>}
         {/* «بوم» is adjustable on every generation: on the live one it feeds «بساز» directly; on an older one its card offers a revision with that scene. */}
