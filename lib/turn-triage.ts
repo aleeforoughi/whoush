@@ -34,7 +34,8 @@ const TriageSchema=z.object({
  replyFa:z.string(),
  questionFa:z.string(),
  choices:z.array(z.object({labelFa:z.string(),replyFa:z.string()})),
- react:z.enum(REACTION_EMOJIS).nullable(),
+ // Any string here: an emoji outside the palette (👋 for «سلام») must not fail the whole answer; normalizeTriage keeps only palette emojis.
+ react:z.string().nullable(),
  storyFa:z.array(z.string())
 });
 
@@ -80,7 +81,7 @@ export const triageAvailable=()=>llmGate().live&&Boolean(triageModel())&&Boolean
 const clean=(s:string,max:number)=>s.replace(/\s+/g," ").trim().slice(0,max);
 /** The model's answer made safe to use: empty texts drop the mode back to make (the normal flow), choices are trimmed and capped. */
 export function normalizeTriage(raw:z.infer<typeof TriageSchema>):Triage{
- const react=raw.react??undefined;
+ const react=raw.react&&(REACTION_EMOJIS as readonly string[]).includes(raw.react.trim())?raw.react.trim() as ReactionEmoji:undefined;
  if(raw.mode==="reply"){const replyFa=clean(raw.replyFa,600);return replyFa?{mode:"reply",replyFa,...(react?{react}:{})}:{mode:"make",effort:"standard",storyFa:[]};}
  if(raw.mode==="ask"){
   const questionFa=clean(raw.questionFa,400);
@@ -109,5 +110,5 @@ export const triageTurn:TurnTriager=async input=>{
   const t=normalizeTriage(r.parsed_output);
   if(devLiveTest().enabled)console.info("[whoush dev-live] triage",model,t.mode,t.mode==="make"?t.effort:"","in",r.usage.input_tokens,"out",r.usage.output_tokens,"ms",Date.now()-t0);
   return t;
- }catch(e){return skipped(e instanceof Error?e.name:"error");} // triage that cannot run changes nothing: the turn goes on to planning as before
+ }catch(e){return skipped(e instanceof Error?e.name+": "+e.message.slice(0,160):"error");} // triage that cannot run changes nothing: the turn goes on to planning as before
 };

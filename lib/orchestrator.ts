@@ -454,17 +454,21 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // Triage (owner, 2026-11-07, lib/turn-triage.ts): not every message needs a plan. A greeting or a question gets a direct answer; a request missing something
  // that would change the result a lot (or that needs a link Whoush cannot open) gets one follow-up; the rest is planned, with effort to match the brief.
  // An answer to Whoush's own question, an arranged scene and a brushed edit always go on to planning: they already say what to make.
- let effort:TriageEffort="standard";
+ let effort="standard" as TriageEffort;
  const triager=deps.triage??(!deps.planner&&triageAvailable()?triageTurn:undefined);
- if(triager&&!parsed.answersQuestion&&!parsed.stagingOverride&&parsed.task!=="character"&&!files0.some(f=>f.regionEdit)){
+ // It runs in the background (owner, 2026-11-07: planning starts alongside it): a reply or a question wins over anything after it, so every later early
+ // return waits for it first (`early`), and the planner is cancelled when it answers.
+ const triageP:Promise<OrchestratorResult|undefined>=triager&&!parsed.answersQuestion&&!parsed.stagingOverride&&parsed.task!=="character"&&!files0.some(f=>f.regionEdit)?(async()=>{
   const t=await triager({text:parsed.text,history:safeHistory,generations:parsed.generations?.length??0,script:finglish?"finglish":"fa"}).catch(()=>null);
   // Its texts are model output: the same plan-text safety check and leak filter as the planner's reply, else the turn goes on to planning.
   const ok=(x:string)=>evaluatePlanTextSafety(x).decision==="allow"&&!leakText(x,parsed.text)&&!(finglish&&/[\u0600-\u06ff]/.test(x.replace(/[#@][^\s]+/g," ")));
-  if(t?.mode==="reply"&&ok(t.replyFa))return {status:"reply",turnId:askTurn,message:t.replyFa,...(t.react?{reaction:t.react}:{})};
+  if(t?.mode==="reply"&&ok(t.replyFa))return {status:"reply",turnId:askTurn,message:t.replyFa,...(t.react?{reaction:t.react}:{})} as OrchestratorResult;
   if(t?.mode==="ask"&&ok(t.leadFa+" "+t.questionFa)&&t.choices.every(c=>ok(c.labelFa+" "+c.replyFa)))
-   return {status:"needs_input",turnId:askTurn,message:t.leadFa||t.questionFa,question:t.questionFa,...(t.choices.length?{choices:t.choices.map((c,i)=>({id:"triage"+(i+1),labelFa:c.labelFa,replyFa:c.replyFa}))}:{}),...(t.react?{reaction:t.react}:{})};
+   return {status:"needs_input",turnId:askTurn,message:t.leadFa||t.questionFa,question:t.questionFa,...(t.choices.length?{choices:t.choices.map((c,i)=>({id:"triage"+(i+1),labelFa:c.labelFa,replyFa:c.replyFa}))}:{}),...(t.react?{reaction:t.react}:{})} as OrchestratorResult;
   if(t?.mode==="make"){effort=t.effort;note("planning","story",t.storyFa);}
- }
+  return undefined;
+ })():Promise.resolve(undefined);
+ const early=async(r:OrchestratorResult):Promise<OrchestratorResult>=>(await triageP)??r;
  // Photo or video (owner, 2026-11-06): what this message says wins; then a file that only a video can use; then the generation it changes; then what the
  // user said earlier in this chat. When nothing says, Whoush asks once, before any planning (an answer that still says nothing gets a photo).
  const said=requestedMediaKind(parsed.text);
@@ -473,7 +477,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const chosen=videoFile?"video":said??(parsed.generations?.length?parsed.generations[0].mediaKind:earlier);
  // Asked only of a brief on its own: a message with files or #tags works with something already in the chat (and a missing #file gets its own question).
  if(!chosen&&!parsed.answersQuestion&&parsed.task!=="character"&&!files0.length&&!parseMentions(parsed.text).length&&!parsed.stagingOverride){
-  return {status:"needs_input",turnId:askTurn,message:pickLine(VOICE[finglish?"finglish":"fa"].needsInput,askTurn),question:finglish?MEDIA_KIND_QUESTION_FINGLISH:MEDIA_KIND_QUESTION_FA,choices:MEDIA_KIND_CHOICES.map(c=>({...c}))};
+  return early({status:"needs_input",turnId:askTurn,message:pickLine(VOICE[finglish?"finglish":"fa"].needsInput,askTurn),question:finglish?MEDIA_KIND_QUESTION_FINGLISH:MEDIA_KIND_QUESTION_FA,choices:MEDIA_KIND_CHOICES.map(c=>({...c}))});
  }
  const kind:"image"|"video"=chosen==="both"||chosen==="video"?"video":"image",wantsBoth=chosen==="both";
  // Photos for the thing to keep may already be in this chat (sent with an earlier message): Whoush uses them instead of asking again. Ones that were given
@@ -487,15 +491,15 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   else if(priorImages.length&&reuseYes)reused=priorImages;
   else if(priorImages.length&&!parsed.answersQuestion){
    const tags=priorImages.slice(0,6).map(f=>displayTag(f.tag)).join("، ");
-   return {status:"needs_input",turnId:askTurn,message:finglish?need.askFinglish:need.askFa,
+   return early({status:"needs_input",turnId:askTurn,message:finglish?need.askFinglish:need.askFa,
     question:(finglish?REUSE_MARKER_FINGLISH+" ("+tags+") baraye "+need.titleFa+" estefade konam? Age na, aks-e taze befrest.":REUSE_MARKER_FA+" ("+tags+") رو برای "+need.titleFa+" استفاده کنم؟ اگه نه، عکس تازه بفرست."),
     choices:[{id:"reuse",labelFa:finglish?"Are, hamuna":"آره، همونا",replyFa:finglish?"are, hamuna ro estefade kon":"آره، همونا رو استفاده کن"}],
-    references:{need:need.id,titleFa:need.titleFa,role:need.role,angles:need.angles.map(a=>({id:a.id,titleFa:a.titleFa}))}};
+    references:{need:need.id,titleFa:need.titleFa,role:need.role,angles:need.angles.map(a=>({id:a.id,titleFa:a.titleFa}))}});
   }
   // Asked only when the message brought no photo at all and none is in the chat (a photo the user gave another role is theirs to decide); an answer to
   // the photo-or-video question still gets this one question.
   else if(!priorImages.length&&(!parsed.answersQuestion||answered(MEDIA_KIND_QUESTION_FA,MEDIA_KIND_QUESTION_FINGLISH))){
-   return {status:"needs_input",turnId:askTurn,message:finglish?need.askFinglish:need.askFa,question:need.askFa,references:{need:need.id,titleFa:need.titleFa,role:need.role,angles:need.angles.map(a=>({id:a.id,titleFa:a.titleFa}))}};
+   return early({status:"needs_input",turnId:askTurn,message:finglish?need.askFinglish:need.askFa,question:need.askFa,references:{need:need.id,titleFa:need.titleFa,role:need.role,angles:need.angles.map(a=>({id:a.id,titleFa:a.titleFa}))}});
   }
  }
  const withReused:typeof files0=[...files0,...reused.map(f=>({...f,...(f.role?{roleSource:"user" as RoleSource}:{})}))];
@@ -559,8 +563,11 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   return {outcome:f.e?"ok":(f.reason as Outcome),result:r,fin:f};
  };
  const refusedResult=():OrchestratorResult=>({status:"restricted",decision:"review",category:"none",message:FA_REFUSED});
- stage("planning");
  let routing:RoutingAudit|undefined;
+ // Planning (the planner and its escalation ladder). It may run alongside the triage (owner, 2026-11-07: ~5 s saved per planned turn); a triage reply or
+ // question cancels it. It returns a result only when it ends the turn itself (a refusal).
+ const runPlanning=async(signal:AbortSignal):Promise<OrchestratorResult|undefined>=>{
+ stage("planning");
  if(deps.planner){
   const o=await attempt(deps.planner);
   if(o.outcome==="refused"){rec({planner:label,fallbackReason:"planner_refused"});return refusedResult();}
@@ -581,7 +588,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
    if(!route.ladder.length)fallbackReason=route.skipped.some(x=>x.why==="cooldown")?"provider cooldown":route.skipped.some(x=>x.why==="no_key")?"api key not configured":"no route available";
    let best:{o:Awaited<ReturnType<typeof attempt>>;modelId:string}|undefined,last:Outcome="planner_error",made=0;
    // `made` counts real calls against the attempt budget. A rung whose provider stays busy (all in-flight slots taken past maxQueueWaitMs) is skipped without a call.
-   for(let i=0;i<route.ladder.length&&made<cfg.escalation.maxAttemptsPerTurn;i++){
+   for(let i=0;i<route.ladder.length&&made<cfg.escalation.maxAttemptsPerTurn&&!signal.aborted;i++){
     const modelId=route.ladder[i],provider=providerForModelId(modelId)!;
     const release=await acquireProviderSlot(provider,cfg,state);
     if(!release){routing.skipped.push({modelId,why:"provider_busy"});continue;}
@@ -590,9 +597,10 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
     try{
      req.privateRoute={provider,modelId};
      if(modelId===cfg.astra.modelId)countAstraCall(now(),state);
-     const adapter=deps.plannerFor?.(modelId,provider)??(provider==="openai"?async(r:PlannerRequest)=>(await import("./llm-openai")).planWithOpenAI(r,modelId):async(r:PlannerRequest)=>(await import("./llm-anthropic")).planWithAnthropic(r,modelId));
+     const adapter=deps.plannerFor?.(modelId,provider)??(provider==="openai"?async(r:PlannerRequest)=>(await import("./llm-openai")).planWithOpenAI(r,modelId,signal):async(r:PlannerRequest)=>(await import("./llm-anthropic")).planWithAnthropic(r,modelId,signal));
      t0=Date.now();o=await attempt(adapter);
     }finally{release();}
+    if(signal.aborted)break; // cancelled: the triage answered instead (no cooldown, no escalation)
     const usage=o.result?.usage,u=usage as {input_tokens?:number;output_tokens?:number}|undefined;
     routing.attempts.push({modelId,provider,outcome:o.outcome,latencyMs:Date.now()-t0,...(usage?{usage}:{}),estCostUsd:u&&typeof u.input_tokens==="number"&&cfg.prices[modelId]?(u.input_tokens*cfg.prices[modelId][0]+(u.output_tokens??0)*cfg.prices[modelId][1])/1e6:null,...(o.limit?{limit:o.limit}:{}),...(o.retryAfterMs!==undefined?{retryAfterMs:o.retryAfterMs}:{})} as RoutingAttempt);
     last=o.outcome;
@@ -614,6 +622,18 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
    else if(route.ladder.length){fallbackReason=!made?"provider busy":last==="refused"?"planner_refused":last;}
   }
  }
+ return undefined;
+ };
+ // Started at once only when the message already reads as a request to make something (it names a photo or video, brings files or #tags, or continues
+ // earlier work), so a greeting never pays for a cancelled plan. The routing then uses the brief's own score: a light or deep effort from the triage
+ // only moves the band when planning starts after it.
+ const cancel=new AbortController();
+ const likelyMake=Boolean(said||videoFile||files0.length||parsed.generations?.length||parseMentions(parsed.text).length);
+ const planP=likelyMake?runPlanning(cancel.signal):undefined;
+ const triaged=await triageP;
+ if(triaged){cancel.abort();if(planP)await planP.catch(()=>undefined);return triaged;}
+ const ended=await (planP??runPlanning(cancel.signal));
+ if(ended)return ended;
  if(!fin.e){
   if(!fallbackReason)fallbackReason=fin.reason;
   label="deterministic";fin=finalize(deterministicPlanner(req).plan);

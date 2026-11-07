@@ -61,3 +61,21 @@ test("a job keeps what was quoted so a failed one can run again; a malformed rer
  validateProject(project(job({turnId:"t1",modelId:"nano-banana-2-1",aspectRatio:"4:5"})));
  assert.throws(()=>validateProject(project(job({turnId:"t1"}))));
 });
+test("owner (2026-11-07): a request to make something plans alongside the triage; a greeting never starts a plan",async()=>{
+ let planned=0;const planner=(r:Parameters<typeof deterministicPlanner>[0])=>{planned++;return deterministicPlanner(r);};
+ const slow=(t:Triage):TurnTriager=>()=>new Promise(res=>setTimeout(()=>res(t),30));
+ // A photo request: the planner starts before the triage answers, so its time overlaps; the plan stands when the triage says make.
+ const r=await orchestrateCreativeTurn({text:"یه عکس از یه گربه"},{planner,triage:slow({mode:"make",effort:"standard",storyFa:[]})});
+ assert.equal(r.status,"planned");assert.equal(planned,1);
+ // The triage asks after all: its question wins and the plan is dropped.
+ const q=await orchestrateCreativeTurn({text:"یه عکس برای کاور"},{planner,triage:slow({mode:"ask",leadFa:"بگو",questionFa:"موضوعش چیه؟",choices:[]})});
+ assert.equal(q.status,"needs_input");
+ // A greeting names nothing to make: no plan is started at all.
+ planned=0;
+ const g=await orchestrateCreativeTurn({text:"سلام خوبی؟"},{planner,triage:slow({mode:"reply",replyFa:"سلام! چی بسازیم؟"})});
+ assert.equal(g.status,"reply");assert.equal(planned,0);
+});
+test("an emoji outside the reaction palette is dropped, never failing the triage (owner live test: «سلام» fell through)",()=>{
+ const r=normalizeTriage({...base,mode:"reply",replyFa:"سلام!",react:"👋"});
+ assert.deepEqual(r,{mode:"reply",replyFa:"سلام!"});
+});

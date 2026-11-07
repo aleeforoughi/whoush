@@ -12,7 +12,7 @@ export function anthropicUnavailable(e:InstanceType<typeof Anthropic.APIError>):
  return new PlannerUnavailableError();
 }
 /** Live private planner. Errors are mapped to vendor-neutral types; usage is for the private audit only. */
-export async function planWithAnthropic(req:{systemInstructions:string;userText:string;attachments?:readonly BriefAttachment[];generations?:readonly BriefGeneration[];history?:readonly BriefTurn[];replyScript?:"fa"|"finglish";stagingOverride?:unknown},modelId:string):Promise<{plan:CreativePlan;usage:Anthropic.Usage;modelId:string}>{
+export async function planWithAnthropic(req:{systemInstructions:string;userText:string;attachments?:readonly BriefAttachment[];generations?:readonly BriefGeneration[];history?:readonly BriefTurn[];replyScript?:"fa"|"finglish";stagingOverride?:unknown},modelId:string,signal?:AbortSignal):Promise<{plan:CreativePlan;usage:Anthropic.Usage;modelId:string}>{
  const rl=loadRoutingConfig().rateLimits;
  const client=new Anthropic({apiKey:process.env.ANTHROPIC_API_KEY,maxRetries:rl.sdkMaxRetries,timeout:rl.requestTimeoutMs});
  let response;
@@ -23,8 +23,9 @@ export async function planWithAnthropic(req:{systemInstructions:string;userText:
    // The full plan schema is too large for Anthropic's grammar compiler: reply and staging travel as JSON in `extras` (see CreativePlanAnthropicSchema).
    system:[{type:"text",text:req.systemInstructions+"\n\n"+ANTHROPIC_EXTRAS_NOTE,cache_control:{type:"ephemeral"}}],
    output_config:{format:zodOutputFormat(CreativePlanAnthropicSchema)}
-  });
+  },signal?{signal}:undefined);
  }catch(e){
+  if(signal?.aborted)throw e; // cancelled by the turn: not an outage, so no provider cooldown
   if(e instanceof Anthropic.APIError)throw anthropicUnavailable(e); // rate limit, overloaded, connection, timeout, auth, 5xx (RateLimitError and APIConnectionError are subclasses)
   if(e instanceof Anthropic.AnthropicError&&/^Failed to parse structured output/.test(e.message))throw new PlannerInvalidOutputError();
   throw e;
