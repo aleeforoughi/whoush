@@ -73,8 +73,10 @@ export class BytePlusMediaProvider implements MediaProvider{
  }
  async status(id:string):Promise<ProviderStatus>{
   if(id.startsWith("img_"))return runStatus(id.slice(4));
-  const t=await call("GET","/contents/generations/tasks/"+encodeURIComponent(id.replace(/^task_/,""))) as {status?:string;content?:{video_url?:string}};
+  const t=await call("GET","/contents/generations/tasks/"+encodeURIComponent(id.replace(/^task_/,""))) as {status?:string;content?:{video_url?:string};error?:{code?:string}};
   const state=TASK_STATE[t?.status??""];if(!state)throw new Error("Unknown provider status"); // never guess an undocumented status
+  // A failed task's error code says when the content filter refused it (B/error-codes.md: *SensitiveContentDetected*): told as a refusal.
+  if(state==="failed"&&/SensitiveContentDetected/.test(t.error?.code??""))return {state:"nsfw",outputs:[]};
   if(state!=="completed")return {state,outputs:[]};
   const url=t.content?.video_url;if(typeof url!=="string")return {state:"failed",outputs:[]};
   const m=await mirrorMedia(url,undefined,"video/mp4");return {state,outputs:[{kind:"video",url:m.url,needsMirroring:true,mime:m.mime}]};

@@ -1,3 +1,4 @@
+import {isContentRefusal} from "./provider-errors";
 import {alternativeModel} from "./router";
 import {regionEditFor,restoreTurnOutputs} from "./region-restore";
 import {narrateProgress,type ProgressNarrator} from "./progress-narration";
@@ -105,7 +106,7 @@ export async function executeApprovedQuote(i:{token:string;approved:boolean;idem
   const at=deps.now?.()??new Date();
   // The provider may have it: keep the reservation and reconcile with the same key (pollJob). Only a definite failure releases.
   if(e instanceof SubmissionUnknownError){job.unknownSubmission={prompt,attempts:1,lastAttemptAt:at.toISOString(),reason:e.reason};transition(job,"submission_unknown",at);}
-  else{ledger.release(job.id);transition(job,"released",at);}
+  else{if(isContentRefusal(e))noteRefusal(job);ledger.release(job.id);transition(job,"released",at);} // a refused submit: told as a refusal
  }
  store.save(job);return job;
 }
@@ -186,7 +187,7 @@ export async function pollJob(id:string,ownerId:string,deps:JobDeps={}):Promise<
   }
   case "failed":finish(cur,ledger,"failed",now);break;
   // The model refused the content: still a failure (nothing charged), told as a refusal with a way forward.
-  case "nsfw":cur.failure="provider_refused";finish(cur,ledger,"failed",now);break;
+  case "nsfw":noteRefusal(cur);finish(cur,ledger,"failed",now);break;
   case "canceled":finish(cur,ledger,"canceled",now);break;
  }
  store.save(cur);return cur;
@@ -235,9 +236,16 @@ async function checkOutputsAudio(outputs:ProviderOutput[],deps?:AudioCheckDeps&{
  return {outputs:out,audio};
 }
 const DEV_COMPLETED_FA="تست توسعه: خروجی واقعی ساخته شد و هیچ نورونی کسر نشد. خروجی باید بازبینی شود.";
+/** Every provider whose rules refused a job of this turn (the same request): its next alternative skips them all. In memory, like the jobs here. */
+const refusals=()=>((globalThis as {__whoushRefusals?:Map<string,Set<string>>}).__whoushRefusals??=new Map());
+function noteRefusal(j:Job){
+ j.failure="provider_refused";const p=findMediaModel(j.modelId)?.provider;if(!p)return;
+ const m=refusals(),set=m.get(j.turnId)??new Set<string>();set.add(p);m.set(j.turnId,set);while(m.size>500)m.delete(m.keys().next().value as string);
+}
+const refusedProviders=(j:Job):string[]=>[...(refusals().get(j.turnId)??[])];
 /** For a refused job: another model whose rules may allow it (lib/router.ts alternativeModel), public fields only. */
 function refusedAlternative(j:Job):{alternative?:{modelId:string;name:string;neurons:number}}{
- const m=alternativeModel(j.modelId,j.references?.length??0);
+ const m=alternativeModel(j.modelId,j.references?.length??0,refusedProviders(j));
  return m?{alternative:{modelId:m.id,name:m.name.split(" · ")[0].trim(),neurons:m.neurons}}:{};
 }
 export function toPublicJob(j:Job){
@@ -246,5 +254,5 @@ export function toPublicJob(j:Job){
  const active=!isTerminal(j.state),refs=j.references?.length??0,brush=active&&Boolean(regionEditFor(j.turnId));
  return {id:j.id,state:j.state,mode:j.mode,modelId:j.modelId,neurons:j.neurons,chargedNeurons:j.chargedNeurons,...(typical?{typicalMs:typical*1000}:{}),
   ...(active&&j.progressFa?.length?{progressFa:[...j.progressFa]}:{}),...(active&&(refs||brush)?{progressFacts:{references:brush?Math.max(0,refs-1):refs,...(brush?{brushEdit:true}:{})}}:{}),
-  outputs:j.state==="completed"?j.outputs.map(o=>({kind:o.kind,url:o.url})):[],qa:j.qa,...(j.state==="failed"&&j.failure==="provider_refused"?{refused:true,...refusedAlternative(j)}:{}),...(j.state==="completed"&&j.audio?{audio:j.audio.audio,...(j.audio.audio==="removed"?{audioNoteFa:AUDIO_REMOVED_FA[j.audio.reason]}:{})}:{}),messageFa:j.mode==="dev_live"&&j.state==="completed"?DEV_COMPLETED_FA:j.state==="failed"&&j.failure==="provider_refused"?REFUSED_FA:MSG[j.state]};
+  outputs:j.state==="completed"?j.outputs.map(o=>({kind:o.kind,url:o.url})):[],qa:j.qa,...((j.state==="failed"||j.state==="released")&&j.failure==="provider_refused"?{refused:true,...refusedAlternative(j)}:{}),...(j.state==="completed"&&j.audio?{audio:j.audio.audio,...(j.audio.audio==="removed"?{audioNoteFa:AUDIO_REMOVED_FA[j.audio.reason]}:{})}:{}),messageFa:j.mode==="dev_live"&&j.state==="completed"?DEV_COMPLETED_FA:(j.state==="failed"||j.state==="released")&&j.failure==="provider_refused"?REFUSED_FA:MSG[j.state]};
 }

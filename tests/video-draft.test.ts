@@ -60,3 +60,21 @@ test("owner (2026-11-08): a request a model's own rules refused is offered on a 
  assert.ok(withPhotos&&withPhotos.capabilities.referenceImages.supported,"the photos go with it");
  assert.equal(alternativeModel("unknown-model"),undefined);
 });
+
+test("owner (2026-11-08): each provider's documented refusal codes are told as refusals; other errors are not",async()=>{
+ const {CONTENT_REFUSAL,isContentRefusal}=await import("../lib/provider-errors");
+ for(const m of ["Google request failed: 400 image_safety","Google request failed: 400 prohibited_content","Google request failed: 400 content_blocked","Google request failed: 400 image_other",
+  "BytePlus request failed: 400 OutputImageSensitiveContentDetected","BytePlus request failed: 400 InputTextSensitiveContentDetected.PolicyViolation","Kling request failed: 400 1301","Kling request failed: 400 1300"])
+  assert.ok(CONTENT_REFUSAL.test(m),m);
+ for(const m of ["Google request failed: 500 internal","Kling request failed: 429 1303","BytePlus request failed: 400 ModelNotOpen","Google request failed: 400 no_image","Live generation blocked"])
+  assert.ok(!CONTENT_REFUSAL.test(m),m);
+ assert.equal(isContentRefusal("x"),false);
+});
+test("owner (2026-11-08): an alternative never goes back to a provider that already refused the same request",async()=>{
+ const {alternativeModel}=await import("../lib/router");
+ const {findMediaModel}=await import("../lib/catalog");
+ const first=alternativeModel("nano-banana-2")!;
+ const second=alternativeModel("nano-banana-2",0,["google",first.provider]);
+ assert.ok(!second||(second.provider!=="google"&&second.provider!==first.provider),"skips both: "+second?.id);
+ assert.equal(findMediaModel(first.id)!.kind,"image");
+});

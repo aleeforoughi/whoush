@@ -113,11 +113,11 @@ export function reasoningTier(prompt:string,hasReferences:boolean):ReasoningTier
  * the same kind of media from a DIFFERENT provider (its rules differ), that can run now, takes the request's reference photos, keeps a video's length,
  * and is closest in price. Undefined when there is none.
  */
-export function alternativeModel(modelId:string,references=0):PricedMediaModel|undefined{
+export function alternativeModel(modelId:string,references=0,refusedBy:readonly string[]=[]):PricedMediaModel|undefined{
  const cur=MEDIA_CATALOG.find(m=>m.id===modelId);if(!cur)return undefined;
  const fits=(m:PricedMediaModel)=>m.kind===cur.kind&&m.provider!==cur.provider&&m.capabilities.verified&&(!realGenerationOn()||runnableNow(m))
   &&(!references||(m.capabilities.referenceImages.supported&&(m.capabilities.referenceImages.max??Infinity)>=references))
-  &&(cur.kind!=="video"||!cur.durationSeconds||m.durationSeconds===cur.durationSeconds);
+  &&(cur.kind!=="video"||!cur.durationSeconds||m.durationSeconds===cur.durationSeconds)&&!refusedBy.includes(m.provider); // never back to a provider that refused it
  const price=isPriced(cur)?cur.neurons:0;
  return MEDIA_CATALOG.filter(proposable).filter(fits).sort((a,b)=>Math.abs(a.neurons-price)-Math.abs(b.neurons-price)||a.neurons-b.neurons)[0];
 }
