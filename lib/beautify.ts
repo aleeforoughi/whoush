@@ -41,8 +41,8 @@ const ON:Record<BeautifyPart,string>={
  pose:"POSE: keep the face's emotion, refined into a slight model gesture: eyes to the lens with a slight squinch, chin a touch forward and down, gentle tilt, relaxed angled shoulders; confident, never sexualised.",
  light:"LIGHT: soften harsh, top or back light; soft frontal fill on face and eyes, even flattering exposure, catchlights.",
  skin:"SKIN: even tone, no shine, blemishes and tired under-eyes softened; pores and texture fully kept.",
- grooming:"GROOMING: hair tidy, thinning filled with the hairline unchanged; beard barber-groomed (hairs outside its cheek and neck lines shaved, crisp lines, same style); brows shaped.",
- shape:"FACE: subtle, within their features: less puffiness, natural defined jawline, nose and lips slightly refined; a few percent at most.",
+ grooming:"GROOMING: hair cleanly brushed and styled, neat edges, no flyaways; thinning filled with the hairline unchanged. Beard freshly barber-trimmed to an even length, the skin above the cheek line and below the neckline clean-shaven and smooth, crisp lines; same style. Brows shaped.",
+ shape:"FACE: within their features: less puffiness, a natural defined jawline; the nose visibly but naturally refined (a slimmer bridge, a neater, slightly lifted tip, in proportion with the face); lips even.",
  clothes:"CLOTHES: same garment, freshly laundered and steamed: no lint, hair or creases.",
  color:"COLOUR: natural pro grade in the photo's mood: balanced exposure, refined contrast, richer true colour, recovered highlights, lifted shadows, gentle clarity."
 };
