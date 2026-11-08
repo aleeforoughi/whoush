@@ -6,6 +6,7 @@ import {Menu,X} from "lucide-react";
 import {Button,Icon,NavigationMenu,NavigationMenuItem,NavigationMenuLink,NavigationMenuList,Sheet,SheetClose,SheetContent,SheetDescription,SheetTitle,SheetTrigger,buttonVariants,cn} from "@aleeforoughi/feather-react";
 import {BrandMark} from "@/components/brand-mark";
 import {ThemeToggle} from "@/components/theme-toggle";
+import {LanguageToggle,useUiLang} from "@/components/ui-language";
 
 const links=[
  {href:"/studio",label:"استودیو"},
@@ -18,7 +19,7 @@ const links=[
  * Below md the links move into a sheet, so three Persian labels never stack beside the brand on a phone. */
 export function SiteHeader(){
  const pathname=usePathname();
- const [open,setOpen]=useState(false);
+ const [open,setOpen]=useState(false),lang=useUiLang();
  return <header className="border-b border-line-tertiary">
   <div className="feather-container flex items-center justify-between gap-4 py-2">
    <BrandMark/>
@@ -30,10 +31,11 @@ export function SiteHeader(){
     </NavigationMenuList>
    </NavigationMenu>
    <div className="flex items-center gap-1">
+    <LanguageToggle/>
     <ThemeToggle/>
     <Sheet open={open} onOpenChange={setOpen}>
      <SheetTrigger render={<Button variant="ghost" size="icon" aria-label="منو" className="md:hidden"/>}><Icon icon={Menu} aria-hidden="true"/></SheetTrigger>
-     <SheetContent side="right" showCloseButton={false} className="w-3/4 max-w-xs">
+     <SheetContent side={lang==="fi"?"left":"right"} showCloseButton={false} className="w-3/4 max-w-xs">
       <div className="flex items-center justify-between">
        <SheetTitle className="type-title text-fg-primary">منو</SheetTitle>
        <SheetClose render={<Button variant="ghost" size="icon" aria-label="بستن منو"/>}><Icon icon={X} aria-hidden="true"/></SheetClose>

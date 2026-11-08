@@ -1062,7 +1062,7 @@ export function Studio(){
          </div>
          :m.kind==="gif"?<div><span className="sr-only">هووش: </span><ChatGif gif={m.snapshot}/></div>
          :m.kind!=="job"&&<p className="whitespace-pre-wrap break-words type-body-sm text-fg-primary">
-          <span className="sr-only">هووش: </span><TypeOut text={m.text} animate={fresh.has(m.id)}/>
+          <span className="sr-only">هووش: </span><span data-translate-exact=""><TypeOut text={m.text} animate={fresh.has(m.id)}/></span>
          </p>}
         {m.kind==="job"&&<PreviewCard tag={m.snapshot.tag} state={m.snapshot.state} messageFa={m.snapshot.messageFa} job={m.snapshot} model={m.snapshot.draft?draftLabelFa(m.snapshot.draft):m.snapshot.tag?generationMap.get(m.snapshot.tag)?.modelName:undefined}
          output={(m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined))?.find(o=>isOwnedOutputUrl(o.url,window.location.origin))} video={m.snapshot.draft?Boolean(m.snapshot.draft.video):(m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false)} onOpen={()=>openPreview(m.snapshot,m.id)}

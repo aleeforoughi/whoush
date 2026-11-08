@@ -192,3 +192,6 @@ html[dir="rtl"] [data-slot="scroll-area-scrollbar"][data-orientation="vertical"]
   color: var(--color-fg-secondary); -webkit-text-fill-color: transparent;
 }
 @media (prefers-reduced-motion: reduce) { .whoush-shimmer { animation: none; -webkit-text-fill-color: currentColor; background: none; } }
+
+/* Finglish (lib/ui-lang.ts): the page shows once its first translation pass is done (components/ui-language.tsx), so Persian never flashes. */
+html[lang="fa-Latn"] body:not([data-translated]){visibility:hidden}

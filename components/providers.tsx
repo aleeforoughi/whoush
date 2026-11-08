@@ -1,6 +1,8 @@
 "use client";
 import {useEffect,type ReactNode} from "react";
 import {FeatherPortalProvider,TooltipProvider} from "@aleeforoughi/feather-react";
+import {UiLangProvider} from "@/components/ui-language";
+import type {UiLang} from "@/lib/ui-lang";
 
 /**
  * Whoush wraps the app once with what Feather's FeatherProvider provides (portal container and tooltips), minus its
@@ -24,7 +26,7 @@ function useScrollActivity(){
   return()=>document.removeEventListener("scroll",onScroll,{capture:true});
  },[]);
 }
-export function Providers({children}:{children:ReactNode}){
+export function Providers({children,lang="fa"}:{children:ReactNode;lang?:UiLang}){
  useScrollActivity();
- return <FeatherPortalProvider container={undefined}><TooltipProvider>{children}</TooltipProvider></FeatherPortalProvider>;
+ return <UiLangProvider lang={lang}><FeatherPortalProvider container={undefined}><TooltipProvider>{children}</TooltipProvider></FeatherPortalProvider></UiLangProvider>;
 }

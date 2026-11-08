@@ -1,4 +1,5 @@
 "use client";
+import {useUiLang} from "@/components/ui-language";
 import {useEffect,useId,useRef,useState,useSyncExternalStore,type KeyboardEvent,type PointerEvent,type ReactNode} from "react";
 import dynamic from "next/dynamic";
 import {Dialog as DialogPrimitive} from "@base-ui/react/dialog";
@@ -772,6 +773,7 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
  /** Draw the frame in real 3D (the lens's perspective, any height angle, fisheye, depth of field); the 2D drawing's overlays stay on top. */three?:boolean;
  /** Opens the frame full screen. */onFullscreen?:()=>void;
  /** The angle joystick: a new camera height (a stop) or orbit (a side). */onAngle?:(c:{elevation?:number;azimuth?:number})=>void}){
+ const lang=useUiLang();
  // In 3D: where the centre point and the selected prop land on screen (fractions of the frame), and whether a press just landed on a prop.
  const [proj,setProjRaw]=useState<Record<string,[number,number]>>({});
  const setProj=(p:Record<string,[number,number]>)=>setProjRaw(o=>sameJSON(o,p)?o:p);
@@ -939,7 +941,7 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
     <bdi dir="ltr" aria-hidden="true" className="absolute rounded-[4px] bg-background/60 px-1 text-[10px] font-medium leading-4 text-primary" style={{left:(2/(W+4)*100)+"%",top:(2/(H+4)*100)+"%",margin:"4px"}}>{faText(aspect)}</bdi>
     {/* Tag text, then (on its right) the lock in a small button: outline when unlocked, filled blue with a white lock when locked. On touch screens the
       button is larger and its tap area reaches about 44px around it (an invisible ::before), so it is easy to hit with a finger. */}
-  {tag&&(FRAME_MOVES_PROPS||(sel!=null&&base[sel]))&&<div dir="rtl" className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
+  {tag&&(FRAME_MOVES_PROPS||(sel!=null&&base[sel]))&&<div dir={lang==="fi"?"ltr":"rtl"} className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
    style={{right:((W+2-tag.x)/(W+4)*100)+"%",top:((tag.y+2)/(H+4)*100)+"%"}}>
    {FRAME_MOVES_PROPS&&onLock&&<button type="button" aria-pressed={locked} aria-label={(locked?"باز کردن قفل انتخاب ":"قفل کردن انتخاب ")+tag.text} onClick={()=>onLock(!locked)}
     className={"pointer-events-auto relative flex size-6 items-center justify-center rounded-[4px] before:absolute before:-inset-2.5 before:content-[''] pointer-coarse:size-7 border border-primary motion-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring "+(locked?"bg-primary text-primary-foreground":"bg-transparent text-primary")}>
@@ -985,7 +987,7 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   </div>}
   {/* Tag text, then (on its right) the lock in a small button: outline when unlocked, filled blue with a white lock when locked. On touch screens the
       button is larger and its tap area reaches about 44px around it (an invisible ::before), so it is easy to hit with a finger. */}
-  {tag&&(FRAME_MOVES_PROPS||(sel!=null&&base[sel]))&&<div dir="rtl" className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
+  {tag&&(FRAME_MOVES_PROPS||(sel!=null&&base[sel]))&&<div dir={lang==="fi"?"ltr":"rtl"} className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
    style={{right:((W+2-tag.x)/(W+4)*100)+"%",top:((tag.y+2)/(H+4)*100)+"%"}}>
    {FRAME_MOVES_PROPS&&onLock&&<button type="button" aria-pressed={locked} aria-label={(locked?"باز کردن قفل انتخاب ":"قفل کردن انتخاب ")+tag.text} onClick={()=>onLock(!locked)}
     className={"pointer-events-auto relative flex size-6 items-center justify-center rounded-[4px] before:absolute before:-inset-2.5 before:content-[''] pointer-coarse:size-7 border border-primary motion-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring "+(locked?"bg-primary text-primary-foreground":"bg-transparent text-primary")}>
