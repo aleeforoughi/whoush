@@ -1,11 +1,13 @@
 "use client";
+import {TagBadge} from "@/components/attachment-chip";
+import {changeTitleFa,type CanvasSection} from "@/lib/staging";
 import {WidgetHeader} from "@/components/widget";
 import {suggestedMasks} from "@/lib/suggested-masks";
 import {useUiLang} from "@/components/ui-language";
 import {useEffect,useLayoutEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
 import Link from "next/link";
 import {useRouter,useSearchParams} from "next/navigation";
-import {ArrowUp,ChevronLeft,CircleAlert,Clapperboard,Eye,Hash,Info,LoaderCircle,Mic,Smile,Sparkles,Star,Upload as UploadIcon,UserRound,X,ScanSearch} from "lucide-react";
+import {ArrowUp,ChevronLeft,CircleAlert,Clapperboard,Eye,Hash,Info,LoaderCircle,Mic,Smile,Sparkles,Star,Upload as UploadIcon,UserRound,X,ScanSearch,SlidersHorizontal,Lightbulb,Frame,Camera} from "lucide-react";
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Tabs,TabsContent,TabsList,TabsTrigger,Label,Tooltip,TooltipContent,TooltipTrigger} from "@aleeforoughi/feather-react";
 import {CLOSE_PREVIEW_FA,OPEN_PREVIEW_FA,PreviewCard,RERUN_GONE_FA} from "@/components/preview-card";
 import {ChatEmpty} from "@/components/chat-empty";
@@ -80,6 +82,8 @@ const LIMIT_FA="این گفت‌وگو به سقف تعداد پیام‌ها ر
 const idlePreview="شروع کن: ایده‌ات رو در چت بنویس.";
 const CHARACTER_KEY="whoush-character";
 /** The composer's compact tool buttons beside «+» (emoji, GIF): 36px to the eye, 44px touch targets. */
+/** The change widget's icon: the part that changed, or the sliders for several. */
+const changeIcon=(f:readonly CanvasSection[])=>f.length>1?SlidersHorizontal:f[0]==="light"?Lightbulb:f[0]==="frame"?Frame:Camera;
 const COMPOSER_TOOL="hit-area flex size-9 shrink-0 items-center justify-center rounded-control text-fg-secondary motion-hover hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
 /** sessionStorage can throw (private windows, blocked storage); the selection then simply does not persist. */
@@ -1170,18 +1174,35 @@ export function Studio(){
          onSwitch={m.snapshot.rerun&&m.snapshot.alternative&&!busy?()=>void rerunJob(m.id,m.snapshot.alternative!.modelId):undefined} retryNeurons={m.snapshot.draft?undefined:m.snapshot.tag?generationMap.get(m.snapshot.tag)?.neurons:undefined}
          onEdit={m.snapshot.tag&&!busy?()=>void editGeneration(m.snapshot.tag!):undefined}/>}
         {/* «بوم» is adjustable on every generation: on the live one it feeds «بساز» directly; on an older one its card offers a revision with that scene. */}
-        {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan&&<PlanStory plan={m.snapshot.plan} focus={m.kind==="proposal"?refineFocus(m.snapshot.focus,messages.slice(0,i).reverse().find(x=>x.role==="user")?.text):undefined}
+        {(()=>{
+         // A follow-up that changes the camera, the light or the frame (owner, 2026-11-08): one widget for that task, titled by what changed, with
+         // «بوم» on just those parts (the change already applied) and the generation's settings and «بسازش» at its bottom, to confirm.
+         const asked=messages.slice(0,i).reverse().find(x=>x.role==="user")?.text;
+         const focus=m.kind==="proposal"?refineFocus(m.snapshot.focus,asked):undefined;
+         // Only a request that names the camera, the light or the frame gets this widget, titled by what it named (a colour change is not one).
+         const named=focus?.length&&asked?sectionsFromWords(normalizePersian(asked)):[];
+         const live=m.kind==="proposal"&&Boolean(proposal&&m.id===liveId);
+         const changing=Boolean(m.kind==="proposal"&&focus?.length&&named.length&&m.snapshot.plan.staging&&!m.snapshot.plan.regionEdits?.length);
+         const card=m.kind!=="proposal"?null:live
+          ?<ProposalCard embedded={changing} proposal={proposal!} tag={m.snapshot.tag} adjusted={sceneEdit?.id===m.id} selected={selected} onSelect={setSelected}
+           drafted={draftedFor===m.id} onDraft={proposal!.draft?()=>void approve(true):undefined}
+           excludedReferences={excludedRefs} onToggleReference={id=>setExcludedRefs(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n;})}
+           aspect={aspectChoice??(sceneEdit?.id===m.id?sceneEdit.aspect:undefined)??m.snapshot.plan.camera?.aspectRatio} autoAspect={(sceneEdit?.id===m.id?sceneEdit.aspect:undefined)??m.snapshot.plan.camera?.aspectRatio} sound={soundChoice??proposal?.soundWanted??true} onSound={setSoundChoice} onAspect={setAspectChoice} busy={busy} onApprove={()=>void approve()} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>
+          :<PastProposalCard embedded={changing} snapshot={m.snapshot} adjusted={Boolean(pastEdits[m.id])} busy={busy||reading||loadingProject}
+           onBuildScene={pastEdits[m.id]&&m.snapshot.tag&&m.snapshot.plan.staging?()=>buildScene(m.id,m.snapshot.tag!,m.snapshot.plan.staging!,m.snapshot.plan.camera?.aspectRatio):undefined} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>;
+         const widget=changing&&focus&&m.kind==="proposal"?(editor:React.ReactNode)=><section data-change-widget="" aria-label={changeTitleFa(named)} className="flex w-full flex-col gap-3 overflow-hidden rounded-card border border-line-secondary bg-surface-subtle p-3">
+          <WidgetHeader icon={changeIcon(named)} title={changeTitleFa(named)}>{m.snapshot.tag&&<TagBadge tag={m.snapshot.tag} onMention={()=>changeGeneration(m.snapshot.tag!)}/>}</WidgetHeader>
+          {editor}
+          {card}
+         </section>:undefined;
+         return <>
+        {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan&&<PlanStory plan={m.snapshot.plan} focus={focus} widget={widget}
          onStagingChange={m.kind==="proposal"?(s,aspect,changed)=>{
           if(proposal&&m.id===liveId)setSceneEdit(changed?{id:m.id,staging:s,aspect}:null);
           else setPastEdits(p=>{const n={...p};if(changed)n[m.id]={staging:s,aspect};else delete n[m.id];return n;});
          }:undefined}/>}
-        {m.kind==="proposal"&&(proposal&&m.id===liveId
-         ?<ProposalCard proposal={proposal} tag={m.snapshot.tag} adjusted={sceneEdit?.id===m.id} selected={selected} onSelect={setSelected}
-          drafted={draftedFor===m.id} onDraft={proposal.draft?()=>void approve(true):undefined}
-          excludedReferences={excludedRefs} onToggleReference={id=>setExcludedRefs(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n;})}
-          aspect={aspectChoice??(sceneEdit?.id===m.id?sceneEdit.aspect:undefined)??m.snapshot.plan.camera?.aspectRatio} autoAspect={(sceneEdit?.id===m.id?sceneEdit.aspect:undefined)??m.snapshot.plan.camera?.aspectRatio} sound={soundChoice??proposal?.soundWanted??true} onSound={setSoundChoice} onAspect={setAspectChoice} busy={busy} onApprove={()=>void approve()} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>
-         :<PastProposalCard snapshot={m.snapshot} adjusted={Boolean(pastEdits[m.id])} busy={busy||reading||loadingProject}
-          onBuildScene={pastEdits[m.id]&&m.snapshot.tag&&m.snapshot.plan.staging?()=>buildScene(m.id,m.snapshot.tag!,m.snapshot.plan.staging!,m.snapshot.plan.camera?.aspectRatio):undefined} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>)}
+        {!widget&&card}
+         </>;})()}
         {m.kind==="no_model"&&<NoModelCard result={m.snapshot}/>}
         {/* The question is always the last item of the agent's message; it waits for an answer until something is sent after it. */}
         {m.kind==="question"&&<AgentQuestion question={m.snapshot.question} repeated={m.text.trim()===m.snapshot.question.trim()} waiting={i===messages.length-1&&!busy} onAnswer={()=>promptRef.current?.focus()}

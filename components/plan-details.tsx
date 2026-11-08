@@ -80,7 +80,8 @@ export function RegionChip({n,color}:{n:number;color:string}){
  return <bdi className="shrink-0 rounded-[4px] px-1.5 py-0.5 type-caption font-medium" style={{background:c.css,color:c.ink,boxShadow:NEON_SHADOW}}>{regionTagFa(n)}</bdi>;
 }
 export const DETAILS_FA="جزئیات و تنظیمات";
-export function PlanStory({plan,onStagingChange,focus}:{plan:PublicCreativePlan;
+export function PlanStory({plan,onStagingChange,focus,widget}:{plan:PublicCreativePlan;
+ /** A focused follow-up: the change widget that holds «بوم»'s changed parts and the generation's confirmation (owner, 2026-11-08). */widget?:(editor:ReactNode)=>ReactNode;
  /** A follow-up about one or two parts of the scene: «بوم» shows just those parts (expandable to all), and the rest of the plan folds under «جزئیات پرامپت». */
  focus?:readonly string[];
  /** When set (the live generation), «بوم» is adjustable and every change flows to the generation card. */onStagingChange?:(s:Staging,aspect:string,changed:boolean)=>void}){
@@ -160,11 +161,11 @@ export function PlanStory({plan,onStagingChange,focus}:{plan:PublicCreativePlan;
    <Bullets title="فهرست کنترل کیفیت" items={plan.qaChecklist}/>
   </div>}
  </>;
- const editor=staging&&!brush&&<StagingEditor staging={staging} aspectRatio={plan.camera?.aspectRatio} mediaKind={plan.mediaKind} onChange={onArrange} focus={focus?expandFocus(focus):undefined}/>;
+ const editor=staging&&!brush&&<StagingEditor staging={staging} aspectRatio={plan.camera?.aspectRatio} mediaKind={plan.mediaKind} onChange={onArrange} focus={focus?expandFocus(focus):undefined} embedded={Boolean(focus?.length&&widget)}/>;
  // A focused follow-up: only the part of «بوم» it is about, with the rest of the plan folded away.
  if(focus?.length)return <div className="flex flex-col gap-3">
   {summary}
-  {editor}
+  {widget?widget(editor):editor}
   <Accordion>
    <AccordionItem value="plan" className="border-b-0">
     <AccordionTrigger className="rounded-card px-3 py-2.5 hover:no-underline hover:bg-surface-hover aria-expanded:bg-surface-selected aria-expanded:hover:bg-surface-selected"><span className="flex items-center gap-2"><Icon icon={ListChecks} size={16} aria-hidden="true" className="size-4 text-fg-secondary group-aria-expanded/accordion-trigger:text-primary"/>جزئیات پرامپت</span></AccordionTrigger>

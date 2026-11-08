@@ -94,7 +94,8 @@ function withProps(s:Staging):Staging{
  if(s.props||subject==="environment")return {...s,subject,props:tidyProps(s.props)??[]};
  return {...s,subject,props:[{kind:subject,label:SUBJECT_FA[subject],x:0,z:-0.25,y:0,main:true}]};
 }
-export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{staging:Staging;aspectRatio?:string;
+export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus,embedded}:{staging:Staging;aspectRatio?:string;
+ /** Inside a change widget (owner, 2026-11-08): no box or «بوم» title of its own, the widget's title says what changed. */embedded?:boolean;
  /** A follow-up about one or two parts: «بوم» opens on just those parts (less is more), with «همهٔ تنظیمات بوم» to show everything. */focus?:readonly CanvasSection[];/** For the wording («این عکس», «این ویدیو»). */mediaKind?:"image"|"video";
  /** Live: every adjustment is reported (with whether it differs from Whoush's scene), so the generation card below uses it directly; without it, read-only. */
  onChange?:(s:Staging,aspect:string,changed:boolean)=>void}){
@@ -167,7 +168,8 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  // Expanded, the frame, the camera and the lighting are sub-sections and only one is open at a time (opening one closes the other): the frame at first,
  // or, for a follow-up about one part, that part.
  const subOf=(sec?:CanvasSection):"frame"|"camera"|"light"=>sec==="light"?"light":sec==="angle"||sec==="distance"||sec==="lens"?"camera":"frame";
- const [openSub,setOpenSub]=useState<"frame"|"camera"|"light"|null>(()=>focus?.length?subOf(focus[0]):null);
+ // Inside a change widget the sections start closed: the previews above them already show the change; a tap opens one to adjust it.
+ const [openSub,setOpenSub]=useState<"frame"|"camera"|"light"|null>(()=>focus?.length&&!embedded?subOf(focus[0]):null);
  const toggleSub=(x:"frame"|"camera"|"light")=>setOpenSub(o=>o===x?null:x);
  // Every part is always reachable: the card itself doesn't open or close, its sub-sections do.
  const show=(sec:CanvasSection)=>Boolean(sec);
@@ -202,13 +204,13 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  <div role="group" aria-label="بوم" className="@container flex min-w-0 flex-col gap-3">
   {/* One card holds everything: its title, the preview, then its sub-sections (frame, camera, lighting), so the layout never splits. The card itself never
       opens or closes; its sub-sections do, one at a time. */}
-  <div className="flex min-w-0 flex-col gap-3 rounded-card border border-line-secondary bg-surface-subtle p-2">
-  <div className="flex w-full flex-col gap-3 p-3 pb-0 text-start">
-   <span className="flex items-center gap-2 px-1">
+  <div className={"flex min-w-0 flex-col gap-3 "+(embedded?"":"rounded-card border border-line-secondary bg-surface-subtle p-2")}>
+  <div className={"flex w-full flex-col gap-3 pb-0 text-start "+(embedded?"":"p-3")}>
+   {!embedded&&<span className="flex items-center gap-2 px-1">
     <Icon icon={Box} size={16} aria-hidden="true" className="size-4 shrink-0 text-fg-secondary"/>
     <span className="type-label text-fg-primary">بوم</span><span className="type-caption text-fg-secondary">تنظیمات پیشرفته</span>
     {changed&&<span className="rounded-control bg-surface-selected px-2 py-0.5 type-caption text-fg-primary">تغییر کرده</span>}
-   </span>
+   </span>}
    {/* The preview while the frame's own section is closed: just the frame, exactly the photo's crop as the frame simulates it, and the details of the frame,
        the camera and the lighting, one under another, right-aligned: under it on a phone; where the card is wide, beside it (to its left). A scene with no
        character (no frame) shows the camera and the lighting as small tiles instead. */}

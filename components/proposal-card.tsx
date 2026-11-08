@@ -31,7 +31,8 @@ function Head({kind,tag,onMention,demo}:{kind:"image"|"video";tag?:string;onMent
  * alternates marked «جایگزین», each with its fixed Neurons), its settings, its notes, then a full-width bar at its very bottom: [✦ بسازش] on the right, its cost
  * («۱۰ نورون») on the left. Tapping the tag mentions it in the chat to ask for changes.
  */
-export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,autoAspect,onAspect,sound,onSound,busy,onApprove,onMention,excludedReferences,onToggleReference,onDraft,drafted}:{proposal:AgentProposal;tag?:string;
+export function ProposalCard({embedded,proposal,tag,adjusted,selected,onSelect,aspect,autoAspect,onAspect,sound,onSound,busy,onApprove,onMention,excludedReferences,onToggleReference,onDraft,drafted}:{proposal:AgentProposal;tag?:string;
+ /** Inside a change widget: no card or title of its own (the widget has them); its settings and «بسازش» at the widget's bottom. */embedded?:boolean;
  /** Video: sound on or off (owner, 2026-11-08), shown only when the chosen model makes checked sound. */sound?:boolean;onSound?:(on:boolean)=>void;
  /** The scene was arranged in «بوم»: «بساز» builds exactly that scene. */adjusted?:boolean;selected:string;onSelect:(id:string)=>void;
  /** The aspect ratio the generation will use (Whoush's from the brief or «بوم», unless the user picked one here). */aspect?:string;
@@ -62,8 +63,9 @@ export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,aut
  // The automatic ratio shows on «اتوماتیک» itself, so the popular pills are the others (the user's pick always among them).
  const others=autoShown?ratios.filter(r=>r!==autoShown):ratios;
  const popular=popularAspectRatios(others,[auto?undefined:shownAspect],autoAspect!==undefined?2:3),hidden=others.length-popular.length;
- return <Card size="sm" data-testid="proposal" data-generation={tag} className="gap-3 p-3">
-  <Head kind={proposal.operation==="generate_video"?"video":"image"} tag={tag} onMention={onMention} demo={proposal.quoteMode==="demo"}/>
+ const Wrap=embedded?EmbeddedBox:Card;
+ return <Wrap size="sm" data-testid="proposal" data-generation={tag} className="gap-3 p-3">
+  {!embedded&&<Head kind={proposal.operation==="generate_video"?"video":"image"} tag={tag} onMention={onMention} demo={proposal.quoteMode==="demo"}/>}
   {heads.length>1
    ?<Select value={headOf(selected)} onValueChange={v=>onSelect(String(v))} items={items}>
     <SelectTrigger size="sm" aria-label="مدل تولید" className="w-full"><span className="text-fg-secondary">مدل</span><SelectValue/></SelectTrigger>
@@ -119,7 +121,12 @@ export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,aut
     </Button>
    </WidgetActions>
   </div>}
- </Card>;
+ </Wrap>;
+}
+
+/** The generation card's body inside a change widget: the same layout, with no card of its own (the widget is the card). */
+function EmbeddedBox({children,className,size:_size,...rest}:React.ComponentProps<"div">&{size?:string}){
+ void _size;return <div {...rest} className={"flex flex-col "+(className??"").replace(/\bp-3\b/,"p-0")}>{children}</div>;
 }
 
 /** One setting row of the generation card: its label, then its options. */
@@ -133,17 +140,19 @@ function Opt({on,onClick,disabled,children}:{on:boolean;onClick:()=>void;disable
 }
 
 /** A generation from earlier in the conversation: its quote has expired (or the page reloaded); its tag mentions it in the chat to ask for changes. */
-export function PastProposalCard({snapshot,onMention,adjusted,onBuildScene,busy}:{snapshot:ProposalSnapshot;onMention?:()=>void;
+export function PastProposalCard({embedded,snapshot,onMention,adjusted,onBuildScene,busy}:{snapshot:ProposalSnapshot;onMention?:()=>void;
+ /** Inside a change widget: no card or title of its own. */embedded?:boolean;
  /** The scene was arranged in «بوم»: «این صحنه رو بساز» asks Whoush for a revision with exactly that scene and a fresh quote. */adjusted?:boolean;onBuildScene?:()=>void;busy?:boolean}){
- return <Card size="sm" data-testid="past-proposal" data-generation={snapshot.tag} className="gap-3 p-3">
-  <Head kind={snapshot.operation==="generate_video"?"video":"image"} tag={snapshot.tag} onMention={onMention}/>
+ const Wrap=embedded?EmbeddedBox:Card;
+ return <Wrap size="sm" data-testid="past-proposal" data-generation={snapshot.tag} className="gap-3 p-3">
+  {!embedded&&<Head kind={snapshot.operation==="generate_video"?"video":"image"} tag={snapshot.tag} onMention={onMention}/>}
   <p className="flex flex-wrap items-center justify-between gap-2 type-body-sm text-fg-secondary">
    <span>مدل: <span className="text-fg-primary"><ModelName name={snapshot.modelName}/></span></span>
    <span className="type-label text-fg-primary">{fa(snapshot.neurons)} نورون</span>
   </p>
   <p role="note" className="type-caption text-fg-secondary">{adjusted?"صحنهٔ «بوم» تغییر کرده؛ هووش با همین صحنه یه پرامپت و قیمت تازه می‌ده.":PAST_PROPOSAL_FA}</p>
   {adjusted&&onBuildScene&&<WidgetActions><Button type="button" onClick={onBuildScene} disabled={busy} className={WIDGET_BUTTON}><Icon icon={Box} aria-hidden="true"/>این صحنه رو بساز</Button></WidgetActions>}
- </Card>;
+ </Wrap>;
 }
 
 /** 422 no_compatible_model: no price and nothing to generate; the model that fits but is not active yet, if any. The plan is in the conversation. */

@@ -460,3 +460,12 @@ test("the arranged scene opens the image prompt in plain words: angle, view, fra
  assert.match(back,/Three-quarter back view: the back of the subject's head and upper back, with only a small part of one cheek visible\. Medium close-up: the head and upper back, cropped mid-back\./);
  assert.ok(!/chest/.test(back),back);
 });
+
+// A camera, light or frame change gets one widget titled by what changed (owner, 2026-11-08).
+test("change widget title names the changed parts in plain Persian",async()=>{
+ const {changeTitleFa}=await import("../lib/staging");
+ assert.equal(changeTitleFa(["light"]),"تغییر نور");
+ assert.equal(changeTitleFa(["angle","light"]),"تغییر زاویهٔ دوربین و نور");
+ assert.equal(changeTitleFa(["frame","lens","light","lens"]),"تغییر کادر، لنز و نور");
+ assert.equal(changeTitleFa([]),"تغییر صحنه");
+});
