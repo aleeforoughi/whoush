@@ -33,3 +33,20 @@ const ort=join(process.cwd(),"public","models","ort");await mkdir(ort,{recursive
 for(const f of ["ort-wasm-simd-threaded.asyncify.mjs","ort-wasm-simd-threaded.asyncify.wasm","ort-wasm-simd-threaded.jsep.mjs","ort-wasm-simd-threaded.jsep.wasm"]){
  await copyFile(join(process.cwd(),"node_modules","onnxruntime-web","dist",f),join(ort,f));console.log("copied",f);
 }
+
+// Face parts for the wand (docs/evidence/SEGMENTATION.md): Google MediaPipe Face Landmarker (478 points) and the multiclass selfie segmenter (hair,
+// face skin, body skin, clothes), both Apache-2.0 per their model cards, version 1 of each, plus the tasks-vision WebAssembly from the installed package.
+const MP={
+ "face_landmarker.task":["https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task","64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff"],
+ "selfie_multiclass_256x256.tflite":["https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/1/selfie_multiclass_256x256.tflite","c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0"]
+};
+const mp=join(process.cwd(),"public","models","mediapipe");await mkdir(join(mp,"wasm"),{recursive:true});
+for(const [file,[url,want]] of Object.entries(MP)){
+ const out=join(mp,file),have=await readFile(out).catch(()=>null);
+ if(have&&want&&sha(have)===want){console.log("ok",file);continue;}
+ const res=await fetch(url,{headers:{"user-agent":"whoush-build"}});if(!res.ok)throw new Error(file+": HTTP "+res.status);
+ const buf=Buffer.from(await res.arrayBuffer()),got=sha(buf);if(want&&got!==want)throw new Error(file+": checksum mismatch "+got);
+ await writeFile(out,buf);console.log("fetched",file,buf.length,"bytes sha256",got);
+}
+for(const f of ["vision_wasm_internal.js","vision_wasm_internal.wasm"])await copyFile(join(process.cwd(),"node_modules","@mediapipe","tasks-vision","wasm",f),join(mp,"wasm",f));
+console.log("copied mediapipe wasm");

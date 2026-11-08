@@ -18,6 +18,7 @@
     "@aleeforoughi/feather-tokens": "^1.17.0",
     "@anthropic-ai/sdk": "^1.4.0",
     "@huggingface/transformers": "4.3.2",
+    "@mediapipe/tasks-vision": "1.2.2",
     "@react-three/fiber": "^9.8.2",
     "@react-three/postprocessing": "^3.2.2",
     "@tailwindcss/postcss": "^4.3.4",

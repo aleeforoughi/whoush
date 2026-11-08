@@ -7,7 +7,8 @@ import {BRUSH_DONE_FA,BRUSH_EDIT_FA,BRUSH_HINT_FA,BRUSH_MISSING_NOTE_FA,BRUSH_NO
 import {displayTag} from "@/lib/attachments";
 import {paintSuggested} from "@/lib/suggested-masks";
 import {maskAt,maskInBox,paintMask,prepare} from "@/lib/segment";
-import {maskTop} from "@/lib/mask-refine";
+import {maskTop,refineMask} from "@/lib/mask-refine";
+import {analyzeFaces,facePartAt,type FaceAnalysis} from "@/lib/face-parts";
 
 /** A region: its colour slot (0..4, one layer each), its number (#ادیت-n), its comment, whether the comment was submitted (✓), and where its pin sits. */
 type Draft={slot:number;n:number;note:string;done:boolean;pin:{x:number;y:number}};
@@ -46,6 +47,8 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
  const [wandBusy,setWandBusy]=useState(false);
  const [overSelection,setOverSelection]=useState(false);
  const tap=useRef<{x:number;y:number}|null>(null),tapping=useRef(false);
+ /** The photo's faces and hair and skin classes, for face-aware taps (lib/face-parts.ts); started when the photo loads. */
+ const faces=useRef<Promise<FaceAnalysis|null>|null>(null);
  const seg=useRef<Promise<string|null>|null>(null);
  const [view,setView]=useState<View>({s:1,x:0,y:0});
  const [natural,setNatural]=useState<{w:number;h:number}|null>(null);
@@ -127,6 +130,16 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
   if(tapping.current)return;tapping.current=true;
   try{await wandTapNow(cx,cy);}finally{tapping.current=false;}
  }
+ /**
+  * The object under a tap, in photo pixels: a face part when the tap is on a face (owner, 2026-11-08: the nose alone, the whole skin, an eye, the lips,
+  * the hair…), else what the general wand finds there. Face masks are cleaned too, with only dot-sized gaps filled (an eye's hole in the skin stays).
+  */
+ async function objectAt(key:string,x:number,y:number){
+  const fa=faces.current?await faces.current:null,part=fa?facePartAt(fa,x,y):null;
+  if(part){const {w,h,plane}=part.mask,fromClasses=part.part==="skin"||part.part==="hair"||part.part==="neck"||part.part==="ear";
+   return {...part.mask,plane:refineMask(plane,w,h,{maxHole:0.002,minIsland:fromClasses?0.05:0.3,smooth:fromClasses?0.004:0.0012})};}
+  return maskAt(key,[[x,y]]);
+ }
  async function wandTapNow(cx:number,cy:number){
   const key=await ensureSeg(true);if(!key)return;
   const hit=selectedAt(cx,cy);
@@ -134,7 +147,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
    const m=layers.current[hit],ctx=m?.getContext("2d");if(!m||!ctx)return;
    const p=toPhoto(cx,cy,hit);
    setWandBusy(true);
-   let mask;try{mask=await maskAt(key,[[p.x,p.y]]);}catch{setWandBusy(false);setWandState("failed");return;}
+   let mask;try{mask=await objectAt(key,p.x,p.y);}catch{setWandBusy(false);setWandState("failed");return;}
    setWandBusy(false);
    history.current.push({slot:hit,data:ctx.getImageData(0,0,m.width,m.height),created:false});if(history.current.length>30)history.current.shift();redoStack.current=[];bump();
    paintMask(ctx,mask,REGION_COLORS[hit].css,true);setOverSelection(false);
@@ -147,7 +160,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
   }
   const p=toPhoto(cx,cy,0),w0=layers.current[0]?.width??0,h0=layers.current[0]?.height??0;if(p.x<0||p.y<0||p.x>w0||p.y>h0)return;
   setWandBusy(true);
-  let mask;try{mask=await maskAt(key,[[p.x,p.y]]);}catch{setWandBusy(false);setWandState("failed");return;}
+  let mask;try{mask=await objectAt(key,p.x,p.y);}catch{setWandBusy(false);setWandState("failed");return;}
   setWandBusy(false);
   // The area is chosen now, with the regions as they are after the wait.
   const list=regionsRef.current,current=openRef.current;
@@ -267,7 +280,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
    <div className="absolute inset-0 flex items-center justify-center p-2">
     <div className="relative" style={{transform:`translate(${view.x}px,${view.y}px) scale(${view.s})`,transformOrigin:"center"}}>
      {/* eslint-disable-next-line @next/next/no-img-element -- a local blob: URL */}
-     <img src={photoUrl} alt="" draggable={false} onLoad={e=>setNatural({w:e.currentTarget.naturalWidth,h:e.currentTarget.naturalHeight})}
+     <img src={photoUrl} alt="" draggable={false} onLoad={e=>{setNatural({w:e.currentTarget.naturalWidth,h:e.currentTarget.naturalHeight});faces.current??=analyzeFaces(e.currentTarget);}}
       className="pointer-events-none block h-auto max-h-[calc(100dvh_-_4.5rem)] w-auto max-w-[calc(100vw-1rem)]"/>
      {natural&&REGION_COLORS.map((c,slot)=><canvas key={c.name} width={natural.w} height={natural.h} ref={el=>{layers.current[slot]=el;}} aria-hidden="true"
       className="pointer-events-none absolute inset-0 size-full" style={{opacity:.55}}/>)}

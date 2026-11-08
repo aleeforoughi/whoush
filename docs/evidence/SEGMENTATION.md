@@ -49,6 +49,34 @@ Sources:
 - On a real iPhone: speed, memory, and whether WebGPU or WASM is used.
 - Fine detail such as a mustache or hair with the quantized model. Nothing documents its accuracy at that level; test on device.
 
+## Face parts (added 2026-11-08)
+
+The owner asked for this: "tap the skin selects the whole skin, tap the nose selects only the nose": eyes, nose, mouth, eyebrows, lips, hair, ears and neck. A tap on a face picks the named part. Anything else (a cup, a shirt, a necklace) goes to the general wand above. Code: `lib/face-parts.ts`.
+
+| Item | Value |
+|---|---|
+| Library | `@mediapipe/tasks-vision` 1.2.2 (Apache-2.0, npm, exact version) |
+| Face Landmarker | `face_landmarker.task`, float16 version 1: 3,758,596 B, sha256 `64184e22…0bc9ff`, 478 points per face |
+| Segmenter | `selfie_multiclass_256x256.tflite`, float32 version 1: 16,371,837 B, sha256 `c6748b12…07e0e0` |
+| Segmenter classes | 0 background, 1 hair, 2 body skin, 3 face skin, 4 clothes, 5 others |
+| Serving | `public/models/mediapipe/` via `npm run models`, including the tasks-vision WebAssembly from the installed package |
+
+**Licence and intended use** (read from Google's model cards, `storage.googleapis.com/mediapipe-assets/`):
+- **Licence:** both cards say "LICENSED UNDER Apache License, Version 2.0" ("Model Card Multiclass Segmentation.pdf", 2023-05-10; "Model Card MediaPipe Face Mesh V2.pdf", 2022-09-15).
+- **Out of scope:** life-critical decisions, surveillance and identification. Selecting part of a photo for an edit is none of these.
+
+**Rejected:** `jonathandinu/face-parsing` (SegFormer, CelebAMask-HQ). Its card says "License: non-commercial research and educational purposes". It is also 89 MB quantized.
+
+**How a tap is read**, in this order:
+1. **From the landmark outlines:** inside the mouth, the lips (outer outline minus inner), either eye, either eyebrow, the nose (convex hull of the nose points).
+2. **From the classes:** hair (all hair) and body skin (the connected skin under the tap: the neck).
+3. **Face skin:** the face outline from the landmarks, minus hair, eyes, eyebrows and lips. Face skin outside the outline is an ear.
+4. **Mask cleanup:** the class map is sampled bilinearly from the model's confidences, not its 256-pixel steps. Masks get dot-sized gaps filled only, so an eye's hole in the skin stays open.
+
+**Verified in the browser** on a generated 1264×848 portrait. Each tap selected only that part: the nose; the face skin, with an exact jaw and without eyes, brows, lips or the fringe; the lips; one eye; all the hair; the neck down to the collar.
+
+**Not verified:** ears (hair covered them on the test photo), several faces, profiles, and speed on an iPhone.
+
 ## SAM 3.1: considered, not used
 
 The owner has Hugging Face access for SAM 3.1 from qolage. qolage's own evaluation is in `~/Documents/qolage/docs/SAM31.md`.
