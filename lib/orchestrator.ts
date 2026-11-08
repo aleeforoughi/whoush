@@ -21,7 +21,8 @@ import {mainSubjectNote,mainSubjectRule,shownTag,typedMainSubject} from "./main-
 import {MEDIA_KIND_CHOICES,MEDIA_KIND_QUESTION_FA,MEDIA_KIND_QUESTION_FINGLISH,type QuestionChoice} from "./media-intent";
 import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
 import {SKILLS,SKILL_REGISTRY_VERSION} from "./skills";
-import {detectReferenceNeeds,type ReferenceRequest} from "./reference-needs";
+import {REFERENCE_NEEDS,detectReferenceNeeds,type ReferenceRequest} from "./reference-needs";
+import {DRIFT_MARKER_FA,DRIFT_MARKER_FINGLISH,DRIFT_SKIP,DRIFT_SKIP_FINGLISH,driftAngles,driftAskFa,driftAskFinglish,missingNeeds} from "./drift";
 import type {GenerationProposal,MediaRequirements,ProposalResearch,SuggestedModel,UnsupportedReason} from "./types";
 import {researchReferences,type ResearchReference,type ResearchResult,type TurnReference} from "./research";
 import {inspectReferences,locateEdit,type EditLocation} from "./reference-inspect";
@@ -622,6 +623,20 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const needPhotos=need?withReused.filter(f=>f.kind==="image"&&(fits(f)||!f.role||f.roleSource==="inferred")):[];
  const needTags=new Set(needPhotos.map(f=>f.tag));
  const files=withReused.map(f=>needTags.has(f.tag)&&need&&!fits(f)?{...f,role:need.role==="reference"?"general":need.role,roleSource:"inferred" as RoleSource}:f);
+ // Drift awareness (owner, 2026-11-08, lib/drift.ts): a request that needs something of the person their photos do not show (another angle of the
+ // face, the whole body, the teeth, open eyes) asks for that photo once, says why, and can be skipped («همین‌طوری بساز»: Whoush's best guess).
+ // Brush edits and Beautify keep to what is visible by themselves.
+ if(!answered(DRIFT_MARKER_FA,DRIFT_MARKER_FINGLISH)&&!files.some(f=>f.regionEdit||f.beautify)){
+  const people=files.filter(f=>f.kind==="image"&&safeReview(f.reviewId)?.coverage),coverages=people.map(f=>safeReview(f.reviewId)!.coverage!);
+  const saved=(parsed.characterRef?.angles??[]).map(a=>a.startsWith("three_quarter")?"three_quarter":a.startsWith("profile")?"profile":a);
+  const gap=missingNeeds(parsed.text,coverages,saved,people.length>0&&people.every(f=>f.role==="edit_reference"))[0];
+  if(gap){
+   const n=REFERENCE_NEEDS.find(x=>x.id===gap.id)!,ask=finglish?driftAskFinglish(gap):driftAskFa(gap);
+   if(devLiveTest().enabled)console.info("[whoush dev-live] drift check asks",gap.id+("angle" in gap?":"+gap.angle:""));
+   return early({status:"needs_input",turnId:askTurn,message:ask,question:ask,choices:[{...(finglish?DRIFT_SKIP_FINGLISH:DRIFT_SKIP)}],
+    references:{need:n.id,titleFa:n.titleFa,role:n.role,angles:driftAngles(gap)}});
+  }
+ }
  // Text attachments are user text: they get the same preflight before any planner sees them.
  for(const f of files){
   if(!f.textExcerpt)continue;
