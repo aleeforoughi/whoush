@@ -244,6 +244,9 @@ export function Studio(){
  },[messages]);
  /** «بساز» on an edit card is preparing its masks: the card's tag (its button shows it is working). */
  const [preparingEdit,setPreparingEdit]=useState<string|null>(null);
+ /** Suggestion cards folding away after «لازم نیست», and how many offers were turned down in this chat (two: Whoush stops offering). */
+ const [folding,setFolding]=useState<ReadonlySet<string>>(()=>new Set());
+ const skips=useRef(0);
  /** The photo whose «Beautify it» is being sent (its button shows it is working). */
  const [beautifying,setBeautifying]=useState<string|null>(null);
  const [editing,setEditing]=useState<{a:LocalAttachment;fromTray:boolean;suggested?:readonly SuggestedEdit[]}|null>(null);
@@ -395,7 +398,7 @@ export function Studio(){
  async function openProject(id:string|null){
   const seq=++loadSeq.current;
   save();
-  releaseAll();active.current=null;setProjectId(null);setLocal(null);
+  releaseAll();active.current=null;setProjectId(null);setLocal(null);skips.current=0;
   if(!id)return;
   setLoadingProject(true);
   try{
@@ -552,7 +555,8 @@ export function Studio(){
   * per photo, and only while the photo is still waiting in the chat box (once it is sent, the reply handles it).
   */
  function offerBeautifyOnUpload(a:LocalAttachment,offer:BeautifyOffer){
-  if(beautifyOffered.current.has(a.sha256)||!tray.current.some(x=>x.id===a.id))return;
+  // Never annoying (owner, 2026-11-08): once per photo, and no more offers in a chat where two were turned down.
+  if(skips.current>=2||beautifyOffered.current.has(a.sha256)||!tray.current.some(x=>x.id===a.id))return;
   beautifyOffered.current.add(a.sha256);
   setMessages(m=>[...m,agentItem({role:"agent",text:BEAUTIFY_UPLOAD_FA,kind:"question",snapshot:{question:BEAUTIFY_UPLOAD_FA,beautify:offer}})]);
  }
@@ -707,6 +711,20 @@ export function Studio(){
    const text=beautifyRequestFa(displayTag(a.tag),parts),asked=questionAwaitingAnswer();
    await runTurn(text,[{...a,regionEdit:undefined,beautify:{parts:[...parts]}}],[],false,asked?answerBrief(asked.brief??asked.text,text):undefined);
   }finally{setBeautifying(null);}
+ }
+ /**
+  * «لازم نیست» on the «زیباسازی» offer (owner, 2026-11-08): nothing is sent or charged. A card that only offered it goes away; under an edit card, only the
+  * offer goes and the edit card stays.
+  */
+ function skipBeautify(id:string){
+  skips.current++;
+  const m=messages.find(x=>x.id===id);if(!m||m.kind!=="question"||!m.snapshot.beautify)return;
+  const {beautify:_b,...rest}=m.snapshot,keep=Boolean(rest.editCards?.length||rest.editCard||rest.choices||rest.references);
+  if(keep){setMessages(list=>list.map(x=>x.id===id?{...m,snapshot:rest}:x));return;}
+  // The whole card folds away, then leaves the conversation (instantly with reduced motion).
+  setFolding(f=>new Set(f).add(id));
+  const gone=()=>{setMessages(list=>list.filter(x=>x.id!==id));setFolding(f=>{const n=new Set(f);n.delete(id);return n;});};
+  if(window.matchMedia("(prefers-reduced-motion: reduce)").matches)gone();else window.setTimeout(gone,300);
  }
  async function applyEditTo(e:{a:LocalAttachment;fromTray:boolean},{masks,regions}:{masks:HTMLCanvasElement[];regions:Region[]}){
   const blob=blobs.current.get(e.a.id);if(!blob)return;
@@ -1219,7 +1237,7 @@ export function Studio(){
         {reactions}
         <div className="-mt-1">{actions}</div>
        </div>;
-       return <div key={m.id} className="group flex flex-col gap-3">
+       return <div key={m.id} className="whoush-fold" data-folding={folding.has(m.id)||undefined}><div className="group flex flex-col gap-3">
         {m.kind==="restricted"
          ?<div role="status" className="flex items-start gap-2 type-body-sm text-fg-primary">
           <Icon icon={Info} size={16} aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-fg-secondary"/>
@@ -1278,13 +1296,14 @@ export function Studio(){
          editCards={(m.snapshot.editCards??(m.snapshot.editCard?[m.snapshot.editCard]:[])).map((c:{tag:string;suggested?:SuggestedEdit[]})=>({tag:c.tag,thumbUrl:thumbFor(c.tag),...(c.suggested?{suggested:c.suggested}:{})}))}
          onEdit={(tag,suggested)=>void openEditFor(tag,suggested)} onGenerate={busy?undefined:(tag,suggested)=>void generateSuggested(tag,suggested)} preparing={preparingEdit}
          beautify={m.snapshot.beautify?{...m.snapshot.beautify,thumbUrl:thumbFor(m.snapshot.beautify.tag)}:undefined} onBeautify={busy?undefined:(tag,parts)=>void beautifyPhoto(tag,parts)} beautifying={Boolean(beautifying)}
+         onSkipBeautify={()=>skipBeautify(m.id)}
          references={m.snapshot.references} uploaded={m.snapshot.references?Object.fromEntries(m.snapshot.references.angles.map(a=>[a.id,Boolean(slots.find(s=>s.id==="ref-"+m.id+"-"+a.id)?.attachmentId)])):undefined}
          onUpload={m.snapshot.references?a=>uploadForRequest(m.id,m.snapshot.references!,a):undefined}
          onContinue={m.snapshot.references&&i===messages.length-1&&!busy?()=>answer(replyScriptFor(m.text)==="finglish"?"Aksa ro gozashtam":"عکس‌ها رو گذاشتم"):undefined}/>}
         {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan?.clarifyingQuestionFa&&<AgentQuestion question={m.snapshot.plan.clarifyingQuestionFa} waiting={i===messages.length-1&&!busy} onAnswer={()=>promptRef.current?.focus()}/>}
         {reactions}
         <div className="-mt-2">{actions}</div>
-       </div>;
+       </div></div>;
       })}
       {editing&&editing.a.previewUrl&&<RegionEditor tag={editing.a.tag} photoUrl={editing.a.previewUrl} suggested={editing.suggested} onClose={()=>setEditing(null)} onDone={r=>void applyEdit(r)}/>}
       {waitingFor&&<div role="status" aria-live="polite" className="whoush-widget flex w-full flex-col gap-4 rounded-card p-4">

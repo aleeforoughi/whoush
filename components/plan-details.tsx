@@ -1,7 +1,7 @@
 "use client";
 import {TagText} from "@/components/message-text";
 import {useState,type ReactNode} from "react";
-import {Aperture,ArrowLeft,Brush,Camera,SlidersHorizontal,CircleCheck,CircleHelp,Clapperboard,ImagePlus,Image as ImageIcon,Film,Focus,Frame,Gauge,Layers,Lightbulb,ListChecks,MessageCircle,Move,Paperclip,RefreshCw,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Star,Thermometer,Timer,Upload,type LucideIcon,LoaderCircle,WandSparkles,Check} from "lucide-react";
+import {Aperture,ArrowLeft,Brush,Camera,SlidersHorizontal,CircleCheck,CircleHelp,Clapperboard,ImagePlus,Image as ImageIcon,Film,Focus,Frame,Gauge,Layers,Lightbulb,ListChecks,MessageCircle,Move,Paperclip,RefreshCw,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Star,Thermometer,Timer,Upload,type LucideIcon,LoaderCircle,WandSparkles,Check,X} from "lucide-react";
 import {Accordion,AccordionContent,AccordionItem,AccordionTrigger,Badge,Button,Icon} from "@aleeforoughi/feather-react";
 import type {ReferenceRequest} from "@/lib/reference-needs";
 import {StagingEditor} from "@/components/staging-editor";
@@ -11,7 +11,7 @@ import {CHARACTER_VIEWS} from "@/lib/characters";
 import {displayTag} from "@/lib/attachments";
 import {TagBadge} from "@/components/attachment-chip";
 import {EDIT_CARD_GENERATE_FA,EDIT_CARD_OPEN_FA,EDIT_PREPARING_FA,type SuggestedEdit} from "@/lib/edit-card";
-import {BEAUTIFY_GO_FA,BEAUTIFY_GROUPS,BEAUTIFY_MINOR_FA,BEAUTIFY_NAME,BEAUTIFY_PARTS,BEAUTIFY_PARTS_MINOR,beautifySeenFa,type BeautifyPart} from "@/lib/beautify";
+import {BEAUTIFY_SKIP_FA,BEAUTIFY_GO_FA,BEAUTIFY_GROUPS,BEAUTIFY_MINOR_FA,BEAUTIFY_NAME,BEAUTIFY_PARTS,BEAUTIFY_PARTS_MINOR,beautifySeenFa,type BeautifyPart} from "@/lib/beautify";
 import {WIDGET_BUTTON,WidgetActions,WidgetHeader} from "@/components/widget";
 import {AreaOverlay} from "@/components/area-overlay";
 import {NEON_SHADOW,REGION_COLORS,regionTagFa} from "@/lib/region-edit";
@@ -200,13 +200,13 @@ export type BeautifyCardOffer={tag:string;parts:readonly BeautifyPart[];notes?:P
  * The «Beautify it» card (owner, 2026-11-08): the photo, what it does, a switch per part (all on as offered; tap to turn one off), and «Beautify it» at the
  * bottom, the full width. On its own it is the whole widget; under an edit card it is the other way to go, with its own title.
  */
-function BeautifySection({offer,alone,busy,onBeautify}:{offer:BeautifyCardOffer;alone:boolean;busy?:boolean;onBeautify?:(tag:string,parts:BeautifyPart[])=>void}){
- // Four general switches over the eight parts (owner, 2026-11-08: not a long checklist): a group shows when one of its parts may be used, and starts on
- // when one of its parts was offered.
- const allowed=offer.minor?BEAUTIFY_PARTS_MINOR:BEAUTIFY_PARTS,groups=BEAUTIFY_GROUPS.filter(g=>g.parts.some(p=>allowed.includes(p)));
+function BeautifySection({offer,alone,busy,onBeautify,onSkip}:{offer:BeautifyCardOffer;alone:boolean;busy?:boolean;onBeautify?:(tag:string,parts:BeautifyPart[])=>void;
+ /** «لازم نیست» (owner, 2026-11-08): the offer can always be turned down. */onSkip?:()=>void}){
+ // Up to four general switches (owner, 2026-11-08: not a long checklist; only what the photo needs): a group shows when one of its parts was offered.
+ const allowed=offer.minor?BEAUTIFY_PARTS_MINOR:BEAUTIFY_PARTS,groups=BEAUTIFY_GROUPS.filter(g=>g.parts.some(p=>allowed.includes(p)&&offer.parts.includes(p)));
  const [on,setOn]=useState<ReadonlySet<string>>(()=>new Set(groups.filter(g=>g.parts.some(p=>offer.parts.includes(p))).map(g=>g.id)));
  const toggle=(id:string)=>setOn(s=>{const n=new Set(s);if(n.has(id))n.delete(id);else n.add(id);return n;});
- const chosen=groups.filter(g=>on.has(g.id)).flatMap(g=>g.parts.filter(p=>allowed.includes(p))),seen=beautifySeenFa(offer.notes);
+ const chosen=groups.filter(g=>on.has(g.id)).flatMap(g=>g.parts.filter(p=>allowed.includes(p)&&offer.parts.includes(p))),seen=beautifySeenFa(offer.notes);
  return <section aria-label={BEAUTIFY_NAME} className="flex flex-col gap-3">
   {!alone&&<h3 className="flex items-center gap-2 type-label text-fg-primary"><Icon icon={WandSparkles} size={16} aria-hidden="true" className="size-4 text-primary"/>{BEAUTIFY_NAME}</h3>}
   {alone&&<span className="relative block w-full overflow-hidden rounded-control bg-surface-hover">
@@ -227,6 +227,7 @@ function BeautifySection({offer,alone,busy,onBeautify}:{offer:BeautifyCardOffer;
   {onBeautify&&<WidgetActions label={BEAUTIFY_NAME}>
    <Button type="button" onClick={()=>onBeautify(offer.tag,chosen)} disabled={!chosen.length||busy} aria-busy={busy||undefined} className={WIDGET_BUTTON}>
     <Icon icon={busy?LoaderCircle:WandSparkles} aria-hidden="true" className={busy?"animate-spin motion-reduce:animate-none":undefined}/>{BEAUTIFY_GO_FA}</Button>
+   {onSkip&&<Button type="button" variant="outline" onClick={onSkip} disabled={busy} className={WIDGET_BUTTON}><Icon icon={X} aria-hidden="true"/>{BEAUTIFY_SKIP_FA}</Button>}
   </WidgetActions>}
  </section>;
 }
@@ -236,7 +237,8 @@ function BeautifySection({offer,alone,busy,onBeautify}:{offer:BeautifyCardOffer;
  * tattoos, logo, product...), it lists the angles it needs, each with «آپلود» (the photo lands in the chat input as a card with the right role) and a check
  * once it is in, then «ادامه» sends them with the original request.
  */
-export function AgentQuestion({question,repeated,preparing,waiting,onAnswer,references,uploaded,onUpload,onContinue,choices,onChoose,editCards,onEdit,onGenerate,beautify,onBeautify,beautifying}:{question:string;waiting:boolean;onAnswer:()=>void;
+export function AgentQuestion({question,repeated,preparing,waiting,onAnswer,references,uploaded,onUpload,onContinue,choices,onChoose,editCards,onEdit,onGenerate,beautify,onBeautify,beautifying,onSkipBeautify}:{question:string;waiting:boolean;onAnswer:()=>void;
+ /** «لازم نیست» on the «زیباسازی» offer. */onSkipBeautify?:()=>void;
  /** «Beautify it» offered for a photo (lib/beautify.ts), and its button; `beautifying` while it is being sent. */beautify?:BeautifyCardOffer;onBeautify?:(tag:string,parts:BeautifyPart[])=>void;beautifying?:boolean;
  /** The question is the message just above it word for word: the widget shows only its title and its content, not the same text twice. */repeated?:boolean;
  /** The edit cards (lib/edit-card.ts): one per picture to open full screen for «ادیت», maybe with the areas Whoush painted. */editCards?:readonly {tag:string;thumbUrl?:string;suggested?:readonly SuggestedEdit[]}[];onEdit?:(tag:string,suggested?:readonly SuggestedEdit[])=>void;
@@ -282,7 +284,7 @@ export function AgentQuestion({question,repeated,preparing,waiting,onAnswer,refe
     {onEdit&&<Button type="button" variant={onGenerate?"outline":"default"} onClick={()=>onEdit(c.tag,c.suggested)} aria-label={EDIT_CARD_OPEN_FA+" "+displayTag(c.tag)} className={WIDGET_BUTTON}><Icon icon={Brush} aria-hidden="true"/>{EDIT_CARD_OPEN_FA}</Button>}
    </WidgetActions>}
   </li>)}</ul>}
-  {beautify&&<BeautifySection offer={beautify} alone={!edits.length} busy={beautifying} onBeautify={waiting?onBeautify:undefined}/>}
+  {beautify&&<BeautifySection offer={beautify} alone={!edits.length} busy={beautifying} onBeautify={waiting?onBeautify:undefined} onSkip={waiting?onSkipBeautify:undefined}/>}
   {choices&&waiting&&onChoose&&<WidgetActions label={question}>
    {choices.map(c=><Button key={c.id} type="button" variant="secondary" onClick={()=>onChoose(c.replyFa)} className={WIDGET_BUTTON}><Icon icon={CHOICE_ICON[c.id]??CircleCheck} aria-hidden="true"/>{c.labelFa}</Button>)}
   </WidgetActions>}

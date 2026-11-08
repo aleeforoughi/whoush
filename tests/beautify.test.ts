@@ -39,10 +39,11 @@ test("Beautify brief: identity, place, outfit and styles locked; never guesses; 
  assert.match(all,/the nose visibly but naturally refined \(a slimmer bridge, a neater, slightly lifted tip, in proportion with the face\)/);
  assert.match(all,/acne, bumps, blemishes and irregular or enlarged pores polished away; tired under-eyes rested; natural fine pores and texture kept/);assert.match(all,/less puffiness, a natural defined jawline/);assert.match(all,/no lint, hair or creases/);
  assert.match(all,/CAMERA: .* Seen: shot from below; the face looks wider\./);
- for(const h of ["POSE:","LIGHT:","SKIN:","GROOMING:","FACE:","CLOTHES:","COLOUR:"])assert.ok(all.includes(h),h);
- assert.ok(all.length<=2400,"within the plan's prompt cap with room for the findings: "+all.length);
+ for(const h of ["POSE:","LIGHT:","SKIN:","GROOMING:","FACE:","CLOTHES:","BACKGROUND:","COLOUR:"])assert.ok(all.includes(h),h);
+ assert.match(all,/BACKGROUND: the same place made presentable: clutter, mess, rubbish, cables and stray unwanted objects removed; layout, main objects, colours and light kept\./);
+ assert.ok(all.length<=2600,"within the plan's prompt cap with room for the findings: "+all.length);
  const worst=beautifyPrompt("[reference image 1 · #تصویر-۱]",BEAUTIFY_PARTS,BEAUTIFY_PARTS.map(p=>({part:p,noteFa:"x",noteEn:"y".repeat(160)})));
- assert.ok(worst.length<=2800,"a long finding on every part still fits: "+worst.length);
+ assert.ok(worst.length<=2950,"a long finding on every part still fits: "+worst.length);
  const some=beautifyPrompt("[r]",["light","color"]);
  assert.ok(some.includes("LIGHT:")&&some.includes("COLOUR:"));
  assert.ok(some.includes("Posture and expression: exactly as in the photo.")&&some.includes("Face and features: exactly as in the photo.")&&some.includes("Camera: the same angle, lens and focus."));
@@ -51,9 +52,10 @@ test("Beautify brief: identity, place, outfit and styles locked; never guesses; 
  assert.ok(minor.includes("LIGHT:")&&minor.includes("CAMERA:")&&minor.includes("CLOTHES:"));
  assert.equal(beautifyRequestFa("#تصویر-۱",["skin","light"]),"#تصویر-۱ رو زیباسازی کن: پوست، نور");
  // The card starts with what the photo needs (and the colour); with nothing listed, everything.
- assert.deepEqual(startingParts([{part:"light",noteFa:"x",noteEn:"y"},{part:"clothes",noteFa:"x",noteEn:"y"}],false),["light","shape","clothes","color"]);
+ assert.deepEqual(startingParts([{part:"light",noteFa:"x",noteEn:"y"},{part:"clothes",noteFa:"x",noteEn:"y"}],false),["light","clothes"],"only what the photo needs");
+ assert.deepEqual(startingParts([{part:"light",noteFa:"x",noteEn:"y"}],false),["light"],"it can be only the light");
  assert.deepEqual(startingParts([],false),[...BEAUTIFY_PARTS]);
- assert.deepEqual(startingParts([],true),["camera","light","clothes","color"]);
+ assert.deepEqual(startingParts([],true),["camera","light","clothes","background","color"]);
 });
 
 test("Beautify is offered only when the user is trying to look better: on its own, beside the edit card, limited for a minor, never for a reference",async()=>{
@@ -67,7 +69,7 @@ test("Beautify is offered only when the user is trying to look better: on its ow
  const b=beside as Extract<OrchestratorResult,{status:"needs_input"}>;
  assert.ok(b.editCards?.[0]?.suggested?.length&&b.beautify,"the edit card, with Beautify as the other option");
  const kid=await orchestrateCreativeTurn({text:"خوشگلش کن",attachments:[photo({reviewId:(await ok(2)).reviewId})]},{locateEdit:loc({beautify:true,minor:true})});
- assert.deepEqual((kid as Extract<OrchestratorResult,{status:"needs_input"}>).beautify,{tag:"image1",parts:["camera","light","clothes","color"],minor:true});
+ assert.deepEqual((kid as Extract<OrchestratorResult,{status:"needs_input"}>).beautify,{tag:"image1",parts:["camera","light","clothes","background","color"],minor:true});
  const plain=await orchestrateCreativeTurn({text:"رنگ پیرهنشو آبی کن",attachments:[photo({reviewId:src.reviewId})]},{locateEdit:loc({beautify:false})});
  assert.ok(plain.status!=="needs_input"||!plain.beautify,"an ordinary change gets no Beautify");
  const ref=await orchestrateCreativeTurn({text:"با این عکس یه کاور مجله بساز، خوشگلم کن",attachments:[photo({reviewId:src.reviewId})]},{locateEdit:loc({beautify:false,mode:"reference"})});
@@ -135,4 +137,19 @@ test("Beautify findings in the brief are cut at a word, never mid-word",()=>{
  const p=beautifyPrompt("[r]",["camera"],[{part:"camera",noteFa:"x",noteEn:"the photo was shot from far below with a very close wide phone lens, widening everything"}]);
  const seen=/Seen: ([^\n]*)\./.exec(p)![1];
  assert.ok(seen.length<=50&&/ (lens|close|wide|phone|very)$/.test(" "+seen.split(" ").pop()),seen);
+});
+
+test("the card's four switches use the owner's words, and the line of what was seen names them briefly",async()=>{
+ const {BEAUTIFY_GROUPS,beautifySeenFa}=await import("../lib/beautify");
+ assert.deepEqual(BEAUTIFY_GROUPS.map(g=>g.labelFa),["اصلاح چهره و پوست","اصلاح ژست و زاویه","اصلاح نور و رنگ","مرتب‌سازی لباس و زمینه"]);
+ assert.equal(beautifySeenFa({background:"x",light:"y"}),"توی عکست دیدم نور و رنگ و لباس و زمینه جای بهتر شدن دارن.");
+ assert.equal(beautifySeenFa({}),undefined);
+});
+
+test("the planned «زیباسازی» prompt keeps every part, even with every part on and a long finding on each (the 3,000-character cap)",async()=>{
+ const issues=BEAUTIFY_PARTS.map(p=>({part:p,noteFa:"یه یادداشت کوتاه",noteEn:"a long finding about this part of the photo that goes on and on"}));
+ const r=await reviewUpload(Uint8Array.from([...JPEG,21]),"image/jpeg",{inspect:async()=>({category:"none",person:true,beautify:{needed:true,minor:false,issues}})});
+ const o=await orchestrateCreativeTurn({text:beautifyRequestFa("#تصویر-۱",[...BEAUTIFY_PARTS]),attachments:[photo({reviewId:r.reviewId,beautify:{parts:[...BEAUTIFY_PARTS]}})]});
+ const prompt=getPrivateMediaPrompt((o as Extract<OrchestratorResult,{status:"planned"}>).turnId)!;
+ assert.ok(prompt.includes("COLOUR:")&&prompt.includes("BACKGROUND:"),"the last parts survive: "+prompt.length);
 });

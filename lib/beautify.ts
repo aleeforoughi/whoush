@@ -9,12 +9,12 @@ import {normalizePersian} from "./safety";
 /** The package's name in the interface (owner, 2026-11-08: «زیباسازی» is «زیباسازی» in Persian). */
 export const BEAUTIFY_NAME="زیباسازی";
 /** The parts, in the card's order (the owner's list, 2026-11-08). */
-export const BEAUTIFY_PARTS=["camera","pose","light","skin","grooming","shape","clothes","color"] as const;
+export const BEAUTIFY_PARTS=["camera","pose","light","skin","grooming","shape","clothes","background","color"] as const;
 export type BeautifyPart=typeof BEAUTIFY_PARTS[number];
 export const BEAUTIFY_PART_FA:Record<BeautifyPart,string>={camera:"اصلاح لنز، کادر و فوکوس",pose:"حالت بدن و چهره",light:"نور",skin:"پوست",
- grooming:"مو، ریش و ابرو",shape:"فرم و اجزای صورت (ظریف)",clothes:"لباس",color:"رنگ و تنظیمات عکس"};
+ grooming:"مو، ریش و ابرو",shape:"فرم و اجزای صورت (ظریف)",clothes:"لباس",background:"زمینه",color:"رنگ و تنظیمات عکس"};
 /** A person who looks under 18 gets the photo-craft parts only: nothing on the face, body or grooming. */
-export const BEAUTIFY_PARTS_MINOR:readonly BeautifyPart[]=["camera","light","clothes","color"];
+export const BEAUTIFY_PARTS_MINOR:readonly BeautifyPart[]=["camera","light","clothes","background","color"];
 /** One thing the vision step saw in the photo, for one part: shown under its switch (Persian) and given to the model (English). */
 export type BeautifyIssue={part:BeautifyPart;noteFa:string;noteEn:string};
 
@@ -24,6 +24,8 @@ export const BEAUTIFY_OFFER_FINGLISH="Ba \"Zibasazi\" in akso ba taghirhaye zari
 /** Under the switches for a person who looks under 18. */
 export const BEAUTIFY_MINOR_FA="برای این عکس فقط لنز و کادر، نور، لباس و رنگ بهتر می‌شه.";
 export const BEAUTIFY_GO_FA="زیباسازی کن";
+/** Turning the offer down (owner, 2026-11-08). */
+export const BEAUTIFY_SKIP_FA="لازم نیست";
 
 /** Words of someone trying to look better in their photo (a hint; the vision step decides too). */
 const WORDS=["خوشگلم کن","خوشگلش کن","خوشگل ترم کن","خوشگلترم کن","خوشگل ترش کن","خوشگلترش کن","زیبام کن","زیباترم کن","زیباترش کن","جذاب ترم کن","جذابترم کن",
@@ -44,12 +46,13 @@ const ON:Record<BeautifyPart,string>={
  grooming:"GROOMING: hair cleanly brushed and styled, neat edges, no flyaways; thinning filled with the hairline unchanged. Beard freshly barber-trimmed to an even length; the upper cheeks above the beard line (stray stubble included) and the neck below the neckline clean-shaven and smooth, crisp lines; same style. Brows shaped.",
  shape:"FACE: within their features: less puffiness, a natural defined jawline; the nose visibly but naturally refined (a slimmer bridge, a neater, slightly lifted tip, in proportion with the face); lips even.",
  clothes:"CLOTHES: same garment, freshly laundered and steamed: no lint, hair or creases.",
+ background:"BACKGROUND: the same place made presentable: clutter, mess, rubbish, cables and stray unwanted objects removed; layout, main objects, colours and light kept.",
  color:"COLOUR: natural pro grade in the photo's mood: balanced exposure and contrast, richer true colour, recovered highlights, lifted shadows."
 };
 const OFF:Record<BeautifyPart,string>={
  camera:"Camera: the same angle, lens and focus.",pose:"Posture and expression: exactly as in the photo.",light:"Light: the photo's own light.",
  skin:"Skin: as in the photo.",grooming:"Hair, beard and brows: as in the photo.",shape:"Face and features: exactly as in the photo.",
- clothes:"Clothes: exactly as in the photo.",color:"Colour: the photo's own colours."
+ clothes:"Clothes: exactly as in the photo.",background:"Background: as in the photo.",color:"Colour: the photo's own colours."
 };
 
 /**
@@ -76,10 +79,12 @@ export function beautifyRequestFa(tagFa:string,parts:readonly BeautifyPart[]):st
  return tagFa+" رو "+BEAUTIFY_NAME+" کن: "+parts.map(p=>BEAUTIFY_PART_FA[p]).join("، ");
 }
 
-/** The parts the card starts with: those the photo needs (and the colour, which every photo gets), or all of them when nothing was listed. */
+/**
+ * The parts offered: only those the photo needs (owner, 2026-11-08: "it can be only the light, or the camera, or several"), or all of them when nothing
+ * specific was found.
+ */
 export function startingParts(issues:readonly BeautifyIssue[],minor:boolean):BeautifyPart[]{
- // The colour, and for an adult the subtle face refinement (owner, 2026-11-08: features beautified slightly), always start on.
- const allowed=minor?BEAUTIFY_PARTS_MINOR:BEAUTIFY_PARTS,need=new Set<BeautifyPart>([...issues.map(i=>i.part),"color","shape"]);
+ const allowed=minor?BEAUTIFY_PARTS_MINOR:BEAUTIFY_PARTS,need=new Set<BeautifyPart>(issues.map(i=>i.part));
  return BEAUTIFY_PARTS.filter(p=>allowed.includes(p)&&(!issues.length||need.has(p)));
 }
 
@@ -104,15 +109,16 @@ export const BEAUTIFY_UPLOAD_FA="این عکس رو دیدم؛ قبل از هر 
  * The detailed findings still go into the brief; the card says only what it saw, in one line.
  */
 export const BEAUTIFY_GROUPS=[
- {id:"face",labelFa:"چهره و پوست",parts:["skin","shape","grooming"]},
- {id:"pose",labelFa:"ژست و زاویه",parts:["camera","pose"]},
- {id:"light",labelFa:"نور و رنگ",parts:["light","color"]},
- {id:"clothes",labelFa:"لباس",parts:["clothes"]}
-] as const satisfies readonly {id:string;labelFa:string;parts:readonly BeautifyPart[]}[];
+ // The owner's wording (2026-11-08); `seenFa` is the short name in the line of what was seen.
+ {id:"face",labelFa:"اصلاح چهره و پوست",seenFa:"چهره و پوست",parts:["skin","shape","grooming"]},
+ {id:"pose",labelFa:"اصلاح ژست و زاویه",seenFa:"ژست و زاویه",parts:["camera","pose"]},
+ {id:"light",labelFa:"اصلاح نور و رنگ",seenFa:"نور و رنگ",parts:["light","color"]},
+ {id:"clothes",labelFa:"مرتب‌سازی لباس و زمینه",seenFa:"لباس و زمینه",parts:["clothes","background"]}
+] as const satisfies readonly {id:string;labelFa:string;seenFa:string;parts:readonly BeautifyPart[]}[];
 export type BeautifyGroup=typeof BEAUTIFY_GROUPS[number];
 /** One short line of what Whoush saw, by group: «توی عکست دیدم چهره و پوست، نور و رنگ و لباس جای بهتر شدن دارن.» */
 export function beautifySeenFa(notes:Partial<Record<BeautifyPart,string>>|undefined):string|undefined{
- const g=BEAUTIFY_GROUPS.filter(x=>x.parts.some(p=>notes?.[p])).map(x=>x.labelFa);
+ const g=BEAUTIFY_GROUPS.filter(x=>(x.parts as readonly BeautifyPart[]).some(p=>notes?.[p])).map(x=>x.seenFa);
  if(!g.length)return undefined;
  return "توی عکست دیدم "+(g.length===1?g[0]:g.slice(0,-1).join("، ")+" و "+g[g.length-1])+" جای بهتر شدن "+(g.length===1?"داره":"دارن")+".";
 }
