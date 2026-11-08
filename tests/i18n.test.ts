@@ -56,3 +56,11 @@ test("owner (2026-11-08): the chat box's direction: Persian text right to left, 
  for(const [t,f,want] of [["","rtl","rtl"],["\n","rtl","rtl"],["  12 \n","rtl","rtl"],["سلام\n","ltr","rtl"],["hello","rtl","ltr"],["#تصویر-۱ رو ببین","ltr","rtl"],["","ltr","ltr"],["\n","ltr","ltr"],["salam","rtl","ltr"]] as const)
   assert.equal(textDir(t,f),want,JSON.stringify(t)+" in "+f);
 });
+test("owner (2026-11-08): «$96.00» in Persian text stays «$96.00»: Latin and number runs are kept left to right; the marks are never sent",async()=>{
+ const {bidiParts,markLtrRuns,stripMarks,LRM}=await import("../lib/bidi");
+ assert.deepEqual(bidiParts("قیمتش $96.00 هست"),[{text:"قیمتش ",ltr:false},{text:"$96.00",ltr:true},{text:" هست",ltr:false}]);
+ assert.deepEqual(bidiParts("با Seedance 2.5 و نسبت 16:9 بساز").filter(p=>p.ltr).map(p=>p.text),["Seedance 2.5","16:9"]);
+ assert.deepEqual(bidiParts("make a video of $96"),[{text:"make a video of $96",ltr:false}],"all Latin: nothing to isolate");
+ const marked=markLtrRuns("بخر $96.00 الان");
+ assert.equal(marked,"بخر "+LRM+"$96.00 الان");assert.equal(stripMarks(marked),"بخر $96.00 الان");
+});

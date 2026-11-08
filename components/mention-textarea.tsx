@@ -1,4 +1,5 @@
 "use client";
+import {LRM,markLtrRuns,stripMarks} from "@/lib/bidi";
 import {textDir} from "@/lib/text-dir";
 import {useUiLang} from "@/components/ui-language";
 import {TagThumb,type TagThumbKind} from "@/components/tag-thumb";
@@ -24,7 +25,7 @@ const X_SVG='<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" view
 
 // ---- DOM <-> text: badges are non-editable spans carrying data-tag; their text is the canonical tag ----
 function serializeNode(n:Node,root:Node):string{
- if(n.nodeType===Node.TEXT_NODE)return (n as Text).data.replaceAll(ZWSP,"");
+ if(n.nodeType===Node.TEXT_NODE)return stripMarks((n as Text).data.replaceAll(ZWSP,""));
  if(!(n instanceof HTMLElement)){let s="";n.childNodes.forEach(c=>{s+=serializeNode(c,root);});return s;}
  if(n.dataset.tag)return displayTag(n.dataset.tag);
  if(n.tagName==="BR")return n===root.lastChild?"":"\n";
@@ -48,8 +49,9 @@ function placeCaret(root:HTMLElement,offset:number){
   for(let i=0;i<parent.childNodes.length;i++){
    const n=parent.childNodes[i];
    if(n.nodeType===Node.TEXT_NODE){
-    const data=(n as Text).data,len=data.replaceAll(ZWSP,"").length;
-    if(left<=len){let raw=0,count=0;while(raw<data.length&&(count<left||data[raw]===ZWSP)){if(data[raw]!==ZWSP)count++;raw++;}sel.collapse(n,raw);return true;}
+    // ZWSP and the left-to-right marks (lib/bidi.ts) are on screen only: they take no place in the text, and the caret steps over them.
+    const data=(n as Text).data,hidden=(c:string)=>c===ZWSP||c===LRM,len=[...data].filter(c=>!hidden(c)).length;
+    if(left<=len){let raw=0,count=0;while(raw<data.length&&(count<left||hidden(data[raw]))){if(!hidden(data[raw]))count++;raw++;}sel.collapse(n,raw);return true;}
     left-=len;continue;
    }
    if(n instanceof HTMLElement&&n.dataset.tag){
@@ -74,7 +76,9 @@ function badgeNode(tag:string):HTMLElement{
  return span;
 }
 function renderSegments(root:HTMLElement,segments:readonly EditorSegment[]){
- root.replaceChildren(...segments.map(s=>"tag" in s?badgeNode(s.tag):document.createTextNode(s.text)));
+ // Latin and number runs in Persian text get a left-to-right mark, so «$96.00» stays «$96.00» (lib/bidi.ts); serialize() drops the marks again.
+ const all=segments.map(s=>"tag" in s?"":s.text).join("");
+ root.replaceChildren(...segments.map(s=>"tag" in s?badgeNode(s.tag):document.createTextNode(markLtrRuns(s.text,all))));
  // A caret needs a text node after a trailing badge to sit in.
  if(root.lastChild instanceof HTMLElement)root.appendChild(document.createTextNode(ZWSP));
 }
@@ -141,8 +145,10 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
   if(maxLength&&text.length>maxLength){show(rendered.current??value,Math.min(caret,(rendered.current??value).length));return;}
   const r=editorSegments(text,known,caret);
   const badges=r.segments.filter(s=>"tag" in s).length;
-  // Redraw only when a tag just became a badge (or was rewritten); plain typing keeps the browser's own DOM and caret.
-  if(r.value!==text||badges!==root.querySelectorAll("[data-tag]").length)show(text,caret);
+  // Redraw only when a tag just became a badge (or was rewritten), or a Latin or number run needs its left-to-right mark; otherwise plain typing keeps
+  // the browser's own DOM and caret.
+  const marks=(root.textContent??"").split(LRM).length-1,want=r.segments.reduce((n,x)=>"tag" in x?n:n+markLtrRuns(x.text,text).split(LRM).length-1,0);
+  if(r.value!==text||badges!==root.querySelectorAll("[data-tag]").length||marks!==want)show(text,caret);
   else rendered.current=text;
   onValueChange(r.value);
   sync();
@@ -200,9 +206,10 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
    {empty&&placeholder&&<span aria-hidden="true" className={"pointer-events-none absolute inset-y-0 start-0 truncate px-control py-control type-body text-fg-tertiary "+pads}>{placeholder}</span>}
    {/* The direction follows what is typed (owner, 2026-11-08): Persian runs right to left and Finglish left to right, whatever the interface language.
        With no letter yet (empty, or only a new line after Enter, spaces or digits) it follows the page: right to left in Persian, left to right in Finglish
-       (Safari starts such an `auto` field left to right, so the cursor jumped to the left). `lang` tells
+       (Safari starts such an `auto` field left to right, so the cursor jumped to the left). The alignment is set physically too (right or left): Safari
+       can put the caret of an empty new line on the left in right-to-left editable text when the alignment is only `start`. `lang` tells
        keyboards that offer it, spellcheck and screen readers the field is Persian (or Finglish); iOS lets no page switch the keyboard itself. */}
-   <div ref={el} id={id} dir={dir} lang={uiLang==="fi"?"fa-Latn":"fa"} contentEditable="plaintext-only" suppressContentEditableWarning spellCheck={false} tabIndex={0}
+   <div ref={el} id={id} dir={dir} style={{textAlign:dir==="rtl"?"right":"left"}} lang={uiLang==="fi"?"fa-Latn":"fa"} contentEditable="plaintext-only" suppressContentEditableWarning spellCheck={false} tabIndex={0}
     role="combobox" aria-labelledby={labelledBy} aria-describedby={describedBy}
     aria-autocomplete="list" aria-haspopup="listbox" aria-controls={listId} aria-expanded={open} aria-activedescendant={open?optionId(current):undefined}
     className={"block max-h-40 min-h-13 overflow-y-auto whitespace-pre-wrap break-words px-control py-control type-body text-fg-primary outline-hidden "+pads}
