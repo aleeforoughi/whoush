@@ -8,7 +8,7 @@ import {fa} from "@/lib/format";
 import {GenerationProgress,useJobLive} from "@/components/generation-preview";
 import type {JobView} from "@/lib/studio-types";
 
-export const OPEN_PREVIEW_FA="نمایش",CLOSE_PREVIEW_FA="بستن نمایش",BACK_TO_CHAT_FA="بازگشت به چت";
+export const OPEN_PREVIEW_FA="نمایش",CLOSE_PREVIEW_FA="بستن نمایش";
 /** Shown when a plan cannot be run again because the server no longer has it (a restart). */
 export const RERUN_GONE_FA="این برنامه دیگه روی سرور نیست؛ درخواستت رو یه بار دیگه بفرست تا از نو بسازمش.";
 /** The states a generation can be run again from: it stopped without an output. */

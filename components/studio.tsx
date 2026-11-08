@@ -3,9 +3,9 @@ import {useUiLang} from "@/components/ui-language";
 import {useEffect,useLayoutEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
 import Link from "next/link";
 import {useRouter,useSearchParams} from "next/navigation";
-import {ArrowUp,ChevronLeft,CircleAlert,Clapperboard,Eye,Hash,Info,LoaderCircle,MessageCircle,Mic,Smile,Sparkles,Star,Upload as UploadIcon,UserRound,X} from "lucide-react";
+import {ArrowUp,ChevronLeft,CircleAlert,Clapperboard,Eye,Hash,Info,LoaderCircle,Mic,Smile,Sparkles,Star,Upload as UploadIcon,UserRound,X} from "lucide-react";
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Tabs,TabsContent,TabsList,TabsTrigger,Label,Tooltip,TooltipContent,TooltipTrigger} from "@aleeforoughi/feather-react";
-import {BACK_TO_CHAT_FA,CLOSE_PREVIEW_FA,OPEN_PREVIEW_FA,PreviewCard,RERUN_GONE_FA} from "@/components/preview-card";
+import {CLOSE_PREVIEW_FA,OPEN_PREVIEW_FA,PreviewCard,RERUN_GONE_FA} from "@/components/preview-card";
 import {ChatEmpty} from "@/components/chat-empty";
 import {asStartFrame,continuedGeneration,type EarlierWork} from "@/lib/follow-up";
 import {GalleryThumbs,GenerationGallery,galleryFocusOn,type GalleryFocus,type GalleryItem} from "@/components/generation-gallery";
@@ -1043,14 +1043,11 @@ export function Studio(){
    <section id="whoush-preview" aria-label="پیش‌نمایش" inert={!showPreview||undefined} aria-hidden={!showPreview||undefined}
     className={(showPreview?"flex":"hidden")+" surface-preview min-h-0 flex-1 flex-col max-md:pt-14 md:order-last md:flex md:min-w-0 md:basis-0 md:overflow-hidden md:transition-[flex-grow,opacity] md:duration-300 md:ease-out motion-reduce:transition-none "+(showPreview?"md:grow md:opacity-100":"md:grow-0 md:opacity-0")}>
     <Tabs value={activeTab} onValueChange={v=>setActiveTab(v as "generations"|"cuts")} className="min-h-0 flex-1 gap-0">
-     {/* The header: the tabs only while «تدوین» exists (one tab needs no tab bar); otherwise it holds just the phones' «بازگشت به چت», so desktop hides it. */}
-     <div className={"flex items-center justify-between gap-4 border-b border-line-tertiary px-4 py-2 lg:px-6"+(EDIT_TAB_ENABLED?"":" md:hidden")}>
-      {EDIT_TAB_ENABLED?<TabsList><TabsTrigger value="generations">تولیدها</TabsTrigger><TabsTrigger value="cuts">تدوین</TabsTrigger></TabsList>:<span/>}
-      <div className="flex items-center gap-2">
-       {/* Phones: the preview covers the chat, so the toggle lives here as «بازگشت به چت» (on desktop the chat header's «بستن نمایش» closes it). */}
-       <Button type="button" variant="outline" className="md:hidden" onClick={minimizePreview} aria-controls="whoush-preview"><Icon icon={MessageCircle} aria-hidden="true"/>{BACK_TO_CHAT_FA}</Button>
-      </div>
-     </div>
+     {/* The header holds the tabs, only while «تدوین» exists (one tab needs no tab bar). Phones close the preview from the top bar's «بستن نمایش»
+         (owner, 2026-11-08: «بازگشت به چت» here is no longer needed). */}
+     {EDIT_TAB_ENABLED&&<div className="flex items-center gap-4 border-b border-line-tertiary px-4 py-2 lg:px-6">
+      <TabsList><TabsTrigger value="generations">تولیدها</TabsTrigger><TabsTrigger value="cuts">تدوین</TabsTrigger></TabsList>
+     </div>}
      {/* «تولیدها»: every generation of the chat in one scroll with a thumbnail strip (its own two scroll areas, so the strip stays put). */}
      <TabsContent value="generations" className="flex min-h-0 flex-1 flex-col">
       {galleryItems.length>0
