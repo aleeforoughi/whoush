@@ -87,11 +87,12 @@ function renderSegments(root:HTMLElement,segments:readonly EditorSegment[]){
  * `startAction` (the «+» menu) and `endAction` (send) are pinned to the bottom corners; the text reserves both with padding. Enter (and Ctrl/Cmd+Enter)
  * calls `onSubmitShortcut` and Shift+Enter starts a new line, but never while the mention list is open (there Enter and Tab insert a mention).
  */
-export function MentionTextarea({id,value,onValueChange,options,handleRef,startAction,endAction,top,onSubmitShortcut,onPaste,placeholder,maxLength,labelledBy,describedBy,startPad="sm:ps-14",endPad="sm:pe-14"}:{
+export function MentionTextarea({id,value,onValueChange,options,handleRef,startAction,endAction,top,onSubmitShortcut,onPaste,placeholder,maxLength,labelledBy,describedBy,startPad="sm:ps-14",endPad="sm:pe-14",compact=false}:{
  id?:string;value:string;onValueChange:(v:string)=>void;options:readonly MentionOption[];handleRef:RefObject<MentionEditorHandle|null>;startAction?:ReactNode;endAction?:ReactNode;
  /** Content inside the field's border, above the text (the upload cards). */top?:ReactNode;onSubmitShortcut?:()=>void;onPaste?:(e:ClipboardEvent<HTMLDivElement>)=>void;
  placeholder?:string;maxLength?:number;labelledBy?:string;describedBy?:string;/** Inline-start padding reserved for `startAction` from `sm` up (wider when it holds several buttons), e.g. "sm:ps-24"; on a phone the buttons have their own row. */startPad?:string;
- /** Inline-end padding reserved for `endAction` (wider when it holds several buttons). */endPad?:string}){
+ /** Inline-end padding reserved for `endAction` (wider when it holds several buttons). */endPad?:string;
+ /** Phones (owner, 2026-11-08): while the chat scrolls back, only the text row shows; the toolbar row slides down out of sight. */compact?:boolean}){
  const listId=useId(),optionId=(i:number)=>listId+"-"+i;
  const el=useRef<HTMLDivElement>(null);
  const rendered=useRef<string|null>(null);
@@ -186,11 +187,12 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
  const empty=value==="";
  // On a phone (owner, 2026-11-08) the text has the whole width on its own row and the buttons sit in a toolbar row under it; wider, they sit beside it.
  // The pads are written out by the callers with their `sm:` prefix, so Tailwind finds them.
- const pads="max-sm:pb-12 "+(startAction?startPad+" ":"")+(endAction?endPad:"");
+ const pads=(compact?"max-sm:pb-control ":"max-sm:pb-12 ")+"transition-[padding] duration-300 ease-out motion-reduce:transition-none "+(startAction?startPad+" ":"")+(endAction?endPad:"");
+ const tools=" transition-[translate,opacity] duration-300 ease-out motion-reduce:transition-none "+(compact?"max-sm:pointer-events-none max-sm:translate-y-full max-sm:opacity-0":"");
  return <div className="relative">
   <div className={"relative rounded-control border border-line-primary bg-surface-base/45 motion-state has-[[contenteditable]:focus-visible]:outline-2 has-[[contenteditable]:focus-visible]:outline-offset-2 has-[[contenteditable]:focus-visible]:outline-ring"}>
-  {startAction&&<div className="absolute bottom-1 start-1 z-10">{startAction}</div>}
-  {endAction&&<div className="absolute bottom-1 end-1 z-10">{endAction}</div>}
+  {startAction&&<div className={"absolute bottom-1 start-1 z-10"+tools} aria-hidden={compact||undefined}>{startAction}</div>}
+  {endAction&&<div className={"absolute bottom-1 end-1 z-10"+tools}>{endAction}</div>}
   {top&&<div className="px-2 pt-2">{top}</div>}
   <div className="relative">
    {empty&&placeholder&&<span aria-hidden="true" className={"pointer-events-none absolute inset-y-0 start-0 truncate px-control py-control type-body text-fg-tertiary "+pads}>{placeholder}</span>}

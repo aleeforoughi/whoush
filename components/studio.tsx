@@ -93,6 +93,26 @@ export function Studio(){
  /** The floating composer's height (owner, 2026-11-08: glass over the chat), so the last message scrolls clear of it. */
  const composerRef=useRef<HTMLDivElement>(null);
  const [composerH,setComposerH]=useState(160);
+ /**
+  * Phones (owner, 2026-11-08): scrolling back through the chat (up, to older messages) slides the top bar away and folds the chat box to its text row;
+  * scrolling down again, reaching the end, or touching the chat box brings everything back. Small movements are ignored, so it never flickers.
+  */
+ const [compact,setCompact]=useState(false);
+ const lastScroll=useRef({top:0,anchor:0,raf:0});
+ function onChatScroll(e:React.UIEvent<HTMLDivElement>){
+  const el=e.currentTarget,st=lastScroll.current;
+  if(st.raf)return;
+  st.raf=requestAnimationFrame(()=>{
+   st.raf=0;
+   if(!window.matchMedia("(max-width: 767px)").matches){setCompact(false);return;}
+   const top=el.scrollTop,atEnd=el.scrollHeight-top-el.clientHeight<48;
+   if(atEnd){setCompact(false);st.anchor=top;}
+   else if(top<st.top&&st.anchor-top>24)setCompact(true);
+   else if(top>st.top&&top-st.anchor>24)setCompact(false);
+   if((top<st.top)!==(st.anchor>st.top))st.anchor=st.top; // a change of direction starts a new run
+   st.top=top;
+  });
+ }
  useEffect(()=>{const el=composerRef.current;if(!el||typeof ResizeObserver==="undefined")return;const ro=new ResizeObserver(()=>setComposerH(Math.round(el.getBoundingClientRect().height)));ro.observe(el);return()=>ro.disconnect();},[]);
  const uiLang=useUiLang();
  const [proposal,setProposal]=useState<AgentProposal|null>(null);
@@ -984,7 +1004,7 @@ export function Studio(){
  // «نمایش» / «بستن نمایش»: on a phone in the top bar beside the menu (owner, 2026-11-08), wider in the bar above the chat.
  const previewToggle=(size:"sm"|"default")=><Button type="button" variant="outline" size={size} onClick={()=>showPreview?minimizePreview():openPreview()} aria-expanded={showPreview} aria-controls="whoush-preview" className="shrink-0">
   <Icon icon={showPreview?ChevronLeft:Eye} aria-hidden="true"/>{showPreview?CLOSE_PREVIEW_FA:OPEN_PREVIEW_FA}</Button>;
- return <RailShell current="studio" activeProjectId={projectId} onNewChat={newChat} onProjectDeleted={onProjectDeleted} mobileAction={hasPreview?previewToggle("sm"):undefined} floatingMobileHeader>
+ return <RailShell current="studio" activeProjectId={projectId} onNewChat={newChat} onProjectDeleted={onProjectDeleted} mobileAction={hasPreview?previewToggle("sm"):undefined} floatingMobileHeader mobileHeaderHidden={compact}>
   {/* Desktop: the chat (right after the side nav, at the start side) and the preview share the row; the preview grows in and out (flex-grow transition) and,
       while it is closed, the chat takes the whole width. Mobile: one at a time; the preview covers the chat until minimized. */}
   <main id="main" className="flex min-h-0 flex-1 flex-col md:flex-row">
@@ -1054,7 +1074,7 @@ export function Studio(){
      <p className="type-caption text-fg-secondary">{fa(characterCoverage(character.references).count)} عکس مرجع · فقط در این مرورگر. مشخصات کاراکتر همراه درخواست برای برنامه‌ریزی ارسال می‌شود؛ خود عکس‌ها هنوز به سرویس تولید فرستاده نمی‌شوند.</p>
     </div>}
     {/* Native scrolling (owner, 2026-11-08: laggy on the iPhone): momentum, and no script running on every frame under the glass bars. */}
-    <div className="scrollbar-right min-h-0 flex-1 overflow-y-auto overscroll-contain">
+    <div onScroll={onChatScroll} className="scrollbar-right min-h-0 flex-1 overflow-y-auto overscroll-contain">
      <div aria-live="polite" aria-label="گفت‌وگو" role="log" style={{paddingBottom:composerH+16}} className={"mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4 p-4"+(topBars?"":" max-md:pt-16")}>
       {!messages.length&&!loadingProject&&<ChatEmpty/>}
       {loadingProject&&<p role="status" className="type-body-sm text-fg-secondary">در حال باز کردن پروژه…</p>}
@@ -1147,7 +1167,7 @@ export function Studio(){
     {/* The chip tray and the composer float over the chat as glass (owner, 2026-11-08) and scroll together, so on a short screen the prompt and the
         send button stay reachable; the chat scrolls under them (its bottom padding is their measured height). */}
     {/* Swipes on its empty parts reach the chat under it (owner, 2026-11-08: scrolling locked); only the controls take touches. */}
-    <div ref={composerRef} className="whoush-glass whoush-glass-bottom pointer-events-none absolute inset-x-0 bottom-0 z-20 flex max-h-[64dvh] min-h-0 flex-col [&_form]:pointer-events-auto [&_[role=alert]]:pointer-events-auto">
+    <div ref={composerRef} onFocusCapture={()=>setCompact(false)} onPointerDown={()=>setCompact(false)} className="whoush-glass whoush-glass-bottom pointer-events-none absolute inset-x-0 bottom-0 z-20 flex max-h-[64dvh] min-h-0 flex-col [&_form]:pointer-events-auto [&_[role=alert]]:pointer-events-auto">
     {error&&<div className="mx-auto w-full max-w-3xl px-4 pb-2"><Alert variant="destructive" role="alert">
      <Icon icon={CircleAlert} aria-hidden="true"/>
      <AlertTitle>خطا</AlertTitle>
@@ -1158,7 +1178,7 @@ export function Studio(){
      <AttachmentTray items={attachments} cards={cards.length} problems={problems} reading={reading} onDismiss={key=>setProblems(list=>list.filter(p=>p.key!==key))}/>
      <input ref={fileInput} type="file" multiple hidden accept={ATTACHMENT_ACCEPT} data-testid="attachment-input" onChange={e=>{const files=Array.from(e.target.files??[]),upload=pendingUpload.current,slot=pendingSlot.current;pendingUpload.current=undefined;pendingSlot.current=undefined;e.target.value="";e.target.multiple=true;const card=slot?slots.find(x=>x.id===slot):undefined;if(card)void fillSlot(card,files);else void addFiles(files,upload);}}/>
      <Label className="sr-only" id="whoush-prompt-label">توضیح تصویر یا ویدیو</Label>
-     <MentionTextarea id="whoush-prompt" handleRef={promptRef} value={draft} onValueChange={setDraft} options={mentionOptions} onPaste={onPaste} placeholder="چی می‌خوای بسازیم؟" labelledBy="whoush-prompt-label" describedBy="prompt-hint" maxLength={4000}
+     <MentionTextarea compact={compact} id="whoush-prompt" handleRef={promptRef} value={draft} onValueChange={setDraft} options={mentionOptions} onPaste={onPaste} placeholder="چی می‌خوای بسازیم؟" labelledBy="whoush-prompt-label" describedBy="prompt-hint" maxLength={4000}
       onSubmitShortcut={()=>{if((draft.trim()||roleFiles.length)&&!busy&&!reading)formRef.current?.requestSubmit();}}
       startPad={COMPOSER_EXTRAS_ENABLED?"sm:ps-40":"sm:ps-24"}
       startAction={<div className="flex items-center">
@@ -1196,9 +1216,12 @@ export function Studio(){
      {/* Read by screen readers only (owner, 2026-11-08: it took too much space under the chat box). */}
      <p id="prompt-hint" className="sr-only">با # می‌تونی به پیوست‌ها اشاره کنی؛ با ستاره یکی رو {MAIN_SUBJECT_FA} کن (اختیاری).</p>
      {/* Build mode and style always share one row (owner, 2026-11-08), on a phone and in Finglish: each may shrink and cut its label, never wrap. */}
-     <div className="flex min-w-0 flex-nowrap items-start gap-2">
+     {/* Folds away on a phone while the chat scrolls back (owner, 2026-11-08), sliding down; the chat box then sits lower, its text row only. */}
+     <div className={"grid transition-[grid-template-rows,opacity,translate] duration-300 ease-out motion-reduce:transition-none "+(compact?"max-md:pointer-events-none max-md:-mt-3 max-md:translate-y-4 max-md:grid-rows-[0fr] max-md:opacity-0":"grid-rows-[1fr]")} aria-hidden={compact||undefined}>
+     <div className="flex min-h-0 min-w-0 flex-nowrap items-start gap-2 overflow-hidden">
       <ModeControl value={mode} onChange={changeMode} notify={Boolean(proposal)}/>
       <StyleControl value={style} onChange={changeStyle}/>
+     </div>
      </div>
     </form>
     </div>
