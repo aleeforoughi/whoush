@@ -1,5 +1,6 @@
 "use client";
 import type React from "react";
+import {useState} from "react";
 import {Box,CircleOff,Clapperboard,Image as ImageIcon,ShieldAlert,Sparkles,Volume2,VolumeX} from "lucide-react";
 import {Badge,Button,Card,Icon,Select,SelectContent,SelectItem,SelectTrigger,SelectValue,Switch} from "@aleeforoughi/feather-react";
 import {SuggestedModelNote} from "@/components/plan-details";
@@ -8,7 +9,7 @@ import type {AgentProposal,NoModelResult} from "@/lib/studio-types";
 import type {UnsupportedReason} from "@/lib/types";
 import {PAST_PROPOSAL_FA,type ProposalSnapshot} from "@/lib/projects";
 import {fa} from "@/lib/format";
-import {nearestAspectRatio} from "@/lib/aspect";
+import {byShape,nearestAspectRatio,popularAspectRatios} from "@/lib/aspect";
 import {ResearchReport,ReviewNote} from "@/components/research-report";
 
 export const GENERATE_FA="بسازش",GENERATE_WITH_REFS_FA="با این مرجع‌ها بسازش",DRAFT_FA="اول پیش‌نویس ارزون",FRAMES_DRAFT_FA="اول پیش‌نمایش فریم‌ها",SKIP_DRAFT_FA="بدون پیش‌نویس بساز",VIDEO_NOW_FA="حالا ویدیو رو بساز",DEMO_NOTE_FA="نسخهٔ نمایشی: نه پولی کسر می‌شود و نه رسانهٔ واقعی ساخته می‌شود.";
@@ -31,10 +32,12 @@ function Head({kind,tag,onMention,demo}:{kind:"image"|"video";tag?:string;onMent
  * alternates marked «جایگزین», each with its fixed Neurons), its settings, its notes, then a full-width bar at its very bottom: [✦ بسازش] on the right, its cost
  * («۱۰ نورون») on the left. Tapping the tag mentions it in the chat to ask for changes.
  */
-export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onAspect,sound,onSound,busy,onApprove,onMention,excludedReferences,onToggleReference,onDraft,drafted}:{proposal:AgentProposal;tag?:string;
+export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,autoAspect,onAspect,sound,onSound,busy,onApprove,onMention,excludedReferences,onToggleReference,onDraft,drafted}:{proposal:AgentProposal;tag?:string;
  /** Video: sound on or off (owner, 2026-11-08), shown only when the chosen model makes checked sound. */sound?:boolean;onSound?:(on:boolean)=>void;
  /** The scene was arranged in «بوم»: «بساز» builds exactly that scene. */adjusted?:boolean;selected:string;onSelect:(id:string)=>void;
- /** The aspect ratio the generation will use (Whoush's from the brief or «بوم», unless the user picked one here). */aspect?:string;onAspect?:(r:string)=>void;
+ /** The aspect ratio the generation will use (Whoush's from the brief or «بوم», unless the user picked one here). */aspect?:string;
+ /** Whoush's own ratio (from the brief or «بوم»): «اتوماتیک» is selected while the user has not picked one; picking it again (null) goes back to it. */autoAspect?:string;
+ onAspect?:(r:string|null)=>void;
  busy:boolean;onApprove:()=>void;onMention?:()=>void;
  /** Research references the user removed from the package, and the toggle (remove or restore). */excludedReferences?:ReadonlySet<string>;onToggleReference?:(id:string)=>void;
  /** Video: make the cheap opening-frame draft first (the default), and whether it has been made. */onDraft?:()=>void;drafted?:boolean}){
@@ -53,7 +56,13 @@ export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onA
  const pick=(res?:string,dur?:number)=>{const m=family.find(s=>(res===undefined||s.resolution===res)&&(dur===undefined||s.durationSeconds===dur))??family.find(s=>res!==undefined?s.resolution===res:s.durationSeconds===dur);if(m)onSelect(m.modelId);};
  const ratios=chosen?.aspectRatios??[];
  // The ratio that will really be used: the wanted one, or the nearest this model offers (the same rule as the quote in studio.tsx).
- const shownAspect=nearestAspectRatio(aspect,ratios)??aspect;
+ const shownAspect=nearestAspectRatio(aspect,ratios)??aspect,autoShown=nearestAspectRatio(autoAspect,ratios)??autoAspect;
+ // «اتوماتیک» first, then only the popular ratios (owner, 2026-11-08), the rest behind «+». Automatic is on while the user has not picked a ratio here.
+ const auto=autoAspect!==undefined&&shownAspect===autoShown&&aspect===autoAspect;
+ const [allRatios,setAllRatios]=useState(false);
+ // The automatic ratio shows on «اتوماتیک» itself, so the popular pills are the others (the user's pick always among them).
+ const others=autoShown?ratios.filter(r=>r!==autoShown):ratios;
+ const popular=popularAspectRatios(others,[auto?undefined:shownAspect],autoAspect!==undefined?2:3),hidden=others.length-popular.length;
  return <Card size="sm" data-testid="proposal" data-generation={tag} className="gap-3 p-3">
   <Head kind={proposal.operation==="generate_video"?"video":"image"} tag={tag} onMention={onMention} demo={proposal.quoteMode==="demo"}/>
   {heads.length>1
@@ -69,7 +78,12 @@ export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onA
    :chosen&&<p className="flex items-center gap-2 type-body-sm text-fg-secondary">مدل: <span className="text-fg-primary"><ModelName name={familyOf(chosen.name)}/></span><Badge variant="secondary">{RECOMMENDED_FA}</Badge></p>}
   {/* The model's settings: Whoush's choice is selected (from the brief, «بوم» and the mode) until the user picks another. Only what this model really offers. */}
   {(ratios.length>0||resolutions.length>0||durations.length>0||chosen?.audio)&&<div className="flex flex-col gap-2">
-   {ratios.length>0&&<Setting label="نسبت تصویر">{ratios.map(r=><Opt key={r} on={shownAspect===r} onClick={()=>onAspect?.(r)} disabled={!onAspect}><bdi dir="ltr">{r}</bdi></Opt>)}</Setting>}
+   {ratios.length>0&&<Setting label="نسبت تصویر" wrap={allRatios}>
+    {autoAspect!==undefined&&<Opt on={auto} onClick={()=>onAspect?.(null)} disabled={!onAspect}><Icon icon={Sparkles} size={16} aria-hidden="true" className="size-3.5"/>اتوماتیک{autoShown&&<bdi dir="ltr" className="opacity-70">{autoShown}</bdi>}</Opt>}
+    {(allRatios||hidden<=0?byShape(others):popular).map(r=><Opt key={r} on={!auto&&shownAspect===r} onClick={()=>onAspect?.(r)} disabled={!onAspect}><bdi dir="ltr">{r}</bdi></Opt>)}
+    {hidden>0&&onAspect&&<button type="button" onClick={()=>setAllRatios(v=>!v)} aria-expanded={allRatios} aria-label={allRatios?"نسبت‌های کمتر":"همهٔ نسبت‌ها"}
+     className="flex h-8 shrink-0 items-center rounded-control px-2 type-caption text-fg-secondary motion-hover hover:bg-surface-hover hover:text-fg-primary">{allRatios?"کمتر":"+"+fa(hidden)}</button>}
+   </Setting>}
    {resolutions.length>0&&<Setting label="کیفیت">{resolutions.map(r=><Opt key={r} on={chosen?.resolution===r} onClick={()=>pick(r,chosen?.durationSeconds)} disabled={resolutions.length<2}><bdi dir="ltr">{r.toUpperCase()}</bdi></Opt>)}</Setting>}
    {chosen?.audio&&<div className="flex items-center gap-1.5"><span className="min-w-14 type-caption text-fg-secondary">صدا</span>
     <label className="flex h-8 items-center gap-2 type-caption text-fg-primary">
@@ -109,13 +123,13 @@ export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onA
 }
 
 /** One setting row of the generation card: its label, then its options. */
-function Setting({label,children}:{label:string;children:React.ReactNode}){
- return <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label={label}><span className="min-w-14 type-caption text-fg-secondary">{label}</span>{children}</div>;
+function Setting({label,children,wrap=true}:{label:string;children:React.ReactNode;/** False keeps every option on one row. */wrap?:boolean}){
+ return <div className={"flex items-center gap-1.5 "+(wrap?"flex-wrap":"flex-nowrap")} role="radiogroup" aria-label={label}><span className="min-w-14 shrink-0 type-caption text-fg-secondary">{label}</span>{children}</div>;
 }
 /** One option of a setting (a small pill; the selected one in the brand blue). A single option shows as fixed (nothing else to pick). */
 function Opt({on,onClick,disabled,children}:{on:boolean;onClick:()=>void;disabled?:boolean;children:React.ReactNode}){
  return <button type="button" role="radio" aria-checked={on} onClick={onClick} disabled={disabled&&!on?true:undefined}
-  className={"flex h-8 items-center rounded-control border px-2.5 type-caption motion-hover disabled:cursor-default "+(on?"border-primary bg-surface-selected text-fg-primary":"border-line-secondary text-fg-secondary hover:bg-surface-hover")}>{children}</button>;
+  className={"flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-control border px-2 type-caption motion-hover disabled:cursor-default "+(on?"border-primary bg-surface-selected text-fg-primary":"border-line-secondary text-fg-secondary hover:bg-surface-hover")}>{children}</button>;
 }
 
 /** A generation from earlier in the conversation: its quote has expired (or the page reloaded); its tag mentions it in the chat to ask for changes. */

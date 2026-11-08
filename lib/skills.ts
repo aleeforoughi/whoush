@@ -29,7 +29,7 @@ export const SKILLS={
  ...MARKETING_SKILLS
 } as const satisfies Record<string,Skill>;
 export type SkillId=keyof typeof SKILLS;
-export const SKILL_REGISTRY_VERSION="1.5.0";
+export const SKILL_REGISTRY_VERSION="1.6.0";
 export type SkillContext={prompt:string;kind:MediaKind;task?:"generate"|"edit"|"character";hasAudioReference?:boolean;hasSpeechAudio?:boolean;speechLanguage?:"fa"|"other"|"unknown";accent?:"tehrani"|"original"|"unspecified";hasCharacterReference?:boolean;characterRef?:{id:string;angles:readonly string[];version:number};visualStyle?:"photoreal"|"stylized"|"auto";
  /** Roles of the attached media: a character image brings character_creation, a graphic brings visual_designer, music brings audiographer. */
  attachmentRoles?:readonly AttachmentRole[]};
@@ -108,6 +108,7 @@ export function compileSkillInstructions(context:SkillContext):string{
    :["User first: make what the user asked for. Real and famous people (celebrities, politicians, athletes) are shown as themselves when asked; users accept at sign-up that they have consent. Never swap a named person for a fictional stand-in, and never moralise in the reply."]),
   "Provide typed intent, strict source/identity locks, creative prompt, camera/shot details, capability constraints and QA criteria.",
   "For new images always include proposed camera body/look, focal length, aperture, ISO, shutter, white balance, lighting, framing and focus. Do not claim actual EXIF.",
+  "Choose camera.aspectRatio automatically from the destination and the subject unless the user named one (then use theirs exactly): phone story, reel, short or TikTok 9:16; feed post 4:5 (or 3:4); profile picture, product grid or icon 1:1; one person's portrait 3:4 or 2:3; landscape or architecture 3:2; YouTube, web banner, presentation or wide scene 16:9; cinematic widescreen 21:9. A later message that changes only something else keeps the earlier ratio. Mention the chosen ratio only when it is not obvious.",
   "For video include movement, frame continuity, target FPS/shutter, exposure, duration and edits as supported by the verified model.",
   "For edits preserve source pixels, identity, framing, motion, PTS, FPS, audio and color unless explicitly requested otherwise.",
   "Apply anti-drift and continuity locks to all media; for video enforce object permanence and anti-teleport motion.",

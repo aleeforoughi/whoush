@@ -1160,7 +1160,7 @@ export function Studio(){
          ?<ProposalCard proposal={proposal} tag={m.snapshot.tag} adjusted={sceneEdit?.id===m.id} selected={selected} onSelect={setSelected}
           drafted={draftedFor===m.id} onDraft={proposal.draft?()=>void approve(true):undefined}
           excludedReferences={excludedRefs} onToggleReference={id=>setExcludedRefs(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n;})}
-          aspect={aspectChoice??(sceneEdit?.id===m.id?sceneEdit.aspect:undefined)??m.snapshot.plan.camera?.aspectRatio} sound={soundChoice??proposal?.soundWanted??true} onSound={setSoundChoice} onAspect={setAspectChoice} busy={busy} onApprove={()=>void approve()} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>
+          aspect={aspectChoice??(sceneEdit?.id===m.id?sceneEdit.aspect:undefined)??m.snapshot.plan.camera?.aspectRatio} autoAspect={(sceneEdit?.id===m.id?sceneEdit.aspect:undefined)??m.snapshot.plan.camera?.aspectRatio} sound={soundChoice??proposal?.soundWanted??true} onSound={setSoundChoice} onAspect={setAspectChoice} busy={busy} onApprove={()=>void approve()} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>
          :<PastProposalCard snapshot={m.snapshot} adjusted={Boolean(pastEdits[m.id])} busy={busy||reading||loadingProject}
           onBuildScene={pastEdits[m.id]&&m.snapshot.tag&&m.snapshot.plan.staging?()=>buildScene(m.id,m.snapshot.tag!,m.snapshot.plan.staging!,m.snapshot.plan.camera?.aspectRatio):undefined} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>)}
         {m.kind==="no_model"&&<NoModelCard result={m.snapshot}/>}
