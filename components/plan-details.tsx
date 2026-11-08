@@ -207,7 +207,7 @@ export function AgentQuestion({question,repeated,waiting,onAnswer,references,upl
  const edits=editCards??[];
  // Every widget has a clear title (owner, 2026-11-08): what it is for, then the content, then its actions at the bottom.
  const title=references?"عکس‌های لازم: "+references.titleFa:edits.length>1?"ادیت عکس‌ها":edits.length?"ادیت عکس":"سؤال هووش";
- return <div role={waiting?"status":undefined} className={"flex w-full flex-col gap-3 rounded-card border p-3 "+(waiting?"border-primary bg-surface-subtle":"border-line-secondary bg-surface-subtle")}>
+ return <div role={waiting?"status":undefined} className="whoush-widget flex w-full flex-col gap-4 rounded-card p-4">
   <WidgetHeader icon={references?ImagePlus:edits.length?Brush:CircleHelp} title={title} tone={waiting?"attention":"neutral"}>
    {edits.length===1&&<TagBadge tag={edits[0].tag}/>}
    {waiting&&<span className="ms-auto inline-flex shrink-0 items-center gap-1.5 rounded-control bg-primary px-2.5 py-0.5 type-caption font-medium text-primary-foreground animate-pulse motion-reduce:animate-none">

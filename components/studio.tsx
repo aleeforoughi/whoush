@@ -1190,7 +1190,7 @@ export function Studio(){
            aspect={aspectChoice??(sceneEdit?.id===m.id?sceneEdit.aspect:undefined)??m.snapshot.plan.camera?.aspectRatio} autoAspect={(sceneEdit?.id===m.id?sceneEdit.aspect:undefined)??m.snapshot.plan.camera?.aspectRatio} sound={soundChoice??proposal?.soundWanted??true} onSound={setSoundChoice} onAspect={setAspectChoice} busy={busy} onApprove={()=>void approve()} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>
           :<PastProposalCard embedded={changing} snapshot={m.snapshot} adjusted={Boolean(pastEdits[m.id])} busy={busy||reading||loadingProject}
            onBuildScene={pastEdits[m.id]&&m.snapshot.tag&&m.snapshot.plan.staging?()=>buildScene(m.id,m.snapshot.tag!,m.snapshot.plan.staging!,m.snapshot.plan.camera?.aspectRatio):undefined} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>;
-         const widget=changing&&focus&&m.kind==="proposal"?(editor:React.ReactNode)=><section data-change-widget="" aria-label={changeTitleFa(named)} className="flex w-full flex-col gap-3 overflow-hidden rounded-card border border-line-secondary bg-surface-subtle p-3">
+         const widget=changing&&focus&&m.kind==="proposal"?(editor:React.ReactNode)=><section data-change-widget="" aria-label={changeTitleFa(named)} className="whoush-widget flex w-full flex-col gap-4 overflow-hidden rounded-card p-4">
           <WidgetHeader icon={changeIcon(named)} title={changeTitleFa(named)}>{m.snapshot.tag&&<TagBadge tag={m.snapshot.tag} onMention={()=>changeGeneration(m.snapshot.tag!)}/>}</WidgetHeader>
           {editor}
           {card}
@@ -1218,7 +1218,7 @@ export function Studio(){
        </div>;
       })}
       {editing&&editing.a.previewUrl&&<RegionEditor tag={editing.a.tag} photoUrl={editing.a.previewUrl} suggested={editing.suggested} onClose={()=>setEditing(null)} onDone={r=>void applyEdit(r)}/>}
-      {waitingFor&&<div role="status" aria-live="polite" className="flex w-full flex-col gap-3 rounded-card border border-line-secondary bg-surface-subtle p-3">
+      {waitingFor&&<div role="status" aria-live="polite" className="whoush-widget flex w-full flex-col gap-4 rounded-card p-4">
        <WidgetHeader icon={ScanSearch} title="بررسی فایل‌ها"/>
        <span className="type-body-sm text-fg-primary">{WAITING_FA}</span>
        <ul className="flex flex-wrap gap-2">{waitingFor.map(a=>{const r=reviews[a.id];return <li key={a.id} className="relative size-16 overflow-hidden rounded-control bg-surface-hover">

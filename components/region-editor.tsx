@@ -45,7 +45,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
  const [wandState,setWandState]=useState<"idle"|"loading"|"ready"|"failed">("loading");
  const [wandBusy,setWandBusy]=useState(false);
  const [overSelection,setOverSelection]=useState(false);
- const tap=useRef<{x:number;y:number}|null>(null);
+ const tap=useRef<{x:number;y:number}|null>(null),tapping=useRef(false);
  const seg=useRef<Promise<string|null>|null>(null);
  const [view,setView]=useState<View>({s:1,x:0,y:0});
  const [natural,setNatural]=useState<{w:number;h:number}|null>(null);
@@ -55,8 +55,9 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
  const [steps,setSteps]=useState({u:0,r:0});
  const stage=useRef<HTMLDivElement>(null);
  const layers=useRef<(HTMLCanvasElement|null)[]>([]);
- const history=useRef<{slot:number;data:ImageData;created:boolean}[]>([]);
- const redoStack=useRef<{slot:number;before:ImageData;after:ImageData;created:boolean;region?:Draft}[]>([]);
+ /** `removed`: the step emptied its area, so its badge and comment went with it (undo brings them back). */
+ const history=useRef<{slot:number;data:ImageData;created:boolean;removed?:Draft}[]>([]);
+ const redoStack=useRef<{slot:number;before:ImageData;after:ImageData;created:boolean;region?:Draft;removed?:Draft}[]>([]);
  const pointers=useRef(new Map<number,{x:number;y:number}>());
  const stroke=useRef<{slot:number;last:{x:number;y:number};created:boolean}|null>(null);
  const pinch=useRef<{d:number;mx:number;my:number;view:View}|null>(null);
@@ -122,6 +123,11 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
   * selected, that object is removed from its area. One step to undo either way.
   */
  async function wandTap(cx:number,cy:number){
+  // One tap at a time: a second tap while one is working is ignored (two at once would both take the same new area).
+  if(tapping.current)return;tapping.current=true;
+  try{await wandTapNow(cx,cy);}finally{tapping.current=false;}
+ }
+ async function wandTapNow(cx:number,cy:number){
   const key=await ensureSeg(true);if(!key)return;
   const hit=selectedAt(cx,cy);
   if(hit!==null){
@@ -132,18 +138,24 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
    setWandBusy(false);
    history.current.push({slot:hit,data:ctx.getImageData(0,0,m.width,m.height),created:false});if(history.current.length>30)history.current.shift();redoStack.current=[];bump();
    paintMask(ctx,mask,REGION_COLORS[hit].css,true);setOverSelection(false);
+   // Nothing left in the area (owner, 2026-11-08): its badge and comment go too.
+   if(!maskHasPaint(m)){
+    const gone=regionsRef.current.find(r=>r.slot===hit);history.current[history.current.length-1].removed=gone;
+    const next=regionsRef.current.filter(r=>r.slot!==hit);regionsRef.current=next;setRegions(next);openRef.current=null;setOpen(null);return;
+   }
    openRef.current=hit;setOpen(hit);return;
   }
+  const p=toPhoto(cx,cy,0),w0=layers.current[0]?.width??0,h0=layers.current[0]?.height??0;if(p.x<0||p.y<0||p.x>w0||p.y>h0)return;
+  setWandBusy(true);
+  let mask;try{mask=await maskAt(key,[[p.x,p.y]]);}catch{setWandBusy(false);setWandState("failed");return;}
+  setWandBusy(false);
+  // The area is chosen now, with the regions as they are after the wait.
   const list=regionsRef.current,current=openRef.current;
   let slot:number,created=false;
   if(current!==null&&list.some(r=>r.slot===current))slot=current;
   else if(list.length<MAX_REGIONS){slot=[0,1,2,3,4].find(s=>!list.some(r=>r.slot===s))!;created=true;}
   else slot=list[list.length-1].slot;
   const m=layers.current[slot],ctx=m?.getContext("2d");if(!m||!ctx)return;
-  const p=toPhoto(cx,cy,slot);if(p.x<0||p.y<0||p.x>m.width||p.y>m.height)return;
-  setWandBusy(true);
-  let mask;try{mask=await maskAt(key,[[p.x,p.y]]);}catch{setWandBusy(false);setWandState("failed");return;}
-  setWandBusy(false);
   history.current.push({slot,data:ctx.getImageData(0,0,m.width,m.height),created});if(history.current.length>30)history.current.shift();redoStack.current=[];bump();
   paintMask(ctx,mask,REGION_COLORS[slot].css);setOverSelection(true);
   // The badge sits on the selection's top edge, never on the object (a second tap there removes it).
@@ -212,12 +224,14 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
   const after=ctx.getImageData(0,0,m.width,m.height);ctx.putImageData(last.data,0,0);
   let region:Draft|undefined;
   if(last.created&&!maskHasPaint(m)){region=regionsRef.current.find(r=>r.slot===last.slot);const next=regionsRef.current.filter(r=>r.slot!==last.slot);regionsRef.current=next;setRegions(next);if(openRef.current===last.slot){openRef.current=null;setOpen(null);}}
-  redoStack.current.push({slot:last.slot,before:last.data,after,created:last.created,region});bump();
+  if(last.removed&&!regionsRef.current.some(r=>r.slot===last.slot)){const next=[...regionsRef.current,last.removed].sort((a,b)=>a.n-b.n);regionsRef.current=next;setRegions(next);}
+  redoStack.current.push({slot:last.slot,before:last.data,after,created:last.created,region,removed:last.removed});bump();
  }
  function redo(){
   const r=redoStack.current.pop();if(!r)return;
   const ctx=layers.current[r.slot]?.getContext("2d");if(!ctx)return;
-  ctx.putImageData(r.after,0,0);history.current.push({slot:r.slot,data:r.before,created:r.created});
+  ctx.putImageData(r.after,0,0);history.current.push({slot:r.slot,data:r.before,created:r.created,removed:r.removed});
+  if(r.removed){const next=regionsRef.current.filter(x=>x.slot!==r.slot);regionsRef.current=next;setRegions(next);if(openRef.current===r.slot){openRef.current=null;setOpen(null);}}
   if(r.region&&!regionsRef.current.some(x=>x.slot===r.slot)){const next=[...regionsRef.current,r.region].sort((a,b)=>a.n-b.n);regionsRef.current=next;setRegions(next);}
   bump();
  }

@@ -86,6 +86,11 @@ bdi,
   /* The brand primary as text (the «با کیفیت» pill): primary itself in light; in dark #005bff on black is under 4.5:1, so a lighter mix of it. */
   --whoush-primary-ink: var(--primary);
 }
+/* Cards and widgets in the chat (owner, 2026-11-08): no border, a soft surface that lifts off the page: a little darker than white in light mode,
+   a little lighter than black in dark mode. Unlayered, so it wins over a component's own border and background utilities. */
+:root { --whoush-widget: color-mix(in oklab, #181c25 5%, #ffffff); }
+.dark { --whoush-widget: color-mix(in oklab, #f5f8ff 10%, #000000); }
+.whoush-widget { background-color: var(--whoush-widget); border-color: transparent; }
 .dark {
   --whoush-on-tone: #000;
   --whoush-primary-ink: color-mix(in oklab, var(--primary) 70%, white);

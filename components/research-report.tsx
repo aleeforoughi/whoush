@@ -11,7 +11,7 @@ const SOURCE_FA={wikimedia:"ویکی‌مدیا",openverse:"اوپن‌ورس"} 
 /** A report card that folds to its title and a one-line summary, and opens for the details. */
 function Fold({title,icon,summary,defaultOpen,children}:{title:string;icon:LucideIcon;summary:string;defaultOpen:boolean;children:ReactNode}){
  const [open,setOpen]=useState(defaultOpen);
- return <section aria-label={title} className="flex flex-col gap-2.5 rounded-card border border-line-secondary bg-surface-subtle p-3">
+ return <section aria-label={title} className="flex flex-col gap-2.5">
   <button type="button" onClick={()=>setOpen(o=>!o)} aria-expanded={open} className="flex w-full items-center gap-2 rounded-control text-start motion-hover hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
    <Icon icon={icon} size={16} aria-hidden="true" className="size-4 shrink-0 text-primary"/>
    <span className="type-label text-fg-primary">{title}</span>

@@ -64,7 +64,7 @@ export function ProposalCard({embedded,proposal,tag,adjusted,selected,onSelect,a
  const others=autoShown?ratios.filter(r=>r!==autoShown):ratios;
  const popular=popularAspectRatios(others,[auto?undefined:shownAspect],autoAspect!==undefined?2:3),hidden=others.length-popular.length;
  const Wrap=embedded?EmbeddedBox:Card;
- return <Wrap size="sm" data-testid="proposal" data-generation={tag} className="gap-3 p-3">
+ return <Wrap size="sm" data-testid="proposal" data-generation={tag} className="whoush-widget gap-4 p-4">
   {!embedded&&<Head kind={proposal.operation==="generate_video"?"video":"image"} tag={tag} onMention={onMention} demo={proposal.quoteMode==="demo"}/>}
   {heads.length>1
    ?<Select value={headOf(selected)} onValueChange={v=>onSelect(String(v))} items={items}>
@@ -99,7 +99,7 @@ export function ProposalCard({embedded,proposal,tag,adjusted,selected,onSelect,a
   {proposal.review&&<ReviewNote review={proposal.review}/>}
   {proposal.quoteMode==="demo"&&<p className="type-caption text-fg-secondary">{DEMO_NOTE_FA}</p>}
   {/* Video drafts first (owner, 2026-11-06): a cheap still of the opening frame to check the look before the expensive video; the user may skip it. */}
-  {proposal.draft&&onDraft&&!drafted&&<div className="-mx-3 -mb-3 mt-1 flex flex-col gap-2 rounded-b-[inherit] border-t border-line-secondary bg-surface-subtle px-3 py-2.5">
+  {proposal.draft&&onDraft&&!drafted&&<div className="flex flex-col gap-3">
    <p className="type-caption text-fg-secondary">{proposal.draft.kind==="frames"
     ?"پیشنهادم اینه اول "+fa(proposal.draft.frames?.length??0)+" فریم از ویدیوت (اول، وسط، آخر و هر ۳ ثانیه یکی) رو با عکس‌هات ویرایش کنم، تا نتیجهٔ ویرایش رو قبل از خرج اصلی ببینی و اگه چیزی اشتباهه درستش کنیم. این پیش‌نمایشِ ویرایشه: مدل‌های ویدیویی فعلی فقط پرامپت رو می‌خونن، ویدیو و عکس‌هات رو نمی‌بینن، پس ویدیوی نهایی ممکنه با این فریم‌ها فرق داشته باشه."
     :proposal.draft.kind==="video"
@@ -111,7 +111,7 @@ export function ProposalCard({embedded,proposal,tag,adjusted,selected,onSelect,a
    </WidgetActions>
   </div>}
   {/* The call to action, full width at the card's very bottom: [✦ بسازش] on the right (as Persian reads), the cost on the left. */}
-  {!(proposal.draft&&onDraft&&!drafted)&&<div className="-mx-3 -mb-3 mt-1 flex flex-col gap-2 rounded-b-[inherit] border-t border-line-secondary bg-surface-subtle px-3 py-2.5">
+  {!(proposal.draft&&onDraft&&!drafted)&&<div className="flex flex-col gap-3">
    {drafted&&<p className="type-caption text-fg-secondary">پیش‌نویس آماده‌ست. اگه ظاهرش درسته ویدیو رو بساز؛ وگرنه توی چت بگو چی عوض بشه.</p>}
    {/* The call to action the full width (owner, 2026-11-08), its cost inside it. */}
    <WidgetActions>
@@ -126,7 +126,7 @@ export function ProposalCard({embedded,proposal,tag,adjusted,selected,onSelect,a
 
 /** The generation card's body inside a change widget: the same layout, with no card of its own (the widget is the card). */
 function EmbeddedBox({children,className,size:_size,...rest}:React.ComponentProps<"div">&{size?:string}){
- void _size;return <div {...rest} className={"flex flex-col "+(className??"").replace(/\bp-3\b/,"p-0")}>{children}</div>;
+ void _size;return <div {...rest} className={"flex flex-col "+(className??"").replace(/\bp-4\b/,"p-0").replace(/\bwhoush-widget\b/,"")}>{children}</div>;
 }
 
 /** One setting row of the generation card: its label, then its options. */
@@ -144,7 +144,7 @@ export function PastProposalCard({embedded,snapshot,onMention,adjusted,onBuildSc
  /** Inside a change widget: no card or title of its own. */embedded?:boolean;
  /** The scene was arranged in «بوم»: «این صحنه رو بساز» asks Whoush for a revision with exactly that scene and a fresh quote. */adjusted?:boolean;onBuildScene?:()=>void;busy?:boolean}){
  const Wrap=embedded?EmbeddedBox:Card;
- return <Wrap size="sm" data-testid="past-proposal" data-generation={snapshot.tag} className="gap-3 p-3">
+ return <Wrap size="sm" data-testid="past-proposal" data-generation={snapshot.tag} className="whoush-widget gap-4 p-4">
   {!embedded&&<Head kind={snapshot.operation==="generate_video"?"video":"image"} tag={snapshot.tag} onMention={onMention}/>}
   <p className="flex flex-wrap items-center justify-between gap-2 type-body-sm text-fg-secondary">
    <span>مدل: <span className="text-fg-primary"><ModelName name={snapshot.modelName}/></span></span>
@@ -170,7 +170,7 @@ const NO_MODEL_COPY:Record<UnsupportedReason|"unknown",{title:string;body:string
 export const noModelTitle=(reason?:UnsupportedReason)=>NO_MODEL_COPY[reason??"unknown"].title;
 export function NoModelCard({result}:{result:NoModelResult}){
  const copy=NO_MODEL_COPY[result.reason??"unknown"];
- return <Card size="sm" className="gap-3 p-3">
+ return <Card size="sm" className="whoush-widget gap-4 p-4">
   <WidgetHeader icon={result.reason==="media_review"?ShieldAlert:CircleOff} title={copy.title}/>
   {result.plan?.suggestedModel&&<SuggestedModelNote model={result.plan.suggestedModel}/>}
   <p className="type-caption text-fg-secondary">{copy.body}</p>

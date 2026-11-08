@@ -204,7 +204,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus,embe
  <div role="group" aria-label="بوم" className="@container flex min-w-0 flex-col gap-3">
   {/* One card holds everything: its title, the preview, then its sub-sections (frame, camera, lighting), so the layout never splits. The card itself never
       opens or closes; its sub-sections do, one at a time. */}
-  <div className={"flex min-w-0 flex-col gap-3 "+(embedded?"":"rounded-card border border-line-secondary bg-surface-subtle p-2")}>
+  <div className={"flex min-w-0 flex-col gap-3 "+(embedded?"":"whoush-widget rounded-card p-2")}>
   <div className={"flex w-full flex-col gap-3 pb-0 text-start "+(embedded?"":"p-3")}>
    {!embedded&&<span className="flex items-center gap-2 px-1">
     <Icon icon={Box} size={16} aria-hidden="true" className="size-4 shrink-0 text-fg-secondary"/>
@@ -379,7 +379,7 @@ function SnapCaption({c,icon}:{c:{title:string;value:string};/** Its icon, in th
 }
 /** A smaller snapshot tile (the camera, the lighting): its drawing in a dark tile with the frame's rounded border, its details under it. */
 function SnapTile({c,icon,children}:{c:{title:string;value:string};icon?:LucideIcon;children:ReactNode}){
- return <span className="flex w-36 min-w-0 flex-col gap-1.5 @lg:w-44">
+ return <span className="flex min-w-0 max-w-44 flex-1 basis-32 flex-col gap-1.5">
   <span className="dark flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-card border border-line-secondary bg-background p-2 text-fg-primary [&_svg]:h-full! [&_svg]:max-h-full! [&_svg]:w-auto! [&_svg]:max-w-full! [&_svg]:pointer-events-none">{children}</span>
   <SnapCaption c={c} icon={icon}/>
  </span>;
