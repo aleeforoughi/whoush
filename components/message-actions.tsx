@@ -36,6 +36,15 @@ export function useInFocusBand(ref:RefObject<HTMLElement|null>):boolean{
  },[ref]);
  return inside;
 }
+/** Whether the element is on screen (clipped by its scrolling chat too); only watched while `active`. */
+function useOnScreen(ref:RefObject<HTMLElement|null>,active:boolean):boolean{
+ const [on,setOn]=useState(false);
+ useEffect(()=>{
+  const el=ref.current;if(!active||!el||typeof IntersectionObserver==="undefined")return;
+  const io=new IntersectionObserver(es=>setOn(es.some(e=>e.isIntersecting)));io.observe(el);return()=>io.disconnect();
+ },[ref,active]);
+ return active&&on;
+}
 /** A tooltip that opens on hover and on keyboard focus; the trigger is rendered as `render`. */
 function Hint({label,render,children}:{label:string;render:ReactElement;children:ReactNode}){
  return <Tooltip><TooltipTrigger render={render}>{children}</TooltipTrigger><TooltipContent side="bottom">{label}</TooltipContent></Tooltip>;
@@ -52,12 +61,13 @@ function ActionButton({label,icon,onClick,disabled}:{label:string;icon:LucideIco
  * The action bar under a chat message (user and agent alike): react with an emoji (Slack-style), copy the text, run it again, and when it was sent («۶ دقیقه پیش»; the full date and time on hover
  * or focus). Only icons; each one's name is its tooltip. The bar keeps its space but stays invisible until the pointer is over the message (the nearest `group`)
  * or focus is inside it, so keyboard users reach it too. On touch screens, which have no hover (owner, 2026-11-07: always showing every bar is crowded and
- * repetitive), a bar fades in quickly only while its message passes through the focus band (useInFocusBand), and on the newest message (`pinned`).
+ * repetitive), a bar fades in quickly only while its message passes through the focus band (useInFocusBand). At the very top or bottom of the chat
+ * (`edge`; owner, 2026-11-08: the band cannot reach the first and last messages there) every bar on screen shows, its time included.
  */
-export function MessageActions({text,at,now,onRerun,rerunDisabled,onReact,pinned=false}:{text:string;at:string;now:number;onRerun?:()=>void;rerunDisabled?:boolean;
+export function MessageActions({text,at,now,onRerun,rerunDisabled,onReact,edge=false}:{text:string;at:string;now:number;onRerun?:()=>void;rerunDisabled?:boolean;
  /** Slack-style reaction: opens the reaction palette; picking toggles the user's reaction on this message. */onReact?:(emoji:ReactionEmoji)=>void;
- /** The newest message: its bar stays shown on a touch screen (it often cannot scroll up into the focus band). */pinned?:boolean}){
- const bar=useRef<HTMLDivElement>(null),near=useInFocusBand(bar);
+ /** The chat is scrolled to its very top or bottom: the bar shows while it is on screen. */edge?:boolean}){
+ const bar=useRef<HTMLDivElement>(null),near=useInFocusBand(bar),onScreen=useOnScreen(bar,edge);
  const [copied,setCopied]=useState(false);
  const timer=useRef(0);
  useEffect(()=>()=>window.clearTimeout(timer.current),[]);
@@ -66,7 +76,7 @@ export function MessageActions({text,at,now,onRerun,rerunDisabled,onReact,pinned
    setCopied(true);window.clearTimeout(timer.current);timer.current=window.setTimeout(()=>setCopied(false),2000);
   }).catch(()=>{ /* clipboard blocked: nothing copied, nothing claimed */ });
  };
- return <div ref={bar} data-near={near||pinned} className="flex h-8 items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-none [@media(hover:none)]:data-[near=true]:pointer-events-auto [@media(hover:none)]:data-[near=true]:opacity-100">
+ return <div ref={bar} data-near={near||(edge&&onScreen)} className="flex h-8 items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-none [@media(hover:none)]:data-[near=true]:pointer-events-auto [@media(hover:none)]:data-[near=true]:opacity-100">
   {onReact&&<EmojiPalette emojis={REACTION_EMOJIS} label={REACT_FA} columns={8} onPick={e=>onReact(e as ReactionEmoji)}
    trigger={<button type="button" aria-label={REACT_FA} title={REACT_FA} className="hit-area flex size-8 shrink-0 items-center justify-center rounded-control text-fg-secondary motion-hover hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><Icon icon={SmilePlus} size={16} aria-hidden="true" className="size-4"/></button>}/>}
   {text&&<ActionButton label={copied?COPIED_FA:COPY_FA} icon={copied?Check:Copy} onClick={copy}/>}

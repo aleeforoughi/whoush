@@ -104,9 +104,11 @@ export function Studio(){
   if(st.raf)return;
   st.raf=requestAnimationFrame(()=>{
    st.raf=0;
-   if(!window.matchMedia("(max-width: 767px)").matches){setCompact(false);return;}
-   const top=el.scrollTop,atEnd=el.scrollHeight-top-el.clientHeight<48;
-   if(atEnd){setCompact(false);st.anchor=top;}
+   const top=el.scrollTop,end=el.scrollHeight-top-el.clientHeight<48;
+   if(end!==atEndRef.current){atEndRef.current=end;setAtEnd(end);}
+   setAtStart(top<8);
+   if(!window.matchMedia("(max-width: 767px)").matches){setCompact(false);st.top=top;return;}
+   if(end){setCompact(false);st.anchor=top;}
    else if(top<st.top&&st.anchor-top>24)setCompact(true);
    else if(top>st.top&&top-st.anchor>24)setCompact(false);
    if((top<st.top)!==(st.anchor>st.top))st.anchor=st.top; // a change of direction starts a new run
@@ -424,7 +426,22 @@ export function Studio(){
   // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount; syncUrl only needs the router, which is stable
  },[]);
  useEffect(()=>{const live=urls.current;return()=>{live.forEach(u=>URL.revokeObjectURL(u));live.clear();};},[]);
- useEffect(()=>{endRef.current?.scrollIntoView({block:"end"});},[messages,proposal,error,thinking?.stage]);
+ /**
+  * Following the chat's end (owner, 2026-11-08: the chat jumped on a generated image card on the iPhone): it scrolls down by itself only when the user
+  * sends a message or is already at the end. A generation's card updates every few seconds; scrolling to the end on each update pulled the user back
+  * down while they read. While at the end, content that grows (an image finishing loading) keeps them at the end; Safari has no scroll anchoring.
+  */
+ const atEndRef=useRef(true),[atEnd,setAtEnd]=useState(true),[atStart,setAtStart]=useState(true),lastCount=useRef(0);
+ useEffect(()=>{
+  const sent=messages.length>lastCount.current&&messages.at(-1)?.role==="user";lastCount.current=messages.length;
+  if(sent||atEndRef.current)endRef.current?.scrollIntoView({block:"end"});
+ },[messages,proposal,error,thinking?.stage]);
+ const logRef=useRef<HTMLDivElement>(null);
+ useEffect(()=>{
+  const log=logRef.current;if(!log||typeof ResizeObserver==="undefined")return;
+  const ro=new ResizeObserver(()=>{if(atEndRef.current)endRef.current?.scrollIntoView({block:"end"});});
+  ro.observe(log);return()=>ro.disconnect();
+ },[]);
  const blobFor=(id:string)=>blobs.current.get(id);
  /** Opens the viewer on one attachment, with every attachment of this conversation (sent messages first, then the tray) to step through. */
  /**
@@ -1075,14 +1092,14 @@ export function Studio(){
     </div>}
     {/* Native scrolling (owner, 2026-11-08: laggy on the iPhone): momentum, and no script running on every frame under the glass bars. */}
     <div onScroll={onChatScroll} className="scrollbar-right min-h-0 flex-1 overflow-y-auto overscroll-contain">
-     <div aria-live="polite" aria-label="گفت‌وگو" role="log" style={{paddingBottom:composerH+16}} className={"mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4 p-4"+(topBars?"":" max-md:pt-16")}>
+     <div ref={logRef} aria-live="polite" aria-label="گفت‌وگو" role="log" style={{paddingBottom:composerH+16}} className={"mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4 p-4"+(topBars?"":" max-md:pt-16")}>
       {!messages.length&&!loadingProject&&<ChatEmpty/>}
       {loadingProject&&<p role="status" className="type-body-sm text-fg-secondary">در حال باز کردن پروژه…</p>}
       {/* User messages: on the right (the start in RTL), in a filled grey bubble with no border, their files and «اصلاح» generations above it as the same cards
           they were in the chat input. Agent messages: full-width plain text, then the plan as part of the conversation (icons and diagrams), then the compact card
           that carries the actions (generate, change). Each message gets the hover action bar (copy, run again, time). */}
       {messages.map((m,i)=>{
-       const actions=<MessageActions pinned={i===messages.length-1} text={m.text} at={m.at} now={now} onRerun={m.kind==="gif"?undefined:()=>rerun(m.id)} rerunDisabled={busy||reading||loadingProject} onReact={e=>react(m.id,e,"user")}/>;
+       const actions=<MessageActions edge={atStart||atEnd} text={m.text} at={m.at} now={now} onRerun={m.kind==="gif"?undefined:()=>rerun(m.id)} rerunDisabled={busy||reading||loadingProject} onReact={e=>react(m.id,e,"user")}/>;
        const reactions=<MessageReactions reactions={m.reactions} onToggle={e=>react(m.id,e,"user")}/>;
        if(m.role==="user")return <div key={m.id} className="group flex flex-col items-start gap-2">
         {((m.attachments?.length??0)>0||(m.generationTags?.length??0)>0)&&<ul aria-label="پیوست‌های این پیام" className="flex max-w-full flex-wrap gap-2">
@@ -1117,7 +1134,7 @@ export function Studio(){
          :m.kind!=="job"&&<p className="whitespace-pre-wrap break-words type-body-sm text-fg-primary">
           <span className="sr-only">هووش: </span><span data-translate-exact=""><TypeOut text={m.text} animate={fresh.has(m.id)}/></span>
          </p>}
-        {m.kind==="job"&&<PreviewCard tag={m.snapshot.tag} state={m.snapshot.state} messageFa={m.snapshot.messageFa} job={m.snapshot} model={m.snapshot.draft?draftLabelFa(m.snapshot.draft):m.snapshot.tag?generationMap.get(m.snapshot.tag)?.modelName:undefined}
+        {m.kind==="job"&&<PreviewCard aspect={m.snapshot.rerun?.aspectRatio} tag={m.snapshot.tag} state={m.snapshot.state} messageFa={m.snapshot.messageFa} job={m.snapshot} model={m.snapshot.draft?draftLabelFa(m.snapshot.draft):m.snapshot.tag?generationMap.get(m.snapshot.tag)?.modelName:undefined}
          output={(m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined))?.find(o=>isOwnedOutputUrl(o.url,window.location.origin))} video={m.snapshot.draft?Boolean(m.snapshot.draft.video):(m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false)} onOpen={()=>openPreview(m.snapshot,m.id)}
          onView={()=>openGenerationViewer(m.id)}
          onRetry={m.snapshot.rerun&&!busy?()=>void rerunJob(m.id):undefined}

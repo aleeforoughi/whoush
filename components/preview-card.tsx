@@ -20,13 +20,15 @@ export type PreviewOutput={kind:"image"|"video";url:string};
  * or a video with its own player controls, or the kind's icon while there is no output yet. Under it, «پیش‌نمایش #تولید-۱», the job state and the message, as a
  * button that opens the preview panel on this generation. Shown for every generation with a preview, so the panel can always be brought back from the chat.
  */
-export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,onEdit,onView,onRetry,onSwitch,retryNeurons}:{tag?:string;state:string;messageFa:string;
+export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,onEdit,onView,onRetry,onSwitch,retryNeurons,aspect}:{tag?:string;state:string;messageFa:string;
  /** The job, for its live status line while it works (the same line as the preview panel). */job?:JobView;model?:string;
  output?:PreviewOutput;video?:boolean;onOpen:()=>void;
  /** Full screen (the viewer): a tap on the image, or the corner button on a video. */onView?:()=>void;
  /** «ویرایش با قلم» on a finished image. */onEdit?:()=>void;
  /** «دوباره بساز» on a generation that stopped without an output (owner, 2026-11-07), with its price when known. */onRetry?:()=>void;retryNeurons?:number;
- /** A refused generation on the other model the server suggests (`job.alternative`). */onSwitch?:()=>void}){
+ /** A refused generation on the other model the server suggests (`job.alternative`). */onSwitch?:()=>void;
+ /** The ratio asked for («9:16»): the picture's box is reserved before it loads, so the chat does not jump when it arrives (Safari has no scroll anchoring). */aspect?:string}){
+ const ratio=aspect&&/^\d{1,2}:\d{1,2}$/.test(aspect)?aspect.replace(":"," / "):undefined;
  const label=OPEN_PREVIEW_FA+(tag?" "+displayTag(tag):"");
  // «دانلود» (owner, 2026-11-08): on a phone, the share sheet with «Save Image» / «Save Video»; elsewhere a download (components/share-actions.tsx).
  const saveOutput=useSaveFromUrl(output?.url??"",{name:"output",mime:output?.kind==="video"?"video/mp4":"image/png",kind:output?.kind==="video"?"video":"image",tag:tag??"generation1"});
@@ -49,7 +51,7 @@ export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,o
    :<span className="group relative block w-fit max-w-full"><button type="button" onClick={output&&onView?onView:onOpen} aria-label={output&&onView?"نمایش تمام‌صفحه"+(tag?" "+displayTag(tag):""):label} className={media+" motion-hover not-disabled:hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"}>
     {output
      // eslint-disable-next-line @next/next/no-img-element -- a provider output URL shown as the card's preview
-     ?<img src={output.url} alt="" className="block h-auto max-h-[300px] w-auto max-w-full rounded-control"/>
+     ?<img src={output.url} alt="" style={ratio?{aspectRatio:ratio,height:300}:undefined} className={"block max-h-[300px] max-w-full rounded-control "+(ratio?"w-auto object-contain":"h-auto w-auto")}/>
      :<Icon icon={failed?TriangleAlert:video?Clapperboard:ImageIcon} size={32} aria-hidden="true" className={failed?"text-destructive":undefined}/>}
    </button></span>}
   {failed&&<div className="flex flex-wrap items-center justify-between gap-2 px-1">
