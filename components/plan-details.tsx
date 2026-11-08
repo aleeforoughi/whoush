@@ -1,7 +1,7 @@
 "use client";
 import {TagText} from "@/components/message-text";
 import {useState,type ReactNode} from "react";
-import {Aperture,ArrowLeft,Brush,Camera,SlidersHorizontal,CircleCheck,CircleHelp,Clapperboard,ImagePlus,Image as ImageIcon,Film,Focus,Frame,Gauge,Layers,Lightbulb,ListChecks,MessageCircle,Move,Paperclip,RefreshCw,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Star,Thermometer,Timer,Upload,type LucideIcon,LoaderCircle} from "lucide-react";
+import {Aperture,ArrowLeft,Brush,Camera,SlidersHorizontal,CircleCheck,CircleHelp,Clapperboard,ImagePlus,Image as ImageIcon,Film,Focus,Frame,Gauge,Layers,Lightbulb,ListChecks,MessageCircle,Move,Paperclip,RefreshCw,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Star,Thermometer,Timer,Upload,type LucideIcon,LoaderCircle,WandSparkles,Check} from "lucide-react";
 import {Accordion,AccordionContent,AccordionItem,AccordionTrigger,Badge,Button,Icon} from "@aleeforoughi/feather-react";
 import type {ReferenceRequest} from "@/lib/reference-needs";
 import {StagingEditor} from "@/components/staging-editor";
@@ -11,6 +11,7 @@ import {CHARACTER_VIEWS} from "@/lib/characters";
 import {displayTag} from "@/lib/attachments";
 import {TagBadge} from "@/components/attachment-chip";
 import {EDIT_CARD_GENERATE_FA,EDIT_CARD_OPEN_FA,EDIT_PREPARING_FA,type SuggestedEdit} from "@/lib/edit-card";
+import {BEAUTIFY_GO_FA,BEAUTIFY_MINOR_FA,BEAUTIFY_NAME,BEAUTIFY_PART_FA,BEAUTIFY_PARTS,BEAUTIFY_PARTS_MINOR,type BeautifyPart} from "@/lib/beautify";
 import {WIDGET_BUTTON,WidgetActions,WidgetHeader} from "@/components/widget";
 import {AreaOverlay} from "@/components/area-overlay";
 import {NEON_SHADOW,REGION_COLORS,regionTagFa} from "@/lib/region-edit";
@@ -193,12 +194,53 @@ const CHOICE_ICON:Record<string,LucideIcon>={image:ImageIcon,video:Clapperboard,
  * has been sent since), it is highlighted with a flashing «نیاز به پاسخ تو» badge (a gentle pulse; still under reduced motion) and «پاسخ بده» moves focus to the
  * prompt. Once answered it stays as a quiet record.
  */
+/** «Beautify it» offered on a photo (lib/beautify.ts). */
+export type BeautifyCardOffer={tag:string;parts:readonly BeautifyPart[];notes?:Partial<Record<BeautifyPart,string>>;minor?:true;thumbUrl?:string};
+/**
+ * The «Beautify it» card (owner, 2026-11-08): the photo, what it does, a switch per part (all on as offered; tap to turn one off), and «Beautify it» at the
+ * bottom, the full width. On its own it is the whole widget; under an edit card it is the other way to go, with its own title.
+ */
+function BeautifySection({offer,alone,busy,onBeautify}:{offer:BeautifyCardOffer;alone:boolean;busy?:boolean;onBeautify?:(tag:string,parts:BeautifyPart[])=>void}){
+ const offered=offer.minor?BEAUTIFY_PARTS.filter(p=>BEAUTIFY_PARTS_MINOR.includes(p)):BEAUTIFY_PARTS;
+ const [on,setOn]=useState<ReadonlySet<BeautifyPart>>(()=>new Set(offer.parts.filter(p=>offered.includes(p))));
+ const toggle=(p:BeautifyPart)=>setOn(s=>{const n=new Set(s);if(n.has(p))n.delete(p);else n.add(p);return n;});
+ const chosen=offered.filter(p=>on.has(p));
+ return <section aria-label={BEAUTIFY_NAME} className="flex flex-col gap-3">
+  {!alone&&<h3 className="flex items-center gap-2 type-label text-fg-primary"><Icon icon={WandSparkles} size={16} aria-hidden="true" className="size-4 text-primary"/>{BEAUTIFY_NAME}</h3>}
+  {alone&&<span className="relative block w-full overflow-hidden rounded-control bg-surface-hover">
+   {offer.thumbUrl
+    // eslint-disable-next-line @next/next/no-img-element -- a local or owned image
+    ?<img src={offer.thumbUrl} alt="" className="block h-auto w-full"/>
+    :<span className="flex aspect-video items-center justify-center text-fg-secondary"><Icon icon={ImageIcon} size={24} aria-hidden="true"/></span>}
+  </span>}
+  {/* A switch per part (owner, 2026-11-08): its name and, under it, what Whoush saw in this photo; on (a filled check) or off (an empty box). The parts
+      the photo needs start on; the rest start off and can be turned on. */}
+  <ul role="group" aria-label={"بخش‌های "+BEAUTIFY_NAME} className="flex flex-col gap-1.5">
+   {offered.map(p=>{const active=on.has(p),note=offer.notes?.[p];return <li key={p}><button type="button" aria-pressed={active} onClick={()=>toggle(p)} disabled={!onBeautify}
+    className={"flex min-h-12 w-full items-start gap-2.5 rounded-control px-3 py-2.5 text-start motion-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60 "
+     +(active?"bg-primary/10 hover:bg-primary/20":"bg-transparent hover:bg-surface-hover")}>
+    <span aria-hidden="true" className={"mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-[4px] "+(active?"bg-primary text-primary-foreground":"ring-1 ring-line-primary")}>{active&&<Icon icon={Check} size={16} className="size-3.5"/>}</span>
+    <span className="flex min-w-0 flex-col gap-0.5">
+     <span className={"type-body-sm "+(active?"text-fg-primary":"text-fg-secondary")}>{BEAUTIFY_PART_FA[p]}</span>
+     {note&&<span className="type-caption text-fg-secondary">{note}</span>}
+    </span>
+   </button></li>;})}
+  </ul>
+  {offer.minor&&<p className="type-caption text-fg-secondary">{BEAUTIFY_MINOR_FA}</p>}
+  {onBeautify&&<WidgetActions label={BEAUTIFY_NAME}>
+   <Button type="button" onClick={()=>onBeautify(offer.tag,chosen)} disabled={!chosen.length||busy} aria-busy={busy||undefined} className={WIDGET_BUTTON}>
+    <Icon icon={busy?LoaderCircle:WandSparkles} aria-hidden="true" className={busy?"animate-spin motion-reduce:animate-none":undefined}/>{BEAUTIFY_GO_FA}</Button>
+  </WidgetActions>}
+ </section>;
+}
+
 /**
  * Whoush's question, always the last item of its message while it waits («نیاز به پاسخ تو»). When Whoush asked for photos (a reference request: the user's
  * tattoos, logo, product...), it lists the angles it needs, each with «آپلود» (the photo lands in the chat input as a card with the right role) and a check
  * once it is in, then «ادامه» sends them with the original request.
  */
-export function AgentQuestion({question,repeated,preparing,waiting,onAnswer,references,uploaded,onUpload,onContinue,choices,onChoose,editCards,onEdit,onGenerate}:{question:string;waiting:boolean;onAnswer:()=>void;
+export function AgentQuestion({question,repeated,preparing,waiting,onAnswer,references,uploaded,onUpload,onContinue,choices,onChoose,editCards,onEdit,onGenerate,beautify,onBeautify,beautifying}:{question:string;waiting:boolean;onAnswer:()=>void;
+ /** «Beautify it» offered for a photo (lib/beautify.ts), and its button; `beautifying` while it is being sent. */beautify?:BeautifyCardOffer;onBeautify?:(tag:string,parts:BeautifyPart[])=>void;beautifying?:boolean;
  /** The question is the message just above it word for word: the widget shows only its title and its content, not the same text twice. */repeated?:boolean;
  /** The edit cards (lib/edit-card.ts): one per picture to open full screen for «ادیت», maybe with the areas Whoush painted. */editCards?:readonly {tag:string;thumbUrl?:string;suggested?:readonly SuggestedEdit[]}[];onEdit?:(tag:string,suggested?:readonly SuggestedEdit[])=>void;
  /** The tag whose «بساز» is preparing (its button shows it is working). */preparing?:string|null;
@@ -208,10 +250,10 @@ export function AgentQuestion({question,repeated,preparing,waiting,onAnswer,refe
  const done=references?references.angles.filter(a=>uploaded?.[a.id]).length:0;
  const edits=editCards??[];
  // Every widget has a clear title (owner, 2026-11-08): what it is for, then the content, then its actions at the bottom.
- const title=references?"عکس‌های لازم: "+references.titleFa:edits.length>1?"ادیت عکس‌ها":edits.length?"ادیت عکس":"سؤال هووش";
+ const title=references?"عکس‌های لازم: "+references.titleFa:edits.length>1?"ادیت عکس‌ها":edits.length?"ادیت عکس":beautify?BEAUTIFY_NAME:"سؤال هووش";
  return <div role={waiting?"status":undefined} className="whoush-widget flex w-full flex-col gap-4 rounded-card p-4">
-  <WidgetHeader icon={references?ImagePlus:edits.length?Brush:CircleHelp} title={title} tone={waiting?"attention":"neutral"}>
-   {edits.length===1&&<TagBadge tag={edits[0].tag}/>}
+  <WidgetHeader icon={references?ImagePlus:edits.length?Brush:beautify?WandSparkles:CircleHelp} title={title} tone={waiting?"attention":"neutral"}>
+   {edits.length===1?<TagBadge tag={edits[0].tag}/>:!edits.length&&beautify?<TagBadge tag={beautify.tag}/>:null}
    {waiting&&<span className="ms-auto inline-flex shrink-0 items-center gap-1.5 rounded-control bg-primary px-2.5 py-0.5 type-caption font-medium text-primary-foreground animate-pulse motion-reduce:animate-none">
     <span aria-hidden="true" className="size-1.5 rounded-full bg-current"/>{NEEDS_INPUT_FA}
    </span>}
@@ -243,13 +285,14 @@ export function AgentQuestion({question,repeated,preparing,waiting,onAnswer,refe
     {onEdit&&<Button type="button" variant={onGenerate?"outline":"default"} onClick={()=>onEdit(c.tag,c.suggested)} aria-label={EDIT_CARD_OPEN_FA+" "+displayTag(c.tag)} className={WIDGET_BUTTON}><Icon icon={Brush} aria-hidden="true"/>{EDIT_CARD_OPEN_FA}</Button>}
    </WidgetActions>}
   </li>)}</ul>}
+  {beautify&&<BeautifySection offer={beautify} alone={!edits.length} busy={beautifying} onBeautify={waiting?onBeautify:undefined}/>}
   {choices&&waiting&&onChoose&&<WidgetActions label={question}>
    {choices.map(c=><Button key={c.id} type="button" variant="secondary" onClick={()=>onChoose(c.replyFa)} className={WIDGET_BUTTON}><Icon icon={CHOICE_ICON[c.id]??CircleCheck} aria-hidden="true"/>{c.labelFa}</Button>)}
   </WidgetActions>}
   {references&&waiting&&onContinue&&<WidgetActions>
    <Button type="button" onClick={onContinue} disabled={!done} className={WIDGET_BUTTON}>ادامه با {fa(done)} عکس<Icon icon={ArrowLeft} aria-hidden="true"/></Button>
   </WidgetActions>}
-  {waiting&&!references&&!choices&&!edits.length&&<WidgetActions>
+  {waiting&&!references&&!choices&&!edits.length&&!beautify&&<WidgetActions>
    <Button type="button" variant="outline" onClick={onAnswer} className={WIDGET_BUTTON}><Icon icon={MessageCircle} aria-hidden="true"/>پاسخ بده</Button>
   </WidgetActions>}
  </div>;

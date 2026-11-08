@@ -6,9 +6,10 @@
  */
 export type PhotoReview=
  |{state:"checking";progress:number}
- |{state:"safe";reviewId:string}
+ |{state:"safe";reviewId:string;/** «Beautify it» offered for this photo (lib/beautify.ts): the parts to start with and what was seen. */beautify?:Omit<BeautifyOffer,"tag">}
  |{state:"blocked";reviewId:string;reasonFa:string;fixFa?:string;/** The reason in a word or two, shown on the photo. */labelFa?:string}
  |{state:"failed";reasonFa:string};
+import {parseBeautifyOffer,type BeautifyOffer} from "./beautify";
 export const REVIEW_ROUTE="/api/media/review";
 export const REVIEWING_FA="بررسی ایمنی…";
 export const REVIEWED_FA="بررسی شد؛ آمادهٔ استفاده";
@@ -58,8 +59,8 @@ export function sendForReview(blob:Blob,onProgress:(p:number)=>void,timeoutMs=60
   xhr.upload.onload=()=>{show(.5);creep=window.setInterval(()=>show(shown+(.97-shown)*.12),400);};
   xhr.onload=()=>{
    stop();
-   const b=(xhr.response??{}) as {reviewId?:string;state?:string;message?:string;label?:string;fix?:string};
-   if(xhr.status===200&&b.state==="safe"&&b.reviewId){onProgress(1);resolve({state:"safe",reviewId:b.reviewId});}
+   const b=(xhr.response??{}) as {reviewId?:string;state?:string;message?:string;label?:string;fix?:string;beautify?:unknown};
+   if(xhr.status===200&&b.state==="safe"&&b.reviewId){onProgress(1);const offer=parseBeautifyOffer(b.beautify);resolve({state:"safe",reviewId:b.reviewId,...(offer?{beautify:offer}:{})});}
    else if(xhr.status===200&&b.state==="blocked"&&b.reviewId)resolve({state:"blocked",reviewId:b.reviewId,reasonFa:typeof b.message==="string"?b.message:BLOCKED_SHORT_FA,...(typeof b.label==="string"&&b.label?{labelFa:b.label}:{}),...(typeof b.fix==="string"&&b.fix?{fixFa:b.fix}:{})});
    else resolve({state:"failed",reasonFa:typeof b.message==="string"?b.message:REVIEW_FAILED_FA});
   };

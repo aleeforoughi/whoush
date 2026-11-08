@@ -5,6 +5,7 @@ import {TagBadge} from "@/components/attachment-chip";
 import {changeTitleFa,type CanvasSection} from "@/lib/staging";
 import {WidgetHeader} from "@/components/widget";
 import {suggestedMasks} from "@/lib/suggested-masks";
+import {BEAUTIFY_UPLOAD_FA,beautifyRequestFa,parseBeautifyOffer,type BeautifyOffer,type BeautifyPart} from "@/lib/beautify";
 import {useUiLang} from "@/components/ui-language";
 import {useEffect,useLayoutEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
 import Link from "next/link";
@@ -243,6 +244,8 @@ export function Studio(){
  },[messages]);
  /** «بساز» on an edit card is preparing its masks: the card's tag (its button shows it is working). */
  const [preparingEdit,setPreparingEdit]=useState<string|null>(null);
+ /** The photo whose «Beautify it» is being sent (its button shows it is working). */
+ const [beautifying,setBeautifying]=useState<string|null>(null);
  const [editing,setEditing]=useState<{a:LocalAttachment;fromTray:boolean;suggested?:readonly SuggestedEdit[]}|null>(null);
  useEffect(()=>{let alive=true;void photoReviewEnabled().then(on=>{if(alive){setReviewOn(on.photos);setVideoReviewOn(on.videos);}});return()=>{alive=false;};},[]);
  const savedAssets=useRef(new Set<string>());
@@ -541,6 +544,18 @@ export function Studio(){
   });
   reviewJobs.current.set(a.id,job);return job;
  }
+ /** The photos Beautify was already offered for on upload (once each), and the chat box's files as they are now (read after the check returns). */
+ const beautifyOffered=useRef(new Set<string>()),tray=useRef(attachments);
+ useEffect(()=>{tray.current=attachments;});
+ /**
+  * The check of a just-added photo found it would look much better (owner, 2026-11-08): Whoush posts the «Beautify it» card at once, with what it saw. Once
+  * per photo, and only while the photo is still waiting in the chat box (once it is sent, the reply handles it).
+  */
+ function offerBeautifyOnUpload(a:LocalAttachment,offer:BeautifyOffer){
+  if(beautifyOffered.current.has(a.sha256)||!tray.current.some(x=>x.id===a.id))return;
+  beautifyOffered.current.add(a.sha256);
+  setMessages(m=>[...m,agentItem({role:"agent",text:BEAUTIFY_UPLOAD_FA,kind:"question",snapshot:{question:BEAUTIFY_UPLOAD_FA,beautify:offer}})]);
+ }
  /** The id a photo's safe check got, sent with it so the server can find its own record. */
  const reviewIdOf=(a:LocalAttachment)=>{const r=reviewsRef.current[a.id];return r?.state==="safe"?r.reviewId:undefined;};
  /** Verifies the picked files one by one; the good ones join the tray, each rejected one gets its own Persian reason. Returns how many were added. */
@@ -580,7 +595,10 @@ export function Studio(){
   }
   setAttachments(cur=>[...cur,...added]);setProblems(bad);
   // Each photo is checked right away, so it is ready by the time the message goes.
-  if(reviewOn)for(const a of added)if((a.kind==="image"||(a.kind==="video"&&videoReviewOn))&&reviewsRef.current[a.id]?.state!=="safe")void checkPhoto(a);
+  if(reviewOn)for(const a of added)if((a.kind==="image"||(a.kind==="video"&&videoReviewOn))&&reviewsRef.current[a.id]?.state!=="safe")void checkPhoto(a).then(r=>{
+   // «Beautify it» on upload (owner, 2026-11-08): the check saw an everyday photo of a person that would look much better: Whoush offers it first.
+   if(a.kind==="image"&&r.state==="safe"&&r.beautify)offerBeautifyOnUpload(a,{...r.beautify,tag:a.tag});
+  });
   setAnnounce((added.length?fa(added.length)+" فایل اضافه شد. ":"")+(bad.length?fa(bad.length)+" فایل رد شد.":""));
   readingRef.current=false;setReading(false);
   return added;
@@ -673,6 +691,22 @@ export function Studio(){
   try{r=await suggestedMasks(a.previewUrl,suggested);}catch{setError("علامت‌ها ساخته نشد. «ادیت» رو بزن و خودت علامت بزن.");return;}
   if(!r.regions.length)return;
   await applyEditTo({a:{...a,regionEdit:undefined},fromTray},r);
+ }
+ /**
+  * «Beautify it» (owner, 2026-11-08, lib/beautify.ts): the photo goes to Whoush with the parts left on, as the answer to the question that offered it, and
+  * comes back as a proposal like any edit («بسازش» with its price).
+  */
+ async function beautifyPhoto(tag:string,parts:BeautifyPart[]){
+  if(beautifying||!parts.length)return;setBeautifying(tag);
+  try{
+   let a:LocalAttachment|undefined,fromTray=false;
+   if(isGenerationTag(tag)){const g=await generationPhoto(tag);if("errorFa" in g){setError(g.errorFa);return;}a=g;}
+   else{a=attachments.find(x=>x.tag===tag);fromTray=Boolean(a);a??=[...[...messages].reverse().flatMap(m=>m.attachments??[]),...genCopies.current.values()].find(x=>x.tag===tag);}
+   if(!a||a.kind!=="image"||!blobs.current.get(a.id)){setError("این عکس دیگه توی این مرورگر نیست؛ دوباره اضافه‌ش کن.");return;}
+   if(fromTray){setAttachments(l=>l.filter(x=>x.id!==a!.id));setSlots(l=>forgetAttachment(l,a!.id));}
+   const text=beautifyRequestFa(displayTag(a.tag),parts),asked=questionAwaitingAnswer();
+   await runTurn(text,[{...a,regionEdit:undefined,beautify:{parts:[...parts]}}],[],false,asked?answerBrief(asked.brief??asked.text,text):undefined);
+  }finally{setBeautifying(null);}
  }
  async function applyEditTo(e:{a:LocalAttachment;fromTray:boolean},{masks,regions}:{masks:HTMLCanvasElement[];regions:Region[]}){
   const blob=blobs.current.get(e.a.id);if(!blob)return;
@@ -796,8 +830,8 @@ export function Studio(){
   const lastMsg=messages[messages.length-1];
   // An edit card is answered with its own buttons («اعمال کن», «ادیت»): a message typed after it is a new request (owner, 2026-11-08: a new edit
   // request typed under a waiting card went on as its answer and never got its own edit card).
-  const snap=lastMsg?.kind==="question"?lastMsg.snapshot as {editCards?:unknown[];editCard?:unknown}|undefined:undefined;
-  if(typed&&(snap?.editCards?.length||snap?.editCard))return undefined;
+  const snap=lastMsg?.kind==="question"?lastMsg.snapshot as {editCards?:unknown[];editCard?:unknown;beautify?:unknown}|undefined:undefined;
+  if(typed&&(snap?.editCards?.length||snap?.editCard||snap?.beautify))return undefined;
   return lastMsg?.kind==="question"?rerunSource(messages,lastMsg.id):undefined;
  }
  /**
@@ -916,7 +950,7 @@ export function Studio(){
    const withPlanRole=(a:LocalAttachment)=>{const r=planRoles.get(a.tag);return !a.role&&r&&roleAllowed(a.kind,r as AttachmentRole)?withRole(a,r as AttachmentRole):a;};
    const body=()=>JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(uiLang==="fi"?{uiScript:"finglish"}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(a=>toWireAttachment(a,reviewIdOf(a),a.regionEdit?reviewIdOf(guideOf(a)!):undefined))}:{}),...(prior.length?{priorAttachments:prior.map(a=>toWireAttachment(withPlanRole(a),reviewIdOf(a)))}:{}),...(continueWith.length?{continueWith}:{}),...(main?{mainSubject:main}:{}),...(generations.length?{generations}:{})}),onStage=(stage:TurnStage)=>setThinking(t=>t&&(t.stage===stage?t:{...t,done:[...t.done,t.stage],stage})),
     onNote=(n:TurnNote)=>setThinking(t=>{if(!t)return t;const had=t.notes[n.stage]??{story:[],facts:[]};return {...t,notes:{...t.notes,[n.stage]:{...had,[n.kind]:[...had[n.kind],...n.lines].slice(0,8)}}};});
-   type ErrorBody={editCards?:unknown;error?:string;reason?:UnsupportedReason;unreviewed?:unknown;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"];references?:unknown;choices?:unknown};
+   type ErrorBody={beautify?:unknown;editCards?:unknown;error?:string;reason?:UnsupportedReason;unreviewed?:unknown;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"];references?:unknown;choices?:unknown};
    const postTurn=async()=>{const res=await postAgentTurn(body(),onStage,onNote);return {r:res,errorBody:(res.ok?{}:await res.json().catch(()=>({}))) as ErrorBody};};
    // The server no longer knows a check (it restarted): check those photos again, then send once more.
    const recheck=async(first:Awaited<ReturnType<typeof postTurn>>)=>{
@@ -944,7 +978,10 @@ export function Studio(){
      const editCards=Array.isArray(errorBody.editCards)?errorBody.editCards.flatMap(c=>{const x=c as {tag?:unknown;suggested?:unknown};
       // A carried generation's photo is shown and opened as that generation (#تولید-n): its own thumbnail, and it still opens after a reload.
       return typeof x.tag==="string"?[{tag:carried&&carriedTag&&x.tag===carried.tag?carriedTag:x.tag,...(Array.isArray(x.suggested)?{suggested:(x.suggested as SuggestedEdit[]).slice(0,5)}:{})}]:[];}).slice(0,10):[];
-     setMessages(m=>[...m,agentItem({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"",kind:"question",snapshot:{question:errorBody.question!,...(references?{references}:{}),...(choices?{choices}:{}),...(editCards.length?{editCards}:{})}})]);whoushReacts(errorBody.reaction);
+     // «Beautify it» offered for a photo: its tag (a carried generation's own), the parts the card starts with, and the under-18 limit.
+     const b=errorBody.beautify as {tag?:unknown}|undefined,offer=parseBeautifyOffer(b);
+     const beautify=offer&&typeof b?.tag==="string"?{...offer,tag:carried&&carriedTag&&b.tag===carried.tag?carriedTag:b.tag}:undefined;
+     setMessages(m=>[...m,agentItem({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"",kind:"question",snapshot:{question:errorBody.question!,...(references?{references}:{}),...(choices?{choices}:{}),...(editCards.length?{editCards}:{}),...(beautify?{beautify}:{})}})]);whoushReacts(errorBody.reaction);
      adoptProject(firstText,characterId);
      return;
     }
@@ -1240,6 +1277,7 @@ export function Studio(){
          choices={m.snapshot.choices} onChoose={reply=>answer(reply)}
          editCards={(m.snapshot.editCards??(m.snapshot.editCard?[m.snapshot.editCard]:[])).map((c:{tag:string;suggested?:SuggestedEdit[]})=>({tag:c.tag,thumbUrl:thumbFor(c.tag),...(c.suggested?{suggested:c.suggested}:{})}))}
          onEdit={(tag,suggested)=>void openEditFor(tag,suggested)} onGenerate={busy?undefined:(tag,suggested)=>void generateSuggested(tag,suggested)} preparing={preparingEdit}
+         beautify={m.snapshot.beautify?{...m.snapshot.beautify,thumbUrl:thumbFor(m.snapshot.beautify.tag)}:undefined} onBeautify={busy?undefined:(tag,parts)=>void beautifyPhoto(tag,parts)} beautifying={Boolean(beautifying)}
          references={m.snapshot.references} uploaded={m.snapshot.references?Object.fromEntries(m.snapshot.references.angles.map(a=>[a.id,Boolean(slots.find(s=>s.id==="ref-"+m.id+"-"+a.id)?.attachmentId)])):undefined}
          onUpload={m.snapshot.references?a=>uploadForRequest(m.id,m.snapshot.references!,a):undefined}
          onContinue={m.snapshot.references&&i===messages.length-1&&!busy?()=>answer(replyScriptFor(m.text)==="finglish"?"Aksa ro gozashtam":"عکس‌ها رو گذاشتم"):undefined}/>}

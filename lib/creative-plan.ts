@@ -1,5 +1,6 @@
 /** Pure typed contracts for the private creative orchestration layer. No server-only imports. */
 import {REGION_TARGETS} from "./region-targets";
+import {BEAUTIFY_PARTS} from "./beautify";
 import {z} from "zod";
 import {CHARACTER_VIEWS,type CharacterView} from "./characters";
 import type {ReasoningTier,SuggestedModel} from "./types";
@@ -29,7 +30,9 @@ export const AttachmentSchema=z.object({
    /** What the region is, when the editor knows (lib/region-edit.ts REGION_TARGETS). */target:z.enum(REGION_TARGETS).optional(),
    /** The region includes room for the element's new size or shape (fuller lips, a new hairstyle). */grow:z.literal(true).optional()}).strict()).min(1).max(5),
   /** The exact selection (a PNG in base64, white = selected): the result is locked to it (lib/region-restore.ts lockToSelection). Never sent to a model. */
-  mask:z.string().max(800_000).regex(/^[A-Za-z0-9+/]+=*$/).optional()}).strict().optional()
+  mask:z.string().max(800_000).regex(/^[A-Za-z0-9+/]+=*$/).optional()}).strict().optional(),
+ /** «Beautify it» (lib/beautify.ts): this photo becomes an editorial portrait of the same person, with these parts. */
+ beautify:z.object({parts:z.array(z.enum(BEAUTIFY_PARTS)).min(1).max(BEAUTIFY_PARTS.length)}).strict().optional()
 }).strict().superRefine((a,ctx)=>{
  const bad=(path:string,message:string)=>ctx.addIssue({code:"custom",path:[path],message});
  const def=ATTACHMENT_KINDS[a.kind];
@@ -45,6 +48,7 @@ export const AttachmentSchema=z.object({
  if(a.speech&&a.role!=="lip_sync")bad("speech","only lip_sync audio carries speech details");
  if(a.reviewId!==undefined&&a.kind!=="image"&&a.kind!=="video")bad("reviewId","only images and videos are reviewed"); // videos too (owner, 2026-11-08: lib/video-review.ts)
  if(a.regionEdit!==undefined&&a.kind!=="image")bad("regionEdit","only photos are painted");
+ if(a.beautify!==undefined&&(a.kind!=="image"||a.regionEdit!==undefined))bad("beautify","only an unpainted photo is beautified");
  if((a.width!==undefined||a.height!==undefined)&&a.kind!=="image"&&a.kind!=="video")bad("width","only image and video carry dimensions");
  if(a.durationSeconds!==undefined&&a.kind!=="video"&&a.kind!=="audio")bad("durationSeconds","only video and audio carry a duration");
 });

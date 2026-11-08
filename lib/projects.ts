@@ -1,6 +1,7 @@
 /** Chat history as projects and the assets page: the pure data model. Browser-local only (see lib/project-store.ts); safe in the browser and on the server. */
 import {isQuestionChoices,type QuestionChoice} from "./media-intent";
 import type {SuggestedEdit} from "./edit-card";
+import {BEAUTIFY_PARTS,type BeautifyPart} from "./beautify";
 import {findReferenceNeed,type ReferenceRequest} from "./reference-needs";
 import {ATTACHMENT_KIND_IDS,ATTACHMENT_ROLE_IDS,MAX_ATTACHMENTS,displayTag,isGenerationTag,nextGenerationTag,splitMentions,tagPrefix,type AttachmentKind,type AttachmentRole,type AttachmentSpeech,type LocalAttachment,type TagCounters} from "./attachments";
 import {GENERATION_STYLES,MAX_GENERATION_REFS,MAX_GENERATION_SUMMARY_CHARS,MAX_HISTORY_CHARS,MAX_HISTORY_TOTAL_CHARS,MAX_HISTORY_TURNS,REACTION_EMOJIS,STYLE_LABEL_FA,type GenerationRef,type GenerationStyle,type HistoryTurn,type PublicCreativePlan,type ReactionEmoji} from "./creative-plan";
@@ -55,7 +56,8 @@ export type GifSnapshot={id:string;url:string;stillUrl:string;width:number;heigh
 export type QuestionSnapshot={question:string;/** Photos Whoush asked for (one upload slot per angle). */references?:ReferenceRequest;
  /** One-tap answers («عکس»، «ویدیو»، «هر دو»). */choices?:QuestionChoice[];
  /** The edit card: the photo or generation to open for «ادیت» (lib/edit-card.ts). */editCard?:{tag:string};
- /** One card per picture to edit, maybe with the areas Whoush painted itself. */editCards?:{tag:string;suggested?:SuggestedEdit[]}[]};
+ /** One card per picture to edit, maybe with the areas Whoush painted itself. */editCards?:{tag:string;suggested?:SuggestedEdit[]}[];
+ /** «Beautify it» offered for a photo (lib/beautify.ts). */beautify?:{tag:string;parts:BeautifyPart[];notes?:Partial<Record<BeautifyPart,string>>;minor?:true}};
 export type StoredMessage=MessageBase&(
  |{kind?:"text";snapshot?:undefined}
  /** A refusal, with the safe ideas Whoush offered (one tap each). */
@@ -80,6 +82,13 @@ const ZWNJ="‌";
  * The title of a new project from its first message: mentions (`#تصویر-۱`) removed, whitespace collapsed, at most 40 characters plus «…».
  * A cut never lands inside a word joined by a ZWNJ (the whole word goes) or before a combining mark. Nothing left means «پروژهٔ بی‌نام».
  */
+/** «Beautify it» on a question (lib/beautify.ts): the photo's tag, the parts the card starts with, and whether the person looked under 18. */
+function isBeautifyOffer(v:unknown):boolean{
+ if(!isObject(v))return false;const o=v as Record<string,unknown>;
+ return typeof o.tag==="string"&&o.tag.length<=40&&Array.isArray(o.parts)&&o.parts.length>=1&&o.parts.length<=BEAUTIFY_PARTS.length
+  &&o.parts.every(p=>(BEAUTIFY_PARTS as readonly string[]).includes(p as string))&&(o.minor===undefined||o.minor===true)
+  &&(o.notes===undefined||(isObject(o.notes)&&Object.entries(o.notes).every(([k,n])=>(BEAUTIFY_PARTS as readonly string[]).includes(k)&&typeof n==="string"&&n.length<=120)));
+}
 export function autoTitle(firstUserText:string):string{
  const plain=splitMentions(firstUserText).map(p=>"text" in p?p.text:" ").join("").replace(/\s+/g," ").trim();
  if(!plain)return UNTITLED_FA;
@@ -160,7 +169,8 @@ function checkMessage(m:unknown,i:number){
   case "gif":if(!isObject(s)||typeof s.id!=="string"||typeof s.title!=="string"||!isGiphyMedia(s.url)||!isGiphyMedia(s.stillUrl)||!(Number(s.width)>0&&Number(s.height)>0))bad("گیف");break;
   case "question":if(!isObject(s)||typeof s.question!=="string"||s.question.length<1||s.question.length>1000||(s.choices!==undefined&&!isQuestionChoices(s.choices))
    ||(s.editCard!==undefined&&!(isObject(s.editCard)&&typeof (s.editCard as {tag?:unknown}).tag==="string"&&((s.editCard as {tag:string}).tag.length<=40)))
-   ||(s.editCards!==undefined&&!(Array.isArray(s.editCards)&&s.editCards.length<=10&&s.editCards.every(c=>isObject(c)&&typeof (c as {tag?:unknown}).tag==="string"&&(c as {tag:string}).tag.length<=40&&isSuggested((c as {suggested?:unknown}).suggested)))))bad("سؤال");
+   ||(s.editCards!==undefined&&!(Array.isArray(s.editCards)&&s.editCards.length<=10&&s.editCards.every(c=>isObject(c)&&typeof (c as {tag?:unknown}).tag==="string"&&(c as {tag:string}).tag.length<=40&&isSuggested((c as {suggested?:unknown}).suggested))))
+   ||(s.beautify!==undefined&&!isBeautifyOffer(s.beautify)))bad("سؤال");
    else if(s.references!==undefined){const r=s.references as Record<string,unknown>;
     if(!isObject(r)||typeof r.need!=="string"||!findReferenceNeed(r.need)||typeof r.titleFa!=="string"||typeof r.role!=="string"||!Array.isArray(r.angles)||r.angles.length>6
      ||!r.angles.every(a=>isObject(a)&&typeof (a as Record<string,unknown>).id==="string"&&typeof (a as Record<string,unknown>).titleFa==="string"))bad("سؤال");}

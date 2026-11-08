@@ -1,5 +1,6 @@
 import {NextResponse} from "next/server";
 import {BLOCKED_FA,BLOCKED_LABEL_FA,MAX_REVIEW_BYTES,REVIEW_UNAVAILABLE_FA,reviewAvailable,reviewUpload,type ReviewImageMime,type UploadReview} from "@/lib/upload-review";
+import {beautifyOffer} from "@/lib/beautify";
 import {MAX_VIDEO_REVIEW_BYTES,VIDEO_TOO_LONG_FA,VideoTooLongError,reviewVideoUpload,sniffVideo,videoReviewAvailable} from "@/lib/video-review";
 const VIDEO_UNAVAILABLE_FA="بررسی ایمنی ویدیو الان در دسترس نیست. چند لحظه بعد دوباره امتحان کن.";
 const headers={"Cache-Control":"no-store"};
@@ -37,7 +38,8 @@ export async function POST(request:Request){
  slots.n++;
  try{
   const r:UploadReview=video?await reviewVideoUpload(bytes,video):await reviewUpload(bytes,mime!);
-  return NextResponse.json(r.state==="safe"?{reviewId:r.reviewId,state:"safe"}:{reviewId:r.reviewId,state:"blocked",message:r.messageFa??BLOCKED_FA[r.category],label:r.labelFa??BLOCKED_LABEL_FA[r.category],fix:r.fixFa},{headers});
+  // «Beautify it» (owner, 2026-11-08): an everyday photo of a person that would clearly improve comes back with the offer (parts and Persian notes only).
+  return NextResponse.json(r.state==="safe"?{reviewId:r.reviewId,state:"safe",...(r.beautify?{beautify:beautifyOffer("",r.beautify.issues,r.beautify.minor)}:{})}:{reviewId:r.reviewId,state:"blocked",message:r.messageFa??BLOCKED_FA[r.category],label:r.labelFa??BLOCKED_LABEL_FA[r.category],fix:r.fixFa},{headers});
  }catch(e){
   if(e instanceof VideoTooLongError)return fail("too_long",VIDEO_TOO_LONG_FA,422);
   return fail("review_failed",video?VIDEO_UNAVAILABLE_FA:REVIEW_UNAVAILABLE_FA,502);

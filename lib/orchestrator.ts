@@ -28,6 +28,7 @@ import {inspectReferences,locateEdit,type EditLocation} from "./reference-inspec
 import {faPlain} from "./format";
 import {devLiveTest} from "./policy";
 import {continuesWork} from "./follow-up";
+import {BEAUTIFY_NAME,BEAUTIFY_OFFER_FA,BEAUTIFY_OFFER_FINGLISH,BEAUTIFY_PART_FA,BEAUTIFY_PARTS_MINOR,beautifyOffer,beautifyPrompt,wantsBeautify,type BeautifyOffer} from "./beautify";
 import {EDIT_CARDS_FA,EDIT_CARD_FA,EDIT_CARD_FINGLISH,EDIT_WHOLE_FA,EDIT_WHOLE_FINGLISH,SUGGESTED_FA,SUGGESTED_FINGLISH,editCheckSkip,mightEditPhoto,wantsEditCard,type SuggestedEdit} from "./edit-card";
 import {safeReview} from "./upload-review";
 import {cropForEdit,rememberRegionEdit} from "./region-restore";
@@ -64,6 +65,14 @@ export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;no
  /** Tests only: plan even with unchecked files (fixtures that exercise the planner's role invariants); the turn still stops before a price. */planUncheckedMedia?:boolean};
 export {TURN_STAGES,type TurnStage,type TurnNote} from "./orchestrator-stages";
 import type {TurnNote,TurnStage} from "./orchestrator-stages";
+export type {BeautifyOffer} from "./beautify";
+/**
+ * The photos the vision step judged to show someone under 18 (by checked media id): their Beautify keeps to light, colour and camera whatever the request
+ * says, so a changed request cannot add retouch, expression or pose. In memory, like the turn stores: a restart forgets it, and Whoush then goes by the
+ * parts sent (the card only ever sends the allowed ones).
+ */
+const minorPhotos=new Set<string>();
+function rememberMinorPhoto(mediaId:string){minorPhotos.add(mediaId);if(minorPhotos.size>2000)minorPhotos.delete(minorPhotos.values().next().value!);}
 export type OrchestratorResult=
  /** A message that needs no picture or video (a greeting, thanks, a question about Whoush): a direct answer, with no plan, price or card. */
  |{status:"reply";turnId:string;message:string;reaction?:ReactionEmoji}
@@ -77,7 +86,8 @@ export type OrchestratorResult=
  |{status:"needs_input";turnId:string;message:string;question:string;reaction?:ReactionEmoji;
   /** The photos Whoush needs to keep something only a photo can (lib/reference-needs.ts): the card shows an upload slot per angle. */references?:ReferenceRequest;
   /** One-tap answers («عکس»، «ویدیو»، «هر دو»): each sends its reply as the user's answer. */choices?:QuestionChoice[];
-  /** The edit cards (lib/edit-card.ts): the photos or generations to open full screen for «ادیت», one card each, maybe with regions Whoush painted itself. */editCards?:{tag:string;suggested?:SuggestedEdit[]}[]};
+  /** The edit cards (lib/edit-card.ts): the photos or generations to open full screen for «ادیت», one card each, maybe with regions Whoush painted itself. */editCards?:{tag:string;suggested?:SuggestedEdit[]}[];
+  /** «Beautify it» offered for this photo (lib/beautify.ts), with the parts the card starts with; `minor` keeps them to light, colour and camera. */beautify?:BeautifyOffer};
 /**
  * Whoush's own lines when no planner reply is usable (deterministic planner, or a reply that failed a check): everyday spoken Persian, or Finglish for a Finglish
  * brief, in Whoush's voice. A question's setup carries no emoji (docs/CREATIVE_SKILLS.md, Whoush voice).
@@ -494,7 +504,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const carried=(parsed.priorAttachments??[]).filter(a=>carryTags.includes(a.tag));
  const given=[...ownFiles,...carried],roles=new Map(inferAttachmentRoles(parsed.text,given).map(r=>[r.tag,r]));
  // A painted photo is the photo to edit, whatever role it had.
- const files0:Array<Omit<(typeof given)[number],"role">&{role?:AttachmentRole;roleSource?:RoleSource}>=given.map(f=>{if(f.regionEdit)return {...f,role:"edit_reference" as const,roleSource:"user" as RoleSource};const r=roles.get(f.tag);return r?{...f,role:r.role,roleSource:r.roleSource}:f;});
+ const files0:Array<Omit<(typeof given)[number],"role">&{role?:AttachmentRole;roleSource?:RoleSource}>=given.map(f=>{if(f.regionEdit||f.beautify)return {...f,role:"edit_reference" as const,roleSource:"user" as RoleSource};const r=roles.get(f.tag);return r?{...f,role:r.role,roleSource:r.roleSource}:f;});
  // Something only a photo can keep (the user's tattoos, logo, product, face, outfit): its photos get the right role (a user's own choice stays), and without
  // any photo Whoush asks for exactly the ones it needs, once (an answer without photos goes ahead without them).
  const need=detectReferenceNeeds(normalizePersian(parsed.text))[0];
@@ -507,7 +517,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const lastAsked=[...safeHistory].reverse().find(t=>t.role==="agent")?.text??"";
  const answered=(marker:string,fing:string)=>Boolean(parsed.answersQuestion)&&(lastAsked.includes(marker)||lastAsked.includes(fing));
  // The edit card (owner, 2026-11-06): a local change with no place named («اینجاشو عوض کن», «با قلم مشخص کنم») gets the picture to mark, once.
- if(!parsed.answersQuestion&&!files0.some(f=>f.regionEdit)&&wantsEditCard(parsed.text)){
+ if(!parsed.answersQuestion&&!files0.some(f=>f.regionEdit||f.beautify)&&wantsEditCard(parsed.text)){
   // One card per picture to edit: the photos and generations the message names, else the photos it carries, else the one generation of this chat.
   const mentioned=parseMentions(parsed.text),imgs=files0.filter(f=>f.kind==="image"),gens=(parsed.generations??[]).filter(g=>g.mediaKind==="image");
   const named=[...imgs.filter(f=>mentioned.includes(f.tag)).map(f=>f.tag),...gens.filter(g=>mentioned.includes(g.tag)).map(g=>g.tag)];
@@ -516,21 +526,31 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  }
  // Edit or reference (owner, 2026-11-06): a photo with a request that changes something in it is asked to the vision check. An edit gets its card with
  // the areas already painted and commented, to confirm or change; a reference goes on to a new picture. A check that cannot run changes nothing here.
- const checkedPhotos=files0.filter(f=>f.kind==="image"&&!f.regionEdit&&safeReview(f.reviewId));
+ const checkedPhotos=files0.filter(f=>f.kind==="image"&&!f.regionEdit&&!f.beautify&&safeReview(f.reviewId));
  if(devLiveTest().enabled&&files0.some(f=>f.kind==="image")){
   // Why the edit widget was or was not considered (codes only, never the words or the photo).
   const why=parsed.answersQuestion?"answers_question":files0.some(f=>f.regionEdit)?"already_marked":checkedPhotos.length!==1?"photos_checked_"+checkedPhotos.length:editCheckSkip(parsed.text);
   console.info("[whoush dev-live] edit check",why??"asking");
  }
- if(!parsed.answersQuestion&&checkedPhotos.length===1&&!files0.some(f=>f.regionEdit)&&mightEditPhoto(parsed.text)){
+ if(!parsed.answersQuestion&&checkedPhotos.length===1&&!files0.some(f=>f.regionEdit||f.beautify)&&(mightEditPhoto(parsed.text)||wantsBeautify(parsed.text))){
   const photo=checkedPhotos[0],stored=await readMedia(safeReview(photo.reviewId)!.mediaId).catch(()=>undefined);
   const loc=stored?await (deps.locateEdit??locateEdit)(parsed.text,{bytes:new Uint8Array(stored.bytes),mime:stored.mime}).catch(()=>undefined):undefined;
   const regions=loc?.mode==="edit"?loc.regions.filter(r=>r.noteFa.trim()&&r.box[2]>r.box[0]&&r.box[3]>r.box[1]):[];
-  if(devLiveTest().enabled)console.info("[whoush dev-live] edit check result",loc?loc.mode:"unavailable","regions",regions.length);
+  // «Beautify it» (owner, 2026-11-08): offered as an option, only when the user is trying to look better in the photo (the vision step says so, or the
+  // words do and the photo is not just a reference). A person who looks under 18 gets light, colour and camera only.
+  // What the photo check saw (lib/upload-review.ts) decides the parts the card starts with and the note under each; either check judging the person
+  // under 18 limits it.
+  const found=safeReview(photo.reviewId)?.beautify,minor=Boolean(loc?.minor||found?.minor);
+  const beautify:BeautifyOffer|undefined=loc&&(loc.beautify||(wantsBeautify(parsed.text)&&loc.mode!=="reference"))?beautifyOffer(photo.tag,found?.issues??[],minor):undefined;
+  if(loc?.minor)rememberMinorPhoto(safeReview(photo.reviewId)!.mediaId);
+  if(devLiveTest().enabled)console.info("[whoush dev-live] edit check result",loc?loc.mode:"unavailable","regions",regions.length,"beautify",beautify?(beautify.minor?"minor":"yes"):"no");
+  const withBeautify=(m:string,mf:string)=>beautify?{message:(finglish?mf+" "+BEAUTIFY_OFFER_FINGLISH:m+" "+BEAUTIFY_OFFER_FA),beautify}:{message:finglish?mf:m};
   if(regions.length&&regions.every(r=>evaluateTextSafety(r.noteFa).decision==="allow")){
    const suggested:SuggestedEdit[]=regions.map(r=>({note:r.noteFa.trim().slice(0,300),boxes:[[r.box[0],r.box[1],r.box[2],r.box[3]]],...(r.part!=="none"?{part:r.part}:{}),...(r.grow?{grow:true as const}:{})}));
-   return {status:"needs_input",turnId:askTurn,message:finglish?SUGGESTED_FINGLISH:SUGGESTED_FA,question:SUGGESTED_FA,editCards:[{tag:photo.tag,suggested}]};
+   return {status:"needs_input",turnId:askTurn,...withBeautify(SUGGESTED_FA,SUGGESTED_FINGLISH),question:SUGGESTED_FA,editCards:[{tag:photo.tag,suggested}]};
   }
+  // A request to look better with nothing specific to mark: the Beautify card alone.
+  if(beautify)return {status:"needs_input",turnId:askTurn,message:finglish?BEAUTIFY_OFFER_FINGLISH:BEAUTIFY_OFFER_FA,question:BEAUTIFY_OFFER_FA,beautify};
   // An edit of the whole photo (a retouch, a colour grade) with no single place to mark (owner, 2026-11-08: an edit never goes without its widget):
   // the card with the photo, «بساز» to go ahead as asked, «ادیت» to mark places first.
   if(loc?.mode==="edit")return {status:"needs_input",turnId:askTurn,message:finglish?EDIT_WHOLE_FINGLISH:EDIT_WHOLE_FA,question:EDIT_WHOLE_FA,editCards:[{tag:photo.tag}]};
@@ -569,7 +589,8 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const said=requestedMediaKind(parsed.text);
  const earlier=[...safeHistory].reverse().filter(t=>t.role==="user").map(t=>requestedMediaKind(t.text)).find(Boolean);
  const videoFile=files0.some(f=>f.kind==="video"||(f.kind==="audio"&&f.role==="lip_sync")||(f.kind==="image"&&(f.role==="start_frame"||f.role==="end_frame")));
- const chosen=videoFile?"video":said??(parsed.generations?.length?parsed.generations[0].mediaKind:earlier);
+ // «Beautify it» is always a photo of the photo it was offered on.
+ const chosen=files0.some(f=>f.beautify)?"image":videoFile?"video":said??(parsed.generations?.length?parsed.generations[0].mediaKind:earlier);
  // Asked only of a brief on its own: a message with files or #tags works with something already in the chat (and a missing #file gets its own question).
  if(!chosen&&!parsed.answersQuestion&&parsed.task!=="character"&&!files0.length&&!parseMentions(parsed.text).length&&!parsed.stagingOverride){
   return early({status:"needs_input",turnId:askTurn,message:pickLine(VOICE[finglish?"finglish":"fa"].needsInput,askTurn),question:finglish?MEDIA_KIND_QUESTION_FINGLISH:MEDIA_KIND_QUESTION_FA,choices:MEDIA_KIND_CHOICES.map(c=>({...c}))});
@@ -900,6 +921,15 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   // style lines, which would read as a re-shoot of the whole photo.
   plan.mediaPrompt=lead.slice(0,3000);content=undefined;
  }
+ // «Beautify it» (owner, 2026-11-08, lib/beautify.ts): the photo becomes an editorial portrait of the same person. The brief is fixed and structured (identity
+ // locked, each chosen part a professional instruction, every other part kept), like a brush edit's; the planner's scene and camera lines are not used.
+ const beautified=painted.length?undefined:photos.find(f=>f.beautify);
+ if(beautified&&kind==="image"){
+  const rv=safeReview(beautified.reviewId)!,minor=minorPhotos.has(rv.mediaId)||Boolean(rv.beautify?.minor),parts=beautified.beautify!.parts.filter(p=>!minor||BEAUTIFY_PARTS_MINOR.includes(p));
+  plan.hardConstraints=["«"+BEAUTIFY_NAME+"» روی "+displayTag(beautified.tag)+": همان شخص، کاملاً قابل‌شناسایی (چهره، فرم صورت و بدن، رنگ پوست و چشم، خال‌ها و سن)؛ فقط "+parts.map(p=>BEAUTIFY_PART_FA[p]).join("، ")+" بهتر می‌شود",...plan.hardConstraints.filter(c=>!c.startsWith("«"+BEAUTIFY_NAME+"»"))];
+  // What the photo check saw in this photo goes with each part (the server's own record: the browser sends only the parts).
+  plan.mediaPrompt=beautifyPrompt(describeTagEn(beautified),parts,rv.beautify?.issues??[],minor).slice(0,3000);content=undefined;
+ }
  // Crop and stitch (owner, 2026-11-08): one painted photo with an exact selection that is small enough gets close-ups of the photo and its region map,
  // at a standard ratio, so the model spends its resolution on the selection; the result goes back in its place before the lock (lib/region-restore.ts).
  if(devLiveTest().enabled&&painted.length)console.info("[whoush dev-live] edit close-up check: painted",painted.length,"mask",Boolean(painted[0].regionEdit!.mask),"kind",kind);
@@ -971,7 +1001,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  let review:{severity:"high"|"medium"|"low";issueFa:string;fixEn:string}[]|null=null;
  // The pre-generation review would add scene-level fixes; a brush edit has no scene, so it is skipped there.
  // A light brief (triage) skips it: one subject, nothing to stress-test that is worth the wait.
- if(chosenModel&&reviewer&&!painted.length&&effort!=="light"){
+ if(chosenModel&&reviewer&&!painted.length&&!beautified&&effort!=="light"){
   stage("reviewing");
   review=await reviewer({brief:input.text,kind,mediaPrompt:plan.mediaPrompt,hardConstraints:plan.hardConstraints,
    researchFactsFa:research?.subjects.flatMap(x=>x.factsFa)??[],aspect:content?.aspect??plan.camera?.aspectRatio,

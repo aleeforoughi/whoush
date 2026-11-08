@@ -10,7 +10,7 @@ function toResponse(out:OrchestratorResult):{status:number;body:Record<string,un
  // A direct answer (lib/turn-triage.ts): `kind: "reply"` tells the chat to show it as a plain message, with no plan card.
  if(out.status==="reply")return {status:200,body:{kind:"reply",turnId:out.turnId,message:out.message,...(out.reaction?{reaction:out.reaction}:{})}};
  if(out.status==="restricted")return {status:422,body:{error:"content_restricted",category:out.category,decision:out.decision,message:out.message,...(out.choices?{choices:out.choices}:{})}};
- if(out.status==="needs_input")return {status:422,body:{error:"needs_input",turnId:out.turnId,message:out.message,question:out.question,...(out.reaction?{reaction:out.reaction}:{}),...(out.references?{references:out.references}:{}),...(out.choices?{choices:out.choices}:{}),...(out.editCards?{editCards:out.editCards}:{})}};
+ if(out.status==="needs_input")return {status:422,body:{error:"needs_input",turnId:out.turnId,message:out.message,question:out.question,...(out.reaction?{reaction:out.reaction}:{}),...(out.references?{references:out.references}:{}),...(out.choices?{choices:out.choices}:{}),...(out.editCards?{editCards:out.editCards}:{}),...(out.beautify?{beautify:out.beautify}:{})}};
  if(out.status==="unsupported")return {status:422,body:{error:"no_compatible_model",reason:out.reason,...(out.unreviewed?{unreviewed:out.unreviewed}:{}),turnId:out.turnId,plan:out.plan,message:out.message,...(out.suggestedModel?{suggestedModel:out.suggestedModel}:{})}};
  return {status:200,body:{...out.proposal,turnId:out.turnId,plan:out.plan,...(out.gif?{gif:out.gif}:{}),...(out.reaction?{reaction:out.reaction}:{})}};
 }
