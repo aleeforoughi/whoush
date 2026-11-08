@@ -24,7 +24,9 @@ export const AttachmentSchema=z.object({
  /** The server's safety check of this photo (POST /api/media/review): the id it gave. Only the server's record says whether it is safe. */
  reviewId:z.uuid().optional(),
  /** «ویرایش با قلم»: change only the painted area, as the note says; the marked copy is its own checked photo (lib/region-edit.ts). */
- regionEdit:z.object({guideReviewId:z.uuid(),regions:z.array(z.object({n:z.number().int().min(1).max(9),color:z.enum(REGION_COLOR_NAMES),note:z.string().trim().min(1).max(300)}).strict()).min(1).max(5)}).strict().optional()
+ regionEdit:z.object({guideReviewId:z.uuid(),regions:z.array(z.object({n:z.number().int().min(1).max(9),color:z.enum(REGION_COLOR_NAMES),note:z.string().trim().min(1).max(300)}).strict()).min(1).max(5),
+  /** The exact selection (a PNG in base64, white = selected): the result is locked to it (lib/region-restore.ts lockToSelection). Never sent to a model. */
+  mask:z.string().max(800_000).regex(/^[A-Za-z0-9+/]+=*$/).optional()}).strict().optional()
 }).strict().superRefine((a,ctx)=>{
  const bad=(path:string,message:string)=>ctx.addIssue({code:"custom",path:[path],message});
  const def=ATTACHMENT_KINDS[a.kind];

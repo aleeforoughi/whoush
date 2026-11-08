@@ -40,7 +40,7 @@ import {fa,faBytes,faDimensions,faDuration} from "@/lib/format";
 import {REVIEW_FAILED_FA,WAITING_FA,photoReviewEnabled,reviewPhoto,reviewStopFa,reviewVideo,type PhotoReview} from "@/lib/photo-review";
 import {PhotoReviewOverlay,ReviewRing} from "@/components/photo-review-badge";
 import {RegionEditor} from "@/components/region-editor";
-import {renderGuide,type Region} from "@/lib/region-edit";
+import {renderGuide,renderMask,type Region} from "@/lib/region-edit";
 import type {SuggestedEdit} from "@/lib/edit-card";
 import {STORAGE_FULL_FA,getProject,listAssets,saveAsset,saveProject} from "@/lib/project-store";
 import {MAX_MESSAGES,draftLabelFa,assetToAttachment,attachmentToAsset,autoTitle,rerunSource,uniqueById,answerBrief,historyFor,toggleReaction,generationTagsIn,referencedGenerations,toGenerationRef,withGenerationTags,type GifSnapshot,type ProposalSnapshot,type JobRerun,type JobSnapshot,type Project,type StoredMessage} from "@/lib/projects";
@@ -654,7 +654,9 @@ export function Studio(){
   const blob=blobs.current.get(e.a.id);if(!blob)return;
   let guide:Blob;try{guide=await renderGuide(blob,masks);}catch{setError("علامت‌ها ذخیره نشد. دوباره امتحان کن.");return;}
   const guideId=crypto.randomUUID(),guideUrl=URL.createObjectURL(guide);urls.current.add(guideUrl);blobs.current.set(guideId,guide);
-  const edited:LocalAttachment={...e.a,regionEdit:{regions,guideId,guideUrl}};
+  // The exact selection goes with it, so the result is locked to it (lib/region-restore.ts); an edit without one still gets the guessed restore.
+  const mask=await renderMask(masks).catch(()=>undefined);
+  const edited:LocalAttachment={...e.a,regionEdit:{regions,guideId,guideUrl,...(mask?{mask}:{})}};
   if(reviewOn)void checkPhoto(guideOf(edited)!);
   if(e.fromTray){setAttachments(l=>l.filter(x=>x.id!==e.a.id));setSlots(l=>forgetAttachment(l,e.a.id));}
   const text=displayTag(edited.tag)+" رو ادیت کن — "+regions.map(r=>"ادیت "+fa(r.n)+" ("+REGION_COLOR_FA[r.color]+"): "+r.note).join("؛ ");

@@ -45,6 +45,24 @@ export async function renderGuide(photo:Blob,masks:readonly HTMLCanvasElement[])
  if(!out)throw new Error("no image");
  return out;
 }
+/**
+ * The exact selection for the lock (owner, 2026-11-08): every area's paint as white on black, at most 1536 pixels on its longer side, as a base64 PNG.
+ * It goes to Whoush's server only, to keep every pixel outside it as it was; never to a model.
+ */
+export async function renderMask(masks:readonly HTMLCanvasElement[]):Promise<string>{
+ const m0=masks[0];if(!m0)throw new Error("no mask");
+ const k=Math.min(1,1536/Math.max(m0.width,m0.height)),w=Math.max(1,Math.round(m0.width*k)),h=Math.max(1,Math.round(m0.height*k));
+ const c=document.createElement("canvas");c.width=w;c.height=h;
+ const ctx=c.getContext("2d");if(!ctx)throw new Error("no canvas");
+ for(const m of masks)ctx.drawImage(m,0,0,w,h);
+ // Paint (any colour, any opacity) becomes white; the rest black.
+ ctx.globalCompositeOperation="source-in";ctx.fillStyle="#fff";ctx.fillRect(0,0,w,h);
+ ctx.globalCompositeOperation="destination-over";ctx.fillStyle="#000";ctx.fillRect(0,0,w,h);
+ const blob=await new Promise<Blob|null>(r=>c.toBlob(r,"image/png"));
+ if(!blob)throw new Error("no image");
+ const bytes=new Uint8Array(await blob.arrayBuffer());let bin="";for(let i=0;i<bytes.length;i+=0x8000)bin+=String.fromCharCode(...bytes.subarray(i,i+0x8000));
+ return btoa(bin);
+}
 /** Whether anything was painted on a mask. */
 export function maskHasPaint(mask:HTMLCanvasElement):boolean{
  const ctx=mask.getContext("2d");if(!ctx||!mask.width)return false;

@@ -69,9 +69,72 @@ export async function restoreOutsideEdit(i:RestoreInput,t:RestoreTuning=RESTORE_
  return {bytes,mime:"image/png",keptFraction:1-edited/N};
 }
 
+/**
+ * The selection lock (owner, 2026-11-08: "lock the selection… the model must not change or affect any area outside it; accurate inpaint with one
+ * generation"). With the exact mask the editor drew (the wand's and the brush's selection, not guessed from the paint), the result is the model's pixels
+ * inside the selection and the source's own pixels everywhere else, exactly:
+ *  1. the model's picture is brought to the source's size and, when it moved or rescaled the scene a little, lined up with the source first (the best
+ *     scale and shift, found on a small grey copy by matching the area outside the selection), so the edit sits where it belongs;
+ *  2. the blend fades in over a few pixels INSIDE the selection's edge, so nothing outside it changes at all and the seam is invisible.
+ * Unlike the guessed restore above, it never skips: the area outside the selection is always the source's.
+ */
+export type LockResult={bytes:Buffer;mime:"image/png";aligned:{scale:number;dx:number;dy:number}}|{skipped:string};
+function erode(mask:Uint8Array,w:number,h:number,r:number):Uint8Array{
+ const inv=new Uint8Array(w*h);for(let i=0;i<inv.length;i++)inv[i]=mask[i]?0:1;
+ const d=dilate(inv,w,h,r),out=new Uint8Array(w*h);for(let i=0;i<out.length;i++)out[i]=d[i]?0:1;return out;
+}
+/** The scale and shift (source → output coordinates, about the centre) that best line the output up with the source outside the selection. */
+export function alignOutside(S:Uint8Array,O:Uint8Array,outside:Uint8Array,w:number,h:number):{scale:number;dx:number;dy:number;gain:number}{
+ const cx=w/2,cy=h/2;
+ const err=(s:number,dx:number,dy:number)=>{let e=0,n=0;
+  for(let y=0;y<h;y+=2)for(let x=0;x<w;x+=2){const p=y*w+x;if(!outside[p])continue;
+   const ox=Math.round(cx+s*(x-cx)+dx),oy=Math.round(cy+s*(y-cy)+dy);if(ox<0||oy<0||ox>=w||oy>=h)continue;
+   e+=Math.abs(S[p]-O[oy*w+ox]);n++;}
+  return n?e/n:Infinity;};
+ const base=err(1,0,0);let best={scale:1,dx:0,dy:0,e:base};
+ const R=Math.max(2,Math.round(.03*Math.max(w,h)));
+ for(let s=.95;s<=1.0501;s+=.01)for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){const e=err(s,dx,dy);if(e<best.e)best={scale:s,dx,dy,e};}
+ return {scale:best.scale,dx:best.dx,dy:best.dy,gain:base>0?1-best.e/base:0};
+}
+export async function lockToSelection(i:{source:Uint8Array;mask:Uint8Array;output:Uint8Array}):Promise<LockResult>{
+ const sharp=(await import("sharp")).default;
+ const src=await sharp(i.source).rotate().removeAlpha().raw().toBuffer({resolveWithObject:true});
+ const S=src.data,w=src.info.width,h=src.info.height,N=w*h;
+ if(!w||!h||src.info.channels!==3)return {skipped:"no_size"};
+ const [M,O]=await Promise.all([
+  sharp(i.mask).resize(w,h,{fit:"fill",kernel:"lanczos3"}).removeAlpha().greyscale().raw().toBuffer(),
+  sharp(i.output).rotate().resize(w,h,{fit:"fill",kernel:"lanczos3"}).removeAlpha().raw().toBuffer()]);
+ const sel=new Uint8Array(N);let n=0;for(let p=0;p<N;p++)if(M[p]>127){sel[p]=1;n++;}
+ if(n<20)return {skipped:"empty_mask"};
+ // 1. Line the model's picture up with the source, measured outside the selection (kept clear of its edge) on a small grey copy.
+ const k=Math.min(1,256/Math.max(w,h)),sw=Math.max(8,Math.round(w*k)),sh=Math.max(8,Math.round(h*k));
+ const small=(b:Buffer)=>sharp(b,{raw:{width:w,height:h,channels:3}}).resize(sw,sh,{fit:"fill"}).greyscale().raw().toBuffer();
+ const [Ss,Os,Ms]=await Promise.all([small(S),small(O),sharp(Buffer.from(sel.map(v=>v*255)),{raw:{width:w,height:h,channels:1}}).resize(sw,sh,{fit:"fill"}).raw().toBuffer()]);
+ const near=dilate(Uint8Array.from(Ms,v=>v>0?1:0),sw,sh,2),outside=Uint8Array.from(near,v=>v?0:1);
+ const a=alignOutside(Uint8Array.from(Ss),Uint8Array.from(Os),outside,sw,sh);
+ let A:Buffer=O;const moved=a.gain>.15&&(a.scale!==1||a.dx||a.dy);
+ if(moved){
+  const s=a.scale,dx=a.dx/k,dy=a.dy/k,cx=w/2,cy=h/2;A=Buffer.alloc(N*3);
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+   const fx=Math.min(w-1,Math.max(0,cx+s*(x-cx)+dx)),fy=Math.min(h-1,Math.max(0,cy+s*(y-cy)+dy)),x0=Math.floor(fx),y0=Math.floor(fy),x1=Math.min(w-1,x0+1),y1=Math.min(h-1,y0+1),tx=fx-x0,ty=fy-y0,q=(y*w+x)*3;
+   for(let c=0;c<3;c++){const v=(O[(y0*w+x0)*3+c]*(1-tx)+O[(y0*w+x1)*3+c]*tx)*(1-ty)+(O[(y1*w+x0)*3+c]*(1-tx)+O[(y1*w+x1)*3+c]*tx)*ty;A[q+c]=Math.round(v);}
+  }
+ }
+ // 2. The blend fades in inside the selection only: outside it every pixel is the source's.
+ const r=Math.max(1,Math.round(.003*Math.max(w,h))),inner=erode(sel,w,h,r);
+ let soft=boxBlur(Float32Array.from(inner),w,h,r);
+ let total=0;for(let p=0;p<N;p++){soft[p]*=sel[p];total+=soft[p];}
+ if(total<.3*n)soft=Float32Array.from(sel); // a selection too thin to fade (a line, an eyelash) is taken whole
+ const out=Buffer.alloc(N*3);
+ for(let p=0,q=0;p<N;p++,q+=3){const t=soft[p];out[q]=Math.round(A[q]*t+S[q]*(1-t));out[q+1]=Math.round(A[q+1]*t+S[q+1]*(1-t));out[q+2]=Math.round(A[q+2]*t+S[q+2]*(1-t));}
+ const bytes=await sharp(out,{raw:{width:w,height:h,channels:3}}).png().toBuffer();
+ return {bytes,mime:"image/png",aligned:moved?{scale:a.scale,dx:a.dx/k,dy:a.dy/k}:{scale:1,dx:0,dy:0}};
+}
+
 // ---- wiring: a brush-edit turn remembers its source and marked copy; its finished outputs are restored before they are shown ----
 import {readMedia,storeMedia,MEDIA_ROUTE} from "./media-store";
-type RegionTurn={sourceId:string;guideId:string};
+/** `mask`: the exact selection the editor drew (a PNG, white = selected), when the edit has one: the result is then locked to it. */
+type RegionTurn={sourceId:string;guideId:string;mask?:Buffer};
 const turns=()=>((globalThis as {__whoushRegionTurns?:Map<string,RegionTurn>}).__whoushRegionTurns??=new Map());
 /** The orchestrator records a brush edit's source photo and marked copy (Whoush-owned media ids) for its turn. */
 export function rememberRegionEdit(turnId:string,r:RegionTurn){const m=turns();m.set(turnId,r);if(m.size>500)m.delete(m.keys().next().value!);}
@@ -87,7 +150,9 @@ export async function restoreTurnOutputs<T extends {kind:string;url:string;mime?
   return await Promise.all(outputs.map(async o=>{
    if(o.kind!=="image"||!o.url.startsWith(MEDIA_ROUTE))return o;
    const out=await readMedia(o.url.slice(MEDIA_ROUTE.length));if(!out)return o;
-   const res=await restoreOutsideEdit({source:src.bytes,guide:guide.bytes,output:out.bytes}).catch(()=>({skipped:"error"}) as RestoreResult);
+   const res:RestoreResult|LockResult=r.mask
+    ?await lockToSelection({source:src.bytes,mask:r.mask,output:out.bytes}).catch(()=>({skipped:"error"}) as LockResult)
+    :await restoreOutsideEdit({source:src.bytes,guide:guide.bytes,output:out.bytes}).catch(()=>({skipped:"error"}) as RestoreResult);
    if("skipped" in res)return o;
    const s=await storeMedia(new Uint8Array(res.bytes),res.mime);
    return {...o,url:s.url,mime:res.mime};
