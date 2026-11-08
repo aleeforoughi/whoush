@@ -45,4 +45,22 @@ Whoush never forces it; it offers it as an option.
 | 2 | Fixes done fully; camera "as if shot at eye level" | Clearly better grooming, clothes and light, but the viewpoint and background changed (a re-shoot, risking drift) |
 | 3 | Fixes done fully; the same viewpoint, background and head angle; lens distortion only | The viewpoint and background are kept. The face is slightly less wide, the beard and brows are clean, the skin is cleaner with its texture kept, and the colour is richer. The lint on the T-shirt remained, and the light improved only a little. |
 
-**Open:** the lint and light (the model holds back on the outfit when told to keep it). A second, local pass on the shirt with the selection lock would do it reliably.
+**Owner's review of runs 2 and 3:** run 2 is amazing but lost the selfie's mood and the face language. Run 3 only retouched the skin: no angle fix, the face still deformed, no feature refinement, no beard trim, no fill for the thinning hair, and the clothes not cleaned.
+
+**Brief after the review:**
+- the fixes are done fully, including a slight camera move or perspective warp to undo the low angle and wide lens;
+- less facial puffiness and a natural jawline;
+- the features refined subtly;
+- the beard trimmed by a barber, and thinning hair filled while the hairline is kept;
+- the clothes lint-free and wrinkle-free;
+- the photo's mood, setting and colour kept;
+- the face's emotion and vibe read and refined into a slight editorial modelling gesture.
+
+The never-guess rule stays.
+
+| Run | Result |
+|---|---|
+| 4 | Angle corrected moderately, the face no longer widened, a barber-trimmed beard, shaped brows, the T-shirt clean (lint and wrinkles gone), the expression kept. The sky went out of view. |
+| 5 | Near eye level, the face slimmer and no longer puffy, a natural jawline, the beard and brows clean, the T-shirt clean, the calm expression kept. The sky is still out of view: moving the camera changes what is behind. |
+
+**One shot:** every run is a single generation (one Neuron in dev). The owner's goal is one shot to save money. A multi-step pipeline (relight, then face, then clothes), with each step priced on the card, is only worth building if one shot stops being enough.

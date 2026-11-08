@@ -27,22 +27,24 @@ test("Beautify words: looking better is recognised, an ordinary change is not",(
 test("Beautify brief: identity, place, outfit and styles locked; never guesses; each chosen part with what was seen; under 18 keeps to the photo craft",()=>{
  const all=beautifyPrompt("[reference image 1]",BEAUTIFY_PARTS,[{part:"camera",noteFa:"زاویه از پایینه",noteEn:"shot from below with a close wide lens; the face looks wider"}]);
  assert.match(all,/^TASK: EDITORIAL BEAUTIFY EDIT of \[reference image 1\]/);
- assert.match(all,/Carry out every fix below completely and cleanly, so the improvement is obvious side by side.*Only identity, face shape and expression stay at most slightly changed/);
- assert.match(all,/KEEP \(never changes\): the person's identity and face.*their hairstyle and beard style, the outfit and accessories, the camera's viewpoint, and the place/);
+ assert.match(all,/Carry out every fix below completely and cleanly, so the improvement is obvious side by side with the original, while everything stays natural and true to the person\./);
+ assert.match(all,/KEEP \(never changes\): the person's identity.*their hairline, hairstyle and beard style, the outfit and accessories, and the place/);
  // Owner, 2026-11-08: Whoush never guesses what the photo does not show.
- assert.match(all,/no new head or face angle, no teeth when the mouth is closed, no opened eyes when they are closed/);
- assert.match(all,/the same head angle and turn, the same background composition/);assert.match(all,/Never re-shoot from another angle or height/);assert.match(all,/never show teeth that are not visible/);
+ assert.match(all,/no side of the face or head that is hidden, no teeth when the mouth is closed, no opened eyes when they are closed/);
+ assert.match(all,/bring the viewpoint to a flattering, near eye-level height/);assert.match(all,/the head keeps its turn and tilt, nothing hidden becomes visible, and the same background/);
+ assert.match(all,/MOOD \(owner, 2026-11-08\): keep the vibe of the original photo.*the person's own expression and face language/);
+ assert.match(all,/where it is thinning, filled to a natural, healthy density while the original hairline stays exactly where it is/);assert.match(all,/Lint-free and wrinkle-free is required/);assert.match(all,/never show teeth that are not visible/);assert.match(all,/read the emotion and vibe of the face and keep them, refined into a slight editorial modelling gesture/);
  assert.match(all,/CAMERA AND LENS: .* Seen in this photo: shot from below with a close wide lens; the face looks wider\./);
- for(const h of ["POSTURE AND EXPRESSION:","LIGHT:","SKIN:","HAIR, BEARD AND BROWS:","FACE SHAPE:","CLOTHES:","COLOUR SETTINGS:"])assert.ok(all.includes(h),h);
+ for(const h of ["POSTURE AND EXPRESSION:","LIGHT:","SKIN:","HAIR, BEARD AND BROWS:","FACE AND FEATURES:","CLOTHES:","COLOUR SETTINGS:"])assert.ok(all.includes(h),h);
  const some=beautifyPrompt("[r]",["light","color"]);
  assert.ok(some.includes("LIGHT:")&&some.includes("COLOUR SETTINGS:"));
- assert.ok(some.includes("Posture and expression: exactly as in the photo.")&&some.includes("Face shape: exactly as in the photo.")&&some.includes("Camera: the same angle, lens and focus."));
+ assert.ok(some.includes("Posture and expression: exactly as in the photo.")&&some.includes("Face and features: exactly as in the photo.")&&some.includes("Camera: the same angle, lens and focus."));
  const minor=beautifyPrompt("[r]",BEAUTIFY_PARTS,[],true);
- assert.ok(!minor.includes("SKIN:")&&!minor.includes("POSTURE AND EXPRESSION:")&&!minor.includes("FACE SHAPE:")&&!minor.includes("HAIR, BEARD AND BROWS:"),"nothing on a minor's face or body");
+ assert.ok(!minor.includes("SKIN:")&&!minor.includes("POSTURE AND EXPRESSION:")&&!minor.includes("FACE AND FEATURES:")&&!minor.includes("HAIR, BEARD AND BROWS:"),"nothing on a minor's face or body");
  assert.ok(minor.includes("LIGHT:")&&minor.includes("CAMERA AND LENS:")&&minor.includes("CLOTHES:"));
  assert.equal(beautifyRequestFa("#تصویر-۱",["skin","light"]),"#تصویر-۱ رو زیباسازی کن: پوست، نور");
  // The card starts with what the photo needs (and the colour); with nothing listed, everything.
- assert.deepEqual(startingParts([{part:"light",noteFa:"x",noteEn:"y"},{part:"clothes",noteFa:"x",noteEn:"y"}],false),["light","clothes","color"]);
+ assert.deepEqual(startingParts([{part:"light",noteFa:"x",noteEn:"y"},{part:"clothes",noteFa:"x",noteEn:"y"}],false),["light","shape","clothes","color"]);
  assert.deepEqual(startingParts([],false),[...BEAUTIFY_PARTS]);
  assert.deepEqual(startingParts([],true),["camera","light","clothes","color"]);
 });
@@ -82,7 +84,7 @@ test("Beautify it: the photo is the photo to edit, at its own shape, with the fi
  await orchestrateCreativeTurn({text:"خوشگلش کن",attachments:[photo({reviewId:kidSrc.reviewId})]},{locateEdit:loc({beautify:true,minor:true})});
  const kid=await orchestrateCreativeTurn({text:beautifyRequestFa("#تصویر-۱",[...BEAUTIFY_PARTS]),attachments:[photo({reviewId:kidSrc.reviewId,beautify:{parts:[...BEAUTIFY_PARTS]}})]});
  const kp=getPrivateMediaPrompt((kid as Extract<OrchestratorResult,{status:"planned"}>).turnId)!;
- assert.ok(!kp.includes("POSTURE AND EXPRESSION:")&&!kp.includes("SKIN:")&&!kp.includes("FACE SHAPE:")&&kp.includes("LIGHT:"),kp.slice(0,400));
+ assert.ok(!kp.includes("POSTURE AND EXPRESSION:")&&!kp.includes("SKIN:")&&!kp.includes("FACE AND FEATURES:")&&kp.includes("LIGHT:"),kp.slice(0,400));
 });
 
 test("Beautify on upload: the photo check's findings are kept by the server and go into the brief; a minor's face parts are dropped",async()=>{
@@ -101,4 +103,9 @@ test("Beautify on upload: the photo check's findings are kept by the server and 
  assert.ok(kid.state==="safe"&&kid.beautify?.minor&&kid.beautify.issues.every(i=>i.part!=="skin"),"no face parts for a minor");
  const none=await reviewUpload(Uint8Array.from([...JPEG,9]),"image/jpeg",{inspect:async()=>({category:"none",person:false,beautify:{needed:true,minor:false,issues}})});
  assert.ok(none.state==="safe"&&!none.beautify,"no person, no Beautify");
+});
+
+test("Beautify brief fits any photo: nothing in it names one photo's setting",()=>{
+ const all=beautifyPrompt("[r]",BEAUTIFY_PARTS);
+ assert.ok(!/window|sky|building/i.test(all),"no setting of a particular photo in the general brief");
 });

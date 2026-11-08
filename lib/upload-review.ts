@@ -9,7 +9,9 @@ import type {PhotoCoverage} from "./drift";
 function beautifyFindings(b:BeautifyAssessment|undefined,person:boolean):{minor:boolean;issues:BeautifyIssue[]}|undefined{
  if(!b?.needed||!person)return undefined;
  const issues=b.issues.filter(i=>(!b.minor||BEAUTIFY_PARTS_MINOR.includes(i.part))&&i.noteFa.trim()&&i.noteEn.trim()
-  &&evaluatePlanTextSafety(i.noteFa).decision==="allow"&&evaluatePlanTextSafety(i.noteEn).decision==="allow"&&!/https?:|[<>{}]/.test(i.noteFa+i.noteEn))
+  &&evaluatePlanTextSafety(i.noteFa).decision==="allow"&&evaluatePlanTextSafety(i.noteEn).decision==="allow"&&!/https?:|[<>{}]/.test(i.noteFa+i.noteEn)
+  // The Persian note is shown as written: one with Latin letters mixed in (a model slip, «برق می‌zane») is dropped; the part keeps its English note.
+  &&!/[A-Za-z]/.test(i.noteFa))
   .map(i=>({part:i.part,noteFa:i.noteFa.trim().slice(0,120),noteEn:i.noteEn.trim().slice(0,160)}));
  return {minor:b.minor,issues:issues.filter((i,k)=>issues.findIndex(j=>j.part===i.part)===k)};
 }
