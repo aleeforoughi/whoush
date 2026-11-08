@@ -1,7 +1,9 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {normalizeTriage,type Triage,type TurnTriager} from "../lib/turn-triage";
-import {orchestrateCreativeTurn,deterministicPlanner,seriousCorrections,type OrchestratorResult} from "../lib/orchestrator";
+import {normalizeTriage,type Triage,type TriageInput,type TurnTriager} from "../lib/turn-triage";
+import {reviewVideoUpload} from "../lib/video-review";
+import {forgetReviewsForTests} from "../lib/upload-review";
+import {orchestrateCreativeTurn,deterministicPlanner,seriousCorrections,faMediaReview,resumeAfterReview,RESUME_QUESTION_FA,type OrchestratorResult} from "../lib/orchestrator";
 import {parseNdjson} from "../lib/agent-stream";
 import {validateProject,type Project} from "../lib/projects";
 import {newTagCounters} from "../lib/attachments";
@@ -78,4 +80,26 @@ test("owner (2026-11-07): a request to make something plans alongside the triage
 test("an emoji outside the reaction palette is dropped, never failing the triage (owner live test: «سلام» fell through)",()=>{
  const r=normalizeTriage({...base,mode:"reply",replyFa:"سلام!",react:"👋"});
  assert.deepEqual(r,{mode:"reply",replyFa:"سلام!"});
+});
+test("owner (2026-11-08): triage is told each file's real check state, so «تموم شد؟» is never answered with an invented 'still checking'",async()=>{
+ forgetReviewsForTests();
+ const ok=await reviewVideoUpload(new Uint8Array([0,0,0,24,0x66,0x74,0x79,0x70,0x69,0x73,0x6f,0x6d,0,0,0]),"video/mp4",{sample:async()=>[new Uint8Array([1])],inspect:async()=>({category:"none",person:false}),soundtrack:async()=>"clean",store:async()=>({id:"44444444-4444-4444-8444-444444444444",url:"/x"})});
+ const att=(tag:string,kind:"video"|"image",reviewId?:string)=>({id:crypto.randomUUID(),tag,kind,mime:kind==="video"?"video/mp4":"image/jpeg",width:64,height:64,...(kind==="video"?{durationSeconds:3}:{}),bytes:2048,sha256:"d".repeat(64),...(reviewId?{reviewId}:{})});
+ let seen:TriageInput["files"];
+ await orchestrateCreativeTurn({text:"تموم شد؟",priorAttachments:[att("video2","video",ok.reviewId),att("image1","image")]},{planner:deterministicPlanner,triage:async i=>{seen=i.files;return {mode:"reply",replyFa:"آره، #ویدیو-۲ بررسی شد."};}});
+ assert.deepEqual(seen,[{tagFa:"#ویدیو-۲",checked:true},{tagFa:"#تصویر-۱",checked:false}]);
+});
+test("owner (2026-11-08): «تموم شد؟» after files were set aside: once they all passed, Whoush says so and offers the same request again with one tap",async()=>{
+ forgetReviewsForTests();
+ const ok=await reviewVideoUpload(new Uint8Array([0,0,0,24,0x66,0x74,0x79,0x70,0x69,0x73,0x6f,0x6d,0,0,0]),"video/mp4",{sample:async()=>[new Uint8Array([1])],inspect:async()=>({category:"none",person:false}),soundtrack:async()=>"clean",store:async()=>({id:"55555555-5555-4555-8555-555555555555",url:"/x"})});
+ const video=(reviewId?:string)=>({id:crypto.randomUUID(),tag:"video2",kind:"video" as const,mime:"video/mp4",width:64,height:64,durationSeconds:3,bytes:2048,sha256:"e".repeat(64),...(reviewId?{reviewId}:{})});
+ const request="آدم اول این فیلم رو عوض کن #ویدیو-۲";
+ const history=[{role:"user" as const,text:request},{role:"agent" as const,text:faMediaReview(["#ویدیو-۲"],["video"])}];
+ let triaged=0;const triage:TurnTriager=async()=>{triaged++;return {mode:"reply",replyFa:"هنوز دارم بررسی می‌کنم"};};
+ const r=await orchestrateCreativeTurn({text:"تموم شد؟",history,priorAttachments:[video(ok.reviewId)]},{planner:deterministicPlanner,triage});
+ assert.equal(r.status,"needs_input");assert.equal(triaged,0,"facts, not a guess");
+ const q=r as Extract<OrchestratorResult,{status:"needs_input"}>;
+ assert.match(q.message,/#ویدیو-۲/);assert.equal(q.choices?.[0].replyFa,request);assert.equal(q.question,RESUME_QUESTION_FA);
+ assert.equal(resumeAfterReview("تموم شد؟",0,history,[video()]),undefined,"still unchecked: no offer");
+ assert.equal(resumeAfterReview("یه گربه بساز",0,history,[video(ok.reviewId)]),undefined,"a new request is not a status question");
 });

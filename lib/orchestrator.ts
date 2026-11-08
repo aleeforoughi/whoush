@@ -105,6 +105,21 @@ export function faMediaReview(tags:readonly string[],kinds:readonly string[]):st
   (kinds.some(k=>k!=="audio")?"عکس و ویدیو رو فقط بعد از بررسی ایمنی که موقع آپلود انجام می‌شه به کار می‌برم؛ اگه بررسیش هنوز تموم نشده، چند لحظه صبر کن و دوباره بفرست. ":"")+
   "یا بدون "+(tags.length>1?"این فایل‌ها":"این فایل")+" بگو چی بسازم.";
 }
+/** The marker of the turn that set files aside for their checks (faMediaReview). */
+const SET_ASIDE_FA=" فعلاً استفاده نمی‌کنم";
+const DONE_QUESTION=/(تموم|تمام|چک شد|بررسی شد|آماده|اوکی شد|درست شد|حله|شد\s*[؟?]|\bdone\b|\bready\b|\bchecked\b|\bfinished\b|tamoom|amade)/i;
+export const RESUME_QUESTION_FA="دوباره بسازمش؟",RESUME_LABEL_FA="آره، بساز";
+/** When «تموم شد؟» follows a turn that set files aside, and every file the set-aside request named has now passed: what to say, and the request to send again. */
+export function resumeAfterReview(text:string,ownFiles:number,history:readonly {role:"user"|"agent";text:string}[],prior:readonly {tag:string;kind:string;reviewId?:string}[]):{message:string;request:string}|undefined{
+ if(ownFiles||text.length>60||!DONE_QUESTION.test(normalizePersian(text)))return undefined;
+ const i=history.length-1;
+ if(i<1||history[i].role!=="agent"||!history[i].text.includes(SET_ASIDE_FA))return undefined;
+ const request=[...history.slice(0,i)].reverse().find(t=>t.role==="user")?.text;
+ if(!request)return undefined;
+ const named=parseMentions(request).map(tag=>prior.find(p=>p.tag===tag)).filter((p):p is NonNullable<typeof p>=>Boolean(p)&&isMediaKind(p!.kind as never));
+ if(!named.length||named.some(isUnchecked))return undefined;
+ return {message:"آره، بررسی "+named.map(p=>displayTag(p.tag)).join("، ")+" تموم شده و "+(named.length>1?"همه‌شون قبول شدن.":"قبول شد."),request};
+}
 const FA_NO_PHOTO_MODEL="پرامپت آماده است، اما الان هیچ مدل فعالی این عکس‌ها رو به‌عنوان مرجع نمی‌گیره (مثلاً تعدادشون بیشتر از حد مدله)؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 const FA_VOICE_CLONE="کلون صدا در هووش پشتیبانی نمی‌شود؛ هووش فقط تصویر و ویدیو می‌سازد و تولید یا شبیه‌سازی صدا ممکن نیست.";
 const faMissingGenerations=(tags:readonly string[])=>tags.map(displayTag).join("، ")+(tags.length===1?" در این گفت‌وگو پیدا نشد؛ تگ را اصلاح کن یا از «اصلاح» روی کارت همان تولید استفاده کن.":" در این گفت‌وگو پیدا نشدند؛ تگ‌ها را اصلاح کن یا از «اصلاح» روی کارت همان تولید استفاده کن.");
@@ -470,6 +485,11 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
    return {status:"needs_input",turnId:askTurn,message:finglish?SUGGESTED_FINGLISH:SUGGESTED_FA,question:SUGGESTED_FA,editCards:[{tag:photo.tag,suggested}]};
   }
  }
+ // Picking up a request that was set aside for its checks (owner, 2026-11-08: «تموم شد؟» was answered with an invented "still checking"): when Whoush's last
+ // turn set files aside, and the user now asks whether it is done while every file that request named has passed, Whoush says so and offers to make it, with
+ // one tap that sends the same request again (its #files come with it).
+ const resume=resumeAfterReview(parsed.text,ownFiles.length,safeHistory,parsed.priorAttachments??[]);
+ if(resume)return {status:"needs_input",turnId:askTurn,message:resume.message,question:RESUME_QUESTION_FA,choices:[{id:"resume1",labelFa:RESUME_LABEL_FA,replyFa:resume.request}]};
  // Triage (owner, 2026-11-07, lib/turn-triage.ts): not every message needs a plan. A greeting or a question gets a direct answer; a request missing something
  // that would change the result a lot (or that needs a link Whoush cannot open) gets one follow-up; the rest is planned, with effort to match the brief.
  // An answer to Whoush's own question, an arranged scene and a brushed edit always go on to planning: they already say what to make.
@@ -478,7 +498,9 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // It runs in the background (owner, 2026-11-07: planning starts alongside it): a reply or a question wins over anything after it, so every later early
  // return waits for it first (`early`), and the planner is cancelled when it answers.
  const triageP:Promise<OrchestratorResult|undefined>=triager&&!parsed.answersQuestion&&!parsed.stagingOverride&&parsed.task!=="character"&&!files0.some(f=>f.regionEdit)?(async()=>{
-  const t=await triager({text:parsed.text,history:safeHistory,generations:parsed.generations?.length??0,script:finglish?"finglish":"fa"}).catch(()=>null);
+  // Each file in the chat with the real state of its check, so «تموم شد؟» is answered from facts, never guessed from the chat.
+  const seenTags=new Set<string>(),triageFiles=[...files0,...(parsed.priorAttachments??[])].filter(f=>isMediaKind(f.kind as never)&&!seenTags.has(f.tag)&&seenTags.add(f.tag)).map(f=>({tagFa:displayTag(f.tag),checked:!isUnchecked(f)}));
+  const t=await triager({text:parsed.text,history:safeHistory,generations:parsed.generations?.length??0,script:finglish?"finglish":"fa",files:triageFiles}).catch(()=>null);
   // Its texts are model output: the same plan-text safety check and leak filter as the planner's reply, else the turn goes on to planning.
   const ok=(x:string)=>evaluatePlanTextSafety(x).decision==="allow"&&!leakText(x,parsed.text)&&!(finglish&&/[\u0600-\u06ff]/.test(x.replace(/[#@][^\s]+/g," ")));
   if(t?.mode==="reply"&&ok(t.replyFa))return {status:"reply",turnId:askTurn,message:t.replyFa,...(t.react?{reaction:t.react}:{})} as OrchestratorResult;
