@@ -79,10 +79,6 @@ export async function restoreOutsideEdit(i:RestoreInput,t:RestoreTuning=RESTORE_
  * Unlike the guessed restore above, it never skips: the area outside the selection is always the source's.
  */
 export type LockResult={bytes:Buffer;mime:"image/png";aligned:{scale:number;dx:number;dy:number}}|{skipped:string};
-function erode(mask:Uint8Array,w:number,h:number,r:number):Uint8Array{
- const inv=new Uint8Array(w*h);for(let i=0;i<inv.length;i++)inv[i]=mask[i]?0:1;
- const d=dilate(inv,w,h,r),out=new Uint8Array(w*h);for(let i=0;i<out.length;i++)out[i]=d[i]?0:1;return out;
-}
 /** The scale and shift (source → output coordinates, about the centre) that best line the output up with the source outside the selection. */
 export function alignOutside(S:Uint8Array,O:Uint8Array,outside:Uint8Array,w:number,h:number):{scale:number;dx:number;dy:number;gain:number}{
  const cx=w/2,cy=h/2;
@@ -195,12 +191,13 @@ export async function lockToSelection(i:{source:Uint8Array;mask:Uint8Array;outpu
   for(let p=0;p<N;p++){if(!reach[p])continue;const x=Math.min(w-1,Math.max(0,p%w+best.dx)),y=Math.min(h-1,Math.max(0,(p-p%w)/w+best.dy)),q=(y*w+x)*3,o=p*3;local[o]=A[q];local[o+1]=A[q+1];local[o+2]=A[q+2];}
  }
  if(local)A=local;
- // 2. The blend fades in inside the selection only: outside it every pixel is the source's. It stays narrow even for a large selection: a wide fade
- // left a grey ghost where old white hair met new brown hair beside a kept face (2026-11-08 test).
- const r=Math.max(1,Math.round(.003*Math.max(w,h))),inner=erode(sel,w,h,r);
- let soft=boxBlur(Float32Array.from(inner),w,h,r);
- let total=0;for(let p=0;p<N;p++){soft[p]*=sel[p];total+=soft[p];}
- if(total<.3*n)soft=Float32Array.from(sel); // a selection too thin to fade (a line, an eyelash) is taken whole
+ // 2. The whole selection is the model's, edge pixels included, and the blend into the source happens in a thin ring just outside it (owner,
+ // 2026-11-08: "the edge of the old image is visible" around a face and a cup). The fade used to sit inside the selection, so its outer few
+ // pixels kept the old colour, and a segmentation edge sits slightly inside the object's soft border anyway. The ring is narrow (about 0.5% of the
+ // photo's longer side): the model's picture was lined up above, so there it matches the source. A wide fade once left a grey ghost (2026-11-08).
+ const r=Math.max(1,Math.round(.0025*Math.max(w,h)));
+ const soft=boxBlur(Float32Array.from(dilate(sel,w,h,r)),w,h,r);
+ for(let p=0;p<N;p++)soft[p]=sel[p]?1:Math.min(1,soft[p]);
  const out=Buffer.alloc(N*3);
  for(let p=0,q=0;p<N;p++,q+=3){const t=soft[p];out[q]=Math.round(A[q]*t+S[q]*(1-t));out[q+1]=Math.round(A[q+1]*t+S[q+1]*(1-t));out[q+2]=Math.round(A[q+2]*t+S[q+2]*(1-t));}
  const bytes=await sharp(out,{raw:{width:w,height:h,channels:3}}).png().toBuffer();

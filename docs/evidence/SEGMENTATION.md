@@ -92,6 +92,8 @@ The owner asked for four edits to be tested live (dev, no charge): fuller lips, 
 Also found and fixed in testing:
 - A new edit request typed while an earlier edit card waited was taken as that card's answer, so it got no edit card of its own.
 - A wide edge fade for large areas left a grey ghost where old white hair met new brown hair. It was reverted; the fade stays narrow.
+- The owner saw a rim of the old picture around a face and a cup. The lock faded in about 8 px inside the selection, so its edge kept the old colour. Now the whole selection is the model's, and a ring of about 0.5% of the longer side just outside it blends into the source. Re-locking the bronze-skin result removed the pale ring around the lips.
+- The generation card forced the planned ratio (a 3:4 close-up) on a locked edit that comes back at the photo's 3:2, which stretched it. The planned ratio now only reserves space until the picture loads.
 
 **Not verified:** colour-only hair changes (the edge strands), people with several faces, and all of this on an iPhone.
 

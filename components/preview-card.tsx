@@ -1,4 +1,5 @@
 "use client";
+import {useState} from "react";
 import {TagText} from "@/components/message-text";
 import {SAVE_AGAIN_FA,useSaveFromUrl} from "@/components/share-actions";
 import {Brush,Clapperboard,Download,Image as ImageIcon,Maximize2,RotateCcw,Shuffle,TriangleAlert,VolumeX} from "lucide-react";
@@ -15,6 +16,19 @@ export const RERUN_GONE_FA="این برنامه دیگه روی سرور نیس�
 /** The states a generation can be run again from: it stopped without an output. */
 export const RETRY_STATES=["failed","canceled","released","lost"];
 export type PreviewOutput={kind:"image"|"video";url:string};
+
+/**
+ * A finished picture at the card's full width and its own shape (owner, 2026-11-08: "the generated image card is stretching the image"). The ratio the
+ * plan asked for only reserves the height until the picture loads; then the picture's real size decides. A locked edit comes back at the photo's own
+ * shape (3:2) even when the model was asked for a 4:5 close-up, and forcing the planned box squeezed it.
+ */
+function OutputImage({url,planned}:{url:string;planned?:string}){
+ const [real,setReal]=useState<{url:string;ratio:string}|null>(null);
+ const read=(img:HTMLImageElement|null)=>{if(img?.complete&&img.naturalWidth&&img.naturalHeight&&real?.url!==url)setReal({url,ratio:img.naturalWidth+" / "+img.naturalHeight});};
+ const ratio=real?.url===url?real.ratio:planned;
+ // eslint-disable-next-line @next/next/no-img-element -- a provider output URL shown as the card's preview
+ return <img ref={read} src={url} alt="" onLoad={e=>read(e.currentTarget)} style={ratio?{aspectRatio:ratio}:undefined} className="block h-auto w-full rounded-control object-contain"/>;
+}
 
 /**
  * A generation's preview as a card in the conversation. On top, full width inside the card (16:9): the output, an image (a button that opens the preview panel)
@@ -55,8 +69,7 @@ export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,o
    :<span className="group relative order-2 block w-full">{output&&onView&&<button type="button" onClick={onView} tabIndex={-1} aria-hidden="true"
      className="absolute end-1.5 top-1.5 z-10 flex size-7 items-center justify-center rounded-[4px] bg-background/85 text-fg-primary shadow-sm backdrop-blur-sm motion-hover hover:bg-surface-pressed"><Icon icon={Maximize2} size={16} aria-hidden="true"/></button>}<button type="button" onClick={output&&onView?onView:onOpen} aria-label={output&&onView?"نمایش تمام‌صفحه"+(tag?" "+displayTag(tag):""):label} className={media+" motion-hover not-disabled:hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"}>
     {output
-     // eslint-disable-next-line @next/next/no-img-element -- a provider output URL shown as the card's preview
-     ?<img src={output.url} alt="" style={ratio?{aspectRatio:ratio}:undefined} className="block h-auto w-full rounded-control"/>
+     ?<OutputImage url={output.url} planned={ratio}/>
      :<Icon icon={failed?TriangleAlert:video?Clapperboard:ImageIcon} size={32} aria-hidden="true" className={failed?"text-destructive":undefined}/>}
    </button></span>}
   {failed&&<span role="alert" className="order-4 px-1 type-caption text-destructive">{messageFa}</span>}

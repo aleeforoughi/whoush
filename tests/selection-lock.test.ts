@@ -7,6 +7,10 @@ const W=320,H=240;
 /** A textured source (gradients and stripes, so a shift is measurable). */
 function source(){const b=Buffer.alloc(W*H*3);for(let y=0;y<H;y++)for(let x=0;x<W;x++){const q=(y*W+x)*3;b[q]=(x*3+y)%256;b[q+1]=(Math.floor(x/9)%2)*120+(y%40)*2;b[q+2]=(x*y)%251;}return b;}
 const png=(raw:Buffer,ch:1|3)=>sharp(raw,{raw:{width:W,height:H,channels:ch}}).png().toBuffer();
+/** The blend ring just outside a selection (lib/region-restore.ts: about 0.25% of the longer side, twice): pixels further out are the source's. */
+const RING=2*Math.max(1,Math.round(.0025*Math.max(W,H)))+1;
+/** The selection grown by the blend ring: everything outside it must be exactly the source. */
+function near(M:Buffer):Uint8Array{const o=new Uint8Array(W*H);for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(M[y*W+x])for(let dy=-RING;dy<=RING;dy++)for(let dx=-RING;dx<=RING;dx++){const X=x+dx,Y=y+dy;if(X>=0&&Y>=0&&X<W&&Y<H)o[Y*W+X]=1;}return o;}
 
 test("selection lock: outside the selection stays exactly the source; the edit lands where the selection is, even when the model shifted the picture",async()=>{
  const S=source();
@@ -22,8 +26,8 @@ test("selection lock: outside the selection stays exactly the source; the edit l
  if("skipped" in r)return;
  assert.ok(Math.abs(r.aligned.dx-6)<=1&&Math.abs(r.aligned.dy-4)<=1,"found the shift: "+JSON.stringify(r.aligned));
  const out=await sharp(r.bytes).raw().toBuffer();
- let outsideDiff=0;for(let p=0;p<W*H;p++)if(!M[p])for(let c=0;c<3;c++)outsideDiff=Math.max(outsideDiff,Math.abs(out[p*3+c]-S[p*3+c]));
- assert.equal(outsideDiff,0,"every pixel outside the selection is the source's");
+ const ring=near(M);let outsideDiff=0;for(let p=0;p<W*H;p++)if(!ring[p])for(let c=0;c<3;c++)outsideDiff=Math.max(outsideDiff,Math.abs(out[p*3+c]-S[p*3+c]));
+ assert.equal(outsideDiff,0,"every pixel beyond the thin blend ring is the source's");
  const mid=(120*W+160)*3;assert.deepEqual([out[mid],out[mid+1],out[mid+2]],[0,255,0],"the edit sits in the selection, where it belongs");
 });
 
@@ -58,8 +62,8 @@ test("selection lock: an area the model moved on its own is lined up locally, so
  assert.deepEqual(at(150,110),[220,30,40],"the feature fills the selection near its top-left…");
  assert.deepEqual(at(190,122),[220,30,40],"…and near its bottom-right: it was moved back into place, not cut off");
  assert.deepEqual(at(170,103),[220,30,40],"just inside the top edge: the edit, not the source's texture peeking through (the doubled-lips ghost)");
- let outside=0;for(let p=0;p<W*H;p++)if(!M[p])for(let c=0;c<3;c++)outside=Math.max(outside,Math.abs(out[p*3+c]-S[p*3+c]));
- assert.equal(outside,0,"outside the selection is still exactly the source");
+ const ring=near(M);let outside=0;for(let p=0;p<W*H;p++)if(!ring[p])for(let c=0;c<3;c++)outside=Math.max(outside,Math.abs(out[p*3+c]-S[p*3+c]));
+ assert.equal(outside,0,"beyond the thin blend ring it is still exactly the source");
 });
 
 test("crop and stitch: a small selection gets a close-up at a standard ratio inside the photo; a big one does not",async()=>{
@@ -88,6 +92,18 @@ test("crop and stitch: the model's close-up goes back in its place, and outside 
  assert.ok(!("skipped" in r));if("skipped" in r)return;
  const out=await sharp(r.bytes).raw().toBuffer(),mid=(115*W+170)*3;
  assert.deepEqual([out[mid],out[mid+1],out[mid+2]],[0,255,0],"the edit is back in place");
- let outside=0;for(let p=0;p<W*H;p++)if(!M[p])for(let c=0;c<3;c++)outside=Math.max(outside,Math.abs(out[p*3+c]-S[p*3+c]));
- assert.equal(outside,0,"outside the selection is exactly the source");
+ const ring=near(M);let outside=0;for(let p=0;p<W*H;p++)if(!ring[p])for(let c=0;c<3;c++)outside=Math.max(outside,Math.abs(out[p*3+c]-S[p*3+c]));
+ assert.equal(outside,0,"beyond the thin blend ring it is exactly the source");
+});
+
+test("selection lock: the selection's own edge is the model's, so no rim of the old picture shows (owner, 2026-11-08: a face and a cup)",async()=>{
+ const S=source();
+ const M=Buffer.alloc(W*H);for(let y=90;y<150;y++)for(let x=130;x<190;x++)M[y*W+x]=255;
+ // The model recoloured exactly the selection, edge pixels included, and kept the rest.
+ const O=Buffer.from(S);for(let y=90;y<150;y++)for(let x=130;x<190;x++){const q=(y*W+x)*3;O[q]=200;O[q+1]=40;O[q+2]=200;}
+ const r=await lockToSelection({source:await png(S,3),mask:await png(M,1),output:await png(O,3)});
+ assert.ok(!("skipped" in r));if("skipped" in r)return;
+ const out=await sharp(r.bytes).raw().toBuffer(),at=(x:number,y:number)=>{const q=(y*W+x)*3;return [out[q],out[q+1],out[q+2]];};
+ for(const [x,y] of [[130,90],[189,90],[130,149],[189,149],[160,90],[130,120]])assert.deepEqual(at(x,y),[200,40,200],"the edge pixel ("+x+","+y+") is the edit, not the old picture");
+ assert.deepEqual(at(160,120),[200,40,200]);
 });
