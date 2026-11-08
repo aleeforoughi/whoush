@@ -51,3 +51,8 @@ test("owner (2026-11-08): Finglish tags: «#tasvir-1» is typed and shown, Persi
  assert.equal(displayTagIn("image1","fi"),"#tasvir-1");assert.equal(displayTagIn("image1","fa"),"#تصویر-۱");
  assert.doesNotMatch(toFinglish("یه متن که توی فرهنگ نیست"),/[؀-ۿ]/,"unknown interface text is written in Latin letters");
 });
+test("owner (2026-11-08): the chat box's direction: Persian text right to left, Latin left to right; with no letter yet (empty, a new line after Enter) the interface's",async()=>{
+ const {textDir}=await import("../lib/text-dir");
+ for(const [t,f,want] of [["","rtl","rtl"],["\n","rtl","rtl"],["  12 \n","rtl","rtl"],["سلام\n","ltr","rtl"],["hello","rtl","ltr"],["#تصویر-۱ رو ببین","ltr","rtl"],["","ltr","ltr"],["\n","ltr","ltr"],["salam","rtl","ltr"]] as const)
+  assert.equal(textDir(t,f),want,JSON.stringify(t)+" in "+f);
+});
