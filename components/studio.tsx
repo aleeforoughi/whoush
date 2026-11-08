@@ -452,7 +452,9 @@ export function Studio(){
   const blob=blobs.current.get(a.id);
   if(!blob){const r:PhotoReview={state:"failed",reasonFa:REVIEW_FAILED_FA};setReview(a.id,r);return Promise.resolve(r);}
   setReview(a.id,{state:"checking",progress:0});
-  const job=(a.kind==="video"?reviewVideo:reviewPhoto)(blob,p=>{if(reviewJobs.current.get(a.id)===job)setReview(a.id,{state:"checking",progress:p});}).then(r=>{
+  // `job` is declared first: the progress callback can run before the check returns (the first tick is synchronous), and must not read it uninitialized.
+  let job:Promise<PhotoReview>|undefined=undefined;
+  job=(a.kind==="video"?reviewVideo:reviewPhoto)(blob,p=>{if(!job||reviewJobs.current.get(a.id)===job)setReview(a.id,{state:"checking",progress:p});}).then(r=>{
    if(reviewJobs.current.get(a.id)!==job)return r;
    reviewJobs.current.delete(a.id);setReview(a.id,r);
    if(r.state==="blocked")setProblems(list=>[...list,{key:crypto.randomUUID(),name:displayTag(a.tag),message:r.reasonFa+(r.fixFa?" "+r.fixFa:"")}]);
