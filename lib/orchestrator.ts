@@ -528,7 +528,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   const regions=loc?.mode==="edit"?loc.regions.filter(r=>r.noteFa.trim()&&r.box[2]>r.box[0]&&r.box[3]>r.box[1]):[];
   if(devLiveTest().enabled)console.info("[whoush dev-live] edit check result",loc?loc.mode:"unavailable","regions",regions.length);
   if(regions.length&&regions.every(r=>evaluateTextSafety(r.noteFa).decision==="allow")){
-   const suggested:SuggestedEdit[]=regions.map(r=>({note:r.noteFa.trim().slice(0,300),boxes:[[r.box[0],r.box[1],r.box[2],r.box[3]]]}));
+   const suggested:SuggestedEdit[]=regions.map(r=>({note:r.noteFa.trim().slice(0,300),boxes:[[r.box[0],r.box[1],r.box[2],r.box[3]]],...(r.part!=="none"?{part:r.part}:{}),...(r.grow?{grow:true as const}:{})}));
    return {status:"needs_input",turnId:askTurn,message:finglish?SUGGESTED_FINGLISH:SUGGESTED_FA,question:SUGGESTED_FA,editCards:[{tag:photo.tag,suggested}]};
   }
   // An edit of the whole photo (a retouch, a colour grade) with no single place to mark (owner, 2026-11-08: an edit never goes without its widget):
@@ -886,12 +886,14 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   // edit (the whole element, naturally), and the map is a locator only. Task, regions, preserve, quality, output, in that order. The selection lock
   // (lib/region-restore.ts) then keeps every pixel outside the regions exactly as it was.
   const lead=painted.map(f=>{
-   const regions=f.regionEdit!.regions.map(r=>"Region "+String(r.n).padStart(2,"0")+" ("+r.color+(r.target?", the "+r.target:"")+"): "+r.note).join("\n");
+   const regions=f.regionEdit!.regions.map(r=>"Region "+String(r.n).padStart(2,"0")+" ("+r.color+(r.target?", the "+r.target:"")+(r.grow?", with room to grow":"")+"): "+r.note).join("\n"),
+    grows=f.regionEdit!.regions.some(r=>r.grow);
    return ["TASK: LOCALIZED PHOTO EDIT (inpainting) of "+describeTagEn(f)+".",
-    "SELECTION: its region map is a separate black image where each region is a flat coloured shape at the same place as in the photo. A region identifies WHAT to edit: recognise the element it covers and edit that whole element naturally (its real shape, material, edges, contact shadows and light), staying within the region. The map is a locator only: never draw its colours, shapes or black, and never tint the photo with them.",
+    "SELECTION: its region map is a separate black image where each region is a flat coloured shape at the same place as in the photo. A region identifies WHAT to edit: recognise the element it covers and edit that whole element naturally (its real shape, material, edges, contact shadows and light), staying within the region."+(grows?" A region \"with room to grow\" also covers space around the element for its new size or shape: the element may fill as much of it as the instruction needs and ends naturally inside it (its tips and edges within the region, never cut off by the region's edge), and any part it does not fill keeps the photo's own surroundings (skin, hair, background, clothes) continuing naturally.":"")+" The map is a locator only: never draw its colours, shapes or black, and never tint the photo with them.",
+    "CHANGE: carry out each region's instruction fully, as a clearly visible change at the strength it asks for (subtle only when it asks for subtle).",
     "REGIONS:\n"+regions,
     "PRESERVE: do not regenerate the photo; everything outside the regions is copied from the source unchanged, same framing and size. "+GENERIC_EDIT_RULE_EN+".",
-    "QUALITY: inside each region keep the person's own skin tone and colours, and match the surrounding texture, grain, sharpness and light so the change looks photographed, with no seams or pasted-on edges.",
+    "QUALITY: inside each region keep the person's own skin tone and colours except what its instruction changes, and match the surrounding texture, grain, sharpness and light so the change looks photographed, with no seams or pasted-on edges.",
     "OUTPUT: the same photo with the requested edits naturally integrated, nothing else changed."].join("\n");
   }).join("\n\n");
   // The provider prompt is the edit and the locks only (owner, 2026-11-06: change only that part, nothing else): no planner scene, camera, light or

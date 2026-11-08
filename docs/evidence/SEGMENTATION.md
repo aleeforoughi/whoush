@@ -30,7 +30,8 @@ Sources:
 - **Speed:** encoding the photo took 1.3 s; each mask after that took 66–82 ms.
 - **Reuse:** `model.get_image_embeddings` once, then `image_processor.reshape_input_points` / `add_input_labels` with the cached sizes for each tap. The photo is not processed again.
 - **Library behaviour:**
-  - In 4.3.2, `SamModel.forward` reads `input_points` even for a box-only prompt, which throws. A box is therefore always sent with its centre as a positive point; that gives the same cup mask (460–889 × 299–614).
+  - In 4.3.2, `SamModel.forward` reads `input_points` even for a box-only prompt, which throws.
+  - **Corrected 2026-11-08:** this decoder file has four inputs and no box input; the browser logged "Too many inputs were provided (5 > 4). The following inputs will be ignored: input_boxes". Boxes were silently ignored, and only the box's centre point was used. A box is now sent as its two corners with SAM's box labels (2 top-left, 3 bottom-right). Node check on the 1264×848 portrait: the mouth box gave the mouth (0.4% of the frame, 579–702 × 433–485), not the skin around it. An answer with more than 25% outside the box (grown by 10%) is rejected and the soft oval is used.
   - A padding point (label −10) with a box gives a wrong whole-table mask, so it is not used.
 - **Three masks per prompt:** a tap takes the smallest mask within 0.04 of the best IoU score (finest detail). A box takes the best score.
 
@@ -76,6 +77,23 @@ The owner asked for this: "tap the skin selects the whole skin, tap the nose sel
 **Verified in the browser** on a generated 1264×848 portrait. Each tap selected only that part: the nose; the face skin, with an exact jaw and without eyes, brows, lips or the fringe; the lips; one eye; all the hair; the neck down to the collar.
 
 **Not verified:** ears (hair covered them on the test photo), several faces, profiles, and speed on an iPhone.
+
+## Edits that change shape or colour (added 2026-11-08)
+
+The owner asked for four edits to be tested live (dev, no charge): fuller lips, a new hairstyle and colour, eye colour and skin colour. Each test found a fault, which was fixed and run again.
+
+| Edit | First result | Cause | Fix | Final result |
+|---|---|---|---|---|
+| Fuller lips | 387 pixels changed; the lips looked the same | The area was the exact lips, and the lock keeps everything outside it | The vision step marks `grow`; the area gets a rounded margin of about 40% of the lips' height, clear of the nose | Clearly fuller, natural lips with no seam |
+| Long wavy chocolate hair | A second pair of eyebrows, the hair cut off by the box, a line across the neck | The model redrew the forehead; the room ended above the shoulders | The inner face (eyebrows to mouth, plus a margin) is kept; the hair's room runs from the box down to the bottom of the photo; strands along the hair's edge are included | Long hair resting on the shoulders, the face exactly the original |
+| Emerald eyes | The hair was marked | A box around both eyes was not matched to a face part, and SAM ignored the box and used its centre | New `irises` part (an iris circle from the four iris landmarks, clipped to the eyelids); the vision step names the part; SAM gets box corners | Only the irises changed |
+| Bronze skin | Only the face was marked | No part covered all skin | New `all skin` part: face, forehead above the face outline, ears, neck and body skin, without eyes, brows and lips | An even tan from forehead to chest, no line at the jaw |
+
+Also found and fixed in testing:
+- A new edit request typed while an earlier edit card waited was taken as that card's answer, so it got no edit card of its own.
+- A wide edge fade for large areas left a grey ghost where old white hair met new brown hair. It was reverted; the fade stays narrow.
+
+**Not verified:** colour-only hair changes (the edge strands), people with several faces, and all of this on an iPhone.
 
 ## SAM 3.1: considered, not used
 

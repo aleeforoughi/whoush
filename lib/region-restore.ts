@@ -195,7 +195,8 @@ export async function lockToSelection(i:{source:Uint8Array;mask:Uint8Array;outpu
   for(let p=0;p<N;p++){if(!reach[p])continue;const x=Math.min(w-1,Math.max(0,p%w+best.dx)),y=Math.min(h-1,Math.max(0,(p-p%w)/w+best.dy)),q=(y*w+x)*3,o=p*3;local[o]=A[q];local[o+1]=A[q+1];local[o+2]=A[q+2];}
  }
  if(local)A=local;
- // 2. The blend fades in inside the selection only: outside it every pixel is the source's.
+ // 2. The blend fades in inside the selection only: outside it every pixel is the source's. It stays narrow even for a large selection: a wide fade
+ // left a grey ghost where old white hair met new brown hair beside a kept face (2026-11-08 test).
  const r=Math.max(1,Math.round(.003*Math.max(w,h))),inner=erode(sel,w,h,r);
  let soft=boxBlur(Float32Array.from(inner),w,h,r);
  let total=0;for(let p=0;p<N;p++){soft[p]*=sel[p];total+=soft[p];}

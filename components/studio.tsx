@@ -792,8 +792,12 @@ export function Studio(){
   newChat();
  }
  /** The user message Whoush's latest message asked about, when that message is a question still waiting for its answer. */
- function questionAwaitingAnswer(){
+ function questionAwaitingAnswer(typed=false){
   const lastMsg=messages[messages.length-1];
+  // An edit card is answered with its own buttons («اعمال کن», «ادیت»): a message typed after it is a new request (owner, 2026-11-08: a new edit
+  // request typed under a waiting card went on as its answer and never got its own edit card).
+  const snap=lastMsg?.kind==="question"?lastMsg.snapshot as {editCards?:unknown[];editCard?:unknown}|undefined:undefined;
+  if(typed&&(snap?.editCards?.length||snap?.editCard))return undefined;
   return lastMsg?.kind==="question"?rerunSource(messages,lastMsg.id):undefined;
  }
  /**
@@ -803,11 +807,11 @@ export function Studio(){
  const roleFiles=attachments.filter(a=>Boolean(a.role));
  function send(e:FormEvent){
   e.preventDefault();const text=draft.trim()||roleFiles.map(a=>displayTag(a.tag)).join(" ");if(!text)return;
-  answer(text);
+  answer(text,true);
  }
  /** Sends `text`; an answer to Whoush's question goes with the original request (and its files), so the planner sees the whole brief and decides instead of asking again. */
- function answer(text:string){
-  const asked=questionAwaitingAnswer();
+ function answer(text:string,typed=false){
+  const asked=questionAwaitingAnswer(typed);
   void runTurn(text,asked?[...(asked.attachments??[]).filter(a=>!attachments.some(x=>x.id===a.id)),...attachments]:attachments,[],true,asked?answerBrief(asked.brief??asked.text,text):undefined);
  }
  /** «اجرای دوباره» under a message: sends that user message (or the one an agent message answered) again as a new turn, with its files and today's settings. */
@@ -1303,7 +1307,7 @@ export function Studio(){
         <Icon icon={busy?LoaderCircle:ArrowUp} aria-hidden="true" className={busy?"animate-spin motion-reduce:animate-none":undefined}/>
        </Button>
       </div>}/>
-     <VoiceMode open={voiceOpen} maxSeconds={voice.maxSeconds} onClose={()=>setVoiceOpen(false)} onTranscript={text=>answer(text)}/>
+     <VoiceMode open={voiceOpen} maxSeconds={voice.maxSeconds} onClose={()=>setVoiceOpen(false)} onTranscript={text=>answer(text,true)}/>
      {mainSubject&&<p role="status" className="flex w-fit items-center gap-1.5 rounded-control bg-surface-selected py-0.5 ps-2 pe-0.5 type-caption text-fg-primary">
       <Icon icon={Star} size={16} aria-hidden="true" className="size-3.5 shrink-0 fill-current text-primary"/>{MAIN_SUBJECT_FA}: <bdi className="type-label">{shownTag(mainSubject)}</bdi>
       <button type="button" onClick={()=>setMainSubject(null)} aria-label={"برداشتن "+MAIN_SUBJECT_FA} className="hit-area flex size-6 items-center justify-center rounded-control text-fg-secondary motion-hover hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-2 focus-visible:outline-ring"><Icon icon={X} size={16} aria-hidden="true" className="size-3.5"/></button>

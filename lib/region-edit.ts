@@ -29,7 +29,7 @@ export type RegionColor=RegionColorName;
 export const BRUSH_SIZES=[{id:"xs",px:6,labelFa:"خیلی کوچک"},{id:"s",px:12,labelFa:"کوچک"},{id:"m",px:22,labelFa:"متوسط"},{id:"l",px:38,labelFa:"بزرگ"},{id:"xl",px:64,labelFa:"خیلی بزرگ"}] as const;
 import {type RegionTarget} from "./region-targets";
 export {REGION_TARGETS,TARGET_OF_PART,type RegionTarget} from "./region-targets";
-export type Region={n:number;color:RegionColor;note:string;target?:RegionTarget};
+export type Region={n:number;color:RegionColor;note:string;target?:RegionTarget;/** The area includes room for the element's new size or shape (lib/suggested-masks.ts). */grow?:true};
 export type RegionEdit={regions:Region[];guideId:string;guideUrl:string};
 /** A region's tag as the user sees it: #ادیت-۱. */
 export const regionTagFa=(n:number)=>"#ادیت-"+fa(n);

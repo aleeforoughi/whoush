@@ -60,6 +60,43 @@ export function refineMask(plane:Uint8Array,w:number,h:number,o:RefineOptions=RE
  return m;
 }
 
+/**
+ * A 0/1 mask grown by about `r` pixels with rounded corners (two box blurs, cut low): it follows the element's own shape, so fuller lips get a
+ * lip-shaped margin, not a rectangle (owner, 2026-11-08: the room for an element whose edit makes it bigger or a new shape).
+ */
+export function growMask(plane:Uint8Array,w:number,h:number,r:number):Uint8Array{
+ const out=new Uint8Array(w*h);if(r<1){out.set(plane);return out;}
+ // Two blurs of radius b reach 2b; a cut at 0.1 lands about 1.1·b out from a straight edge.
+ const b=Math.max(1,Math.round(r/1.1)),f=new Float32Array(w*h);for(let i=0;i<w*h;i++)f[i]=plane[i];
+ boxBlur(f,w,h,b);boxBlur(f,w,h,b);
+ for(let i=0;i<w*h;i++)out[i]=plane[i]||f[i]>=0.1?1:0;
+ return out;
+}
+
+/**
+ * Room to grow (owner, 2026-11-08: "make the lips puffy", "change the hairstyle"): the exact element plus the space around it, up to half its own size
+ * and never beyond Whoush's box for it (which the vision step makes cover the new shape: a longer hairstyle's box reaches down to where the hair would
+ * end), without the other face features. The margin is about 40% of the element's smaller side (or `radius`), following its shape. Without it the selection lock would cut the new shape back to the old outline.
+ */
+export function withRoom(plane:Uint8Array,w:number,h:number,box:readonly number[],keepClear:readonly Uint8Array[],radius?:number):Uint8Array{
+ let x0=w,y0=h,x1=-1,y1=-1;for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(plane[y*w+x]){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;}
+ if(x1<0)return plane;
+ const grown=growMask(plane,w,h,Math.max(2,Math.round(radius??0.4*Math.min(x1-x0+1,y1-y0+1)))),out=new Uint8Array(w*h);
+ // The box, with its corners rounded off (an oval a little larger than the box, cut by the box), so the room never ends in a hard rectangle.
+ const bx0=box[0]*w,by0=box[1]*h,bx1=box[2]*w,by1=box[3]*h,cx=(bx0+bx1)/2,cy=(by0+by1)/2,rx=Math.max(1,(bx1-bx0)/2*1.2),ry=Math.max(1,(by1-by0)/2*1.2);
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=y*w+x,inBox=x>=bx0&&x<bx1&&y>=by0&&y<by1&&((x+.5-cx)/rx)**2+((y+.5-cy)/ry)**2<=1;
+  out[i]=plane[i]||(grown[i]&&inBox&&!keepClear.some(k=>k[i]))?1:0;}
+ return out;
+}
+
+/** The share of a mask (w×h) that lies outside a box (pixels) grown by `margin` of its size on each side: an answer to "the object in this box" that
+ * mostly lies elsewhere is not that object (lib/segment.ts maskInBox). */
+export function spillsOut(m:{w:number;h:number;plane:Uint8Array},box:readonly number[],margin:number):number{
+ const mx=(box[2]-box[0])*margin,my=(box[3]-box[1])*margin,x0=box[0]-mx,y0=box[1]-my,x1=box[2]+mx,y1=box[3]+my;
+ let n=0,out=0;for(let i=0;i<m.plane.length;i++)if(m.plane[i]){n++;const x=i%m.w,y=(i-x)/m.w;if(x<x0||x>x1||y<y0||y>y1)out++;}
+ return n?out/n:0;
+}
+
 /** Where a selection's badge goes: the middle of its top row (0..1 of the photo), so it never covers the object itself. */
 export function maskTop(plane:Uint8Array,w:number,h:number):{x:number;y:number}|null{
  for(let y=0;y<h;y++){let x0=-1,x1=-1;for(let x=0;x<w;x++)if(plane[y*w+x]){if(x0<0)x0=x;x1=x;}if(x0>=0)return {x:(x0+x1)/2/w,y:y/h};}

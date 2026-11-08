@@ -13,10 +13,10 @@ import {analyzeFaces,facePartAt,type FaceAnalysis} from "@/lib/face-parts";
 
 /** A region: its colour slot (0..4, one layer each), its number (#ادیت-n), its comment, whether the comment was submitted (✓), and where its pin sits. */
 /** `parts`: the face parts the wand added to it (lib/face-parts.ts); one kind names the region in the edit prompt. */
-type Draft={slot:number;n:number;note:string;done:boolean;pin:{x:number;y:number};parts?:string[]};
+type Draft={slot:number;n:number;note:string;done:boolean;pin:{x:number;y:number};parts?:string[];/** Whoush's area with room to grow (lib/suggested-masks.ts). */grow?:true};
 type View={s:number;x:number;y:number};
 /** Regions Whoush painted itself (boxes in 0..1 of the photo), opened for the user to confirm or change. */
-export type SuggestedRegion={note:string;boxes:readonly (readonly [number,number,number,number])[]};
+export type SuggestedRegion={note:string;boxes:readonly (readonly [number,number,number,number])[];part?:string;grow?:true};
 const MIN_S=1,MAX_S=8;
 export const COMMENT_ADDED_FA="کامنت ثبت شد";
 export const SUBMIT_COMMENT_FA="ثبت کامنت";
@@ -85,7 +85,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
   suggested.slice(0,MAX_REGIONS).forEach((sg,slot)=>{
    const ctx=layers.current[slot]?.getContext("2d");if(!ctx)return;
    paintSuggested(ctx,slot,sg.boxes,natural.w,natural.h);
-   const b=sg.boxes[0];made.push({slot,n:slot+1,note:sg.note.slice(0,MAX_NOTE),done:true,pin:b?{x:(b[0]+b[2])/2,y:b[1]}:{x:.5,y:.5}});
+   const b=sg.boxes[0];made.push({slot,n:slot+1,note:sg.note.slice(0,MAX_NOTE),done:true,pin:b?{x:(b[0]+b[2])/2,y:b[1]}:{x:.5,y:.5},...(sg.grow?{grow:true as const}:{})});
   });
   regionsRef.current=made;
   // Seeding is a one-time sync with the canvases (an outside resource), so its state is set here once.
@@ -265,7 +265,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
   if(empty){setMissing(true);reopen(empty.slot);return;}
   // A region named by one kind of face part («the lips») when that is all it holds; anything else (brush, an object) leaves it unnamed.
   const targetOf=(r:Draft)=>{const kinds=[...new Set((r.parts??[]).map(p=>(TARGET_OF_PART[p] as string|undefined)??"object"))];return kinds.length===1&&kinds[0]!=="object"?kinds[0] as RegionTarget:undefined;};
-  onDone({masks:regions.map(r=>layers.current[r.slot]!),regions:regions.map(r=>{const t=targetOf(r);return {n:r.n,color:REGION_COLORS[r.slot].name,note:r.note.trim().slice(0,MAX_NOTE),...(t?{target:t}:{})};})});
+  onDone({masks:regions.map(r=>layers.current[r.slot]!),regions:regions.map(r=>{const t=targetOf(r);return {n:r.n,color:REGION_COLORS[r.slot].name,note:r.note.trim().slice(0,MAX_NOTE),...(t?{target:t}:{}),...(r.grow?{grow:true as const}:{})};})});
  }
  const nextSlot=[0,1,2,3,4].find(s=>!regions.some(r=>r.slot===s));
  const brushColor=painting!==null?REGION_COLORS[painting].css:open!==null?REGION_COLORS[open].css:nextSlot!==undefined?REGION_COLORS[nextSlot].css:REGION_COLORS[regions[regions.length-1].slot].css;

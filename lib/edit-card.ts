@@ -3,6 +3,8 @@
  * mark it with the brush, Whoush answers with a card that opens that picture full screen for «ویرایش با قلم» (lib/region-edit.ts). Pure: server and studio.
  */
 import {normalizePersian} from "./safety";
+import type {EditPart} from "./region-targets";
+export {EDIT_PARTS,type EditPart} from "./region-targets";
 
 export const EDIT_CARD_FA="عکس رو باز کن، روی همون قسمتی که می‌خوای عوض بشه بکش و بنویس چی بشه؛ بعدش خودم انجامش می‌دم.";
 export const EDIT_CARD_FINGLISH="Aks ro baz kon, ruye hamun ghesmati ke mikhay avaz besheh bekesh va benevis chi besheh; badesh khodam anjamesh midam.";
@@ -66,7 +68,7 @@ export function editCheckSkip(text:string):string|null{
  return mightEditPhoto(text)?null:"no_edit_words";
 }
 /** An edit card may come with regions Whoush painted itself: each with its comment and its boxes (0..1 of the photo). */
-export type SuggestedEdit={note:string;boxes:[number,number,number,number][]};
+export type SuggestedEdit={note:string;boxes:[number,number,number,number][];part?:EditPart;/** The change makes the element bigger or a new shape (fuller lips, a new hairstyle): its area includes room around it, within its box. */grow?:true};
 /** An edit of the whole photo: go ahead as asked, or mark places first. */
 export const EDIT_WHOLE_FA="این تغییر روی کل عکسه. اگه همین‌طوری درسته «اعمال کن» رو بزن؛ اگه می‌خوای فقط جاهای خاصی عوض بشه، «ادیت» رو بزن و علامتشون بزن.";
 export const EDIT_WHOLE_FINGLISH="In taghir ruye kole akseh. Ageh hamintori dorosteh \"Emal kon\" ro bezan; ageh mikhay faghat jahaye khasi avaz besheh, \"Edit\" ro bezan o alamateshun bezan.";

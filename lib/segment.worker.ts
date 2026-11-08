@@ -4,8 +4,9 @@
  * through transformers.js in this worker, off the main thread. The model and its WebAssembly runtime are served by Whoush from /models (npm run
  * models); nothing is fetched from elsewhere and the photo never leaves the device.
  *
- * Messages: {kind:"embed", key, blob} encodes a photo once (~1-3 s); {kind:"mask", key, points, labels, box?} returns its best mask in ~0.1 s, in the
- * photo's own pixels. A box always comes with its centre as a point (transformers.js 4.3.2 reads input_points even for a box).
+ * Messages: {kind:"embed", key, blob} encodes a photo once (~1-3 s); {kind:"mask", key, points, labels} returns its best mask in ~0.1 s, in the
+ * photo's own pixels. Labels: 1 adds, 0 excludes, and 2 and 3 are a box's top-left and bottom-right corners (SAM's own box encoding; this model file
+ * has no separate box input).
  */
 import {AutoProcessor,RawImage,SamModel,env,type Processor,type Tensor} from "@huggingface/transformers";
 import {refineMask} from "./mask-refine";
@@ -15,7 +16,7 @@ if(env.backends.onnx.wasm)env.backends.onnx.wasm.wasmPaths="/models/ort/";
 const ID="Xenova/slimsam-77-uniform";
 
 type Embedded={sizes:{original:[number,number][];reshaped:[number,number][]};emb:Record<string,Tensor>};
-type Req={id:number}&({kind:"embed";key:string;blob:Blob}|{kind:"mask";key:string;points:[number,number][];labels:number[];box?:[number,number,number,number];detail?:boolean});
+type Req={id:number}&({kind:"embed";key:string;blob:Blob}|{kind:"mask";key:string;points:[number,number][];labels:number[];detail?:boolean});
 
 let loaded:Promise<{model:SamModel;processor:Processor}>|null=null;
 const load=()=>loaded??=(async()=>({model:await SamModel.from_pretrained(ID,{dtype:"q8"}) as SamModel,processor:await AutoProcessor.from_pretrained(ID)}))();
@@ -30,15 +31,14 @@ async function embed(key:string,blob:Blob):Promise<Embedded>{
  return {sizes:{original:base.original_sizes,reshaped:base.reshaped_input_sizes},emb};
 }
 
-async function mask(key:string,points:[number,number][],labels:number[],box?:[number,number,number,number],detail=false){
+async function mask(key:string,points:[number,number][],labels:number[],detail=false){
  const photo=photos.get(key);if(!photo)throw new Error("not embedded");
  const {sizes,emb}=await photo,{model,processor}=await load();
- const ip=processor.image_processor as unknown as {reshape_input_points:(p:unknown,o:unknown,r:unknown,b?:boolean)=>Tensor;add_input_labels:(l:unknown,p:Tensor)=>Tensor;
+ const ip=processor.image_processor as unknown as {reshape_input_points:(p:unknown,o:unknown,r:unknown)=>Tensor;add_input_labels:(l:unknown,p:Tensor)=>Tensor;
   post_process_masks:(m:Tensor,o:unknown,r:unknown)=>Promise<Tensor[]>};
  const input_points=ip.reshape_input_points([[points]],sizes.original,sizes.reshaped);
  const input_labels=ip.add_input_labels([[labels]],input_points);
- const input_boxes=box?ip.reshape_input_points([[box]],sizes.original,sizes.reshaped,true):undefined;
- const out=await (model as unknown as (x:unknown)=>Promise<{pred_masks:Tensor;iou_scores:Tensor}>)({...emb,input_points,input_labels,...(input_boxes?{input_boxes}:{})});
+ const out=await (model as unknown as (x:unknown)=>Promise<{pred_masks:Tensor;iou_scores:Tensor}>)({...emb,input_points,input_labels});
  const masks=await ip.post_process_masks(out.pred_masks,sizes.original,sizes.reshaped);
  const iou=Array.from(out.iou_scores.data as Float32Array),top=Math.max(...iou);
  const m=masks[0],[, ,h,w]=m.dims as number[],data=m.data as Uint8Array;
@@ -58,7 +58,7 @@ self.onmessage=async(e:MessageEvent<Req>)=>{
    if(!photos.has(r.key)){photos.set(r.key,embed(r.key,r.blob));while(photos.size>3)photos.delete(photos.keys().next().value!);}
    await photos.get(r.key);self.postMessage({id:r.id,ok:true});
   }else{
-   const m=await mask(r.key,r.points,r.labels,r.box,r.detail);
+   const m=await mask(r.key,r.points,r.labels,r.detail);
    self.postMessage({id:r.id,ok:true,...m},{transfer:[m.plane.buffer]});
   }
  }catch(err){

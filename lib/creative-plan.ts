@@ -26,7 +26,8 @@ export const AttachmentSchema=z.object({
  reviewId:z.uuid().optional(),
  /** «ویرایش با قلم»: change only the painted area, as the note says; the marked copy is its own checked photo (lib/region-edit.ts). */
  regionEdit:z.object({guideReviewId:z.uuid(),regions:z.array(z.object({n:z.number().int().min(1).max(9),color:z.enum(REGION_COLOR_NAMES),note:z.string().trim().min(1).max(300),
-   /** What the region is, when the editor knows (lib/region-edit.ts REGION_TARGETS). */target:z.enum(REGION_TARGETS).optional()}).strict()).min(1).max(5),
+   /** What the region is, when the editor knows (lib/region-edit.ts REGION_TARGETS). */target:z.enum(REGION_TARGETS).optional(),
+   /** The region includes room for the element's new size or shape (fuller lips, a new hairstyle). */grow:z.literal(true).optional()}).strict()).min(1).max(5),
   /** The exact selection (a PNG in base64, white = selected): the result is locked to it (lib/region-restore.ts lockToSelection). Never sent to a model. */
   mask:z.string().max(800_000).regex(/^[A-Za-z0-9+/]+=*$/).optional()}).strict().optional()
 }).strict().superRefine((a,ctx)=>{
