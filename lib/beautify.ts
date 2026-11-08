@@ -60,7 +60,8 @@ const OFF:Record<BeautifyPart,string>={
 export function beautifyPrompt(ref:string,parts:readonly BeautifyPart[],issues:readonly BeautifyIssue[]=[],minor=false):string{
  const on=new Set(parts.filter(p=>!minor||BEAUTIFY_PARTS_MINOR.includes(p)));
  // What was seen, in a few words per part (the brief stays within the plan's 3,000-character prompt).
- const seen=(p:BeautifyPart)=>{const n=issues.filter(i=>i.part===p).map(i=>i.noteEn.trim().slice(0,50)).filter(Boolean);return n.length?" Seen: "+n.join("; ")+".":"";};
+ const short=(t:string)=>{const x=t.trim().replace(/[.;\s]+$/,"");if(x.length<=50)return x;const c=x.slice(0,50);return c.slice(0,Math.max(c.lastIndexOf(" "),20)).replace(/[,;\s]+$/,"");};
+ const seen=(p:BeautifyPart)=>{const n=issues.filter(i=>i.part===p).map(i=>short(i.noteEn)).filter(Boolean);return n.length?" Seen: "+n.join("; ")+".":"";};
  return ["TASK: EDITORIAL BEAUTIFY of "+ref+": a pro photographer's and retoucher's version of this photo. Every fix below done fully and visibly, all natural.",
   "GOAL: social-media ready: they proudly post it and get likes. Before finishing ask: would I share it for compliments? Beautiful? Still them? All three must be yes.",
   "MOOD: keep the vibe: same moment, setting and background in view, same daylight and colour mood, their own expression.",

@@ -25,7 +25,7 @@ test("Beautify words: looking better is recognised, an ordinary change is not",(
 });
 
 test("Beautify brief: identity, place, outfit and styles locked; never guesses; each chosen part with what was seen; under 18 keeps to the photo craft",()=>{
- const all=beautifyPrompt("[reference image 1]",BEAUTIFY_PARTS,[{part:"camera",noteFa:"زاویه از پایینه",noteEn:"shot from below with a close wide lens; the face looks wider"}]);
+ const all=beautifyPrompt("[reference image 1]",BEAUTIFY_PARTS,[{part:"camera",noteFa:"زاویه از پایینه",noteEn:"shot from below; the face looks wider"}]);
  assert.match(all,/^TASK: EDITORIAL BEAUTIFY of \[reference image 1\]: .*Every fix below done fully and visibly, all natural\./);
  assert.match(all,/GOAL: social-media ready: .*would I share it for compliments\? Beautiful\? Still them\? All three must be yes\./);
  assert.match(all,/MOOD: keep the vibe: same moment, setting and background in view, same daylight and colour mood, their own expression\./);
@@ -38,7 +38,7 @@ test("Beautify brief: identity, place, outfit and styles locked; never guesses; 
  assert.match(all,/hair cleanly brushed and styled.*thinning filled with the hairline unchanged\. Beard freshly barber-trimmed to an even length; the upper cheeks above the beard line \(stray stubble included\) and the neck below the neckline clean-shaven and smooth/);
  assert.match(all,/the nose visibly but naturally refined \(a slimmer bridge, a neater, slightly lifted tip, in proportion with the face\)/);
  assert.match(all,/acne, bumps, blemishes and irregular or enlarged pores polished away; tired under-eyes rested; natural fine pores and texture kept/);assert.match(all,/less puffiness, a natural defined jawline/);assert.match(all,/no lint, hair or creases/);
- assert.match(all,/CAMERA: .* Seen: shot from below with a close wide lens; the face looks wider\./);
+ assert.match(all,/CAMERA: .* Seen: shot from below; the face looks wider\./);
  for(const h of ["POSE:","LIGHT:","SKIN:","GROOMING:","FACE:","CLOTHES:","COLOUR:"])assert.ok(all.includes(h),h);
  assert.ok(all.length<=2400,"within the plan's prompt cap with room for the findings: "+all.length);
  const worst=beautifyPrompt("[reference image 1 · #تصویر-۱]",BEAUTIFY_PARTS,BEAUTIFY_PARTS.map(p=>({part:p,noteFa:"x",noteEn:"y".repeat(160)})));
@@ -95,16 +95,16 @@ test("Beautify it: the photo is the photo to edit, at its own shape, with the fi
 });
 
 test("Beautify on upload: the photo check's findings are kept by the server and go into the brief; a minor's face parts are dropped",async()=>{
- const issues=[{part:"camera" as const,noteFa:"زاویه از پایینه و صورت پهن‌تر افتاده",noteEn:"shot from below with a close wide lens; the face looks wider"},
-  {part:"clothes" as const,noteFa:"تیشرت چروکه و پرز داره",noteEn:"the black t-shirt is creased and covered in lint"},
+ const issues=[{part:"camera" as const,noteFa:"زاویه از پایینه و صورت پهن‌تر افتاده",noteEn:"shot from below; the face looks wider"},
+  {part:"clothes" as const,noteFa:"تیشرت چروکه و پرز داره",noteEn:"the t-shirt is creased and covered in lint"},
   {part:"skin" as const,noteFa:"پوست کمی ناصافه",noteEn:"uneven skin tone"}];
  const adult=await reviewUpload(Uint8Array.from([...JPEG,7]),"image/jpeg",{inspect:async()=>({category:"none",person:true,beautify:{needed:true,minor:false,issues}})});
  assert.equal(adult.state,"safe");if(adult.state!=="safe")return;
  assert.deepEqual(adult.beautify?.issues.map(i=>i.part),["camera","clothes","skin"]);
  const r=await orchestrateCreativeTurn({text:beautifyRequestFa("#تصویر-۱",["camera","clothes","color"]),attachments:[photo({reviewId:adult.reviewId,beautify:{parts:["camera","clothes","color"]}})]});
  const prompt=getPrivateMediaPrompt((r as Extract<OrchestratorResult,{status:"planned"}>).turnId)!;
- assert.match(prompt,/CAMERA: .*Seen: shot from below with a close wide lens; the face looks wider\./);
- assert.match(prompt,/CLOTHES: .*Seen: the black t-shirt is creased and covered in lint\./);
+ assert.match(prompt,/CAMERA: .*Seen: shot from below; the face looks wider\./);
+ assert.match(prompt,/CLOTHES: .*Seen: the t-shirt is creased and covered in lint\./);
  assert.ok(prompt.includes("Skin: as in the photo."),"skin was not chosen, so its finding is not used");
  const kid=await reviewUpload(Uint8Array.from([...JPEG,8]),"image/jpeg",{inspect:async()=>({category:"none",person:true,beautify:{needed:true,minor:true,issues}})});
  assert.ok(kid.state==="safe"&&kid.beautify?.minor&&kid.beautify.issues.every(i=>i.part!=="skin"),"no face parts for a minor");
@@ -129,4 +129,10 @@ test("«زیباسازی» keeps quality: the cheapest 2K-or-higher model is rec
  const prop=(r as Extract<OrchestratorResult,{status:"planned"}>).proposal,picked=prop.suggestions.find(x=>x.modelId===prop.selectedModelId);
  // Seedream's visible mark is off (owner, 2026-11-08), so a 2K model is recommended when one is offered.
  if(prop.suggestions.some(x=>/^[2-9]K$/i.test(x.resolution??"")))assert.match(picked?.resolution??"",/^[2-9]K$/i,"a 2K-or-higher model when one is offered: "+prop.selectedModelId);
+});
+
+test("Beautify findings in the brief are cut at a word, never mid-word",()=>{
+ const p=beautifyPrompt("[r]",["camera"],[{part:"camera",noteFa:"x",noteEn:"the photo was shot from far below with a very close wide phone lens, widening everything"}]);
+ const seen=/Seen: ([^\n]*)\./.exec(p)![1];
+ assert.ok(seen.length<=50&&/ (lens|close|wide|phone|very)$/.test(" "+seen.split(" ").pop()),seen);
 });
