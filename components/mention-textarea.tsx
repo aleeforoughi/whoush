@@ -93,15 +93,22 @@ function renderSegments(root:HTMLElement,segments:readonly EditorSegment[]){
  * `startAction` (the «+» menu) and `endAction` (send) are pinned to the bottom corners; the text reserves both with padding. Enter (and Ctrl/Cmd+Enter)
  * calls `onSubmitShortcut` and Shift+Enter starts a new line, but never while the mention list is open (there Enter and Tab insert a mention).
  */
-export function MentionTextarea({id,value,onValueChange,options,handleRef,startAction,endAction,top,onSubmitShortcut,onPaste,placeholder,maxLength,labelledBy,describedBy,startPad="sm:ps-14",endPad="sm:pe-14",compact=false}:{
+export function MentionTextarea({id,value,onValueChange,options,handleRef,startAction,endAction,top,onSubmitShortcut,onPaste,placeholder,maxLength,labelledBy,describedBy,startPad="sm:ps-14",endPad="sm:pe-14",compact=false,mainTag,mainLabel}:{
  id?:string;value:string;onValueChange:(v:string)=>void;options:readonly MentionOption[];handleRef:RefObject<MentionEditorHandle|null>;startAction?:ReactNode;endAction?:ReactNode;
  /** Content inside the field's border, above the text (the upload cards). */top?:ReactNode;onSubmitShortcut?:()=>void;onPaste?:(e:ClipboardEvent<HTMLDivElement>)=>void;
  placeholder?:string;maxLength?:number;labelledBy?:string;describedBy?:string;/** Inline-start padding reserved for `startAction` from `sm` up (wider when it holds several buttons), e.g. "sm:ps-24"; on a phone the buttons have their own row. */startPad?:string;
  /** Inline-end padding reserved for `endAction` (wider when it holds several buttons). */endPad?:string;
- /** Phones (owner, 2026-11-08): while the chat scrolls back, only the text row shows; the toolbar row slides down out of sight. */compact?:boolean}){
+ /** Phones (owner, 2026-11-08): while the chat scrolls back, only the text row shows; the toolbar row slides down out of sight. */compact?:boolean;
+ /** The main subject's tag: its badge is drawn blue with a star and `mainLabel` («سوژه») before it (owner, 2026-11-08). */mainTag?:string|null;mainLabel?:string}){
  const listId=useId(),optionId=(i:number)=>listId+"-"+i;
  const el=useRef<HTMLDivElement>(null);
  const rendered=useRef<string|null>(null);
+ // The main subject's badge (owner, 2026-11-08): marked after every draw, so a redrawn badge keeps it. Only an attribute: the text stays the tag.
+ useEffect(()=>{
+  el.current?.querySelectorAll<HTMLElement>("[data-tag]").forEach(b=>{
+   if(mainTag&&b.dataset.tag===mainTag){b.dataset.main="";if(mainLabel)b.dataset.mainLabel=mainLabel;}else{delete b.dataset.main;delete b.dataset.mainLabel;}
+  });
+ });
  const composing=useRef(false);
  const [trigger,setTrigger]=useState<{start:number;query:string;prop?:string}|null>(null);
  const [active,setActive]=useState(0);

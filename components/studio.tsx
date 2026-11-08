@@ -53,6 +53,7 @@ import {normalizePersian} from "@/lib/safety";
 import {isReferenceRequest,type ReferenceRequest} from "@/lib/reference-needs";
 import {isQuestionChoices} from "@/lib/media-intent";
 import {MAIN_SUBJECT_FA,shownTag} from "@/lib/main-subject";
+import {SUBJECT_SHORT_FA} from "@/components/main-subject-star";
 import {PLAN_FIRST_FA,STAGE_DONE_TEXT,STAGE_TEXT,postAgentTurn} from "@/lib/agent-stream";
 import type {TurnNote,TurnStage} from "@/lib/orchestrator-stages";
 import {replyScriptFor} from "@/lib/finglish";
@@ -618,6 +619,10 @@ export function Studio(){
   });
   setAnnounce((added.length?fa(added.length)+" فایل اضافه شد. ":"")+(bad.length?fa(bad.length)+" فایل رد شد.":""));
   readingRef.current=false;setReading(false);
+  // Every reference added gets its # badge inside the message (owner, 2026-11-08), unless it is there already. After the next render, when the chat box
+  // knows the new files (before that, a tag stays plain text).
+  const fresh=added.filter(x=>!parseMentions(draft).includes(x.tag)).map(x=>x.tag);
+  if(fresh.length)requestAnimationFrame(()=>requestAnimationFrame(()=>{for(const t of fresh)promptRef.current?.insertTag(t);}));
   return added;
  }
  /** Fills an upload card with one file (picked or dropped). The card stays in place and shows the file; a rejected file leaves it empty for another try. */
@@ -766,8 +771,9 @@ export function Studio(){
  function toggleMain(tag:string){
   if(mainSubject===tag){setMainSubject(null);return;}
   setMainSubject(tag);
-  const inTray=attachments.some(a=>a.tag===tag),inText=tag.startsWith("#")?draft.includes(tag):parseMentions(draft).includes(tag);
-  if(!inTray&&!inText)mentionTag(tag);
+  // Its # goes inside the message (owner, 2026-11-08), unless it is there already.
+  const inText=tag.startsWith("#")?draft.includes(tag):parseMentions(draft).includes(tag);
+  if(!inText)mentionTag(tag);
  }
  /**
   * A generation card's tag (#تولید-۱): puts it into the prompt as a dismissable badge, where the user writes the changes. The mention is what
@@ -1349,7 +1355,7 @@ export function Studio(){
      <AttachmentTray items={attachments} cards={cards.length} problems={problems} reading={reading} onDismiss={key=>setProblems(list=>list.filter(p=>p.key!==key))}/>
      <input ref={fileInput} type="file" multiple hidden accept={ATTACHMENT_ACCEPT} data-testid="attachment-input" onChange={e=>{const files=Array.from(e.target.files??[]),upload=pendingUpload.current,slot=pendingSlot.current;pendingUpload.current=undefined;pendingSlot.current=undefined;e.target.value="";e.target.multiple=true;const card=slot?slots.find(x=>x.id===slot):undefined;if(card)void fillSlot(card,files);else void addFiles(files,upload);}}/>
      <Label className="sr-only" id="whoush-prompt-label">توضیح تصویر یا ویدیو</Label>
-     <MentionTextarea compact={compact} id="whoush-prompt" handleRef={promptRef} value={draft} onValueChange={setDraft} options={mentionOptions} onPaste={onPaste} placeholder="چی می‌خوای بسازیم؟" labelledBy="whoush-prompt-label" describedBy="prompt-hint" maxLength={4000}
+     <MentionTextarea compact={compact} id="whoush-prompt" mainTag={mainSubject} mainLabel={SUBJECT_SHORT_FA} handleRef={promptRef} value={draft} onValueChange={setDraft} options={mentionOptions} onPaste={onPaste} placeholder="چی می‌خوای بسازیم؟" labelledBy="whoush-prompt-label" describedBy="prompt-hint" maxLength={4000}
       onSubmitShortcut={()=>{if((draft.trim()||roleFiles.length)&&!busy&&!reading)formRef.current?.requestSubmit();}}
       startPad={COMPOSER_EXTRAS_ENABLED?"sm:ps-40":"sm:ps-24"}
       startAction={<div className="flex items-center">
@@ -1380,10 +1386,7 @@ export function Studio(){
        </Button>
       </div>}/>
      <VoiceMode open={voiceOpen} maxSeconds={voice.maxSeconds} onClose={()=>setVoiceOpen(false)} onTranscript={text=>answer(text,true)}/>
-     {mainSubject&&<p role="status" className="flex w-fit items-center gap-1.5 rounded-control bg-surface-selected py-0.5 ps-2 pe-0.5 type-caption text-fg-primary">
-      <Icon icon={Star} size={16} aria-hidden="true" className="size-3.5 shrink-0 fill-current text-primary"/>{MAIN_SUBJECT_FA}: <bdi className="type-label">{shownTag(mainSubject)}</bdi>
-      <button type="button" onClick={()=>setMainSubject(null)} aria-label={"برداشتن "+MAIN_SUBJECT_FA} className="hit-area flex size-6 items-center justify-center rounded-control text-fg-secondary motion-hover hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-2 focus-visible:outline-ring"><Icon icon={X} size={16} aria-hidden="true" className="size-3.5"/></button>
-     </p>}
+     {/* The main subject is the star on its card and its # inside the message (owner, 2026-11-08), never a chip outside the chat box. */}
      {/* Read by screen readers only (owner, 2026-11-08: it took too much space under the chat box). */}
      <p id="prompt-hint" className="sr-only">با # می‌تونی به پیوست‌ها اشاره کنی؛ با ستاره یکی رو {MAIN_SUBJECT_FA} کن (اختیاری).</p>
      {/* Build mode and style always share one row (owner, 2026-11-08), on a phone and in Finglish: each may shrink and cut its label, never wrap. */}

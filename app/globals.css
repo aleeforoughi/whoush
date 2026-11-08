@@ -244,3 +244,8 @@ html[lang="fa-Latn"] body:not([data-translated]){visibility:hidden}
   .whoush-empty-float, .whoush-empty-twinkle, .whoush-empty-glow, .whoush-empty-pulse, .whoush-empty-write { animation: none; }
   .whoush-empty-write { stroke-dasharray: none; }
 }
+
+/* The main subject's badge in the chat box (owner, 2026-11-08): blue, with a star and «سوژه» before the tag (components/mention-textarea.tsx). */
+#whoush-prompt [data-tag][data-main] { background-color: var(--primary); color: var(--primary-foreground); }
+#whoush-prompt [data-tag][data-main]::before { content: "★ " attr(data-main-label); margin-inline-end: .3em; font-size: .85em; opacity: .9; }
+#whoush-prompt [data-tag][data-main] [data-badge-remove] { color: inherit; }
