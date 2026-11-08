@@ -153,3 +153,16 @@ test("the planned «زیباسازی» prompt keeps every part, even with every 
  const prompt=getPrivateMediaPrompt((o as Extract<OrchestratorResult,{status:"planned"}>).turnId)!;
  assert.ok(prompt.includes("COLOUR:")&&prompt.includes("BACKGROUND:"),"the last parts survive: "+prompt.length);
 });
+
+test("«آره، اصلاحش کن»: a new turn from the finished one leads with the review's fixes, keeps its references, and is never offered another fix",async()=>{
+ const {deriveTurnWithFix}=await import("../lib/orchestrator");
+ const src=await ok(31);
+ const r=await orchestrateCreativeTurn({text:beautifyRequestFa("#تصویر-۱",["skin"]),attachments:[photo({reviewId:src.reviewId,beautify:{parts:["skin"]}})]});
+ const turn=(r as Extract<OrchestratorResult,{status:"planned"}>).turnId,before=getPrivateMediaPrompt(turn)!;
+ const id=deriveTurnWithFix(turn,"Keep the skin texture natural; restore the original eyebrow shape.")!;
+ assert.ok(id&&id!==turn);
+ const after=getPrivateMediaPrompt(id)!;
+ assert.ok(after.startsWith("FIX FROM REVIEW (the previous attempt fell short; fix exactly this, keep everything else): Keep the skin texture natural; restore the original eyebrow shape.\n"),after.slice(0,200));
+ assert.ok(after.includes(before.slice(0,200)),"the original brief follows");
+ assert.equal(deriveTurnWithFix("no-such-turn","x"),undefined);
+});

@@ -122,5 +122,3 @@ export function beautifySeenFa(notes:Partial<Record<BeautifyPart,string>>|undefi
  if(!g.length)return undefined;
  return "توی عکست دیدم "+(g.length===1?g[0]:g.slice(0,-1).join("، ")+" و "+g[g.length-1])+" جای بهتر شدن "+(g.length===1?"داره":"دارن")+".";
 }
-/** After a result with a clear problem (the quality assessor, owner 2026-11-08). */
-export const ENHANCE_OFFER_FA="این نتیجه رو بررسی کردم؛ با «زیباسازی» می‌تونم بهترش کنم.";

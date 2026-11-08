@@ -21,7 +21,7 @@ import {mainSubjectNote,mainSubjectRule,shownTag,typedMainSubject} from "./main-
 import {MEDIA_KIND_CHOICES,MEDIA_KIND_QUESTION_FA,MEDIA_KIND_QUESTION_FINGLISH,type QuestionChoice} from "./media-intent";
 import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
 import {SKILLS,SKILL_REGISTRY_VERSION} from "./skills";
-import {rememberBeautifyTurn} from "./beauty-check";
+import {beautifySourceOf,rememberBeautifyTurn,rememberFixedTurn} from "./beauty-check";
 import {SEEDREAM_IMAGE_WATERMARK} from "./providers/byteplus";
 import {REFERENCE_NEEDS,detectReferenceNeeds,type ReferenceRequest} from "./reference-needs";
 import {DRIFT_MARKER_FA,DRIFT_MARKER_FINGLISH,DRIFT_SKIP,DRIFT_SKIP_FINGLISH,driftAngles,driftAskFa,driftAskFinglish,missingNeeds} from "./drift";
@@ -34,7 +34,7 @@ import {continuesWork} from "./follow-up";
 import {BEAUTIFY_NAME,BEAUTIFY_OFFER_FA,BEAUTIFY_OFFER_FINGLISH,BEAUTIFY_PART_FA,BEAUTIFY_PARTS_MINOR,beautifyOffer,beautifyPrompt,wantsBeautify,type BeautifyOffer} from "./beautify";
 import {EDIT_CARDS_FA,EDIT_CARD_FA,EDIT_CARD_FINGLISH,EDIT_WHOLE_FA,EDIT_WHOLE_FINGLISH,SUGGESTED_FA,SUGGESTED_FINGLISH,editCheckSkip,mightEditPhoto,wantsEditCard,type SuggestedEdit} from "./edit-card";
 import {safeReview} from "./upload-review";
-import {cropForEdit,rememberRegionEdit} from "./region-restore";
+import {cropForEdit,rememberRegionEdit,regionEditFor} from "./region-restore";
 import {MEDIA_ROUTE,readMedia,storeMedia} from "./media-store";
 import {framePrompt,frameTimes,sourceFrames,type SourceFrame} from "./frame-draft";
 import {POPULAR_ASPECT_RATIOS,nearestAspectRatio,nearestByValue} from "./aspect";
@@ -442,6 +442,21 @@ export function deriveTurnWithStaging(turnId:string,staging:Staging,aspect?:stri
  const lead=sceneLeadEn(staging)+" ";
  const extra=" User-adjusted scene (overrides any earlier camera, framing or lighting direction): "+describeStagingEn(staging)+describeFocus(staging,undefined,aspect??"16:9").en+" "+lensFor(staging).en+(aspect?" Aspect ratio "+aspect+".":"");
  const id=randomUUID();copyReferences(turnId,id);keepPrompt(id,(lead+base.slice(0,Math.max(0,3000-extra.length-lead.length))+extra).slice(0,3000));
+ return id;
+}
+/**
+ * «آره، اصلاحش کن» (owner, 2026-11-08): a new private turn from a finished one, with the fixes Whoush's own review wrote (lib/beauty-check.ts; server-side
+ * text, never the browser's). The same prompt, references, selection lock and «زیباسازی» source; the fixes lead, so the model weighs them first. Its result
+ * is never offered another fix.
+ */
+export function deriveTurnWithFix(turnId:string,fixEn:string):string|undefined{
+ const base=store().get(turnId);if(base===undefined)return undefined;
+ const id=randomUUID();copyReferences(turnId,id);
+ const lock=regionEditFor(turnId);if(lock)rememberRegionEdit(id,lock);
+ const src=beautifySourceOf(turnId);if(src)rememberBeautifyTurn(id,src);
+ rememberFixedTurn(id);
+ const lead="FIX FROM REVIEW (the previous attempt fell short; fix exactly this, keep everything else): "+fixEn.slice(0,400)+"\n";
+ keepPrompt(id,(lead+base).slice(0,3500));
  return id;
 }
 /** Tests only: a quotable image-edit turn (no image-edit model is verified yet, so none can be planned as one). */

@@ -5,7 +5,7 @@ import {TagBadge} from "@/components/attachment-chip";
 import {changeTitleFa,type CanvasSection} from "@/lib/staging";
 import {WidgetHeader} from "@/components/widget";
 import {suggestedMasks} from "@/lib/suggested-masks";
-import {BEAUTIFY_UPLOAD_FA,ENHANCE_OFFER_FA,beautifyRequestFa,parseBeautifyOffer,type BeautifyOffer,type BeautifyPart} from "@/lib/beautify";
+import {BEAUTIFY_UPLOAD_FA,beautifyRequestFa,parseBeautifyOffer,type BeautifyOffer,type BeautifyPart} from "@/lib/beautify";
 import {useUiLang} from "@/components/ui-language";
 import {useEffect,useLayoutEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
 import Link from "next/link";
@@ -245,6 +245,8 @@ export function Studio(){
  },[messages]);
  /** «بساز» on an edit card is preparing its masks: the card's tag (its button shows it is working). */
  const [preparingEdit,setPreparingEdit]=useState<string|null>(null);
+ /** The result whose «آره، اصلاحش کن» is being quoted and started. */
+ const [fixing,setFixing]=useState<string|null>(null);
  /** Suggestion cards folding away after «لازم نیست», and how many offers were turned down in this chat (two: Whoush stops offering). */
  const [folding,setFolding]=useState<ReadonlySet<string>>(()=>new Set());
  const skips=useRef(0);
@@ -367,17 +369,8 @@ export function Studio(){
    setMessages(m=>m.map(x=>x.id===messageId&&x.kind==="job"?{...x,text:next.messageFa,snapshot:next} as TranscriptItem:x));
    setJob(j=>j&&j.jobId===next.jobId?{...next}:j);
    if(isFinalJobState(next.state))setPreview(next.messageFa);
-   // The quality assessor found a clear problem on this picture (owner, 2026-11-08): Whoush offers «زیباسازی» for it, right after the result.
-   if(next.state==="completed"&&next.enhance&&next.tag)offerEnhancement(next.tag,next.jobId??next.tag,next.enhance);
    touch();
   },()=>active.current?.id===project);
- }
- /** The enhancement offer after a result: once per picture, never in a chat where two offers were turned down (owner: never annoying). */
- const enhanceOffered=useRef(new Set<string>());
- function offerEnhancement(tag:string,key:string,offer:Omit<BeautifyOffer,"tag">){
-  if(skips.current>=2||enhanceOffered.current.has(key))return;
-  enhanceOffered.current.add(key);
-  setMessages(m=>m.some(x=>x.kind==="question"&&x.snapshot.beautify?.tag===tag)?m:[...m,agentItem({role:"agent",text:ENHANCE_OFFER_FA,kind:"question",snapshot:{question:ENHANCE_OFFER_FA,beautify:{...offer,tag}}})]);
  }
  /** The first successful turn of a draft creates the project (so there are never empty projects) and puts it in the URL. */
  function adoptProject(firstText:string,characterId:string|null){
@@ -1112,6 +1105,31 @@ export function Studio(){
   * (the tap on «دوباره بساز», which shows the price). The card keeps its place and tag and follows the new job. A plan the server no longer has (it
   * restarted) cannot be quoted: the user is asked to send the request again.
   */
+ /**
+  * «آره، اصلاحش کن» on Whoush's own review of a result (owner, 2026-11-08): the server derives a new turn from that job's with the review's fixes, quoted
+  * at the normal price and run at once as a new card under the original (the user asked for it with this button), so the two can be compared.
+  */
+ async function fixJob(messageId:string){
+  const m=messages.find(x=>x.id===messageId);
+  if(busy||!m||m.kind!=="job"||!m.snapshot.rerun||!m.snapshot.jobId)return;
+  const r=m.snapshot.rerun;setBusy(true);setFixing(messageId);setError("");
+  try{
+   const post=(url:string,body:unknown)=>fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+   const q=await post("/api/generation/quote",{modelId:r.modelId,turnId:r.turnId,reviewFixOf:m.snapshot.jobId,...(r.aspectRatio?{configuration:{aspectRatio:r.aspectRatio}}:{})});
+   if(!q.ok){const b=await q.json().catch(()=>({})) as {error?:string;message?:string};throw new Error(b.error==="unknown_turn"||q.status===410?RERUN_GONE_FA:b.message??"مشکل در محاسبه هزینه");}
+   const quote=await q.json() as {token:string;turnId:string};
+   const execution=await post("/api/generation/execute",{token:quote.token,approved:true,idempotencyKey:crypto.randomUUID()});
+   if(!execution.ok)throw new Error("خطا در شروع تولید");
+   const current=await execution.json() as {id:string;state:string;messageFa:string;outputs?:JobView["outputs"];typicalMs?:number;progressFacts?:JobView["progressFacts"]};
+   const tag=nextGenerationTag(generationTagsIn(messages)),snap:JobSnapshot={...jobSnapshot(current,tag),rerun:{...r,turnId:quote.turnId}};
+   const msg=item({role:"agent",text:current.messageFa,kind:"job",snapshot:snap});
+   setMessages(ms=>[...ms.map(x=>x.id===messageId&&x.kind==="job"?{...x,snapshot:{...x.snapshot,reviewDone:true as const}} as TranscriptItem:x),msg]);
+   setJob(snap);setPreview(current.messageFa);touch();followJob(msg.id,snap);
+  }catch(err){setError(err instanceof Error?err.message:"خطای ناشناخته");}
+  finally{setBusy(false);setFixing(null);}
+ }
+ /** «همین خوبه»: the review is settled; the result stays as it is. */
+ function keepResult(messageId:string){setMessages(ms=>ms.map(x=>x.id===messageId&&x.kind==="job"?{...x,snapshot:{...x.snapshot,reviewDone:true as const}} as TranscriptItem:x));touch();}
  async function rerunJob(messageId:string,switchTo?:string){
   const m=messages.find(x=>x.id===messageId);
   if(busy||!m||m.kind!=="job"||!m.snapshot.rerun)return;
@@ -1274,7 +1292,7 @@ export function Studio(){
          :m.kind!=="job"&&<p className="whitespace-pre-wrap break-words type-body-sm text-fg-primary">
           <span className="sr-only">هووش: </span><span data-translate-exact=""><TypeOut text={m.text} animate={fresh.has(m.id)}/></span>
          </p>}
-        {m.kind==="job"&&<PreviewCard aspect={m.snapshot.rerun?.aspectRatio} tag={m.snapshot.tag} state={m.snapshot.state} messageFa={m.snapshot.messageFa} job={m.snapshot} model={m.snapshot.draft?draftLabelFa(m.snapshot.draft):m.snapshot.tag?generationMap.get(m.snapshot.tag)?.modelName:undefined}
+        {m.kind==="job"&&<PreviewCard onFix={busy||!m.snapshot.rerun?undefined:()=>void fixJob(m.id)} onKeep={()=>keepResult(m.id)} fixing={fixing===m.id} aspect={m.snapshot.rerun?.aspectRatio} tag={m.snapshot.tag} state={m.snapshot.state} messageFa={m.snapshot.messageFa} job={m.snapshot} model={m.snapshot.draft?draftLabelFa(m.snapshot.draft):m.snapshot.tag?generationMap.get(m.snapshot.tag)?.modelName:undefined}
          output={(m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined))?.find(o=>isOwnedOutputUrl(o.url,window.location.origin))} video={m.snapshot.draft?Boolean(m.snapshot.draft.video):(m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false)} onOpen={()=>openPreview(m.snapshot,m.id)}
          onView={()=>openGenerationViewer(m.id)}
          onRetry={m.snapshot.rerun&&!busy?()=>void rerunJob(m.id):undefined}

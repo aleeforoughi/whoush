@@ -2,7 +2,7 @@
 import {useState} from "react";
 import {TagText} from "@/components/message-text";
 import {SAVE_AGAIN_FA,useSaveFromUrl} from "@/components/share-actions";
-import {BadgeCheck,Lightbulb,Brush,Clapperboard,Download,Image as ImageIcon,Maximize2,RotateCcw,Shuffle,TriangleAlert,VolumeX} from "lucide-react";
+import {BadgeCheck,Lightbulb,Brush,Clapperboard,Download,Image as ImageIcon,Maximize2,RotateCcw,Shuffle,TriangleAlert,VolumeX,Wand2,Check,LoaderCircle} from "lucide-react";
 import {Badge,Button,Icon} from "@aleeforoughi/feather-react";
 import {displayTag} from "@/lib/attachments";
 import {jobStateFa} from "@/lib/projects";
@@ -11,7 +11,9 @@ import {GenerationProgress,useJobLive} from "@/components/generation-preview";
 import type {JobView} from "@/lib/studio-types";
 
 /** «زیباسازی»'s self-check on the card. */
-export const BEAUTY_READY_FA="آماده‌ی انتشار:",BEAUTY_NOT_READY_FA="هنوز آماده‌ی انتشار نیست:",BEAUTY_FIX_FA="پیشنهاد هووش: ";
+export const BEAUTY_READY_FA="آماده‌ی انتشار:",BEAUTY_NOT_READY_FA="هنوز آماده‌ی انتشار نیست:";
+/** Whoush's own review of a result: the question after its words, and the two answers. */
+export const REVIEW_ASK_FA="یه بار دیگه با پرامپت جدید اصلاحش کنم یا همین خوبه؟",REVIEW_FIX_FA="آره، اصلاحش کن",REVIEW_KEEP_FA="همین خوبه";
 export const OPEN_PREVIEW_FA="نمایش",CLOSE_PREVIEW_FA="بستن نمایش";
 /** Shown when a plan cannot be run again because the server no longer has it (a restart). */
 export const RERUN_GONE_FA="این برنامه دیگه روی سرور نیست؛ درخواستت رو یه بار دیگه بفرست تا از نو بسازمش.";
@@ -37,7 +39,8 @@ function OutputImage({url,planned}:{url:string;planned?:string}){
  * or a video with its own player controls, or the kind's icon while there is no output yet. Under it, «پیش‌نمایش #تولید-۱», the job state and the message, as a
  * button that opens the preview panel on this generation. Shown for every generation with a preview, so the panel can always be brought back from the chat.
  */
-export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,onEdit,onView,onRetry,onSwitch,retryNeurons,aspect}:{tag?:string;state:string;messageFa:string;
+export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,onEdit,onView,onRetry,onSwitch,retryNeurons,aspect,onFix,onKeep,fixing}:{tag?:string;state:string;messageFa:string;
+ /** «آره، اصلاحش کن» and «همین خوبه» on Whoush's own review of the result; `fixing` while the fix is being quoted and started. */onFix?:()=>void;onKeep?:()=>void;fixing?:boolean;
  /** The job, for its live status line while it works (the same line as the preview panel). */job?:JobView;model?:string;
  output?:PreviewOutput;video?:boolean;onOpen:()=>void;
  /** Full screen (the viewer): a tap on the image, or the corner button on a video. */onView?:()=>void;
@@ -84,8 +87,18 @@ export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,o
   {/* «زیباسازی»'s self-check (owner, 2026-11-08): would you share it for likes, is it beautiful and still you? Ready, or the one thing still holding it back. */}
   {output?.kind==="image"&&job?.beauty&&<p className="order-4 flex items-start gap-1.5 px-1 type-caption text-fg-secondary">
    <Icon icon={job.beauty.shareReady?BadgeCheck:Lightbulb} size={16} aria-hidden="true" className={"mt-0.5 size-4 shrink-0 "+(job.beauty.shareReady?"text-primary":"text-fg-secondary")}/>
-   <span><span className="font-medium text-fg-primary">{job.beauty.shareReady?BEAUTY_READY_FA:BEAUTY_NOT_READY_FA}</span> {job.beauty.verdictFa}{job.beauty.fixFa?" "+BEAUTY_FIX_FA+job.beauty.fixFa:""}</span>
+   <span><span className="font-medium text-fg-primary">{job.beauty.shareReady?BEAUTY_READY_FA:BEAUTY_NOT_READY_FA}</span> {job.beauty.verdictFa}</span>
   </p>}
+  {/* What Whoush would still fix, in its own voice (owner, 2026-11-08: «باید پوست رو طبیعی نگه دارم، ابرو رو برگردونم. یه بار دیگه با پرامپت جدید اصلاح
+      کنم اینا رو یا همین خوبه؟»): fix it once more (a new request with its own price) or keep it. Gone once settled. */}
+  {output?.kind==="image"&&job?.review&&!job.reviewDone&&(onFix||onKeep)&&<div className="order-4 flex flex-col gap-2.5 px-1">
+   <p className="flex items-start gap-1.5 type-body-sm text-fg-primary"><Icon icon={Lightbulb} size={16} aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary"/>
+    <span>{job.review.sayFa} {REVIEW_ASK_FA}</span></p>
+   <div className="flex gap-2">
+    {onFix&&<Button type="button" onClick={onFix} disabled={fixing} aria-busy={fixing||undefined} className="h-auto min-h-12 flex-1 px-4 py-3"><Icon icon={fixing?LoaderCircle:Wand2} aria-hidden="true" className={fixing?"animate-spin motion-reduce:animate-none":undefined}/>{REVIEW_FIX_FA}</Button>}
+    {onKeep&&<Button type="button" variant="outline" onClick={onKeep} disabled={fixing} className="h-auto min-h-12 flex-1 px-4 py-3"><Icon icon={Check} aria-hidden="true"/>{REVIEW_KEEP_FA}</Button>}
+   </div>
+  </div>}
   {/* A silent video says why (its soundtrack failed the check and was removed): calm, never an error. */}
   {output?.kind==="video"&&job?.audioNoteFa&&<p className="order-4 flex items-center gap-1.5 px-1 type-caption text-fg-secondary"><Icon icon={VolumeX} size={16} aria-hidden="true" className="size-3.5 shrink-0"/>{job.audioNoteFa}</p>}
   {/* In the chat (owner, 2026-11-06): «ادیت» and «دانلود» as action buttons under the picture, not on hover. */}

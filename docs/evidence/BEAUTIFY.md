@@ -86,3 +86,16 @@ The never-guess rule stays.
 
   The self-check judged it not ready.
 - **Since then:** a watermarking model is never preferred, so «زیباسازی» uses Nano Banana again until the owner decides on Seedream's watermark (docs/PROVIDERS.md).
+
+## Whoush's own review of a result (2026-11-08)
+
+The owner's wording: «باید پوست رو طبیعی نگه دارم، ابرو رو برگردونم. یه بار دیگه با پرامپت جدید اصلاح کنم اینا رو یا همین خوبه؟»
+
+- **The two checks:** the self-check (on «زیباسازی» results) and the quality assessor (on every other picture, with or without a person) write the fixes twice:
+  - in Whoush's own first-person voice in Persian, for the card;
+  - as precise English instructions, which stay on the server.
+- **The result card:** Whoush's line, «یه بار دیگه با پرامپت جدید اصلاحش کنم یا همین خوبه؟», and «آره، اصلاحش کن» / «همین خوبه».
+- **«آره، اصلاحش کن»:** the quote route derives a new private turn from that job's turn (`deriveTurnWithFix`). It has the same prompt, references, selection lock and «زیباسازی» source, and the review's fixes come first. It is quoted at the normal price and run as a new card under the original.
+- **No loops:** a fixed result is never offered another fix.
+- **Never a failure:** nothing is refunded; the fix is a new, priced request the user chose.
+- **Replaced:** the earlier behaviour, where the assessor posted a «زیباسازی» card.

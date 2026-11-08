@@ -33,8 +33,8 @@ export type JobSnapshot={state:string;messageFa:string;tag?:string;jobId?:string
  /** While it works: the live progress lines and stage facts (lib/job-progress.ts liveStatusFa). */progressFa?:string[];progressFacts?:{references?:number;brushEdit?:boolean};
  /** A video's cheap draft (made on `draftModel`), not the video itself: a 480p video (`video`), else the opening-frame still. */draft?:{modelName:string;video?:true;/** A frame preview's frame, «فریم ۲ از ۴». */frame?:number;frames?:number};
  /** Why a finished video is silent (its soundtrack failed the check and was removed). */audioNoteFa?:string;
- /** «زیباسازی»'s self-check of the result (lib/beauty-check.ts). */beauty?:{shareReady:boolean;samePerson:boolean;verdictFa:string;fixFa?:string};
- /** The quality assessor's enhancement offer for this picture (lib/beauty-check.ts). */enhance?:{parts:BeautifyPart[];notes?:Partial<Record<BeautifyPart,string>>;minor?:true};
+ /** «زیباسازی»'s self-check of the result (lib/beauty-check.ts). */beauty?:{shareReady:boolean;samePerson:boolean;verdictFa:string};
+ /** What Whoush would still fix (lib/beauty-check.ts), and whether that was settled. */review?:{sayFa:string};reviewDone?:true;
  /** The model's own content rules refused it (owner, 2026-11-08): the card offers the same request on `alternative`, a model with other rules. */refused?:true;
  alternative?:{modelId:string;name:string;neurons:number};
  /** What was quoted (owner, 2026-11-07: a failed generation can be run again): the same plan's turn, model and settings. A rerun asks for a NEW quote and a
@@ -181,7 +181,7 @@ function checkMessage(m:unknown,i:number){
    ||(s.jobId!==undefined&&!(typeof s.jobId==="string"&&/^[0-9a-f-]{36}$/.test(s.jobId)))||(s.outputs!==undefined&&!isJobOutputs(s.outputs))
    ||(s.typicalMs!==undefined&&!(Number.isSafeInteger(s.typicalMs)&&(s.typicalMs as number)>0&&(s.typicalMs as number)<=3_600_000))
    ||(s.rerun!==undefined&&!isJobRerun(s.rerun))||(s.audioNoteFa!==undefined&&!(typeof s.audioNoteFa==="string"&&s.audioNoteFa.length<=200))
-   ||(s.enhance!==undefined&&!isBeautifyOffer({...(isObject(s.enhance)?s.enhance:{}),tag:"x"}))
+   ||(s.review!==undefined&&!(isObject(s.review)&&typeof s.review.sayFa==="string"&&s.review.sayFa.length<=200))||(s.reviewDone!==undefined&&s.reviewDone!==true)
    ||(s.beauty!==undefined&&!(isObject(s.beauty)&&typeof s.beauty.shareReady==="boolean"&&typeof s.beauty.samePerson==="boolean"&&typeof s.beauty.verdictFa==="string"&&s.beauty.verdictFa.length<=160&&(s.beauty.fixFa===undefined||(typeof s.beauty.fixFa==="string"&&s.beauty.fixFa.length<=160))))||(s.refused!==undefined&&s.refused!==true)||(s.alternative!==undefined&&!(isObject(s.alternative)&&typeof s.alternative.modelId==="string"&&s.alternative.modelId.length<=128&&typeof s.alternative.name==="string"&&s.alternative.name.length<=80&&Number.isInteger(s.alternative.neurons)&&(s.alternative.neurons as number)>0))
    ||(s.progressFa!==undefined&&!(Array.isArray(s.progressFa)&&s.progressFa.length<=8&&s.progressFa.every(l=>typeof l==="string"&&l.length<=120)))
    ||(s.progressFacts!==undefined&&!(isObject(s.progressFacts)&&Object.entries(s.progressFacts).every(([k,v])=>k==="references"?Number.isSafeInteger(v)&&(v as number)>=0&&(v as number)<=20:k==="brushEdit"&&v===true)))
