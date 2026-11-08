@@ -38,3 +38,11 @@
 [dir="rtl"] [data-slot="progress-indicator"] {
   transform-origin: right;
 }
+
+/* switch: the thumb slides with "data-checked:translate-x-4" (sm: "translate-x-3"), physical; in RTL it starts at the right (start) edge, so it slides left */
+[dir="rtl"] [data-slot="switch"][data-size="default"] [data-slot="switch-thumb"][data-checked] {
+  --tw-translate-x: -1rem;
+}
+[dir="rtl"] [data-slot="switch"][data-size="sm"] [data-slot="switch-thumb"][data-checked] {
+  --tw-translate-x: -0.75rem;
+}

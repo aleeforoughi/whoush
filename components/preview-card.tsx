@@ -53,7 +53,7 @@ export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,o
    </button></span>}
   {failed&&<div className="flex flex-wrap items-center justify-between gap-2 px-1">
    <span role="alert" className="type-caption text-destructive">{messageFa}</span>
-   {onRetry&&<Button type="button" size="sm" variant="destructive" onClick={onRetry}><Icon icon={RotateCcw} aria-hidden="true"/>دوباره بساز{retryNeurons?" · "+fa(retryNeurons)+" نورون":""}</Button>}
+   {onRetry&&<Button type="button" size="sm" variant="destructive" onClick={onRetry}><Icon icon={RotateCcw} aria-hidden="true"/>دوباره بساز{retryNeurons?<span className="type-caption opacity-80">{fa(retryNeurons)} نورون</span>:null}</Button>}
   </div>}
   {/* A silent video says why (its soundtrack failed the check and was removed): calm, never an error. */}
   {output?.kind==="video"&&job?.audioNoteFa&&<p className="flex items-center gap-1.5 px-1 type-caption text-fg-secondary"><Icon icon={VolumeX} size={16} aria-hidden="true" className="size-3.5 shrink-0"/>{job.audioNoteFa}</p>}

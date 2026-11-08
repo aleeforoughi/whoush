@@ -61,7 +61,7 @@ export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onA
     <SelectTrigger size="sm" aria-label="مدل تولید" className="w-full"><span className="text-fg-secondary">مدل</span><SelectValue/></SelectTrigger>
     <SelectContent>{heads.map(s=><SelectItem key={s.modelId} value={s.modelId}>
      <span className="flex min-w-0 flex-col">
-      <span className="flex items-center gap-2"><ModelName name={familyOf(s.name)}/><span className="type-caption text-fg-secondary">{familyOf(s.name)===familyOf(ordered.find(x=>x.modelId===proposal.recommendedModelId)?.name??"")?RECOMMENDED_FA:ALTERNATE_FA} · {fa(s.neurons)} نورون</span></span>
+      <span className="flex items-center gap-2"><ModelName name={familyOf(s.name)}/><span className="type-caption text-fg-secondary">{familyOf(s.name)===familyOf(ordered.find(x=>x.modelId===proposal.recommendedModelId)?.name??"")?RECOMMENDED_FA:ALTERNATE_FA}، {fa(s.neurons)} نورون</span></span>
       {s.reason&&<span className="type-caption text-fg-secondary">{s.reason}</span>}
      </span>
     </SelectItem>)}</SelectContent>
@@ -87,8 +87,8 @@ export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onA
   {proposal.draft&&onDraft&&!drafted&&<div className="-mx-3 -mb-3 mt-1 flex flex-col gap-2 rounded-b-[inherit] border-t border-line-secondary bg-surface-subtle px-3 py-2.5">
    <p className="type-caption text-fg-secondary">پیشنهادم اینه اول یه پیش‌نویس ارزون بسازیم: یه عکس از فریم اول، تا قبل از خرج اصلی ظاهرش رو ببینی و اگه چیزی اشتباهه درستش کنیم. اگه نمی‌خوای، مستقیم بساز.</p>
    <div className="flex flex-wrap items-center justify-between gap-2">
-    <Button type="button" onClick={onDraft} disabled={busy||!proposal.turnId} className="shrink-0"><Icon icon={Sparkles} aria-hidden="true"/>{DRAFT_FA}<span className="type-caption opacity-80">· {fa(proposal.draft.neurons)} نورون</span></Button>
-    <Button type="button" variant="outline" onClick={onApprove} disabled={busy||!proposal.turnId} className="shrink-0"><Icon icon={Clapperboard} aria-hidden="true"/>{SKIP_DRAFT_FA}<span className="type-caption text-fg-secondary">· {fa(price)} نورون</span></Button>
+    <Button type="button" onClick={onDraft} disabled={busy||!proposal.turnId} className="shrink-0"><Icon icon={Sparkles} aria-hidden="true"/>{DRAFT_FA}<span className="type-caption opacity-80">{fa(proposal.draft.neurons)} نورون</span></Button>
+    <Button type="button" variant="outline" onClick={onApprove} disabled={busy||!proposal.turnId} className="shrink-0"><Icon icon={Clapperboard} aria-hidden="true"/>{SKIP_DRAFT_FA}<span className="type-caption text-fg-secondary">{fa(price)} نورون</span></Button>
    </div>
   </div>}
   {/* The call to action, full width at the card's very bottom: [✦ بسازش] on the right (as Persian reads), the cost on the left. */}

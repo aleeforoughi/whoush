@@ -59,7 +59,9 @@ export function recommendMediaModels(prompt:string, preference:AgentPreference="
   return Number(b.tags.includes("quality"))-Number(a.tags.includes("quality"));
  });
  // A rejected explicit model is never selected; offer 1-3 compatible alternatives instead.
- return {kind,explicit:explicit?.id,explicitRejected,ranked,alternatives:explicitRejected?ranked.slice(0,3):[]};
+ // Three different models, not three versions of one (owner, 2026-11-08: Seedance 2.5 now has 480p and 720p versions too): each family's best version.
+ const families=ranked.filter((m,i)=>ranked.findIndex(x=>x.name.split(" · ")[0].trim()===m.name.split(" · ")[0].trim())===i);
+ return {kind,explicit:explicit?.id,explicitRejected,ranked,alternatives:explicitRejected?families.slice(0,3):[]};
 }
 // Mirrors the fail-closed media review in lib/orchestrator.ts: no inspector for image, video or audio exists yet (docs/MODERATION_POLICY.md step 4).
 const MEDIA_REVIEW_ACTIVE=false;

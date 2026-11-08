@@ -280,7 +280,7 @@ test("router: ineligible explicit model is rejected with reason and compatible a
  const lip=recommendMediaModels("video with seedance lip sync","quality",{lipSync:true});
  assert.equal(lip.explicitRejected?.id,"seedance-2-5-5s");
  const p=buildProposal("make a 10 second video with kling","quality",{durationSeconds:10});
- assert.equal(p.selectedModelId,"kling-3-0-720p-10s");assert.equal(p.explicitRejected?.modelId,"kling-4-0-5s");assert.ok(p.suggestions.length>=1&&p.suggestions.length<=3);
+ assert.equal(p.selectedModelId,"kling-3-0-720p-10s");assert.equal(p.explicitRejected?.modelId,"kling-4-0-5s");const fams=new Set(p.suggestions.map(x=>x.name.split(" · ")[0]));assert.ok(fams.size>=1&&fams.size<=3,"at most three models, each with its versions");
  assert.throws(()=>buildProposal("video with seedance lip sync","quality",{lipSync:true}),NoCompatibleModelError);
 });
 test("router: motion-reference and video-reference are unverified for every generation model, so they are never satisfied",()=>{
@@ -301,7 +301,7 @@ test("router: two-argument calls and eligible explicit models behave as before",
 test("catalog: capability sanity, integer FX-independent prices, only models with a read API reference are verified",async()=>{
  assertValidCatalog();
  assert.ok(MEDIA_CATALOG_VERSION);
- assert.deepEqual(MEDIA_CATALOG.filter(m=>m.capabilities.verified).map(m=>m.id),["nano-banana-pro-2k","nano-banana-2-1","nano-banana-2","seedream-5-pro-2k","seedream-5-lite","seedance-2-0-720p-5s","seedance-2-0-720p-10s","seedance-2-0-mini-720p-5s","kling-3-0-720p-5s","kling-3-0-720p-10s","soul-image","seedance-2-5-5s","seedance-2-5-10s","genjutsu-replace","genjutsu-motion"]);
+ assert.deepEqual(MEDIA_CATALOG.filter(m=>m.capabilities.verified).map(m=>m.id),["nano-banana-pro-2k","nano-banana-2-1","nano-banana-2","seedream-5-pro-2k","seedream-5-lite","seedance-2-0-720p-5s","seedance-2-0-720p-10s","seedance-2-0-mini-720p-5s","kling-3-0-720p-5s","kling-3-0-720p-10s","soul-image","seedance-2-5-5s","seedance-2-5-10s","seedance-2-5-480p-5s","seedance-2-5-480p-10s","seedance-2-5-720p-5s","seedance-2-5-720p-10s","genjutsu-replace","genjutsu-motion"]);
  for(const m of MEDIA_CATALOG.filter(x=>x.capabilities.verified))assert.ok(m.provider==="higgsfield"||(m.providerModel&&m.capabilities.evidence?.startsWith("docs/evidence/")),m.id+": a direct-provider model names its provider model and evidence");
  const priced=MEDIA_CATALOG.filter(m=>!m.pricePending&&!m.sourceSecondsSkus),base=priced.map(m=>priceFor(m));
  for(const n of base)assert.ok(Number.isSafeInteger(n)&&n>0);
