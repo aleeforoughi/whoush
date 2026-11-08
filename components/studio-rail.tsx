@@ -60,14 +60,15 @@ export function RailContent({labels,current,activeProjectId,onNewChat,onProjectD
  * The workspace frame shared by the studio and the assets page: a mobile top bar with a menu sheet, the rail on the start side from 768px up, and `children` (the page's
  * `<main>`) beside it. The sheet and the rail show the same projects list.
  */
-export function RailShell({current,activeProjectId,onNewChat,onProjectDeleted,mobileAction,children}:{current:RailCurrent;activeProjectId?:string|null;onNewChat:()=>void;onProjectDeleted?:(id:string)=>void;
- /** Phones only: a control beside the menu button in the top bar (owner, 2026-11-08: the studio's «نمایش»). */mobileAction?:ReactNode;children:ReactNode}){
+export function RailShell({current,activeProjectId,onNewChat,onProjectDeleted,mobileAction,floatingMobileHeader=false,children}:{current:RailCurrent;activeProjectId?:string|null;onNewChat:()=>void;onProjectDeleted?:(id:string)=>void;
+ /** Phones only: a control beside the menu button in the top bar (owner, 2026-11-08: the studio's «نمایش»). */mobileAction?:ReactNode;
+ /** Phones: the top bar floats over the page as glass (the studio's chat scrolls under it). */floatingMobileHeader?:boolean;children:ReactNode}){
  const lang=useUiLang();
  const [menuOpen,setMenuOpen]=useState(false);
  const rail={current,activeProjectId,onNewChat,onProjectDeleted};
- return <div className="flex h-dvh flex-col overflow-hidden md:grid md:grid-cols-[4.5rem_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)] lg:grid-cols-[16rem_minmax(0,1fr)]">
+ return <div className="relative flex h-dvh flex-col overflow-hidden md:grid md:grid-cols-[4.5rem_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)] lg:grid-cols-[16rem_minmax(0,1fr)]">
   {/* Mobile: top bar with brand and menu */}
-  <header className="flex items-center justify-between border-b border-line-tertiary px-4 py-1 md:hidden">
+  <header className={"flex items-center justify-between px-4 py-1 md:hidden "+(floatingMobileHeader?"whoush-glass whoush-glass-top absolute inset-x-0 top-0 z-30":"border-b border-line-tertiary")}>
    <BrandMark/>
    <div className="flex items-center gap-1">
    {mobileAction}

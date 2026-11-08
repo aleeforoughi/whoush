@@ -90,6 +90,10 @@ export function Studio(){
  const projectParam=useSearchParams().get("project");
  const [messages,setMessages]=useState<TranscriptItem[]>([]);
  const [draft,setDraft]=useState("");
+ /** The floating composer's height (owner, 2026-11-08: glass over the chat), so the last message scrolls clear of it. */
+ const composerRef=useRef<HTMLDivElement>(null);
+ const [composerH,setComposerH]=useState(160);
+ useEffect(()=>{const el=composerRef.current;if(!el||typeof ResizeObserver==="undefined")return;const ro=new ResizeObserver(()=>setComposerH(Math.round(el.getBoundingClientRect().height)));ro.observe(el);return()=>ro.disconnect();},[]);
  const uiLang=useUiLang();
  const [proposal,setProposal]=useState<AgentProposal|null>(null);
  /** The message that carries the live (approvable) proposal; every other proposal in the transcript is a read-only record. */
@@ -976,17 +980,18 @@ export function Studio(){
   setPreviewOpen(true);
  }
  function minimizePreview(){setPreviewOpen(false);requestAnimationFrame(()=>promptRef.current?.focus());}
+ const topBars=Boolean(character||notice||storageNote||characterNote);
  // «نمایش» / «بستن نمایش»: on a phone in the top bar beside the menu (owner, 2026-11-08), wider in the bar above the chat.
  const previewToggle=(size:"sm"|"default")=><Button type="button" variant="outline" size={size} onClick={()=>showPreview?minimizePreview():openPreview()} aria-expanded={showPreview} aria-controls="whoush-preview" className="shrink-0">
   <Icon icon={showPreview?ChevronLeft:Eye} aria-hidden="true"/>{showPreview?CLOSE_PREVIEW_FA:OPEN_PREVIEW_FA}</Button>;
- return <RailShell current="studio" activeProjectId={projectId} onNewChat={newChat} onProjectDeleted={onProjectDeleted} mobileAction={hasPreview?previewToggle("sm"):undefined}>
+ return <RailShell current="studio" activeProjectId={projectId} onNewChat={newChat} onProjectDeleted={onProjectDeleted} mobileAction={hasPreview?previewToggle("sm"):undefined} floatingMobileHeader>
   {/* Desktop: the chat (right after the side nav, at the start side) and the preview share the row; the preview grows in and out (flex-grow transition) and,
       while it is closed, the chat takes the whole width. Mobile: one at a time; the preview covers the chat until minimized. */}
   <main id="main" className="flex min-h-0 flex-1 flex-col md:flex-row">
    <h1 className="sr-only">استودیوی هووش</h1>
    {/* Preview: after the chat on desktop (md:order-last), first on mobile */}
    <section id="whoush-preview" aria-label="پیش‌نمایش" inert={!showPreview||undefined} aria-hidden={!showPreview||undefined}
-    className={(showPreview?"flex":"hidden")+" surface-preview min-h-0 flex-1 flex-col md:order-last md:flex md:min-w-0 md:basis-0 md:overflow-hidden md:transition-[flex-grow,opacity] md:duration-300 md:ease-out motion-reduce:transition-none "+(showPreview?"md:grow md:opacity-100":"md:grow-0 md:opacity-0")}>
+    className={(showPreview?"flex":"hidden")+" surface-preview min-h-0 flex-1 flex-col max-md:pt-14 md:order-last md:flex md:min-w-0 md:basis-0 md:overflow-hidden md:transition-[flex-grow,opacity] md:duration-300 md:ease-out motion-reduce:transition-none "+(showPreview?"md:grow md:opacity-100":"md:grow-0 md:opacity-0")}>
     <Tabs value={activeTab} onValueChange={v=>setActiveTab(v as "generations"|"cuts")} className="min-h-0 flex-1 gap-0">
      {/* The header: the tabs only while «تدوین» exists (one tab needs no tab bar); otherwise it holds just the phones' «بازگشت به چت», so desktop hides it. */}
      <div className={"flex items-center justify-between gap-4 border-b border-line-tertiary px-4 py-2 lg:px-6"+(EDIT_TAB_ENABLED?"":" md:hidden")}>
@@ -1028,6 +1033,8 @@ export function Studio(){
      <Icon icon={UploadIcon} size={32} aria-hidden="true"/>فایل‌ها را اینجا رها کن
     </div>}
     <div role="status" aria-live="polite" className="sr-only">{dragging?"فایل‌ها را اینجا رها کن":announce}</div>
+    {/* Phones: the top bar floats over the chat; a note shown above the chat starts below it. */}
+    {topBars&&<div aria-hidden="true" className="h-14 shrink-0 md:hidden"/>}
     {/* The welcome line is the empty view (components/chat-empty.tsx), never a fixed header; the bar is only the preview toggle, once there is a preview. */}
     {hasPreview&&<div className="hidden border-b border-line-tertiary px-4 py-2 md:block">
      <div className="mx-auto flex w-full max-w-3xl items-center justify-end gap-3">
@@ -1047,7 +1054,7 @@ export function Studio(){
      <p className="type-caption text-fg-secondary">{fa(characterCoverage(character.references).count)} عکس مرجع · فقط در این مرورگر. مشخصات کاراکتر همراه درخواست برای برنامه‌ریزی ارسال می‌شود؛ خود عکس‌ها هنوز به سرویس تولید فرستاده نمی‌شوند.</p>
     </div>}
     <ScrollArea className="min-h-0 flex-1">
-     <div aria-live="polite" aria-label="گفت‌وگو" role="log" className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4 p-4">
+     <div aria-live="polite" aria-label="گفت‌وگو" role="log" style={{paddingBottom:composerH+16}} className={"mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4 p-4"+(topBars?"":" max-md:pt-16")}>
       {!messages.length&&!loadingProject&&<ChatEmpty/>}
       {loadingProject&&<p role="status" className="type-body-sm text-fg-secondary">در حال باز کردن پروژه…</p>}
       {/* User messages: on the right (the start in RTL), in a filled grey bubble with no border, their files and «اصلاح» generations above it as the same cards
@@ -1136,14 +1143,16 @@ export function Studio(){
       <div ref={endRef}/>
      </div>
     </ScrollArea>
+    {/* The chip tray and the composer float over the chat as glass (owner, 2026-11-08) and scroll together, so on a short screen the prompt and the
+        send button stay reachable; the chat scrolls under them (its bottom padding is their measured height). */}
+    <div ref={composerRef} className="whoush-glass whoush-glass-bottom absolute inset-x-0 bottom-0 z-20 flex max-h-[64dvh] min-h-0 flex-col">
     {error&&<div className="mx-auto w-full max-w-3xl px-4 pb-2"><Alert variant="destructive" role="alert">
      <Icon icon={CircleAlert} aria-hidden="true"/>
      <AlertTitle>خطا</AlertTitle>
      <AlertDescription>{error}</AlertDescription>
     </Alert></div>}
-    {/* The chip tray and the composer scroll together under the chat, so on a short screen the prompt and the send button stay reachable. */}
-    <div className="scrollbar-right flex max-h-[64dvh] min-h-0 shrink-0 flex-col overflow-y-auto border-t border-line-tertiary bg-surface-base">
-    <form ref={formRef} onSubmit={e=>void send(e)} className="mx-auto flex w-full max-w-3xl shrink-0 flex-col gap-3 bg-surface-base p-4">
+    <div className="scrollbar-right flex min-h-0 flex-col overflow-y-auto">
+    <form ref={formRef} onSubmit={e=>void send(e)} className="mx-auto flex w-full max-w-3xl shrink-0 flex-col gap-3 p-4">
      <AttachmentTray items={attachments} cards={cards.length} problems={problems} reading={reading} onDismiss={key=>setProblems(list=>list.filter(p=>p.key!==key))}/>
      <input ref={fileInput} type="file" multiple hidden accept={ATTACHMENT_ACCEPT} data-testid="attachment-input" onChange={e=>{const files=Array.from(e.target.files??[]),upload=pendingUpload.current,slot=pendingSlot.current;pendingUpload.current=undefined;pendingSlot.current=undefined;e.target.value="";e.target.multiple=true;const card=slot?slots.find(x=>x.id===slot):undefined;if(card)void fillSlot(card,files);else void addFiles(files,upload);}}/>
      <Label className="sr-only" id="whoush-prompt-label">توضیح تصویر یا ویدیو</Label>
@@ -1190,6 +1199,7 @@ export function Studio(){
       <StyleControl value={style} onChange={changeStyle}/>
      </div>
     </form>
+    </div>
     </div>
    </section>
    <MediaViewer items={viewer?.items??[]} index={viewer?viewer.index:null} onIndexChange={i=>setViewer(v=>v&&{...v,index:i})} onClose={()=>setViewer(null)} onEdit={busy?undefined:editFromViewer}
