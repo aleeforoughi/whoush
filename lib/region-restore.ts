@@ -121,6 +121,31 @@ export async function lockToSelection(i:{source:Uint8Array;mask:Uint8Array;outpu
    for(let c=0;c<3;c++){const v=(O[(y0*w+x0)*3+c]*(1-tx)+O[(y0*w+x1)*3+c]*tx)*(1-ty)+(O[(y1*w+x0)*3+c]*(1-tx)+O[(y1*w+x1)*3+c]*tx)*ty;A[q+c]=Math.round(v);}
   }
  }
+ // 1b. Each selected area is lined up on its own too (owner, 2026-11-08: a retouch showed doubled lips): a model may move one feature a few pixels while
+ // the rest stays put, and the source's own lips then show beside the model's. The best small shift for each area is found on a thin ring just outside
+ // it (where the result must match the source), and that area takes the model's pixels from there.
+ const gray=(b:Buffer)=>{const g=new Float32Array(N);for(let p=0,q=0;p<N;p++,q+=3)g[p]=.299*b[q]+.587*b[q+1]+.114*b[q+2];return g;};
+ const Sg=gray(S),Ag=gray(A);
+ const label=new Int32Array(N),stack:number[]=[];let next=0;const areas:{pix:number[]}[]=[];
+ for(let p0=0;p0<N;p0++){if(!sel[p0]||label[p0])continue;next++;const pix:number[]=[];stack.push(p0);label[p0]=next;
+  while(stack.length){const p=stack.pop()!,x=p%w;pix.push(p);for(const q of [x>0?p-1:-1,x<w-1?p+1:-1,p-w,p+w])if(q>=0&&q<N&&sel[q]&&!label[q]){label[q]=next;stack.push(q);}}
+  if(pix.length>=50)areas.push({pix});}
+ const ringR=Math.max(4,Math.round(.012*Math.max(w,h))),R=Math.max(3,Math.round(.02*Math.max(w,h)));
+ let local:Buffer|null=null;
+ for(const a of areas){
+  const own=new Uint8Array(N);for(const p of a.pix)own[p]=1;
+  const grown=dilate(own,w,h,ringR),ring:number[]=[];for(let p=0;p<N;p+=2)if(grown[p]&&!sel[p])ring.push(p);
+  if(ring.length<30)continue;
+  const err=(dx:number,dy:number)=>{let e=0,n=0;for(const p of ring){const x=p%w+dx,y=(p-p%w)/w+dy;if(x<0||y<0||x>=w||y>=h)continue;e+=Math.abs(Sg[p]-Ag[y*w+x]);n++;}return n?e/n:Infinity;};
+  const base=err(0,0);let best={dx:0,dy:0,e:base};
+  for(let dy=-R;dy<=R;dy+=2)for(let dx=-R;dx<=R;dx+=2){const e=err(dx,dy);if(e<best.e)best={dx,dy,e};}
+  for(let dy=best.dy-1;dy<=best.dy+1;dy++)for(let dx=best.dx-1;dx<=best.dx+1;dx++){const e=err(dx,dy);if(e<best.e)best={dx,dy,e};}
+  if(!(best.e<base*.9)||(!best.dx&&!best.dy))continue;
+  local??=Buffer.from(A);
+  const reach=dilate(own,w,h,ringR);
+  for(let p=0;p<N;p++){if(!reach[p])continue;const x=Math.min(w-1,Math.max(0,p%w+best.dx)),y=Math.min(h-1,Math.max(0,(p-p%w)/w+best.dy)),q=(y*w+x)*3,o=p*3;local[o]=A[q];local[o+1]=A[q+1];local[o+2]=A[q+2];}
+ }
+ if(local)A=local;
  // 2. The blend fades in inside the selection only: outside it every pixel is the source's.
  const r=Math.max(1,Math.round(.003*Math.max(w,h))),inner=erode(sel,w,h,r);
  let soft=boxBlur(Float32Array.from(inner),w,h,r);

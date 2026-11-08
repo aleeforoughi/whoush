@@ -77,7 +77,7 @@ test("a dev_live job submits to the real provider once, returns outputs, and nev
   status={state:"completed",outputs:[{kind:"image",url:"https://cdn.example/out.png",needsMirroring:true}]};
   const done=(await pollJob(job.id,"o",deps))!;
   assert.equal(done.state,"completed");assert.equal(done.chargedNeurons,0,"dev testing never charges");assert.equal(deps.ledger.get(job.id)?.state,"released");
-  const pub=toPublicJob(done);assert.equal(pub.outputs.length,1);assert.match(pub.messageFa,/تست توسعه/);
+  const pub=toPublicJob(done);assert.equal(pub.outputs.length,1);assert.doesNotMatch(pub.messageFa,/تست توسعه|نورون/,"a dev result reads like any other (owner, 2026-11-08)");
  });
 });
 test("dev live test enables the real planner only with a Claude model id and a key",async()=>{

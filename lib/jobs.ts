@@ -236,7 +236,8 @@ async function checkOutputsAudio(outputs:ProviderOutput[],deps?:AudioCheckDeps&{
  }
  return {outputs:out,audio};
 }
-const DEV_COMPLETED_FA="تست توسعه: خروجی واقعی ساخته شد و هیچ نورونی کسر نشد. خروجی باید بازبینی شود.";
+// The dev-test notice is no longer shown on the card (owner, 2026-11-08: «why do you show that, it's confusing»): a dev result reads like any other; the
+// server log says it was a no-charge test.
 /** Every provider whose rules refused a job of this turn (the same request): its next alternative skips them all. In memory, like the jobs here. */
 const refusals=()=>((globalThis as {__whoushRefusals?:Map<string,Set<string>>}).__whoushRefusals??=new Map());
 function noteRefusal(j:Job){
@@ -255,5 +256,5 @@ export function toPublicJob(j:Job){
  const active=!isTerminal(j.state),refs=j.references?.length??0,brush=active&&Boolean(regionEditFor(j.turnId));
  return {id:j.id,state:j.state,mode:j.mode,modelId:j.modelId,neurons:j.neurons,chargedNeurons:j.chargedNeurons,...(typical?{typicalMs:typical*1000}:{}),
   ...(active&&j.progressFa?.length?{progressFa:[...j.progressFa]}:{}),...(active&&(refs||brush)?{progressFacts:{references:brush?Math.max(0,refs-1):refs,...(brush?{brushEdit:true}:{})}}:{}),
-  outputs:j.state==="completed"?j.outputs.map(o=>({kind:o.kind,url:o.url})):[],qa:j.qa,...((j.state==="failed"||j.state==="released")&&j.failure==="provider_refused"?{refused:true,...refusedAlternative(j)}:{}),...(j.state==="completed"&&j.audio?{audio:j.audio.audio,...(j.audio.audio==="removed"?{audioNoteFa:AUDIO_REMOVED_FA[j.audio.reason]}:{})}:{}),messageFa:j.mode==="dev_live"&&j.state==="completed"?DEV_COMPLETED_FA:(j.state==="failed"||j.state==="released")&&j.failure==="provider_refused"?REFUSED_FA:MSG[j.state]};
+  outputs:j.state==="completed"?j.outputs.map(o=>({kind:o.kind,url:o.url})):[],qa:j.qa,...((j.state==="failed"||j.state==="released")&&j.failure==="provider_refused"?{refused:true,...refusedAlternative(j)}:{}),...(j.state==="completed"&&j.audio?{audio:j.audio.audio,...(j.audio.audio==="removed"?{audioNoteFa:AUDIO_REMOVED_FA[j.audio.reason]}:{})}:{}),messageFa:(j.state==="failed"||j.state==="released")&&j.failure==="provider_refused"?REFUSED_FA:MSG[j.state]};
 }
