@@ -1,4 +1,5 @@
 "use client";
+import {TagText} from "@/components/message-text";
 import {SAVE_AGAIN_FA,useSaveFromUrl} from "@/components/share-actions";
 import {Brush,Clapperboard,Download,Image as ImageIcon,Maximize2,RotateCcw,Shuffle,TriangleAlert,VolumeX} from "lucide-react";
 import {Badge,Button,Icon} from "@aleeforoughi/feather-react";
@@ -41,7 +42,7 @@ export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,o
  // An output fills the card's width and takes the height of its own ratio (owner, 2026-11-08): never cut, no empty space around it. The ratio reserves
  // that height before the picture loads, so the chat does not jump.
  const frame="relative flex w-full items-center overflow-hidden rounded-control text-fg-secondary",media=frame+(output?" justify-start":" aspect-video justify-center bg-surface-hover");
- return <div data-preview-card={tag??""} data-failed={failed||undefined} className={"flex w-full max-w-md flex-col gap-2.5 rounded-card border p-2.5 "+(failed?"border-destructive/60 bg-destructive/5":"border-line-secondary bg-surface-subtle")}>
+ return <div data-preview-card={tag??""} data-failed={failed||undefined} className={"flex w-full flex-col gap-2.5 rounded-card border p-2.5 "+(failed?"border-destructive/60 bg-destructive/5":"border-line-secondary bg-surface-subtle")}>
   {/* The card reads top to bottom (owner, 2026-11-08): its title, the picture, the description, then «ادیت» and «دانلود». The full-screen button sits on
       the picture's top-left corner (the end side in Persian). */}
   {output?.kind==="video"
@@ -81,6 +82,6 @@ export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,o
     </span>
    </span>
   </button>
-  {!working&&!failed&&<p aria-live={live.active?"polite":undefined} className="order-5 line-clamp-2 px-1 type-caption text-fg-secondary">{line}</p>}
+  {!working&&!failed&&<p aria-live={live.active?"polite":undefined} className="order-5 line-clamp-2 px-1 type-caption text-fg-secondary"><TagText text={line}/></p>}
  </div>;
 }

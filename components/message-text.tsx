@@ -21,3 +21,14 @@ export function MessageText({text,attachments,onOpen,generations,onGeneration}:{
   </button>;
  })}</>;
 }
+
+/**
+ * Whoush's own text (a reply, a plan line, a question, a caption) with every # it mentions as a badge (owner, 2026-11-08: "any time you mention #, it
+ * comes up as a badge"). `format` shapes the plain parts (Persian digits, for example); the tags show as their Persian name.
+ */
+export function TagText({text,format=(s:string)=>s}:{text:string;format?:(s:string)=>string}){
+ const parts=splitMentions(text);
+ if(parts.length===1&&"text" in parts[0])return <>{format(text)}</>;
+ return <>{parts.map((part,i)=>"text" in part?<span key={i}>{format(part.text)}</span>
+  :<Badge key={i} variant="secondary" className="mx-0.5 align-middle"><bdi>{displayTag(part.tag)}</bdi></Badge>)}</>;
+}

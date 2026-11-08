@@ -1,4 +1,5 @@
 "use client";
+import {TagText} from "@/components/message-text";
 import {faPlain} from "@/lib/format";
 import {useCallback,useEffect,useLayoutEffect,useRef,useState,type KeyboardEvent,type PointerEvent,type RefObject} from "react";
 import Link from "next/link";
@@ -265,8 +266,8 @@ function ViewerBody({items,index,onIndexChange,onClose,projectTitleOf,stageRef,o
      {role&&<span className="type-caption text-fg-primary">{role}</span>}
     </div>
     {caption&&(projectHref
-     ?<Link href={projectHref} onClick={onClose} className="line-clamp-2 max-w-full type-label text-fg-primary underline-offset-4 hover:underline">{caption}</Link>
-     :<p className="line-clamp-2 max-w-full type-label text-fg-primary">{caption}</p>)}
+     ?<Link href={projectHref} onClick={onClose} className="line-clamp-2 max-w-full type-label text-fg-primary underline-offset-4 hover:underline"><TagText text={caption}/></Link>
+     :<p className="line-clamp-2 max-w-full type-label text-fg-primary"><TagText text={caption}/></p>)}
    </div>
    <div className="order-2 ms-auto flex items-center gap-2 sm:order-3 sm:ms-0">
     {onEdit&&item.kind==="image"&&<Button type="button" variant="secondary" onClick={()=>onEdit(item)} aria-label={"ادیت "+displayTag(item.tag)}><Icon icon={Brush} aria-hidden="true"/>ادیت</Button>}

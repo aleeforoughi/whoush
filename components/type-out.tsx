@@ -1,4 +1,5 @@
 "use client";
+import {TagText} from "@/components/message-text";
 import {useEffect,useState} from "react";
 import {Check,ChevronDown} from "lucide-react";
 import {Icon} from "@aleeforoughi/feather-react";
@@ -15,7 +16,7 @@ export function TypeOut({text,animate}:{text:string;animate:boolean}){
   const step=Math.max(2,Math.ceil(text.length/60)),id=window.setTimeout(()=>setN(v=>Math.min(text.length,v+step)),20);
   return()=>window.clearTimeout(id);
  },[n,text.length]);
- if(n>=text.length)return <>{text}</>;
+ if(n>=text.length)return <TagText text={text}/>;
  return <><span className="sr-only">{text}</span><span aria-hidden="true">{text.slice(0,n)}<span className="ms-0.5 inline-block h-[1em] w-0.5 animate-pulse bg-current align-middle motion-reduce:animate-none"/></span></>;
 }
 

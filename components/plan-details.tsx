@@ -1,4 +1,5 @@
 "use client";
+import {TagText} from "@/components/message-text";
 import {useState,type ReactNode} from "react";
 import {Aperture,ArrowLeft,Brush,Camera,SlidersHorizontal,CircleCheck,CircleHelp,Clapperboard,ImagePlus,Image as ImageIcon,Film,Focus,Frame,Gauge,Layers,Lightbulb,ListChecks,MessageCircle,Move,Paperclip,RefreshCw,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Star,Thermometer,Timer,Upload,type LucideIcon} from "lucide-react";
 import {Accordion,AccordionContent,AccordionItem,AccordionTrigger,Badge,Button,Icon} from "@aleeforoughi/feather-react";
@@ -8,7 +9,9 @@ import type {Staging} from "@/lib/creative-plan";
 import {STYLE_LABEL_FA,type PublicCreativePlan} from "@/lib/creative-plan";
 import {CHARACTER_VIEWS} from "@/lib/characters";
 import {displayTag} from "@/lib/attachments";
-import {EDIT_CARD_OPEN_FA,type SuggestedEdit} from "@/lib/edit-card";
+import {TagBadge} from "@/components/attachment-chip";
+import {EDIT_CARD_GENERATE_FA,EDIT_CARD_OPEN_FA,type SuggestedEdit} from "@/lib/edit-card";
+import {WIDGET_BUTTON,WidgetActions,WidgetHeader} from "@/components/widget";
 import {NEON_SHADOW,REGION_COLORS,regionTagFa} from "@/lib/region-edit";
 import {fa,faText,faAuto} from "@/lib/format";
 import type {QuestionChoice} from "@/lib/media-intent";
@@ -16,7 +19,7 @@ import {MAIN_SUBJECT_FA,shownTag} from "@/lib/main-subject";
 import {expandFocus,lensFor} from "@/lib/staging";
 
 const latin=(v:string|number)=><bdi dir="ltr">{faText(String(v))}</bdi>;
-const text=(v:string)=><span dir="auto">{faAuto(v)}</span>;
+const text=(v:string)=><span dir="auto"><TagText text={v} format={faAuto}/></span>;
 const LIP_SYNC:Record<string,string>={needs_audio:"به فایل صوتی نیاز دارد",planned_from_audio:"از روی صدای مرجع برنامه‌ریزی شده",not_requested:"درخواست نشده"};
 const ACCENT:Record<string,string>={tehrani:"تهرانی",original:"اصلی",unspecified:"نامشخص"};
 const VIEW_TITLE:Record<string,string>=Object.fromEntries(CHARACTER_VIEWS.map(v=>[v.id,v.title]));
@@ -193,51 +196,58 @@ const CHOICE_ICON:Record<string,LucideIcon>={image:ImageIcon,video:Clapperboard,
  * tattoos, logo, product...), it lists the angles it needs, each with «آپلود» (the photo lands in the chat input as a card with the right role) and a check
  * once it is in, then «ادامه» sends them with the original request.
  */
-export function AgentQuestion({question,waiting,onAnswer,references,uploaded,onUpload,onContinue,choices,onChoose,editCards,onEdit}:{question:string;waiting:boolean;onAnswer:()=>void;
+export function AgentQuestion({question,repeated,waiting,onAnswer,references,uploaded,onUpload,onContinue,choices,onChoose,editCards,onEdit,onGenerate}:{question:string;waiting:boolean;onAnswer:()=>void;
+ /** The question is the message just above it word for word: the widget shows only its title and its content, not the same text twice. */repeated?:boolean;
  /** The edit cards (lib/edit-card.ts): one per picture to open full screen for «ادیت», maybe with the areas Whoush painted. */editCards?:readonly {tag:string;thumbUrl?:string;suggested?:readonly SuggestedEdit[]}[];onEdit?:(tag:string,suggested?:readonly SuggestedEdit[])=>void;
+ /** «بساز» (owner, 2026-11-08): the areas Whoush marked go as they are, without opening the editor. */onGenerate?:(tag:string,suggested:readonly SuggestedEdit[])=>void;
  references?:ReferenceRequest;uploaded?:Record<string,boolean>;onUpload?:(angle:{id:string;titleFa:string})=>void;onContinue?:()=>void;
  /** One-tap answers («عکس»، «ویدیو»، «هر دو»): each sends its reply as the user's answer. */choices?:readonly QuestionChoice[];onChoose?:(reply:string)=>void}){
  const done=references?references.angles.filter(a=>uploaded?.[a.id]).length:0;
- return <div role={waiting?"status":undefined} className={"flex items-start gap-3 rounded-card p-3 "+(waiting?"border border-primary bg-surface-subtle":"bg-surface-subtle")}>
-  <Icon icon={references?ImagePlus:CircleHelp} size={20} aria-hidden="true" className={"mt-0.5 shrink-0 "+(waiting?"text-primary":"text-fg-secondary")}/>
-  <div className="flex min-w-0 flex-1 flex-col gap-2">
-   {waiting&&<span className="inline-flex w-fit items-center gap-1.5 rounded-control bg-primary px-2.5 py-0.5 type-caption font-medium text-primary-foreground animate-pulse motion-reduce:animate-none">
+ const edits=editCards??[];
+ // Every widget has a clear title (owner, 2026-11-08): what it is for, then the content, then its actions at the bottom.
+ const title=references?"عکس‌های لازم: "+references.titleFa:edits.length>1?"ادیت عکس‌ها":edits.length?"ادیت عکس":"سؤال هووش";
+ return <div role={waiting?"status":undefined} className={"flex w-full flex-col gap-3 rounded-card border p-3 "+(waiting?"border-primary bg-surface-subtle":"border-line-secondary bg-surface-subtle")}>
+  <WidgetHeader icon={references?ImagePlus:edits.length?Brush:CircleHelp} title={title} tone={waiting?"attention":"neutral"}>
+   {edits.length===1&&<TagBadge tag={edits[0].tag}/>}
+   {waiting&&<span className="ms-auto inline-flex shrink-0 items-center gap-1.5 rounded-control bg-primary px-2.5 py-0.5 type-caption font-medium text-primary-foreground animate-pulse motion-reduce:animate-none">
     <span aria-hidden="true" className="size-1.5 rounded-full bg-current"/>{NEEDS_INPUT_FA}
    </span>}
-   <p className="type-body-sm text-fg-primary">{text(question)}</p>
-   {choices&&waiting&&onChoose&&<div role="group" aria-label={question} className="flex flex-wrap gap-2">
-    {choices.map(c=><Button key={c.id} type="button" size="sm" variant="secondary" onClick={()=>onChoose(c.replyFa)}><Icon icon={CHOICE_ICON[c.id]??CircleCheck} aria-hidden="true"/>{c.labelFa}</Button>)}
-   </div>}
-   {references&&<ul className="flex flex-col gap-1.5" aria-label={"عکس‌های لازم: "+references.titleFa}>
-    {references.angles.map(a=><li key={a.id} className="flex items-center gap-2 rounded-control border border-line-secondary px-2.5 py-1.5">
-     <Icon icon={uploaded?.[a.id]?CircleCheck:ImageIcon} size={16} aria-hidden="true" className={"size-4 shrink-0 "+(uploaded?.[a.id]?"text-primary":"text-fg-secondary")}/>
-     <span className="min-w-0 flex-1 type-caption text-fg-primary">{a.titleFa}</span>
-     {waiting&&onUpload&&<Button type="button" size="sm" variant={uploaded?.[a.id]?"ghost":"secondary"} onClick={()=>onUpload(a)}><Icon icon={uploaded?.[a.id]?RefreshCw:Upload} aria-hidden="true"/>{uploaded?.[a.id]?"عوض کن":"آپلود"}</Button>}
-    </li>)}
-   </ul>}
-   {references&&waiting&&onContinue&&<div className="flex flex-wrap items-center gap-2">
-    <Button type="button" size="sm" onClick={onContinue} disabled={!done}>ادامه با {fa(done)} عکس<Icon icon={ArrowLeft} aria-hidden="true"/></Button>
-    <span className="type-caption text-fg-secondary">هووش خودش نقش عکس‌ها رو تعیین می‌کنه و به {references.titleFa} وصلشون می‌کنه.</span>
-   </div>}
-   {/* One interactive card per picture: its thumbnail, its #, and the blue «ادیت» that opens it full screen for brush and comments. */}
-   {editCards&&editCards.length>0&&<ul className="flex flex-col gap-2">{editCards.map(c=><li key={c.tag} className="flex flex-col gap-2 rounded-control border border-line-secondary p-2">
-    <div className="flex items-center gap-3">
-     {/* The photo, with the areas Whoush painted drawn over it in their colours (the same as the editor). */}
-     <span className={"relative shrink-0 overflow-hidden rounded-control bg-surface-hover "+(c.suggested?.length?"w-28":"size-16")}>
-      {c.thumbUrl
-       // eslint-disable-next-line @next/next/no-img-element -- a local or owned image
-       ?<img src={c.thumbUrl} alt="" className={c.suggested?.length?"block h-auto w-full":"size-16 object-cover"}/>
-       :<span className="flex size-16 items-center justify-center"><Icon icon={ImageIcon} size={20} aria-hidden="true"/></span>}
-      {c.thumbUrl&&c.suggested?.map((sg,i)=>sg.boxes.map((b,k)=><span key={i+"-"+k} aria-hidden="true" className="absolute rounded-[50%]"
-       style={{left:b[0]*100+"%",top:b[1]*100+"%",width:(b[2]-b[0])*100+"%",height:(b[3]-b[1])*100+"%",background:REGION_COLORS[i%REGION_COLORS.length].css,opacity:.5}}/>))}
-     </span>
-     <bdi className="min-w-0 flex-1 type-label text-fg-primary">{displayTag(c.tag)}</bdi>
-     {onEdit&&<Button type="button" size="sm" onClick={()=>onEdit(c.tag,c.suggested)} aria-label={EDIT_CARD_OPEN_FA+" "+displayTag(c.tag)}><Icon icon={Brush} aria-hidden="true"/>{EDIT_CARD_OPEN_FA}</Button>}
-    </div>
-    {c.suggested&&c.suggested.length>0&&<ul className="flex flex-col gap-1">{c.suggested.map((sg,i)=><li key={i} className="flex items-start gap-2 type-body-sm text-fg-primary">
-     <RegionChip n={i+1} color={REGION_COLORS[i%REGION_COLORS.length].name}/><span className="min-w-0 break-words">{sg.note}</span></li>)}</ul>}
-   </li>)}</ul>}
-   {waiting&&!references&&!choices&&!editCards?.length&&<button type="button" onClick={onAnswer} className="inline-flex w-fit items-center gap-1.5 rounded-control type-label text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><Icon icon={MessageCircle} size={16} aria-hidden="true" className="size-4 shrink-0"/>پاسخ بده</button>}
-  </div>
+  </WidgetHeader>
+  {!repeated&&<p className="type-body-sm text-fg-primary">{text(question)}</p>}
+  {references&&<ul className="flex flex-col gap-1.5" aria-label={"عکس‌های لازم: "+references.titleFa}>
+   {references.angles.map(a=><li key={a.id} className="flex min-h-12 items-center gap-2 rounded-control border border-line-secondary px-2.5 py-1.5">
+    <Icon icon={uploaded?.[a.id]?CircleCheck:ImageIcon} size={16} aria-hidden="true" className={"size-4 shrink-0 "+(uploaded?.[a.id]?"text-primary":"text-fg-secondary")}/>
+    <span className="min-w-0 flex-1 type-caption text-fg-primary">{a.titleFa}</span>
+    {waiting&&onUpload&&<Button type="button" size="sm" variant={uploaded?.[a.id]?"ghost":"secondary"} onClick={()=>onUpload(a)}><Icon icon={uploaded?.[a.id]?RefreshCw:Upload} aria-hidden="true"/>{uploaded?.[a.id]?"عوض کن":"آپلود"}</Button>}
+   </li>)}
+  </ul>}
+  {references&&waiting&&onContinue&&<p className="type-caption text-fg-secondary">هووش خودش نقش عکس‌ها رو تعیین می‌کنه و به {references.titleFa} وصلشون می‌کنه.</p>}
+  {/* One card per picture: its #, the picture the full width with the areas Whoush marked, their comments, then «بساز» and «ادیت» at the bottom. */}
+  {edits.length>0&&<ul className="flex flex-col gap-4">{edits.map(c=><li key={c.tag} className="flex flex-col gap-2.5">
+   {edits.length>1&&<TagBadge tag={c.tag}/>}
+   <span className="relative block w-full overflow-hidden rounded-control bg-surface-hover">
+    {c.thumbUrl
+     // eslint-disable-next-line @next/next/no-img-element -- a local or owned image
+     ?<img src={c.thumbUrl} alt="" className="block h-auto w-full"/>
+     :<span className="flex aspect-video items-center justify-center text-fg-secondary"><Icon icon={ImageIcon} size={24} aria-hidden="true"/></span>}
+    {c.thumbUrl&&c.suggested?.map((sg,i)=>sg.boxes.map((b,k)=><span key={i+"-"+k} aria-hidden="true" className="absolute rounded-[50%]"
+     style={{left:b[0]*100+"%",top:b[1]*100+"%",width:(b[2]-b[0])*100+"%",height:(b[3]-b[1])*100+"%",background:REGION_COLORS[i%REGION_COLORS.length].css,opacity:.5}}/>))}
+   </span>
+   {c.suggested&&c.suggested.length>0&&<ul className="flex flex-col gap-1.5">{c.suggested.map((sg,i)=><li key={i} className="flex items-start gap-2 type-body-sm text-fg-primary">
+    <RegionChip n={i+1} color={REGION_COLORS[i%REGION_COLORS.length].name}/><span className="min-w-0 break-words">{sg.note}</span></li>)}</ul>}
+   {(onEdit||(onGenerate&&c.suggested?.length))&&<WidgetActions label={displayTag(c.tag)}>
+    {onGenerate&&c.suggested&&c.suggested.length>0&&<Button type="button" onClick={()=>onGenerate(c.tag,c.suggested!)} className={WIDGET_BUTTON}><Icon icon={Sparkles} aria-hidden="true"/>{EDIT_CARD_GENERATE_FA}</Button>}
+    {onEdit&&<Button type="button" variant={onGenerate&&c.suggested?.length?"outline":"default"} onClick={()=>onEdit(c.tag,c.suggested)} aria-label={EDIT_CARD_OPEN_FA+" "+displayTag(c.tag)} className={WIDGET_BUTTON}><Icon icon={Brush} aria-hidden="true"/>{EDIT_CARD_OPEN_FA}</Button>}
+   </WidgetActions>}
+  </li>)}</ul>}
+  {choices&&waiting&&onChoose&&<WidgetActions label={question}>
+   {choices.map(c=><Button key={c.id} type="button" variant="secondary" onClick={()=>onChoose(c.replyFa)} className={WIDGET_BUTTON}><Icon icon={CHOICE_ICON[c.id]??CircleCheck} aria-hidden="true"/>{c.labelFa}</Button>)}
+  </WidgetActions>}
+  {references&&waiting&&onContinue&&<WidgetActions>
+   <Button type="button" onClick={onContinue} disabled={!done} className={WIDGET_BUTTON}>ادامه با {fa(done)} عکس<Icon icon={ArrowLeft} aria-hidden="true"/></Button>
+  </WidgetActions>}
+  {waiting&&!references&&!choices&&!edits.length&&<WidgetActions>
+   <Button type="button" variant="outline" onClick={onAnswer} className={WIDGET_BUTTON}><Icon icon={MessageCircle} aria-hidden="true"/>پاسخ بده</Button>
+  </WidgetActions>}
  </div>;
 }

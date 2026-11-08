@@ -11,6 +11,7 @@ import {PAST_PROPOSAL_FA,type ProposalSnapshot} from "@/lib/projects";
 import {fa} from "@/lib/format";
 import {byShape,nearestAspectRatio,popularAspectRatios} from "@/lib/aspect";
 import {ResearchReport,ReviewNote} from "@/components/research-report";
+import {WIDGET_BUTTON,WidgetActions,WidgetHeader} from "@/components/widget";
 
 export const GENERATE_FA="بسازش",GENERATE_WITH_REFS_FA="با این مرجع‌ها بسازش",DRAFT_FA="اول پیش‌نویس ارزون",FRAMES_DRAFT_FA="اول پیش‌نمایش فریم‌ها",SKIP_DRAFT_FA="بدون پیش‌نویس بساز",VIDEO_NOW_FA="حالا ویدیو رو بساز",DEMO_NOTE_FA="نسخهٔ نمایشی: نه پولی کسر می‌شود و نه رسانهٔ واقعی ساخته می‌شود.";
 const RECOMMENDED_FA="پیشنهاد هووش",ALTERNATE_FA="جایگزین";
@@ -19,12 +20,10 @@ const ModelName=({name}:{name:string})=><bdi dir="ltr">{name}</bdi>;
 
 /** The card's top row: the kind's icon, «تصویر» or «ویدیو», the generation's tag (a button that puts it in the prompt) and the demo badge. */
 function Head({kind,tag,onMention,demo}:{kind:"image"|"video";tag?:string;onMention?:()=>void;/** Only a real demo (no media made) is labelled. */demo?:boolean}){
- return <div className="flex items-center gap-2">
-  <span className="flex size-9 shrink-0 items-center justify-center rounded-control bg-surface-hover text-fg-secondary"><Icon icon={kind==="video"?Clapperboard:ImageIcon} size={20} aria-hidden="true"/></span>
-  <span className="type-label text-fg-primary">{kind==="video"?"ساخت ویدیو":"ساخت تصویر"}</span>
+ return <WidgetHeader icon={kind==="video"?Clapperboard:ImageIcon} title={kind==="video"?"ساخت ویدیو":"ساخت تصویر"}>
   {tag&&<TagBadge tag={tag} onMention={onMention}/>}
   {demo&&<Badge variant="outline" className="ms-auto">نسخه نمایشی</Badge>}
- </div>;
+ </WidgetHeader>;
 }
 
 /**
@@ -104,20 +103,21 @@ export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,aut
     :proposal.draft.kind==="video"
     ?"پیشنهادم اینه اول یه پیش‌نویس ارزون بسازیم: یه ویدیوی کوتاه ۴۸۰p بی‌صدا با همین پرامپت، تا قبل از خرج اصلی حرکت و صحنه رو ببینی و اگه چیزی اشتباهه درستش کنیم. اگه نمی‌خوای، مستقیم بساز."
     :"پیشنهادم اینه اول یه پیش‌نویس ارزون بسازیم: یه عکس از فریم اول، تا قبل از خرج اصلی ظاهرش رو ببینی و اگه چیزی اشتباهه درستش کنیم. اگه نمی‌خوای، مستقیم بساز."}</p>
-   <div className="flex flex-wrap items-center justify-between gap-2">
-    <Button type="button" onClick={onDraft} disabled={busy||!proposal.turnId} className="shrink-0"><Icon icon={Sparkles} aria-hidden="true"/>{proposal.draft.kind==="frames"?FRAMES_DRAFT_FA:DRAFT_FA}<span className="type-caption opacity-80">{fa(proposal.draft.neurons)} نورون</span></Button>
-    <Button type="button" variant="outline" onClick={onApprove} disabled={busy||!proposal.turnId} className="shrink-0"><Icon icon={Clapperboard} aria-hidden="true"/>{SKIP_DRAFT_FA}<span className="type-caption text-fg-secondary">{fa(price)} نورون</span></Button>
-   </div>
+   <WidgetActions>
+    <Button type="button" onClick={onDraft} disabled={busy||!proposal.turnId} className={WIDGET_BUTTON+" flex-col gap-0.5"}><span className="flex items-center gap-1.5"><Icon icon={Sparkles} aria-hidden="true"/>{proposal.draft.kind==="frames"?FRAMES_DRAFT_FA:DRAFT_FA}</span><span className="type-caption opacity-80">{fa(proposal.draft.neurons)} نورون</span></Button>
+    <Button type="button" variant="outline" onClick={onApprove} disabled={busy||!proposal.turnId} className={WIDGET_BUTTON+" flex-col gap-0.5"}><span className="flex items-center gap-1.5"><Icon icon={Clapperboard} aria-hidden="true"/>{SKIP_DRAFT_FA}</span><span className="type-caption text-fg-secondary">{fa(price)} نورون</span></Button>
+   </WidgetActions>
   </div>}
   {/* The call to action, full width at the card's very bottom: [✦ بسازش] on the right (as Persian reads), the cost on the left. */}
   {!(proposal.draft&&onDraft&&!drafted)&&<div className="-mx-3 -mb-3 mt-1 flex flex-col gap-2 rounded-b-[inherit] border-t border-line-secondary bg-surface-subtle px-3 py-2.5">
    {drafted&&<p className="type-caption text-fg-secondary">پیش‌نویس آماده‌ست. اگه ظاهرش درسته ویدیو رو بساز؛ وگرنه توی چت بگو چی عوض بشه.</p>}
-   <div className="flex items-center justify-between gap-3">
-   <Button type="button" onClick={onApprove} disabled={busy||!proposal.turnId} className="shrink-0">
-    <Icon icon={Sparkles} aria-hidden="true"/>{drafted?VIDEO_NOW_FA:!proposal.draft&&proposal.research?.usedAsImages&&proposal.research.references.some(r=>!excludedReferences?.has(r.id))?GENERATE_WITH_REFS_FA:GENERATE_FA}
-   </Button>
-   <span className="type-label text-fg-primary" aria-label={"هزینه: "+fa(price)+" نورون"}>{fa(price)} نورون</span>
-   </div>
+   {/* The call to action the full width (owner, 2026-11-08), its cost inside it. */}
+   <WidgetActions>
+    <Button type="button" onClick={onApprove} disabled={busy||!proposal.turnId} className={WIDGET_BUTTON}>
+     <Icon icon={Sparkles} aria-hidden="true"/>{drafted?VIDEO_NOW_FA:!proposal.draft&&proposal.research?.usedAsImages&&proposal.research.references.some(r=>!excludedReferences?.has(r.id))?GENERATE_WITH_REFS_FA:GENERATE_FA}
+     <span className="type-caption opacity-80" aria-label={"هزینه: "+fa(price)+" نورون"}>{fa(price)} نورون</span>
+    </Button>
+   </WidgetActions>
   </div>}
  </Card>;
 }
@@ -141,10 +141,8 @@ export function PastProposalCard({snapshot,onMention,adjusted,onBuildScene,busy}
    <span>مدل: <span className="text-fg-primary"><ModelName name={snapshot.modelName}/></span></span>
    <span className="type-label text-fg-primary">{fa(snapshot.neurons)} نورون</span>
   </p>
-  <div className="flex flex-wrap items-center gap-2">
-   {adjusted&&onBuildScene&&<Button type="button" onClick={onBuildScene} disabled={busy}><Icon icon={Box} aria-hidden="true"/>این صحنه رو بساز</Button>}
-   <p role="note" className="min-w-0 flex-1 type-caption text-fg-secondary">{adjusted?"صحنهٔ «بوم» تغییر کرده؛ هووش با همین صحنه یه پرامپت و قیمت تازه می‌ده.":PAST_PROPOSAL_FA}</p>
-  </div>
+  <p role="note" className="type-caption text-fg-secondary">{adjusted?"صحنهٔ «بوم» تغییر کرده؛ هووش با همین صحنه یه پرامپت و قیمت تازه می‌ده.":PAST_PROPOSAL_FA}</p>
+  {adjusted&&onBuildScene&&<WidgetActions><Button type="button" onClick={onBuildScene} disabled={busy} className={WIDGET_BUTTON}><Icon icon={Box} aria-hidden="true"/>این صحنه رو بساز</Button></WidgetActions>}
  </Card>;
 }
 
@@ -164,10 +162,7 @@ export const noModelTitle=(reason?:UnsupportedReason)=>NO_MODEL_COPY[reason??"un
 export function NoModelCard({result}:{result:NoModelResult}){
  const copy=NO_MODEL_COPY[result.reason??"unknown"];
  return <Card size="sm" className="gap-3 p-3">
-  <div className="flex items-center gap-2">
-   <span className="flex size-9 shrink-0 items-center justify-center rounded-control bg-surface-hover text-fg-secondary"><Icon icon={result.reason==="media_review"?ShieldAlert:CircleOff} size={20} aria-hidden="true"/></span>
-   <span className="type-label text-fg-primary">{copy.title}</span>
-  </div>
+  <WidgetHeader icon={result.reason==="media_review"?ShieldAlert:CircleOff} title={copy.title}/>
   {result.plan?.suggestedModel&&<SuggestedModelNote model={result.plan.suggestedModel}/>}
   <p className="type-caption text-fg-secondary">{copy.body}</p>
  </Card>;

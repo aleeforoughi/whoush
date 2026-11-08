@@ -1,9 +1,11 @@
 "use client";
+import {WidgetHeader} from "@/components/widget";
+import {suggestedMasks} from "@/lib/suggested-masks";
 import {useUiLang} from "@/components/ui-language";
 import {useEffect,useLayoutEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
 import Link from "next/link";
 import {useRouter,useSearchParams} from "next/navigation";
-import {ArrowUp,ChevronLeft,CircleAlert,Clapperboard,Eye,Hash,Info,LoaderCircle,Mic,Smile,Sparkles,Star,Upload as UploadIcon,UserRound,X} from "lucide-react";
+import {ArrowUp,ChevronLeft,CircleAlert,Clapperboard,Eye,Hash,Info,LoaderCircle,Mic,Smile,Sparkles,Star,Upload as UploadIcon,UserRound,X,ScanSearch} from "lucide-react";
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Tabs,TabsContent,TabsList,TabsTrigger,Label,Tooltip,TooltipContent,TooltipTrigger} from "@aleeforoughi/feather-react";
 import {CLOSE_PREVIEW_FA,OPEN_PREVIEW_FA,PreviewCard,RERUN_GONE_FA} from "@/components/preview-card";
 import {ChatEmpty} from "@/components/chat-empty";
@@ -626,8 +628,25 @@ export function Studio(){
   if(inTray)editAttachment(inTray,true,suggested);else if(sent)editAttachment(sent,false,suggested);
  }
  /** The editor is done: the marked copy is made and checked, and the edit goes straight to Whoush (as the answer, when Whoush asked for it). */
- async function applyEdit({masks,regions}:{masks:HTMLCanvasElement[];regions:Region[]}){
+ async function applyEdit(r:{masks:HTMLCanvasElement[];regions:Region[]}){
   const e=editing;if(!e)return;setEditing(null);
+  await applyEditTo(e,r);
+ }
+ /**
+  * «بساز» on an edit card (owner, 2026-11-08): the areas Whoush marked go as they are, without opening the editor. The same photo, masks and message
+  * as confirming them in the editor.
+  */
+ async function generateSuggested(tag:string,suggested:readonly SuggestedEdit[]){
+  let a:LocalAttachment|undefined,fromTray=false;
+  if(isGenerationTag(tag)){const g=await generationPhoto(tag);if("errorFa" in g){setError(g.errorFa);return;}a=g;}
+  else{a=attachments.find(x=>x.tag===tag);fromTray=Boolean(a);a??=[...[...messages].reverse().flatMap(m=>m.attachments??[]),...genCopies.current.values()].find(x=>x.tag===tag);}
+  if(!a||a.kind!=="image"||!a.previewUrl||!blobs.current.get(a.id)){setError("این عکس دیگه توی این مرورگر نیست؛ دوباره اضافه‌ش کن.");return;}
+  let r:{masks:HTMLCanvasElement[];regions:Region[]};
+  try{r=await suggestedMasks(a.previewUrl,suggested);}catch{setError("علامت‌ها ساخته نشد. «ادیت» رو بزن و خودت علامت بزن.");return;}
+  if(!r.regions.length)return;
+  await applyEditTo({a:{...a,regionEdit:undefined},fromTray},r);
+ }
+ async function applyEditTo(e:{a:LocalAttachment;fromTray:boolean},{masks,regions}:{masks:HTMLCanvasElement[];regions:Region[]}){
   const blob=blobs.current.get(e.a.id);if(!blob)return;
   let guide:Blob;try{guide=await renderGuide(blob,masks);}catch{setError("علامت‌ها ذخیره نشد. دوباره امتحان کن.");return;}
   const guideId=crypto.randomUUID(),guideUrl=URL.createObjectURL(guide);urls.current.add(guideUrl);blobs.current.set(guideId,guide);
@@ -1165,10 +1184,10 @@ export function Studio(){
           onBuildScene={pastEdits[m.id]&&m.snapshot.tag&&m.snapshot.plan.staging?()=>buildScene(m.id,m.snapshot.tag!,m.snapshot.plan.staging!,m.snapshot.plan.camera?.aspectRatio):undefined} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>)}
         {m.kind==="no_model"&&<NoModelCard result={m.snapshot}/>}
         {/* The question is always the last item of the agent's message; it waits for an answer until something is sent after it. */}
-        {m.kind==="question"&&<AgentQuestion question={m.snapshot.question} waiting={i===messages.length-1&&!busy} onAnswer={()=>promptRef.current?.focus()}
+        {m.kind==="question"&&<AgentQuestion question={m.snapshot.question} repeated={m.text.trim()===m.snapshot.question.trim()} waiting={i===messages.length-1&&!busy} onAnswer={()=>promptRef.current?.focus()}
          choices={m.snapshot.choices} onChoose={reply=>answer(reply)}
          editCards={(m.snapshot.editCards??(m.snapshot.editCard?[m.snapshot.editCard]:[])).map((c:{tag:string;suggested?:SuggestedEdit[]})=>({tag:c.tag,thumbUrl:thumbFor(c.tag),...(c.suggested?{suggested:c.suggested}:{})}))}
-         onEdit={(tag,suggested)=>void openEditFor(tag,suggested)}
+         onEdit={(tag,suggested)=>void openEditFor(tag,suggested)} onGenerate={busy?undefined:(tag,suggested)=>void generateSuggested(tag,suggested)}
          references={m.snapshot.references} uploaded={m.snapshot.references?Object.fromEntries(m.snapshot.references.angles.map(a=>[a.id,Boolean(slots.find(s=>s.id==="ref-"+m.id+"-"+a.id)?.attachmentId)])):undefined}
          onUpload={m.snapshot.references?a=>uploadForRequest(m.id,m.snapshot.references!,a):undefined}
          onContinue={m.snapshot.references&&i===messages.length-1&&!busy?()=>answer(replyScriptFor(m.text)==="finglish"?"Aksa ro gozashtam":"عکس‌ها رو گذاشتم"):undefined}/>}
@@ -1178,8 +1197,9 @@ export function Studio(){
        </div>;
       })}
       {editing&&editing.a.previewUrl&&<RegionEditor tag={editing.a.tag} photoUrl={editing.a.previewUrl} suggested={editing.suggested} onClose={()=>setEditing(null)} onDone={r=>void applyEdit(r)}/>}
-      {waitingFor&&<div role="status" aria-live="polite" className="flex max-w-prose flex-col gap-2 rounded-card bg-surface-subtle p-3">
-       <span className="type-body text-fg-primary">{WAITING_FA}</span>
+      {waitingFor&&<div role="status" aria-live="polite" className="flex w-full flex-col gap-3 rounded-card border border-line-secondary bg-surface-subtle p-3">
+       <WidgetHeader icon={ScanSearch} title="بررسی فایل‌ها"/>
+       <span className="type-body-sm text-fg-primary">{WAITING_FA}</span>
        <ul className="flex flex-wrap gap-2">{waitingFor.map(a=>{const r=reviews[a.id];return <li key={a.id} className="relative size-16 overflow-hidden rounded-control bg-surface-hover">
         {/* eslint-disable-next-line @next/next/no-img-element -- a local blob: URL */}
         {a.previewUrl&&<img src={a.previewUrl} alt={displayTag(a.tag)} className="size-full object-cover"/>}

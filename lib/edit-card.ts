@@ -7,6 +7,8 @@ import {normalizePersian} from "./safety";
 export const EDIT_CARD_FA="عکس رو باز کن، روی همون قسمتی که می‌خوای عوض بشه بکش و بنویس چی بشه؛ بعدش خودم انجامش می‌دم.";
 export const EDIT_CARD_FINGLISH="Aks ro baz kon, ruye hamun ghesmati ke mikhay avaz besheh bekesh va benevis chi besheh; badesh khodam anjamesh midam.";
 export const EDIT_CARD_OPEN_FA="ادیت";
+/** «بساز» on an edit card: the areas Whoush marked go as they are, without opening the editor. */
+export const EDIT_CARD_GENERATE_FA="بساز";
 /** More than one photo: one card each. */
 export const EDIT_CARDS_FA="هر عکس رو باز کن، روی جاهایی که می‌خوای عوض بشه بکش و بنویس چی بشه؛ بعدش خودم انجامش می‌دم.";
 /** Words that point at a place in the picture without naming it, or ask for the brush. */

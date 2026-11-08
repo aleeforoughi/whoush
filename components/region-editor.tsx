@@ -5,6 +5,7 @@ import {Button,Icon} from "@aleeforoughi/feather-react";
 import {BRUSH_DONE_FA,BRUSH_EDIT_FA,BRUSH_HINT_FA,BRUSH_MISSING_NOTE_FA,BRUSH_NOTE_PLACEHOLDER_FA,BRUSH_SIZES,MAX_NOTE,MAX_REGIONS,NEON_SHADOW,REGION_COLORS,
  maskHasPaint,regionTagFa,type Region} from "@/lib/region-edit";
 import {displayTag} from "@/lib/attachments";
+import {paintSuggested} from "@/lib/suggested-masks";
 
 /** A region: its colour slot (0..4, one layer each), its number (#ادیت-n), its comment, whether the comment was submitted (✓), and where its pin sits. */
 type Draft={slot:number;n:number;note:string;done:boolean;pin:{x:number;y:number}};
@@ -61,9 +62,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
   const made:Draft[]=[];
   suggested.slice(0,MAX_REGIONS).forEach((sg,slot)=>{
    const ctx=layers.current[slot]?.getContext("2d");if(!ctx)return;
-   ctx.fillStyle=REGION_COLORS[slot].css;
-   for(const [x0,y0,x1,y1] of sg.boxes){const x=x0*natural.w,y=y0*natural.h,w=(x1-x0)*natural.w,h=(y1-y0)*natural.h;
-    ctx.beginPath();ctx.ellipse(x+w/2,y+h/2,Math.max(2,w/2),Math.max(2,h/2),0,0,Math.PI*2);ctx.fill();}
+   paintSuggested(ctx,slot,sg.boxes,natural.w,natural.h);
    const b=sg.boxes[0];made.push({slot,n:slot+1,note:sg.note.slice(0,MAX_NOTE),done:true,pin:b?{x:(b[0]+b[2])/2,y:b[1]}:{x:.5,y:.5}});
   });
   regionsRef.current=made;
