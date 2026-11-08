@@ -34,12 +34,13 @@ export const maskAt=(key:string,points:[number,number][],labels:number[]=points.
 export const maskInBox=(key:string,box:[number,number,number,number])=>
  call<Mask>({kind:"mask",key,points:[[(box[0]+box[2])/2,(box[1]+box[3])/2]],labels:[1],box},20_000);
 
-/** Paints a mask onto a region's layer in its colour (added to what is there). */
-export function paintMask(ctx:CanvasRenderingContext2D,m:Mask,css:string){
+/** Paints a mask onto a region's layer in its colour (added to what is there), or erases it from the layer (`erase`). */
+export function paintMask(ctx:CanvasRenderingContext2D,m:Mask,css:string,erase=false){
  const c=document.createElement("canvas");c.width=m.w;c.height=m.h;
  const cx=c.getContext("2d")!,img=cx.createImageData(m.w,m.h);
  for(let i=0;i<m.plane.length;i++)if(m.plane[i])img.data[i*4+3]=255;
  cx.putImageData(img,0,0);
  cx.globalCompositeOperation="source-in";cx.fillStyle=css;cx.fillRect(0,0,m.w,m.h);
- ctx.drawImage(c,0,0,ctx.canvas.width,ctx.canvas.height);
+ ctx.save();if(erase)ctx.globalCompositeOperation="destination-out";
+ ctx.drawImage(c,0,0,ctx.canvas.width,ctx.canvas.height);ctx.restore();
 }

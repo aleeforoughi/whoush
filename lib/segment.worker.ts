@@ -8,6 +8,7 @@
  * photo's own pixels. A box always comes with its centre as a point (transformers.js 4.3.2 reads input_points even for a box).
  */
 import {AutoProcessor,RawImage,SamModel,env,type Processor,type Tensor} from "@huggingface/transformers";
+import {refineMask} from "./mask-refine";
 
 env.allowRemoteModels=false;env.allowLocalModels=true;env.localModelPath="/models/";
 if(env.backends.onnx.wasm)env.backends.onnx.wasm.wasmPaths="/models/ort/";
@@ -45,7 +46,8 @@ async function mask(key:string,points:[number,number][],labels:number[],box?:[nu
  // confident as the best (owner, 2026-11-08: the finest detail); a box takes the most confident (the whole object in it).
  const area=(i:number)=>{let n=0;for(let j=i*w*h,e=(i+1)*w*h;j<e;j++)n+=data[j]?1:0;return n;};
  const best=detail?iou.map((v,i)=>({i,v})).filter(c=>c.v>=top-0.04).map(c=>({...c,a:area(c.i)})).filter(c=>c.a>0).sort((a,b)=>a.a-b.a)[0]?.i??iou.indexOf(top):iou.indexOf(top);
- const plane=new Uint8Array(w*h);plane.set(data.subarray(best*w*h,(best+1)*w*h));
+ // Cleaned before it is drawn: small holes filled, specks dropped, edges smoothed (lib/mask-refine.ts).
+ const plane=refineMask(data.subarray(best*w*h,(best+1)*w*h),w,h);
  return {w,h,score:iou[best],plane};
 }
 

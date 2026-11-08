@@ -7,6 +7,7 @@ import {BRUSH_DONE_FA,BRUSH_EDIT_FA,BRUSH_HINT_FA,BRUSH_MISSING_NOTE_FA,BRUSH_NO
 import {displayTag} from "@/lib/attachments";
 import {paintSuggested} from "@/lib/suggested-masks";
 import {maskAt,maskInBox,paintMask,prepare} from "@/lib/segment";
+import {maskTop} from "@/lib/mask-refine";
 
 /** A region: its colour slot (0..4, one layer each), its number (#ادیت-n), its comment, whether the comment was submitted (✓), and where its pin sits. */
 type Draft={slot:number;n:number;note:string;done:boolean;pin:{x:number;y:number}};
@@ -16,8 +17,10 @@ export type SuggestedRegion={note:string;boxes:readonly (readonly [number,number
 const MIN_S=1,MAX_S=8;
 export const COMMENT_ADDED_FA="کامنت ثبت شد";
 export const SUBMIT_COMMENT_FA="ثبت کامنت";
-/** The wand's cursor, as in photo editors: a wand whose tip is a sparkle, white with a dark outline (readable on any photo); the sparkle is the hotspot. */
-const WAND_CURSOR="url(\"data:image/svg+xml,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><g stroke-linecap="round"><path d="M7 1.5v3.2M7 9.3v3.2M1.5 7h3.2M9.3 7h3.2M3.1 3.1l2 2M8.9 8.9l2 2M10.9 3.1l-2 2M3.1 10.9l2-2" stroke="#111" stroke-width="3"/><path d="M7 1.5v3.2M7 9.3v3.2M1.5 7h3.2M9.3 7h3.2M3.1 3.1l2 2M8.9 8.9l2 2M10.9 3.1l-2 2M3.1 10.9l2-2" stroke="#fff" stroke-width="1.3"/><path d="M12.5 12.5l16 16" stroke="#111" stroke-width="5"/><path d="M12.5 12.5l16 16" stroke="#fff" stroke-width="2.6"/><path d="M12.5 12.5l3.2 3.2" stroke="#111" stroke-width="2.6"/></g></svg>')+"\") 7 7, crosshair";
+/** The wand's cursor, as in photo editors: a wand whose tip is a sparkle (the hotspot), white with a dark outline (readable on any photo), with its + or −. */
+const wandCursor=(sign:"+"|"-")=>"url(\"data:image/svg+xml,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><g stroke-linecap="round"><path d="M7 1.5v3.2M7 9.3v3.2M1.5 7h3.2M9.3 7h3.2M3.1 3.1l2 2M8.9 8.9l2 2M10.9 3.1l-2 2M3.1 10.9l2-2" stroke="#111" stroke-width="3"/><path d="M7 1.5v3.2M7 9.3v3.2M1.5 7h3.2M9.3 7h3.2M3.1 3.1l2 2M8.9 8.9l2 2M10.9 3.1l-2 2M3.1 10.9l2-2" stroke="#fff" stroke-width="1.3"/><path d="M12.5 12.5l16 16" stroke="#111" stroke-width="5"/><path d="M12.5 12.5l16 16" stroke="#fff" stroke-width="2.6"/><path d="M12.5 12.5l3.2 3.2" stroke="#111" stroke-width="2.6"/></g><circle cx="24.5" cy="7.5" r="6" fill="#fff" stroke="#111" stroke-width="1.4"/><path d="'+(sign==="+"?"M21.3 7.5h6.4M24.5 4.3v6.4":"M21.3 7.5h6.4")+'" stroke="#111" stroke-width="1.8" stroke-linecap="round"/></svg>')+"\") 7 7, crosshair";
+/** Outside a selection the wand adds (+); inside one it removes that object (−). */
+const WAND_CURSOR={add:wandCursor("+"),remove:wandCursor("-")};
 export const WAND_FA="انتخاب خودکار",WAND_HINT_FA="روی هر چیزی بزن تا دقیق انتخاب بشه؛ برای اضافه کردن، روی بقیه هم بزن.",WAND_LOADING_FA="انتخاب خودکار داره آماده می‌شه…",
  WAND_BUSY_FA="دارم انتخابش می‌کنم…",WAND_FAILED_FA="انتخاب خودکار روی این دستگاه کار نکرد؛ با قلم روش بکش.";
 
@@ -41,6 +44,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
  const [wand,setWand]=useState(true);
  const [wandState,setWandState]=useState<"idle"|"loading"|"ready"|"failed">("loading");
  const [wandBusy,setWandBusy]=useState(false);
+ const [overSelection,setOverSelection]=useState(false);
  const tap=useRef<{x:number;y:number}|null>(null);
  const seg=useRef<Promise<string|null>|null>(null);
  const [view,setView]=useState<View>({s:1,x:0,y:0});
@@ -103,9 +107,33 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
   })();
   return seg.current;
  }
- /** A wand tap: the object under it joins the open area (a new area when none is open), as one step to undo. */
+ /** The area painted under this point (the open one first), if any. */
+ function selectedAt(cx:number,cy:number):number|null{
+  const order=[...(openRef.current!==null?[openRef.current]:[]),...regionsRef.current.map(r=>r.slot).filter(s=>s!==openRef.current)];
+  for(const slot of order){
+   const m=layers.current[slot],ctx=m?.getContext("2d",{willReadFrequently:true});if(!m||!ctx)continue;
+   const p=toPhoto(cx,cy,slot);if(p.x<0||p.y<0||p.x>=m.width||p.y>=m.height)continue;
+   if(ctx.getImageData(Math.floor(p.x),Math.floor(p.y),1,1).data[3]>0)return slot;
+  }
+  return null;
+ }
+ /**
+  * A wand tap (owner, 2026-11-08): outside a selection, the object under it joins the open area (a new area when none is open); on an object already
+  * selected, that object is removed from its area. One step to undo either way.
+  */
  async function wandTap(cx:number,cy:number){
   const key=await ensureSeg(true);if(!key)return;
+  const hit=selectedAt(cx,cy);
+  if(hit!==null){
+   const m=layers.current[hit],ctx=m?.getContext("2d");if(!m||!ctx)return;
+   const p=toPhoto(cx,cy,hit);
+   setWandBusy(true);
+   let mask;try{mask=await maskAt(key,[[p.x,p.y]]);}catch{setWandBusy(false);setWandState("failed");return;}
+   setWandBusy(false);
+   history.current.push({slot:hit,data:ctx.getImageData(0,0,m.width,m.height),created:false});if(history.current.length>30)history.current.shift();redoStack.current=[];bump();
+   paintMask(ctx,mask,REGION_COLORS[hit].css,true);setOverSelection(false);
+   openRef.current=hit;setOpen(hit);return;
+  }
   const list=regionsRef.current,current=openRef.current;
   let slot:number,created=false;
   if(current!==null&&list.some(r=>r.slot===current))slot=current;
@@ -117,8 +145,9 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
   let mask;try{mask=await maskAt(key,[[p.x,p.y]]);}catch{setWandBusy(false);setWandState("failed");return;}
   setWandBusy(false);
   history.current.push({slot,data:ctx.getImageData(0,0,m.width,m.height),created});if(history.current.length>30)history.current.shift();redoStack.current=[];bump();
-  paintMask(ctx,mask,REGION_COLORS[slot].css);
-  if(created){const n=Math.max(0,...regionsRef.current.map(r=>r.n))+1,next=[...regionsRef.current,{slot,n,note:"",done:false,pin:{x:p.x/m.width,y:p.y/m.height}}];regionsRef.current=next;setRegions(next);}
+  paintMask(ctx,mask,REGION_COLORS[slot].css);setOverSelection(true);
+  // The badge sits on the selection's top edge, never on the object (a second tap there removes it).
+  if(created){const n=Math.max(0,...regionsRef.current.map(r=>r.n))+1,next=[...regionsRef.current,{slot,n,note:"",done:false,pin:maskTop(mask.plane,mask.w,mask.h)??{x:p.x/m.width,y:p.y/m.height}}];regionsRef.current=next;setRegions(next);}
   openRef.current=slot;setOpen(slot);
  }
 
@@ -158,6 +187,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
  }
  function move(e:React.PointerEvent<HTMLDivElement>){
   const box=stage.current?.getBoundingClientRect();if(box)setCursor(pointers.current.size>1?null:{x:e.clientX-box.left,y:e.clientY-box.top});
+  if(wand&&!pointers.current.size&&e.pointerType==="mouse"){const over=selectedAt(e.clientX,e.clientY)!==null;if(over!==overSelection)setOverSelection(over);}
   if(!pointers.current.has(e.pointerId))return;pointers.current.set(e.pointerId,{x:e.clientX,y:e.clientY});
   const pts=[...pointers.current.values()];
   if(pinch.current&&pts.length>=2){
@@ -218,7 +248,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
    <Button type="button" size="sm" onClick={finish} disabled={!regions.length}><Icon icon={Check} aria-hidden="true"/>{BRUSH_DONE_FA}</Button>
   </div>
   {/* The stage: the photo fixed full screen, every region's layer and pin, zoomed and moved by gestures; the tools and the comment card lie over it. */}
-  <div ref={stage} className="relative min-h-0 flex-1 overflow-hidden select-none" style={{cursor:hand?"grab":wand?(wandBusy?"progress":WAND_CURSOR):"none"}}
+  <div ref={stage} className="relative min-h-0 flex-1 overflow-hidden select-none" style={{cursor:hand?"grab":wand?(wandBusy?"progress":WAND_CURSOR[overSelection?"remove":"add"]):"none"}}
    onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onWheel={wheel} onPointerLeave={()=>setCursor(null)}>
    <div className="absolute inset-0 flex items-center justify-center p-2">
     <div className="relative" style={{transform:`translate(${view.x}px,${view.y}px) scale(${view.s})`,transformOrigin:"center"}}>
