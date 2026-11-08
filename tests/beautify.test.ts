@@ -126,6 +126,6 @@ test("«زیباسازی» keeps quality: the cheapest 2K-or-higher model is rec
  const src=await ok(11);
  const r=await orchestrateCreativeTurn({text:beautifyRequestFa("#تصویر-۱",["skin"]),attachments:[photo({reviewId:src.reviewId,beautify:{parts:["skin"]}})]});
  const prop=(r as Extract<OrchestratorResult,{status:"planned"}>).proposal,picked=prop.suggestions.find(x=>x.modelId===prop.selectedModelId);
- // Live, 2026-11-08: Seedream stamps a visible «AI-generated» mark, so it is not preferred while that is on; Nano Banana's SynthID is invisible.
- assert.ok(!prop.selectedModelId.startsWith("seedream"),"never a model that stamps a visible mark: "+prop.selectedModelId+" "+(picked?.resolution??""));
+ // Seedream's visible mark is off (owner, 2026-11-08), so a 2K model is recommended when one is offered.
+ if(prop.suggestions.some(x=>/^[2-9]K$/i.test(x.resolution??"")))assert.match(picked?.resolution??"",/^[2-9]K$/i,"a 2K-or-higher model when one is offered: "+prop.selectedModelId);
 });

@@ -23,12 +23,12 @@ export function seedreamSize(pixels:number,aspect?:string):string{
  return w+"x"+h;
 }
 /** With references, `image` carries them as base64 data URLs (docs/evidence/BYTEPLUS.md, image request fields). */
-/** Whether Seedream images carry BytePlus's visible «AI-generated» mark (the owner's decision, docs/PROVIDERS.md; on until they decide). */
-export const SEEDREAM_IMAGE_WATERMARK=true;
+/** Whether Seedream images carry BytePlus's visible «AI-generated» mark: off, the owner's decision of 2026-11-08 (docs/PROVIDERS.md). */
+export const SEEDREAM_IMAGE_WATERMARK=false;
 export function buildSeedreamRequest(model:MediaModel,prompt:string,c:MediaConfiguration,references:readonly {bytes:Uint8Array;mime:string}[]=[]):Record<string,unknown>{
  if(model.provider!=="byteplus"||model.kind!=="image"||!model.providerModel)throw new Error("Not a Seedream model");
  const px=model.providerParams?.pixels;if(typeof px!=="number")throw new Error("SKU has no pixel budget");
- // `watermark` defaults to true at BytePlus (a visible «AI-generated» mark); kept until the owner decides (docs/PROVIDERS.md): SEEDREAM_IMAGE_WATERMARK.
+ // `watermark` defaults to true at BytePlus (a visible «AI-generated» mark); sent off by the owner's decision (SEEDREAM_IMAGE_WATERMARK, docs/PROVIDERS.md).
  const max=model.capabilities.referenceImages.supported?model.capabilities.referenceImages.max??0:0;
  if(references.length>max)throw new Error("Too many reference images for this model");
  const image=references.map(r=>"data:"+r.mime+";base64,"+Buffer.from(r.bytes).toString("base64"));

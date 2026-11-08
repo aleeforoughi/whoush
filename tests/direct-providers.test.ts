@@ -48,7 +48,7 @@ test("BytePlus Seedream: explicit size for the canvas ratio within the pixel bud
  for(const [a,px] of [["16:9",4194304],["9:16",4194304],["21:9",4194304],["1:1",4194304]] as const){
   const [w,h]=seedreamSize(px,a).split("x").map(Number);assert.ok(w%16===0&&h%16===0&&w*h<=4624220&&w*h>=3686400,a+" "+w+"x"+h);
  }
- assert.deepEqual(buildSeedreamRequest(findMediaModel("seedream-5-pro-2k")!,"p",{aspectRatio:"1:1"}),{model:"dola-seedream-5-0-pro-260628",prompt:"p",size:"2048x2048",response_format:"url",output_format:"png",watermark:true});
+ assert.deepEqual(buildSeedreamRequest(findMediaModel("seedream-5-pro-2k")!,"p",{aspectRatio:"1:1"}),{model:"dola-seedream-5-0-pro-260628",prompt:"p",size:"2048x2048",response_format:"url",output_format:"png",watermark:false},"no visible AI mark (owner, 2026-11-08)");
  await withFetch(c=>c.url.startsWith("https://cdn.example/")?new Response(PNG,{headers:{"content-type":"application/octet-stream"}}):json({data:[{url:"https://cdn.example/a.png",size:"2048x2048"}]}),async calls=>{
   const p=new BytePlusMediaProvider(),{providerRequestId}=await p.submit({modelId:"seedream-5-lite",prompt:"p",configuration:{},idempotencyKey:"k"});
   assert.ok(providerRequestId.startsWith("img_"));await settleRun(providerRequestId.slice(4));
