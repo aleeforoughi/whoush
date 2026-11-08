@@ -1,4 +1,5 @@
 "use client";
+import {EDIT_AS_ASKED_FA} from "@/lib/edit-card";
 import {TagBadge} from "@/components/attachment-chip";
 import {changeTitleFa,type CanvasSection} from "@/lib/staging";
 import {WidgetHeader} from "@/components/widget";
@@ -641,6 +642,8 @@ export function Studio(){
   * as confirming them in the editor.
   */
  async function generateSuggested(tag:string,suggested:readonly SuggestedEdit[]){
+  // Nothing marked (a whole-photo edit): «بساز» is the answer that goes ahead with the request as asked.
+  if(!suggested.length){answer(EDIT_AS_ASKED_FA);return;}
   let a:LocalAttachment|undefined,fromTray=false;
   if(isGenerationTag(tag)){const g=await generationPhoto(tag);if("errorFa" in g){setError(g.errorFa);return;}a=g;}
   else{a=attachments.find(x=>x.tag===tag);fromTray=Boolean(a);a??=[...[...messages].reverse().flatMap(m=>m.attachments??[]),...genCopies.current.values()].find(x=>x.tag===tag);}

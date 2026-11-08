@@ -42,14 +42,33 @@ export function wantsEditCard(text:string):boolean{
 /** Words that change something in a picture: a request with one of them and a photo may be an edit of that photo (the vision check decides). */
 const CHANGE=["عوض","عوضش","تغییر","تغییرش","جایگزین","بردار","برش دار","حذف","پاک","رنگ","رنگش","اضافه کن","بذار","بزار","بکن","کن","بشه","کنید","فقط",
  "change","replace","swap","remove","delete","add","make","turn","recolor","fix","only","just"];
-const NEW_PICTURE=["یه عکس جدید","یه ویدیو","ویدیو بساز","ویدیو","فیلم","متحرک","یه صحنه","تو یه","توی یه","کنار","جلوی","new photo","new image","video","animate","a scene","in a","on a"];
-/** Whether a message with a photo might edit that photo (worth asking the vision check); a clear new-picture request is not. */
+/**
+ * Only a clear video or brand-new-picture request skips the vision check (owner, 2026-11-08: "the user clearly asked to edit the image but got no
+ * widget; Whoush must not miss these"). Place words («کنار», «جلوی», «تو یه», "in a") no longer do: «یه گل کنار صورتش بذار» is an edit. The vision
+ * check itself decides edit or reference.
+ */
+const NEW_PICTURE=["یه عکس جدید","یه تصویر جدید","یه ویدیو","ویدیو بساز","ویدیو","فیلم","متحرک","new photo","new image","video","animate"];
+/** Words that change something in a photo, beyond CHANGE: retouching, make-up, skin, hair, colour and light. */
+const EDITING_MORE=["روتوش","رتوش","صاف","صافتر","صاف‌تر","آرایش","رژ","مو","موهاش","پوست","چروک","جوش","لک","روشن","روشنتر","تیره","سفید","مشکی","بلوند",
+ "retouch","smooth","makeup","lipstick","skin","hair","brighter","darker","blur","sharpen"];
+/** Whether a message with a photo might edit that photo (worth asking the vision check); a clear new-picture or video request is not. */
 export function mightEditPhoto(text:string):boolean{
  const t=normalizePersian(text);
  if(NEW_PICTURE.some(w=>(" "+t+" ").includes(" "+normalizePersian(w)+" ")))return false;
- return has(t,CHANGE);
+ return has(t,CHANGE)||has(t,EDITING_MORE)||has(t,EDIT_WORDS);
+}
+/** Why the vision check was not asked (a code for the dev log; never the words). */
+export function editCheckSkip(text:string):string|null{
+ const t=normalizePersian(text);
+ if(NEW_PICTURE.some(w=>(" "+t+" ").includes(" "+normalizePersian(w)+" ")))return "new_picture_words";
+ return mightEditPhoto(text)?null:"no_edit_words";
 }
 /** An edit card may come with regions Whoush painted itself: each with its comment and its boxes (0..1 of the photo). */
 export type SuggestedEdit={note:string;boxes:[number,number,number,number][]};
+/** An edit of the whole photo: go ahead as asked, or mark places first. */
+export const EDIT_WHOLE_FA="این تغییر روی کل عکسه. اگه همین‌طوری درسته «بساز» رو بزن؛ اگه می‌خوای فقط جاهای خاصی عوض بشه، «ادیت» رو بزن و علامتشون بزن.";
+export const EDIT_WHOLE_FINGLISH="In taghir ruye kole akseh. Ageh hamintori dorosteh \"Besaz\" ro bezan; ageh mikhay faghat jahaye khasi avaz besheh, \"Edit\" ro bezan o alamateshun bezan.";
+/** «بساز» on a card with nothing marked: the user's answer, which goes ahead with the request as asked. */
+export const EDIT_AS_ASKED_FA="همین‌طوری بساز";
 export const SUGGESTED_FA="این قسمت‌ها رو برات علامت زدم و توضیح هر کدوم رو نوشتم. اگه درسته «ادیت» رو بزن و ثبت کن، یا تغییرش بده.";
 export const SUGGESTED_FINGLISH="In ghesmata ro barat alamat zadam o tozihe har kodum ro neveshtam. Ageh dorosteh \"edit\" ro bezan o sabt kon, ya taghiresh bedeh.";

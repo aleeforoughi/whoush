@@ -37,3 +37,11 @@ test("the chat box is never filled with a ready prompt (owner, 2026-11-08: it co
  const fs=await import("node:fs");
  assert.doesNotMatch(fs.readFileSync("components/studio.tsx","utf8"),/roleBrief\(/);
 });
+
+// «ادیت عکس» chosen in the + menu stays on the photo once sent (owner, 2026-11-08: it showed «اتوماتیک»).
+test("a resolved role chosen in the + menu is kept on the file",async()=>{
+ const {withRole}=await import("../lib/attachments");
+ const a={id:"x",tag:"image1",kind:"image",mime:"image/png",bytes:10,sha256:"0".repeat(64),name:"a.png"} as unknown as import("../lib/attachments").LocalAttachment;
+ assert.equal(withRole(a,"edit_reference").role,"edit_reference");
+ assert.equal(withRole({...a,kind:"audio",tag:"audio1",mime:"audio/mpeg"} as typeof a,"voice_clone").role,undefined);
+});

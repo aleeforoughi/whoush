@@ -73,7 +73,9 @@ export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention,mai
  /** The photo's safety check: progress, verified badge, or why it cannot be used (and a retry when the check failed). */review?:PhotoReview;onRetryReview?:()=>void;
  /** «سوژه اصلی»: whether this file is the main subject, and the star that toggles it (optional). */main?:boolean;onToggleMain?:()=>void}){
  // On the narrow card the no-role option reads «اتوماتیک» (the full «انتخاب اتوماتیک هووش» would be cut off beside the delete button); the menu items are unchanged otherwise.
- const media=isMediaKind(a.kind),roles=[{value:AUTO_ROLE,label:CARD_AUTO_ROLE_FA},...rolesFor(a.kind).map(r=>({value:r.id,label:r.labelFa}))];
+ // The role menu, plus the file's own role when it is one the menu does not list (a role chosen in the + menu, such as «ادیت عکس»), so it shows as chosen.
+ const listed=rolesFor(a.kind).map(r=>({value:r.id as string,label:r.labelFa}));
+ const media=isMediaKind(a.kind),roles=[{value:AUTO_ROLE,label:CARD_AUTO_ROLE_FA},...(a.role&&!listed.some(r=>r.value===a.role)?[{value:a.role as string,label:roleLabelFa(a.role,a.kind)}]:[]),...listed];
  const lip=a.role==="lip_sync"?a.speech:undefined;
  const set=(patch:Partial<AttachmentSpeech>)=>a.speech&&onChange({speech:{...a.speech,...patch}});
  const remove={label:"حذف "+a.name,onClick:onRemove};

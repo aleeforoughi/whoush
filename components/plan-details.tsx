@@ -236,9 +236,9 @@ export function AgentQuestion({question,repeated,waiting,onAnswer,references,upl
    </span>
    {c.suggested&&c.suggested.length>0&&<ul className="flex flex-col gap-1.5">{c.suggested.map((sg,i)=><li key={i} className="flex items-start gap-2 type-body-sm text-fg-primary">
     <RegionChip n={i+1} color={REGION_COLORS[i%REGION_COLORS.length].name}/><span className="min-w-0 break-words">{sg.note}</span></li>)}</ul>}
-   {(onEdit||(onGenerate&&c.suggested?.length))&&<WidgetActions label={displayTag(c.tag)}>
-    {onGenerate&&c.suggested&&c.suggested.length>0&&<Button type="button" onClick={()=>onGenerate(c.tag,c.suggested!)} className={WIDGET_BUTTON}><Icon icon={Sparkles} aria-hidden="true"/>{EDIT_CARD_GENERATE_FA}</Button>}
-    {onEdit&&<Button type="button" variant={onGenerate&&c.suggested?.length?"outline":"default"} onClick={()=>onEdit(c.tag,c.suggested)} aria-label={EDIT_CARD_OPEN_FA+" "+displayTag(c.tag)} className={WIDGET_BUTTON}><Icon icon={Brush} aria-hidden="true"/>{EDIT_CARD_OPEN_FA}</Button>}
+   {(onEdit||onGenerate)&&<WidgetActions label={displayTag(c.tag)}>
+    {onGenerate&&<Button type="button" onClick={()=>onGenerate(c.tag,c.suggested??[])} className={WIDGET_BUTTON}><Icon icon={Sparkles} aria-hidden="true"/>{EDIT_CARD_GENERATE_FA}</Button>}
+    {onEdit&&<Button type="button" variant={onGenerate?"outline":"default"} onClick={()=>onEdit(c.tag,c.suggested)} aria-label={EDIT_CARD_OPEN_FA+" "+displayTag(c.tag)} className={WIDGET_BUTTON}><Icon icon={Brush} aria-hidden="true"/>{EDIT_CARD_OPEN_FA}</Button>}
    </WidgetActions>}
   </li>)}</ul>}
   {choices&&waiting&&onChoose&&<WidgetActions label={question}>

@@ -28,7 +28,7 @@ import {inspectReferences,locateEdit,type EditLocation} from "./reference-inspec
 import {faPlain} from "./format";
 import {devLiveTest} from "./policy";
 import {continuesWork} from "./follow-up";
-import {EDIT_CARDS_FA,EDIT_CARD_FA,EDIT_CARD_FINGLISH,SUGGESTED_FA,SUGGESTED_FINGLISH,mightEditPhoto,wantsEditCard,type SuggestedEdit} from "./edit-card";
+import {EDIT_CARDS_FA,EDIT_CARD_FA,EDIT_CARD_FINGLISH,EDIT_WHOLE_FA,EDIT_WHOLE_FINGLISH,SUGGESTED_FA,SUGGESTED_FINGLISH,editCheckSkip,mightEditPhoto,wantsEditCard,type SuggestedEdit} from "./edit-card";
 import {safeReview} from "./upload-review";
 import {rememberRegionEdit} from "./region-restore";
 import {MEDIA_ROUTE,readMedia,storeMedia} from "./media-store";
@@ -517,14 +517,23 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // Edit or reference (owner, 2026-11-06): a photo with a request that changes something in it is asked to the vision check. An edit gets its card with
  // the areas already painted and commented, to confirm or change; a reference goes on to a new picture. A check that cannot run changes nothing here.
  const checkedPhotos=files0.filter(f=>f.kind==="image"&&!f.regionEdit&&safeReview(f.reviewId));
+ if(devLiveTest().enabled&&files0.some(f=>f.kind==="image")){
+  // Why the edit widget was or was not considered (codes only, never the words or the photo).
+  const why=parsed.answersQuestion?"answers_question":files0.some(f=>f.regionEdit)?"already_marked":checkedPhotos.length!==1?"photos_checked_"+checkedPhotos.length:editCheckSkip(parsed.text);
+  console.info("[whoush dev-live] edit check",why??"asking");
+ }
  if(!parsed.answersQuestion&&checkedPhotos.length===1&&!files0.some(f=>f.regionEdit)&&mightEditPhoto(parsed.text)){
   const photo=checkedPhotos[0],stored=await readMedia(safeReview(photo.reviewId)!.mediaId).catch(()=>undefined);
   const loc=stored?await (deps.locateEdit??locateEdit)(parsed.text,{bytes:new Uint8Array(stored.bytes),mime:stored.mime}).catch(()=>undefined):undefined;
   const regions=loc?.mode==="edit"?loc.regions.filter(r=>r.noteFa.trim()&&r.box[2]>r.box[0]&&r.box[3]>r.box[1]):[];
+  if(devLiveTest().enabled)console.info("[whoush dev-live] edit check result",loc?loc.mode:"unavailable","regions",regions.length);
   if(regions.length&&regions.every(r=>evaluateTextSafety(r.noteFa).decision==="allow")){
    const suggested:SuggestedEdit[]=regions.map(r=>({note:r.noteFa.trim().slice(0,300),boxes:[[r.box[0],r.box[1],r.box[2],r.box[3]]]}));
    return {status:"needs_input",turnId:askTurn,message:finglish?SUGGESTED_FINGLISH:SUGGESTED_FA,question:SUGGESTED_FA,editCards:[{tag:photo.tag,suggested}]};
   }
+  // An edit of the whole photo (a retouch, a colour grade) with no single place to mark (owner, 2026-11-08: an edit never goes without its widget):
+  // the card with the photo, «بساز» to go ahead as asked, «ادیت» to mark places first.
+  if(loc?.mode==="edit")return {status:"needs_input",turnId:askTurn,message:finglish?EDIT_WHOLE_FINGLISH:EDIT_WHOLE_FA,question:EDIT_WHOLE_FA,editCards:[{tag:photo.tag}]};
  }
  // Picking up a request that was set aside for its checks (owner, 2026-11-08: «تموم شد؟» was answered with an invented "still checking"): when Whoush's last
  // turn set files aside, and the user now asks whether it is done while every file that request named has passed, Whoush says so and offers to make it, with

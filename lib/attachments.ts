@@ -496,7 +496,9 @@ export function withoutRole(a:LocalAttachment):LocalAttachment{
 }
 /** Sets the role and drops what belongs to another role: speech details ride only with `lip_sync`. A role the UI does not offer for the kind is ignored. */
 export function withRole(a:LocalAttachment,role:AttachmentRole):LocalAttachment{
- if(!rolesFor(a.kind).some(r=>r.id===role))return a;
+ // Any role the kind may carry, not only the menu's (owner, 2026-11-08: «ادیت عکس» chosen in the + menu showed «اتوماتیک» once sent, because it is a
+ // resolved role outside the role menu's list); the voice clone, which needs consent, never this way.
+ if(!roleAllowed(a.kind,role)||role==="voice_clone")return a;
  const next:LocalAttachment={...a,role};
  delete next.speech;
  if(role==="lip_sync")next.speech=a.role==="lip_sync"&&a.speech?a.speech:{hasSpeech:true,language:"unknown",accent:"unspecified"};
