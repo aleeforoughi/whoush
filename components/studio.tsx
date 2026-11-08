@@ -1145,7 +1145,8 @@ export function Studio(){
     </ScrollArea>
     {/* The chip tray and the composer float over the chat as glass (owner, 2026-11-08) and scroll together, so on a short screen the prompt and the
         send button stay reachable; the chat scrolls under them (its bottom padding is their measured height). */}
-    <div ref={composerRef} className="whoush-glass whoush-glass-bottom absolute inset-x-0 bottom-0 z-20 flex max-h-[64dvh] min-h-0 flex-col">
+    {/* Swipes on its empty parts reach the chat under it (owner, 2026-11-08: scrolling locked); only the controls take touches. */}
+    <div ref={composerRef} className="whoush-glass whoush-glass-bottom pointer-events-none absolute inset-x-0 bottom-0 z-20 flex max-h-[64dvh] min-h-0 flex-col [&_form]:pointer-events-auto [&_[role=alert]]:pointer-events-auto">
     {error&&<div className="mx-auto w-full max-w-3xl px-4 pb-2"><Alert variant="destructive" role="alert">
      <Icon icon={CircleAlert} aria-hidden="true"/>
      <AlertTitle>خطا</AlertTitle>

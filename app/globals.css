@@ -197,11 +197,14 @@ html[dir="rtl"] [data-slot="scroll-area-scrollbar"][data-orientation="vertical"]
 html[lang="fa-Latn"] body:not([data-translated]){visibility:hidden}
 
 /* Glass bars (owner, 2026-11-08): the studio's phone top bar and the chat box float over the content, which scrolls under them, blurred like iOS and a
-   little darker for reading. The blur layer reaches past the bar's inner edge and fades out there, so there is no hard cut. */
-.whoush-glass{position:relative;isolation:isolate;background:transparent}
-.whoush-glass::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;
-  -webkit-backdrop-filter:blur(18px) saturate(140%);backdrop-filter:blur(18px) saturate(140%);
-  background:color-mix(in oklab,var(--color-surface-base) 62%,transparent)}
-.whoush-glass-top::before{bottom:-1.25rem;-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 1.25rem),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 1.25rem),transparent)}
-.whoush-glass-bottom::before{top:-1.5rem;-webkit-mask-image:linear-gradient(to top,#000 calc(100% - 1.5rem),transparent);mask-image:linear-gradient(to top,#000 calc(100% - 1.5rem),transparent)}
-@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.whoush-glass::before{background:color-mix(in oklab,var(--color-surface-base) 92%,transparent)}}
+   little darker for reading. The blur sits on the bar itself, never with a mask (Safari drops a backdrop blur that shares its element with a mask). The
+   soft edge is a separate strip past the inner edge: a lighter blur under a tint that fades out, so there is no hard cut. */
+/* No `position` here: this CSS is outside Tailwind's layers, so it would beat the bars' own `absolute` (it did: they never floated). */
+.whoush-glass{
+  -webkit-backdrop-filter:blur(20px) saturate(160%);backdrop-filter:blur(20px) saturate(160%);
+  background:color-mix(in oklab,var(--color-surface-base) 60%,transparent)}
+.whoush-glass::after{content:"";position:absolute;inset-inline:0;height:1.25rem;pointer-events:none;
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.whoush-glass-top::after{top:100%;background:linear-gradient(to bottom,color-mix(in oklab,var(--color-surface-base) 60%,transparent),transparent)}
+.whoush-glass-bottom::after{bottom:100%;background:linear-gradient(to top,color-mix(in oklab,var(--color-surface-base) 60%,transparent),transparent)}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.whoush-glass{background:color-mix(in oklab,var(--color-surface-base) 92%,transparent)}}
