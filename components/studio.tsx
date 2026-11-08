@@ -112,7 +112,8 @@ export function Studio(){
    setAtStart(top<8);
    if(!window.matchMedia("(max-width: 767px)").matches){setCompact(false);st.top=top;return;}
    if(end){setCompact(false);st.anchor=top;}
-   else if(top<st.top&&st.anchor-top>24)setCompact(true);
+   // Folds only well away from the end (owner's recording, 2026-11-08: near the last card it folded and unfolded on every small move).
+   else if(top<st.top&&st.anchor-top>24&&el.scrollHeight-top-el.clientHeight>200)setCompact(true);
    else if(top>st.top&&top-st.anchor>24)setCompact(false);
    if((top<st.top)!==(st.anchor>st.top))st.anchor=st.top; // a change of direction starts a new run
    st.top=top;
@@ -120,7 +121,8 @@ export function Studio(){
  }
  // Measured only while unfolded (owner, 2026-11-08: the last card jumped): folding the chat box must not change the chat's size, or the browser moves
  // the scroll and the end-follower pulls the reader back down. The padding keeps the full box's height.
- const compactRef=useRef(false);compactRef.current=compact;
+ const compactRef=useRef(false);
+ useEffect(()=>{compactRef.current=compact;},[compact]);
  useEffect(()=>{const el=composerRef.current;if(!el||typeof ResizeObserver==="undefined")return;const ro=new ResizeObserver(()=>{if(!compactRef.current)setComposerH(Math.round(el.getBoundingClientRect().height));});ro.observe(el);return()=>ro.disconnect();},[]);
  const uiLang=useUiLang();
  const [proposal,setProposal]=useState<AgentProposal|null>(null);
