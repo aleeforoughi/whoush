@@ -90,7 +90,10 @@ export function Studio(){
  const projectParam=useSearchParams().get("project");
  const [messages,setMessages]=useState<TranscriptItem[]>([]);
  const [draft,setDraft]=useState("");
- /** The floating composer's height (owner, 2026-11-08: glass over the chat), so the last message scrolls clear of it. */
+ /**
+  * The floating composer's height (owner, 2026-11-08: glass over the chat), so the last message scrolls clear of it and of its 3rem fade (the chat's
+  * bottom padding is this plus 56px); on a phone the top padding (6rem) clears the floating top bar and its fade the same way.
+  */
  const composerRef=useRef<HTMLDivElement>(null);
  const [composerH,setComposerH]=useState(160);
  /**
@@ -1071,7 +1074,7 @@ export function Studio(){
     </div>}
     <div role="status" aria-live="polite" className="sr-only">{dragging?"فایل‌ها را اینجا رها کن":announce}</div>
     {/* Phones: the top bar floats over the chat; a note shown above the chat starts below it. */}
-    {topBars&&<div aria-hidden="true" className="h-14 shrink-0 md:hidden"/>}
+    {topBars&&<div aria-hidden="true" className="h-24 shrink-0 md:hidden"/>}
     {/* The welcome line is the empty view (components/chat-empty.tsx), never a fixed header; the bar is only the preview toggle, once there is a preview. */}
     {hasPreview&&<div className="hidden border-b border-line-tertiary px-4 py-2 md:block">
      <div className="mx-auto flex w-full max-w-3xl items-center justify-end gap-3">
@@ -1092,7 +1095,7 @@ export function Studio(){
     </div>}
     {/* Native scrolling (owner, 2026-11-08: laggy on the iPhone): momentum, and no script running on every frame under the glass bars. */}
     <div onScroll={onChatScroll} className="scrollbar-right min-h-0 flex-1 overflow-y-auto overscroll-contain">
-     <div ref={logRef} aria-live="polite" aria-label="گفت‌وگو" role="log" style={{paddingBottom:composerH+16}} className={"mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4 p-4"+(topBars?"":" max-md:pt-16")}>
+     <div ref={logRef} aria-live="polite" aria-label="گفت‌وگو" role="log" style={{paddingBottom:composerH+56}} className={"mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4 p-4"+(topBars?"":" max-md:pt-24")}>
       {!messages.length&&!loadingProject&&<ChatEmpty/>}
       {loadingProject&&<p role="status" className="type-body-sm text-fg-secondary">در حال باز کردن پروژه…</p>}
       {/* User messages: on the right (the start in RTL), in a filled grey bubble with no border, their files and «اصلاح» generations above it as the same cards
