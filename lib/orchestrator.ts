@@ -21,6 +21,7 @@ import {mainSubjectNote,mainSubjectRule,shownTag,typedMainSubject} from "./main-
 import {MEDIA_KIND_CHOICES,MEDIA_KIND_QUESTION_FA,MEDIA_KIND_QUESTION_FINGLISH,type QuestionChoice} from "./media-intent";
 import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
 import {SKILLS,SKILL_REGISTRY_VERSION} from "./skills";
+import {rememberBeautifyTurn} from "./beauty-check";
 import {REFERENCE_NEEDS,detectReferenceNeeds,type ReferenceRequest} from "./reference-needs";
 import {DRIFT_MARKER_FA,DRIFT_MARKER_FINGLISH,DRIFT_SKIP,DRIFT_SKIP_FINGLISH,driftAngles,driftAskFa,driftAskFinglish,missingNeeds} from "./drift";
 import type {GenerationProposal,MediaRequirements,ProposalResearch,SuggestedModel,UnsupportedReason} from "./types";
@@ -120,6 +121,15 @@ export function faMediaReview(tags:readonly string[],kinds:readonly string[]):st
  return "از "+tags.join("، ")+" فعلاً استفاده نمی‌کنم: "+(audio?"فایل صوتی هنوز بررسی ایمنی نمی‌شه. ":"")+
   (kinds.some(k=>k!=="audio")?"عکس و ویدیو رو فقط بعد از بررسی ایمنی که موقع آپلود انجام می‌شه به کار می‌برم؛ اگه بررسیش هنوز تموم نشده، چند لحظه صبر کن و دوباره بفرست. ":"")+
   "یا بدون "+(tags.length>1?"این فایل‌ها":"این فایل")+" بگو چی بسازم.";
+}
+/**
+ * «زیباسازی» keeps the photo's quality (owner, 2026-11-08: no pixelation, pores and texture kept): the proposal recommends the cheapest offered model with
+ * a 2K or higher version when one is among its suggestions; the others stay in the menu with their prices. Unchanged when none is 2K or higher.
+ */
+export function preferDetail(p:GenerationProposal):GenerationProposal{
+ const px=(r?:string)=>{const m=/^(\d+)K$/i.exec(r??"");return m?Number(m[1]):0;};
+ const hi=p.suggestions.filter(s=>px(s.resolution)>=2).sort((a,b)=>a.neurons-b.neurons)[0];
+ return hi&&px(p.suggestions.find(s=>s.modelId===p.selectedModelId)?.resolution)<2?{...p,recommendedModelId:hi.modelId,selectedModelId:hi.modelId,fixedNeurons:hi.neurons}:p;
 }
 /**
  * The proposal set to the version of its recommended model whose length covers a source video (owner, 2026-11-08): the shortest at least as long, else the
@@ -1001,6 +1011,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
    base=ref?FA_NO_REFS:needFa&&!modelReq.lipSync?FA_NO_MODEL_FOR[needFa]!:uploads.length&&!modelReq.lipSync?FA_NO_PHOTO_MODEL:lipsMsg;
   return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,suggestedModel,input.style)),message:base+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{}),reason:"no_model"};
  }
+ if(beautified&&kind==="image")proposal=preferDetail(proposal);
  // Length from the source video (owner, 2026-11-08: an edit or a replacement in a video lasts as long as that video): the recommended model's version
  // that covers it, at the same resolution. A video to continue is not a source of length.
  const source=kind==="video"?files.find(f=>f.kind==="video"&&f.role!=="continue"&&f.role!=="extend_back"&&f.durationSeconds):undefined;
@@ -1029,6 +1040,8 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  if(uploads.length&&kind==="image")refStore().set(turnId,uploads);
  // A brush edit: after generation, everything outside the edited areas is restored from the source photo exactly (lib/region-restore.ts).
  const firstPainted=painted[0];
+ // «زیباسازی»: its result is checked against the goal when it is done (lib/beauty-check.ts: share-ready, beautiful, still them).
+ if(beautified&&kind==="image")rememberBeautifyTurn(turnId,safeReview(beautified.reviewId)!.mediaId);
  if(firstPainted&&kind==="image")rememberRegionEdit(turnId,{sourceId:safeReview(firstPainted.reviewId)!.mediaId,guideId:safeReview(firstPainted.regionEdit!.guideReviewId)!.mediaId,
   ...(firstPainted.regionEdit!.mask?{mask:Buffer.from(firstPainted.regionEdit!.mask,"base64")}:{}),...(editCrop?{crop:editCrop}:{})});
  if(research){

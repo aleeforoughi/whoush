@@ -11,7 +11,7 @@ import {CHARACTER_VIEWS} from "@/lib/characters";
 import {displayTag} from "@/lib/attachments";
 import {TagBadge} from "@/components/attachment-chip";
 import {EDIT_CARD_GENERATE_FA,EDIT_CARD_OPEN_FA,EDIT_PREPARING_FA,type SuggestedEdit} from "@/lib/edit-card";
-import {BEAUTIFY_GO_FA,BEAUTIFY_MINOR_FA,BEAUTIFY_NAME,BEAUTIFY_PART_FA,BEAUTIFY_PARTS,BEAUTIFY_PARTS_MINOR,type BeautifyPart} from "@/lib/beautify";
+import {BEAUTIFY_GO_FA,BEAUTIFY_GROUPS,BEAUTIFY_MINOR_FA,BEAUTIFY_NAME,BEAUTIFY_PARTS,BEAUTIFY_PARTS_MINOR,beautifySeenFa,type BeautifyPart} from "@/lib/beautify";
 import {WIDGET_BUTTON,WidgetActions,WidgetHeader} from "@/components/widget";
 import {AreaOverlay} from "@/components/area-overlay";
 import {NEON_SHADOW,REGION_COLORS,regionTagFa} from "@/lib/region-edit";
@@ -201,10 +201,12 @@ export type BeautifyCardOffer={tag:string;parts:readonly BeautifyPart[];notes?:P
  * bottom, the full width. On its own it is the whole widget; under an edit card it is the other way to go, with its own title.
  */
 function BeautifySection({offer,alone,busy,onBeautify}:{offer:BeautifyCardOffer;alone:boolean;busy?:boolean;onBeautify?:(tag:string,parts:BeautifyPart[])=>void}){
- const offered=offer.minor?BEAUTIFY_PARTS.filter(p=>BEAUTIFY_PARTS_MINOR.includes(p)):BEAUTIFY_PARTS;
- const [on,setOn]=useState<ReadonlySet<BeautifyPart>>(()=>new Set(offer.parts.filter(p=>offered.includes(p))));
- const toggle=(p:BeautifyPart)=>setOn(s=>{const n=new Set(s);if(n.has(p))n.delete(p);else n.add(p);return n;});
- const chosen=offered.filter(p=>on.has(p));
+ // Four general switches over the eight parts (owner, 2026-11-08: not a long checklist): a group shows when one of its parts may be used, and starts on
+ // when one of its parts was offered.
+ const allowed=offer.minor?BEAUTIFY_PARTS_MINOR:BEAUTIFY_PARTS,groups=BEAUTIFY_GROUPS.filter(g=>g.parts.some(p=>allowed.includes(p)));
+ const [on,setOn]=useState<ReadonlySet<string>>(()=>new Set(groups.filter(g=>g.parts.some(p=>offer.parts.includes(p))).map(g=>g.id)));
+ const toggle=(id:string)=>setOn(s=>{const n=new Set(s);if(n.has(id))n.delete(id);else n.add(id);return n;});
+ const chosen=groups.filter(g=>on.has(g.id)).flatMap(g=>g.parts.filter(p=>allowed.includes(p))),seen=beautifySeenFa(offer.notes);
  return <section aria-label={BEAUTIFY_NAME} className="flex flex-col gap-3">
   {!alone&&<h3 className="flex items-center gap-2 type-label text-fg-primary"><Icon icon={WandSparkles} size={16} aria-hidden="true" className="size-4 text-primary"/>{BEAUTIFY_NAME}</h3>}
   {alone&&<span className="relative block w-full overflow-hidden rounded-control bg-surface-hover">
@@ -213,19 +215,14 @@ function BeautifySection({offer,alone,busy,onBeautify}:{offer:BeautifyCardOffer;
     ?<img src={offer.thumbUrl} alt="" className="block h-auto w-full"/>
     :<span className="flex aspect-video items-center justify-center text-fg-secondary"><Icon icon={ImageIcon} size={24} aria-hidden="true"/></span>}
   </span>}
-  {/* A switch per part (owner, 2026-11-08): its name and, under it, what Whoush saw in this photo; on (a filled check) or off (an empty box). The parts
-      the photo needs start on; the rest start off and can be turned on. */}
-  <ul role="group" aria-label={"بخش‌های "+BEAUTIFY_NAME} className="flex flex-col gap-1.5">
-   {offered.map(p=>{const active=on.has(p),note=offer.notes?.[p];return <li key={p}><button type="button" aria-pressed={active} onClick={()=>toggle(p)} disabled={!onBeautify}
-    className={"flex min-h-12 w-full items-start gap-2.5 rounded-control px-3 py-2.5 text-start motion-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60 "
-     +(active?"bg-primary/10 hover:bg-primary/20":"bg-transparent hover:bg-surface-hover")}>
-    <span aria-hidden="true" className={"mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-[4px] "+(active?"bg-primary text-primary-foreground":"ring-1 ring-line-primary")}>{active&&<Icon icon={Check} size={16} className="size-3.5"/>}</span>
-    <span className="flex min-w-0 flex-col gap-0.5">
-     <span className={"type-body-sm "+(active?"text-fg-primary":"text-fg-secondary")}>{BEAUTIFY_PART_FA[p]}</span>
-     {note&&<span className="type-caption text-fg-secondary">{note}</span>}
-    </span>
-   </button></li>;})}
-  </ul>
+  {seen&&<p className="type-body-sm text-fg-primary">{seen}</p>}
+  {/* A switch per group: on (filled, a check) or off (outlined). */}
+  <div role="group" aria-label={"بخش‌های "+BEAUTIFY_NAME} className="flex flex-wrap gap-2">
+   {groups.map(g=>{const active=on.has(g.id);return <button key={g.id} type="button" aria-pressed={active} onClick={()=>toggle(g.id)} disabled={!onBeautify}
+    className={"inline-flex min-h-11 items-center gap-1.5 rounded-control px-3 py-2 type-body-sm motion-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60 "
+     +(active?"bg-primary/15 text-fg-primary hover:bg-primary/25":"bg-transparent text-fg-secondary ring-1 ring-line-secondary hover:bg-surface-hover")}>
+    {active&&<Icon icon={Check} size={16} aria-hidden="true" className="size-4 text-primary"/>}{g.labelFa}</button>;})}
+  </div>
   {offer.minor&&<p className="type-caption text-fg-secondary">{BEAUTIFY_MINOR_FA}</p>}
   {onBeautify&&<WidgetActions label={BEAUTIFY_NAME}>
    <Button type="button" onClick={()=>onBeautify(offer.tag,chosen)} disabled={!chosen.length||busy} aria-busy={busy||undefined} className={WIDGET_BUTTON}>

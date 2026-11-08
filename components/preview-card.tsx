@@ -2,7 +2,7 @@
 import {useState} from "react";
 import {TagText} from "@/components/message-text";
 import {SAVE_AGAIN_FA,useSaveFromUrl} from "@/components/share-actions";
-import {Brush,Clapperboard,Download,Image as ImageIcon,Maximize2,RotateCcw,Shuffle,TriangleAlert,VolumeX} from "lucide-react";
+import {BadgeCheck,Lightbulb,Brush,Clapperboard,Download,Image as ImageIcon,Maximize2,RotateCcw,Shuffle,TriangleAlert,VolumeX} from "lucide-react";
 import {Badge,Button,Icon} from "@aleeforoughi/feather-react";
 import {displayTag} from "@/lib/attachments";
 import {jobStateFa} from "@/lib/projects";
@@ -10,6 +10,8 @@ import {fa} from "@/lib/format";
 import {GenerationProgress,useJobLive} from "@/components/generation-preview";
 import type {JobView} from "@/lib/studio-types";
 
+/** «زیباسازی»'s self-check on the card. */
+export const BEAUTY_READY_FA="آماده‌ی انتشار:",BEAUTY_NOT_READY_FA="هنوز آماده‌ی انتشار نیست:",BEAUTY_FIX_FA="پیشنهاد هووش: ";
 export const OPEN_PREVIEW_FA="نمایش",CLOSE_PREVIEW_FA="بستن نمایش";
 /** Shown when a plan cannot be run again because the server no longer has it (a restart). */
 export const RERUN_GONE_FA="این برنامه دیگه روی سرور نیست؛ درخواستت رو یه بار دیگه بفرست تا از نو بسازمش.";
@@ -79,6 +81,11 @@ export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,o
    {onSwitch&&job?.alternative&&<Button type="button" size="sm" variant="destructive" onClick={onSwitch} className="h-auto min-h-12 flex-1 px-4 py-3"><Icon icon={Shuffle} aria-hidden="true"/>با {job.alternative.name} بساز<span className="type-caption opacity-80">{fa(job.alternative.neurons)} نورون</span></Button>}
    {onRetry&&<Button type="button" size="sm" variant={onSwitch&&job?.alternative?"outline":"destructive"} onClick={onRetry} className="h-auto min-h-12 flex-1 px-4 py-3"><Icon icon={RotateCcw} aria-hidden="true"/>دوباره بساز{retryNeurons?<span className="type-caption opacity-80">{fa(retryNeurons)} نورون</span>:null}</Button>}
   </div>}
+  {/* «زیباسازی»'s self-check (owner, 2026-11-08): would you share it for likes, is it beautiful and still you? Ready, or the one thing still holding it back. */}
+  {output?.kind==="image"&&job?.beauty&&<p className="order-4 flex items-start gap-1.5 px-1 type-caption text-fg-secondary">
+   <Icon icon={job.beauty.shareReady?BadgeCheck:Lightbulb} size={16} aria-hidden="true" className={"mt-0.5 size-4 shrink-0 "+(job.beauty.shareReady?"text-primary":"text-fg-secondary")}/>
+   <span><span className="font-medium text-fg-primary">{job.beauty.shareReady?BEAUTY_READY_FA:BEAUTY_NOT_READY_FA}</span> {job.beauty.verdictFa}{job.beauty.fixFa?" "+BEAUTY_FIX_FA+job.beauty.fixFa:""}</span>
+  </p>}
   {/* A silent video says why (its soundtrack failed the check and was removed): calm, never an error. */}
   {output?.kind==="video"&&job?.audioNoteFa&&<p className="order-4 flex items-center gap-1.5 px-1 type-caption text-fg-secondary"><Icon icon={VolumeX} size={16} aria-hidden="true" className="size-3.5 shrink-0"/>{job.audioNoteFa}</p>}
   {/* In the chat (owner, 2026-11-06): «ادیت» and «دانلود» as action buttons under the picture, not on hover. */}

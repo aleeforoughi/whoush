@@ -81,6 +81,9 @@ export const BEAUTY_SKILLS={
    "Give a clear pose: weight shift, shoulders, chin, hands with a purpose, posture; avoid stiff or awkward limbs.",
    "Choose flattering angles and focal lengths for faces and full bodies (no wide-angle distortion close up).",
    "Expressions are genuine (soft smile, confident, candid); eyes alive with catchlights.",
+   "Face gesture: eyes connect with the lens (the far eye centred to the camera); a slight squinch (lower lids gently raised) for a confident, engaged look instead of wide or blank eyes; chin out and slightly down to define the jawline and remove a double chin; mouth relaxed (lips slightly parted or softly closed), never a forced smile.",
+   "Body: shoulders angled to the camera with the face turned back towards it; weight on the back foot; a long neck; asymmetry (one shoulder lower, one hand doing something) instead of a stiff square stance; hands soft and purposeful, never flat or hidden by accident.",
+   "A 'hot' editorial pose means confident, magnetic and self-assured: posture, gaze and intent, never sexualized.",
    "Confident and elegant, never sexualized posing."
   ]
  }

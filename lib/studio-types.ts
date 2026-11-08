@@ -18,4 +18,5 @@ export type JobView={state:string;messageFa:string;outputs?:{kind:"image"|"video
  progressFa?:string[];progressFacts?:ProgressFacts;
  /** Client only: the generation this job belongs to (#تولید-۱), for the preview's status line. */
  tag?:string;
- /** Why a finished video is silent: its soundtrack failed the check and was removed (lib/audio-check.ts). */audioNoteFa?:string};
+ /** Why a finished video is silent: its soundtrack failed the check and was removed (lib/audio-check.ts). */audioNoteFa?:string;
+ /** «زیباسازی»'s self-check of the result: share-ready or not, the sentence, and the one fix (lib/beauty-check.ts). */beauty?:{shareReady:boolean;samePerson:boolean;verdictFa:string;fixFa?:string}};
