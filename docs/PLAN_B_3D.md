@@ -37,6 +37,18 @@ Surveyed 2026-11-08 from official pages only, and nothing downloaded. The sites 
 - **Iranian items:** no library has a Persian or Middle-Eastern pack. Persian rugs, samovars and similar items would need simple custom models later.
 - **Size:** typical props are 5–100 KB and a rigged character 150–500 KB. The whole recommended set is estimated at 25–35 MB on the server; a scene loads only its own props.
 
+## Owner's picks (2026-11-08)
+Each pack page was read on 2026-11-08. No page states a file size.
+
+| Use | Pack | What the page says |
+|---|---|---|
+| Characters (rigged, animated) | Quaternius Universal Animation Library, https://quaternius.com/packs/universalanimationlibrary.html | "CC0 License"; 120+ animations; OBJ, FBX and glTF; free download on itch.io, plus a paid "Source" kit on Patreon |
+| Interiors | Quaternius Ultimate Home Interior, https://quaternius.com/packs/ultimatehomeinterior.html | CC0; 120+ models (123); FBX, OBJ and Blend |
+| Nature | Quaternius Ultimate Nature, https://quaternius.com/packs/ultimatenature.html | CC0; 150 models; FBX, OBJ and Blend |
+
+- **Licence:** all three pack pages say CC0. Quaternius's general licence page (v1.0) conflicts with them. Save the pack pages as evidence before use (`docs/evidence/3D_LIBRARY.md`).
+- **Format:** FBX, OBJ and Blend need the Blender batch export to GLB (phase 1).
+
 ## Architecture
 1. **Library catalog** (`lib/asset-library.ts`). Each model has:
    - an id and kind;
@@ -68,6 +80,6 @@ Surveyed 2026-11-08 from official pages only, and nothing downloaded. The sites 
 4. **Lo-fi render endpoint:** a warm Blender process, the preview card, and a cost meter.
 
 ## Open decisions
-- Which packs to download (needs the owner's approval: source, licence, size).
+- Which packs to download (needs the owner's approval: source, licence, size). The owner has picked three Quaternius packs (above); downloading still waits for an explicit yes.
 - Quaternius's licence conflict: use its CC0 pack pages, ask the author, or skip it.
 - Whether lo-fi previews are free (their cost is far below one Neuron, and Neuron prices are whole numbers).
