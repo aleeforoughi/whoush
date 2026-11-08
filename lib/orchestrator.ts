@@ -36,7 +36,7 @@ import {framePrompt,frameTimes,sourceFrames,type SourceFrame} from "./frame-draf
 import {nearestAspectRatio} from "./aspect";
 import {reviewAvailable,reviewPlan,promptWithFixes,type PlanReviewer} from "./plan-review";
 import {findMediaModel} from "./catalog";
-import {triageAvailable,triageTurn,type TriageEffort,type TurnTriager} from "./turn-triage";
+import {triageAvailable,triageTurn,type TriageEffort,type TurnTriager,triageDeclines} from "./turn-triage";
 import {audioCheckAvailable} from "./audio-check";
 import {soundLineFa,soundWanted} from "./sound-intent";
 import type {ResearchPlan} from "./creative-plan";
@@ -550,7 +550,11 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const triageP:Promise<OrchestratorResult|undefined>=triager&&!parsed.answersQuestion&&!parsed.stagingOverride&&parsed.task!=="character"&&!files0.some(f=>f.regionEdit)?(async()=>{
   // Each file in the chat with the real state of its check, so «تموم شد؟» is answered from facts, never guessed from the chat.
   const seenTags=new Set<string>(),triageFiles=[...files0,...(parsed.priorAttachments??[])].filter(f=>isMediaKind(f.kind as never)&&!seenTags.has(f.tag)&&seenTags.add(f.tag)).map(f=>({tagFa:displayTag(f.tag),checked:!isUnchecked(f)}));
-  const t=await triager({text:parsed.text,history:safeHistory,generations:parsed.generations?.length??0,script:finglish?"finglish":"fa",files:triageFiles}).catch(()=>null);
+  const t0=await triager({text:parsed.text,history:safeHistory,generations:parsed.generations?.length??0,script:finglish?"finglish":"fa",files:triageFiles}).catch(()=>null);
+  // A triage that declines is ignored (lib/turn-triage.ts triageDeclines): the turn is planned and the real checks decide.
+  const declined=t0&&t0.mode!=="make"&&triageDeclines(t0.mode==="reply"?t0.replyFa:t0.leadFa+" "+t0.questionFa);
+  if(declined&&devLiveTest().enabled)console.info("[whoush dev-live] triage declined; ignored, planning instead");
+  const t=declined?null:t0;
   // Its texts are model output: the same plan-text safety check and leak filter as the planner's reply, else the turn goes on to planning.
   const ok=(x:string)=>evaluatePlanTextSafety(x).decision==="allow"&&!leakText(x,parsed.text)&&!(finglish&&/[\u0600-\u06ff]/.test(x.replace(/[#@][^\s]+/g," ")));
   if(t?.mode==="reply"&&ok(t.replyFa))return {status:"reply",turnId:askTurn,message:t.replyFa,...(t.react?{reaction:t.react}:{})} as OrchestratorResult;
