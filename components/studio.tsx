@@ -118,7 +118,10 @@ export function Studio(){
    st.top=top;
   });
  }
- useEffect(()=>{const el=composerRef.current;if(!el||typeof ResizeObserver==="undefined")return;const ro=new ResizeObserver(()=>setComposerH(Math.round(el.getBoundingClientRect().height)));ro.observe(el);return()=>ro.disconnect();},[]);
+ // Measured only while unfolded (owner, 2026-11-08: the last card jumped): folding the chat box must not change the chat's size, or the browser moves
+ // the scroll and the end-follower pulls the reader back down. The padding keeps the full box's height.
+ const compactRef=useRef(false);compactRef.current=compact;
+ useEffect(()=>{const el=composerRef.current;if(!el||typeof ResizeObserver==="undefined")return;const ro=new ResizeObserver(()=>{if(!compactRef.current)setComposerH(Math.round(el.getBoundingClientRect().height));});ro.observe(el);return()=>ro.disconnect();},[]);
  const uiLang=useUiLang();
  const [proposal,setProposal]=useState<AgentProposal|null>(null);
  /** The message that carries the live (approvable) proposal; every other proposal in the transcript is a read-only record. */
