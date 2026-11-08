@@ -5,7 +5,8 @@ import "server-only";
  * and keeps a short verdict for the card. Advice only: nothing is generated or charged again on its own.
  */
 import {readMedia,MEDIA_ROUTE} from "./media-store";
-import {checkShareReady,type ShareCheck} from "./reference-inspect";
+import {assessResult,checkShareReady,type ResultAssessment,type ShareCheck} from "./reference-inspect";
+import {beautifyOffer,type BeautifyOffer} from "./beautify";
 import {evaluatePlanTextSafety} from "./safety";
 
 /** What the card shows: ready to share or not, the sentence, and the one fix when not. */
@@ -25,5 +26,24 @@ export async function beautyVerdictFor(turnId:string,outputs:readonly {kind:stri
   const c:ShareCheck=await (deps.check??checkShareReady)({bytes:new Uint8Array(src.bytes),mime:src.mime},{bytes:new Uint8Array(res.bytes),mime:res.mime});
   const ready=c.shareReady&&c.beautiful&&c.samePerson&&c.moodKept,verdict=clean(c.verdictFa),fix=clean(c.fixFa);
   return {shareReady:ready,samePerson:c.samePerson,verdictFa:verdict||(ready?"آماده‌ی انتشاره.":"هنوز کامل آماده‌ی انتشار نیست."),...(!ready&&fix?{fixFa:fix}:{})};
+ }catch{return undefined;}
+}
+
+/**
+ * The quality assessor on any other finished picture (owner, 2026-11-08): when it has a clear problem and its subject is a person, the «زیباسازی» offer for
+ * it, with only the parts the problems name; else nothing. Never on a «زیباسازی» result itself (no fix-the-fix loops: that one gets its self-check above).
+ * The studio decides whether to show it (once per picture; not in a chat where two offers were turned down).
+ */
+export async function enhanceOfferFor(turnId:string,outputs:readonly {kind:string;url:string}[],deps:{assess?:typeof assessResult}={}):Promise<Omit<BeautifyOffer,"tag">|undefined>{
+ if(turns().has(turnId))return undefined;
+ const out=outputs.find(o=>o.kind==="image"&&o.url.startsWith(MEDIA_ROUTE));if(!out)return undefined;
+ try{
+  const res=await readMedia(out.url.slice(MEDIA_ROUTE.length));if(!res)return undefined;
+  const a:ResultAssessment=await (deps.assess??assessResult)({bytes:new Uint8Array(res.bytes),mime:res.mime});
+  if(a.good||!a.person)return undefined;
+  const issues=a.issues.filter(i=>clean(i.noteFa)&&i.noteEn.trim()&&evaluatePlanTextSafety(i.noteEn).decision==="allow").map(i=>({part:i.part,noteFa:clean(i.noteFa),noteEn:i.noteEn.trim().slice(0,160)}));
+  if(!issues.length)return undefined;
+  const {tag:_t,...offer}=beautifyOffer("",issues.filter((i,k)=>issues.findIndex(j=>j.part===i.part)===k),false);
+  return offer;
  }catch{return undefined;}
 }

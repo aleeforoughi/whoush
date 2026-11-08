@@ -1,7 +1,8 @@
 import {isContentRefusal} from "./provider-errors";
 import {alternativeModel} from "./router";
 import {regionEditFor,restoreTurnOutputs} from "./region-restore";
-import {beautyVerdictFor,type BeautyVerdict} from "./beauty-check";
+import {beautyVerdictFor,enhanceOfferFor,type BeautyVerdict} from "./beauty-check";
+import type {BeautifyOffer} from "./beautify";
 import {narrateProgress,type ProgressNarrator} from "./progress-narration";
 import "server-only";
 import {createHash,randomUUID} from "node:crypto";
@@ -35,7 +36,8 @@ export type Job={id:string;ownerId:string;idempotencyKey:string;quoteId:string;t
  /** Live progress lines written for this job (lib/progress-narration.ts), shown while the model works. Public: they describe the user's own piece. */progressFa?:string[];
  /** The soundtrack check (lib/audio-check.ts): kept after it passed, removed (the video is shown silent, with why), or none. */audio?:AudioVerdict;
  outputs:ProviderOutput[];qa:OutputQA;createdAt:string;updatedAt:string;
- /** «زیباسازی»'s self-check of its result (lib/beauty-check.ts): share-ready or not, and why. */beauty?:BeautyVerdict};
+ /** «زیباسازی»'s self-check of its result (lib/beauty-check.ts): share-ready or not, and why. */beauty?:BeautyVerdict;
+ /** The quality assessor found a clear problem on this picture of a person: the «زیباسازی» offer for it (lib/beauty-check.ts). */enhance?:Omit<BeautifyOffer,"tag">};
 /**
  * What a job asked for and sent: the requested model, the endpoint called, the catalog and prompt-compiler versions, and the SHA-256 of the exact prompt
  * (so a result is traced to it without keeping the prompt on the job). `reportedModelId` is filled only when a provider reports which model ran; the
@@ -58,7 +60,8 @@ export class JobError extends Error{readonly status:number;constructor(readonly 
 export type Moderation={decision:"allow"|"block"|"review";source?:"lexical_demo"|"production"};
 export type JobDeps={store?:JobStore;ledger?:ReservationLedger;provider?:MediaProvider;now?:()=>Date;/** Writes the live progress lines (tests pass a stub). */narrate?:ProgressNarrator;
  /** The soundtrack check (tests pass stubs and `available`). */audioCheck?:AudioCheckDeps&{available?:boolean};
- /** «زیباسازی»'s self-check (tests pass a stub). */beautyCheck?:typeof beautyVerdictFor};
+ /** «زیباسازی»'s self-check (tests pass a stub). */beautyCheck?:typeof beautyVerdictFor;
+ /** The quality assessor (tests pass a stub). */enhanceCheck?:typeof enhanceOfferFor};
 const G=globalThis as {__whoushJobStore?:JobStore;__whoushLedger?:ReservationLedger};
 // TODO(plan phase 02/03): durable DB store and transactional wallet ledger; these in-memory singletons are demo-only.
 const dStore=()=>(G.__whoushJobStore??=new InMemoryJobStore());
@@ -186,9 +189,12 @@ export async function pollJob(id:string,ownerId:string,deps:JobDeps={}):Promise<
     if(ok){try{({outputs,audio}=await checkOutputsAudio(restored,deps.audioCheck));}catch{audioFailed=true;}}
     // «زیباسازی»: is it what the person would share for likes, still beautiful and still them? (lib/beauty-check.ts; advice only, never blocks.)
     const beauty=ok&&!audioFailed?await (deps.beautyCheck??beautyVerdictFor)(cur.turnId,outputs).catch(()=>undefined):undefined;
+    // Any other picture: the quality assessor, which offers enhancement only for a clear problem (advice; nothing is made or charged).
+    const enhance=ok&&!audioFailed&&!beauty?await (deps.enhanceCheck??enhanceOfferFor)(cur.turnId,outputs).catch(()=>undefined):undefined;
     const latest=store.get(id)!;if(isTerminal(latest.state))return latest;
     if(audio)latest.audio=audio;
     if(beauty)latest.beauty=beauty;
+    if(enhance)latest.enhance=enhance;
     finish(latest,ledger,ok&&!audioFailed?"completed":"failed",now,outputs);store.save(latest);return latest;
    }finally{busy.delete(id);}
   }
@@ -262,5 +268,5 @@ export function toPublicJob(j:Job){
  const active=!isTerminal(j.state),refs=j.references?.length??0,brush=active&&Boolean(regionEditFor(j.turnId));
  return {id:j.id,state:j.state,mode:j.mode,modelId:j.modelId,neurons:j.neurons,chargedNeurons:j.chargedNeurons,...(typical?{typicalMs:typical*1000}:{}),
   ...(active&&j.progressFa?.length?{progressFa:[...j.progressFa]}:{}),...(active&&(refs||brush)?{progressFacts:{references:brush?Math.max(0,refs-1):refs,...(brush?{brushEdit:true}:{})}}:{}),
-  outputs:j.state==="completed"?j.outputs.map(o=>({kind:o.kind,url:o.url})):[],qa:j.qa,...(j.state==="completed"&&j.beauty?{beauty:{...j.beauty}}:{}),...((j.state==="failed"||j.state==="released")&&j.failure==="provider_refused"?{refused:true,...refusedAlternative(j)}:{}),...(j.state==="completed"&&j.audio?{audio:j.audio.audio,...(j.audio.audio==="removed"?{audioNoteFa:AUDIO_REMOVED_FA[j.audio.reason]}:{})}:{}),messageFa:(j.state==="failed"||j.state==="released")&&j.failure==="provider_refused"?REFUSED_FA:MSG[j.state]};
+  outputs:j.state==="completed"?j.outputs.map(o=>({kind:o.kind,url:o.url})):[],qa:j.qa,...(j.state==="completed"&&j.beauty?{beauty:{...j.beauty}}:{}),...(j.state==="completed"&&j.enhance?{enhance:{...j.enhance}}:{}),...((j.state==="failed"||j.state==="released")&&j.failure==="provider_refused"?{refused:true,...refusedAlternative(j)}:{}),...(j.state==="completed"&&j.audio?{audio:j.audio.audio,...(j.audio.audio==="removed"?{audioNoteFa:AUDIO_REMOVED_FA[j.audio.reason]}:{})}:{}),messageFa:(j.state==="failed"||j.state==="released")&&j.failure==="provider_refused"?REFUSED_FA:MSG[j.state]};
 }

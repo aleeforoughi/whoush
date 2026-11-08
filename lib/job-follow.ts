@@ -1,15 +1,17 @@
 /** Following one generation job from the browser until it ends: no React here, so the loop is testable and free of render rules. */
+import {parseBeautifyOffer} from "./beautify";
 import {followDeadlineMs,isFinalJobState,isOwnedOutputUrl,pollDelayMs} from "./job-progress";
 import type {JobSnapshot} from "./projects";
 
 export const UNTRACKED_JOB_FA="وضعیت پایانی این تولید ثبت نشده است.";
 export const LOST_JOB_FA="وضعیت این تولید دیگر در دسترس نیست (سرور دوباره راه‌اندازی شده).";
-type JobReply={id?:string;state:string;messageFa:string;outputs?:{kind:"image"|"video";url:string}[];typicalMs?:number;progressFa?:string[];progressFacts?:JobSnapshot["progressFacts"];audioNoteFa?:string;beauty?:{shareReady?:unknown;samePerson?:unknown;verdictFa?:unknown;fixFa?:unknown};refused?:boolean;alternative?:{modelId:string;name:string;neurons:number}};
+type JobReply={id?:string;state:string;messageFa:string;outputs?:{kind:"image"|"video";url:string}[];typicalMs?:number;progressFa?:string[];progressFacts?:JobSnapshot["progressFacts"];audioNoteFa?:string;enhance?:unknown;beauty?:{shareReady?:unknown;samePerson?:unknown;verdictFa?:unknown;fixFa?:unknown};refused?:boolean;alternative?:{modelId:string;name:string;neurons:number}};
 
 /** The transcript's record of a job from the server's view of it (only Whoush-owned output paths are kept). */
 export function jobSnapshot(v:JobReply,tag?:string):JobSnapshot{
  return {state:v.state,messageFa:v.messageFa,...(v.id?{jobId:v.id}:{}),...(v.outputs?.length?{outputs:v.outputs.filter(o=>isOwnedOutputUrl(o.url))}:{}),
   ...(v.typicalMs?{typicalMs:v.typicalMs}:{}),...(tag?{tag}:{}),...(v.audioNoteFa?{audioNoteFa:v.audioNoteFa.slice(0,200)}:{}),
+  ...(parseBeautifyOffer(v.enhance)?{enhance:parseBeautifyOffer(v.enhance)!}:{}),
   ...(v.beauty&&typeof v.beauty.verdictFa==="string"?{beauty:{shareReady:v.beauty.shareReady===true,samePerson:v.beauty.samePerson===true,verdictFa:v.beauty.verdictFa.slice(0,160),...(typeof v.beauty.fixFa==="string"&&v.beauty.fixFa?{fixFa:v.beauty.fixFa.slice(0,160)}:{})}}:{}),...(v.refused?{refused:true as const,...(v.alternative?{alternative:{modelId:String(v.alternative.modelId).slice(0,128),name:String(v.alternative.name).slice(0,80),neurons:Number(v.alternative.neurons)}}:{})}:{}),
   ...(v.progressFa?.length?{progressFa:[...v.progressFa]}:{}),...(v.progressFacts?{progressFacts:{...v.progressFacts}}:{})};
 }
@@ -27,7 +29,7 @@ export async function followJobUntilDone(start:JobSnapshot,onUpdate:(next:JobSna
  const apply=(next:JobSnapshot)=>{
   // The progress lines arrive a few seconds after the job starts: a change in them is an update too.
   if(next.state===last.state&&next.messageFa===last.messageFa&&(next.outputs?.length??0)===(last.outputs?.length??0)
-   &&(next.progressFa??[]).join("\n")===(last.progressFa??[]).join("\n")&&JSON.stringify(next.progressFacts??{})===JSON.stringify(last.progressFacts??{})&&next.audioNoteFa===last.audioNoteFa&&JSON.stringify(next.beauty??null)===JSON.stringify(last.beauty??null)&&next.refused===last.refused)return;
+   &&(next.progressFa??[]).join("\n")===(last.progressFa??[]).join("\n")&&JSON.stringify(next.progressFacts??{})===JSON.stringify(last.progressFacts??{})&&next.audioNoteFa===last.audioNoteFa&&JSON.stringify(next.beauty??null)===JSON.stringify(last.beauty??null)&&JSON.stringify(next.enhance??null)===JSON.stringify(last.enhance??null)&&next.refused===last.refused)return;
   last=next;onUpdate(next);
  };
  for(let n=0;io.now()<deadline&&!isFinalJobState(last.state);n++){

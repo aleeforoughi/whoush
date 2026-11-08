@@ -26,3 +26,15 @@ test("«زیباسازی» self-check: the result is judged against the goal (sh
  assert.equal(await beautyVerdictFor("another-turn",[{kind:"image",url:out.url}],{check:async()=>{throw new Error("not called");}}),undefined,"not a «زیباسازی» turn");
  assert.equal(await beautyVerdictFor("turn-a",[{kind:"image",url:out.url}],{check:async()=>{throw new Error("down");}}),undefined,"a check that cannot run says nothing");
 });
+
+test("quality assessor: a clear problem on a picture of a person offers «زیباسازی» with only the parts it names; otherwise nothing, and never on a «زیباسازی» result",async()=>{
+ const {enhanceOfferFor}=await import("../lib/beauty-check");
+ const out=await storeMedia(JPEG(5),"image/jpeg"),src=await storeMedia(JPEG(6),"image/jpeg");
+ const bad=async()=>({good:false,person:true,issues:[{part:"light" as const,noteFa:"نور صورت تنده",noteEn:"harsh light on the face"},{part:"light" as const,noteFa:"سایه زیاده",noteEn:"heavy shadows"}]});
+ assert.deepEqual(await enhanceOfferFor("gen-1",[{kind:"image",url:out.url}],{assess:bad}),{parts:["light"],notes:{light:"نور صورت تنده"}},"only the light");
+ assert.equal(await enhanceOfferFor("gen-2",[{kind:"image",url:out.url}],{assess:async()=>({good:true,person:true,issues:[]})}),undefined,"a good picture: nothing");
+ assert.equal(await enhanceOfferFor("gen-3",[{kind:"image",url:out.url}],{assess:async()=>({good:false,person:false,issues:[{part:"color" as const,noteFa:"رنگش کدره",noteEn:"dull colour"}]})}),undefined,"no person: no «زیباسازی» card");
+ rememberBeautifyTurn("beautify-turn",src.id);
+ assert.equal(await enhanceOfferFor("beautify-turn",[{kind:"image",url:out.url}],{assess:bad}),undefined,"never on a «زیباسازی» result: no fix-the-fix loop");
+ assert.equal(await enhanceOfferFor("gen-4",[{kind:"image",url:out.url}],{assess:async()=>{throw new Error("down");}}),undefined,"an assessor that cannot run says nothing");
+});

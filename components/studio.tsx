@@ -5,7 +5,7 @@ import {TagBadge} from "@/components/attachment-chip";
 import {changeTitleFa,type CanvasSection} from "@/lib/staging";
 import {WidgetHeader} from "@/components/widget";
 import {suggestedMasks} from "@/lib/suggested-masks";
-import {BEAUTIFY_UPLOAD_FA,beautifyRequestFa,parseBeautifyOffer,type BeautifyOffer,type BeautifyPart} from "@/lib/beautify";
+import {BEAUTIFY_UPLOAD_FA,ENHANCE_OFFER_FA,beautifyRequestFa,parseBeautifyOffer,type BeautifyOffer,type BeautifyPart} from "@/lib/beautify";
 import {useUiLang} from "@/components/ui-language";
 import {useEffect,useLayoutEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
 import Link from "next/link";
@@ -366,8 +366,17 @@ export function Studio(){
    setMessages(m=>m.map(x=>x.id===messageId&&x.kind==="job"?{...x,text:next.messageFa,snapshot:next} as TranscriptItem:x));
    setJob(j=>j&&j.jobId===next.jobId?{...next}:j);
    if(isFinalJobState(next.state))setPreview(next.messageFa);
+   // The quality assessor found a clear problem on this picture (owner, 2026-11-08): Whoush offers «زیباسازی» for it, right after the result.
+   if(next.state==="completed"&&next.enhance&&next.tag)offerEnhancement(next.tag,next.jobId??next.tag,next.enhance);
    touch();
   },()=>active.current?.id===project);
+ }
+ /** The enhancement offer after a result: once per picture, never in a chat where two offers were turned down (owner: never annoying). */
+ const enhanceOffered=useRef(new Set<string>());
+ function offerEnhancement(tag:string,key:string,offer:Omit<BeautifyOffer,"tag">){
+  if(skips.current>=2||enhanceOffered.current.has(key))return;
+  enhanceOffered.current.add(key);
+  setMessages(m=>m.some(x=>x.kind==="question"&&x.snapshot.beautify?.tag===tag)?m:[...m,agentItem({role:"agent",text:ENHANCE_OFFER_FA,kind:"question",snapshot:{question:ENHANCE_OFFER_FA,beautify:{...offer,tag}}})]);
  }
  /** The first successful turn of a draft creates the project (so there are never empty projects) and puts it in the URL. */
  function adoptProject(firstText:string,characterId:string|null){
