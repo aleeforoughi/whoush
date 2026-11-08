@@ -57,7 +57,7 @@ import {TAG_PICKER_LABEL_FA,TagPicker} from "@/components/tag-picker";
 import {MessageReactions} from "@/components/message-reactions";
 import type {GenerationStyle} from "@/lib/creative-plan";
 import {UNSUPPORTED_REASONS,type AgentPreference,type UnsupportedReason} from "@/lib/types";
-import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,acceptFor,roleAllowed,bumpTagCounters,displayTag,insertMention,lowestFreeTag,nextGenerationTag,newTagCounters,parseMentions,tooManyFa,toWireAttachment,validateAttachmentSet,withRole,withoutRole,type AttachmentKind,type AttachmentRole,type LocalAttachment} from "@/lib/attachments";
+import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,isMediaKind,acceptFor,roleAllowed,bumpTagCounters,displayTag,insertMention,lowestFreeTag,nextGenerationTag,newTagCounters,parseMentions,tooManyFa,toWireAttachment,validateAttachmentSet,withRole,withoutRole,type AttachmentKind,type AttachmentRole,type LocalAttachment} from "@/lib/attachments";
 import {readAttachment} from "@/lib/attachment-files";
 import {ATTACHMENT_KINDS,REGION_COLOR_FA,isGenerationTag,roleLabelFa,splitMentions} from "@/lib/attachments";
 import type {InsertItem} from "@/lib/insert-menu";
@@ -716,17 +716,33 @@ export function Studio(){
   * chat it mentions (#تولید-۱). From the composer (`fromComposer`) the draft, cards and tray clear; a rerun leaves them alone. `brief` is what is sent when the
   * message answers Whoush's question (the original request plus the answer); the transcript keeps the answer as typed.
   */
+ /** The earlier files and generations `text` is about (lib/ref-resolver.ts), or undefined when that could not be read (the word rules then decide). */
+ async function readReferences(text:string):Promise<string[]|undefined>{
+  try{
+   const works=earlierWorks.map(w=>({tag:w.tag,kind:w.kind,ready:Boolean(w.done),summaryFa:(generationMap.get(w.tag)?.intentSummaryFa??"").slice(0,400)})).slice(0,20);
+   const files=uniqueById(messages.flatMap(m=>m.attachments??[])).filter(a=>isMediaKind(a.kind)).map(a=>({tag:a.tag,kind:a.kind})).slice(-30);
+   const r=await fetch("/api/agent/refs",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:text.slice(0,4000),history:historyFor(messages).map(t=>({role:t.role,text:t.text.slice(0,1500)})),works,files})});
+   const b=await r.json() as {tags?:string[];resolved?:boolean};
+   return b.resolved&&Array.isArray(b.tags)?b.tags.filter(t=>typeof t==="string"):undefined;
+  }catch{return undefined;}
+ }
  async function runTurn(text:string,files:LocalAttachment[],changes:string[],fromComposer:boolean,brief?:string,scene?:{stagingOverride:Staging;aspectOverride?:string}){
   if(!text||busy||reading||loadingProject)return;
   if(messages.length>=MAX_MESSAGES-4){setError(LIMIT_FA);return;}
   // This message's own files plus any earlier file it mentions as #تصویر-۱ or @image1 (metadata only, as before).
   const sentText=brief??text,mentioned=parseMentions(sentText),own=new Set(files.map(a=>a.id));
+  // What the message is about, read from the whole chat (owner, 2026-11-08: lib/ref-resolver.ts): a message with no files, # or cards of its own in a
+  // chat with earlier work gets the files and generations it means, as if the user had typed their #. If it cannot be read, the word rules decide.
+  let readRefs:string[]|undefined;
+  if(!files.length&&!mentioned.length&&!changes.length&&(earlierWorks.length||messages.some(m=>m.attachments?.length)))readRefs=await readReferences(sentText);
+  // A change to a generation goes to that picture alone (its source photo as a second image would make the edit ambiguous); otherwise the files named.
+  if(readRefs&&!readRefs.some(t=>t.startsWith("generation")))for(const t of readRefs)if(!mentioned.includes(t))mentioned.push(t);
   // Keeping the thread in the session (owner, 2026-11-07): a message with no files, tags or cards of its own that continues the work («روشن‌ترش کن»،
   // «همین عکس رو…»، «ویدیو رو کوتاه‌تر کن») is about the latest generation (of the kind it names). It is linked like a card, and a generated image goes to
   // the model as the photo itself (to change, or as a video's first frame), so the change is made to that picture, not to a new one (lib/follow-up.ts).
   let carried:LocalAttachment|undefined,carriedTag:string|undefined;
-  if(!files.length&&!mentioned.length&&!changes.length){
-   carriedTag=continuedGeneration(sentText,earlierWorks);
+  if(!files.length&&(readRefs?readRefs.some(t=>t.startsWith("generation")):!mentioned.length)&&!changes.length){
+   carriedTag=readRefs?readRefs.find(t=>t.startsWith("generation")):continuedGeneration(sentText,earlierWorks);
    if(carriedTag&&generationMap.get(carriedTag)?.plan.mediaKind==="image"){
     const c=await generationPhoto(carriedTag);
     // The role is set directly: «ادیت عکس» is a role the server takes (roleAllowed) though the menu does not offer it for a photo.
@@ -960,7 +976,10 @@ export function Studio(){
   setPreviewOpen(true);
  }
  function minimizePreview(){setPreviewOpen(false);requestAnimationFrame(()=>promptRef.current?.focus());}
- return <RailShell current="studio" activeProjectId={projectId} onNewChat={newChat} onProjectDeleted={onProjectDeleted}>
+ // «نمایش» / «بستن نمایش»: on a phone in the top bar beside the menu (owner, 2026-11-08), wider in the bar above the chat.
+ const previewToggle=(size:"sm"|"default")=><Button type="button" variant="outline" size={size} onClick={()=>showPreview?minimizePreview():openPreview()} aria-expanded={showPreview} aria-controls="whoush-preview" className="shrink-0">
+  <Icon icon={showPreview?ChevronLeft:Eye} aria-hidden="true"/>{showPreview?CLOSE_PREVIEW_FA:OPEN_PREVIEW_FA}</Button>;
+ return <RailShell current="studio" activeProjectId={projectId} onNewChat={newChat} onProjectDeleted={onProjectDeleted} mobileAction={hasPreview?previewToggle("sm"):undefined}>
   {/* Desktop: the chat (right after the side nav, at the start side) and the preview share the row; the preview grows in and out (flex-grow transition) and,
       while it is closed, the chat takes the whole width. Mobile: one at a time; the preview covers the chat until minimized. */}
   <main id="main" className="flex min-h-0 flex-1 flex-col md:flex-row">
@@ -1010,11 +1029,10 @@ export function Studio(){
     </div>}
     <div role="status" aria-live="polite" className="sr-only">{dragging?"فایل‌ها را اینجا رها کن":announce}</div>
     {/* The welcome line is the empty view (components/chat-empty.tsx), never a fixed header; the bar is only the preview toggle, once there is a preview. */}
-    {hasPreview&&<div className="border-b border-line-tertiary px-4 py-2">
+    {hasPreview&&<div className="hidden border-b border-line-tertiary px-4 py-2 md:block">
      <div className="mx-auto flex w-full max-w-3xl items-center justify-end gap-3">
-     {/* A toggle that shows the preview («نمایش») or closes it («بستن نمایش»). */}
-     <Button type="button" variant="outline" onClick={()=>showPreview?minimizePreview():openPreview()} aria-expanded={showPreview} aria-controls="whoush-preview" className="shrink-0">
-      <Icon icon={showPreview?ChevronLeft:Eye} aria-hidden="true"/>{showPreview?CLOSE_PREVIEW_FA:OPEN_PREVIEW_FA}</Button>
+     {/* A toggle that shows the preview («نمایش») or closes it («بستن نمایش»); on a phone it is in the top bar. */}
+     {previewToggle("default")}
      </div>
     </div>}
     {notice&&<div className="border-b border-line-tertiary px-4 py-3"><Alert role="status"><Icon icon={Info} aria-hidden="true"/><AlertDescription>{notice}</AlertDescription></Alert></div>}
@@ -1164,7 +1182,8 @@ export function Studio(){
       <Icon icon={Star} size={16} aria-hidden="true" className="size-3.5 shrink-0 fill-current text-primary"/>{MAIN_SUBJECT_FA}: <bdi className="type-label">{shownTag(mainSubject)}</bdi>
       <button type="button" onClick={()=>setMainSubject(null)} aria-label={"برداشتن "+MAIN_SUBJECT_FA} className="hit-area flex size-6 items-center justify-center rounded-control text-fg-secondary motion-hover hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-2 focus-visible:outline-ring"><Icon icon={X} size={16} aria-hidden="true" className="size-3.5"/></button>
      </p>}
-     <p id="prompt-hint" className="flex items-start gap-1 type-caption text-fg-secondary"><Icon icon={Info} size={16} aria-hidden="true" className="mt-0.5 shrink-0"/>با # می‌تونی به پیوست‌ها اشاره کنی؛ با ستاره یکی رو {MAIN_SUBJECT_FA} کن (اختیاری).</p>
+     {/* Read by screen readers only (owner, 2026-11-08: it took too much space under the chat box). */}
+     <p id="prompt-hint" className="sr-only">با # می‌تونی به پیوست‌ها اشاره کنی؛ با ستاره یکی رو {MAIN_SUBJECT_FA} کن (اختیاری).</p>
      {/* Build mode and style always share one row (owner, 2026-11-08), on a phone and in Finglish: each may shrink and cut its label, never wrap. */}
      <div className="flex min-w-0 flex-nowrap items-start gap-2">
       <ModeControl value={mode} onChange={changeMode} notify={Boolean(proposal)}/>

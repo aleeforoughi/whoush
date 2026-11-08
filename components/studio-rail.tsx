@@ -60,7 +60,8 @@ export function RailContent({labels,current,activeProjectId,onNewChat,onProjectD
  * The workspace frame shared by the studio and the assets page: a mobile top bar with a menu sheet, the rail on the start side from 768px up, and `children` (the page's
  * `<main>`) beside it. The sheet and the rail show the same projects list.
  */
-export function RailShell({current,activeProjectId,onNewChat,onProjectDeleted,children}:{current:RailCurrent;activeProjectId?:string|null;onNewChat:()=>void;onProjectDeleted?:(id:string)=>void;children:ReactNode}){
+export function RailShell({current,activeProjectId,onNewChat,onProjectDeleted,mobileAction,children}:{current:RailCurrent;activeProjectId?:string|null;onNewChat:()=>void;onProjectDeleted?:(id:string)=>void;
+ /** Phones only: a control beside the menu button in the top bar (owner, 2026-11-08: the studio's «نمایش»). */mobileAction?:ReactNode;children:ReactNode}){
  const lang=useUiLang();
  const [menuOpen,setMenuOpen]=useState(false);
  const rail={current,activeProjectId,onNewChat,onProjectDeleted};
@@ -68,6 +69,8 @@ export function RailShell({current,activeProjectId,onNewChat,onProjectDeleted,ch
   {/* Mobile: top bar with brand and menu */}
   <header className="flex items-center justify-between border-b border-line-tertiary px-4 py-1 md:hidden">
    <BrandMark/>
+   <div className="flex items-center gap-1">
+   {mobileAction}
    <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
     <SheetTrigger render={<Button variant="ghost" size="icon" aria-label="منو"/>}><Icon icon={Menu} aria-hidden="true"/></SheetTrigger>
     <SheetContent side={lang==="fi"?"left":"right"} showCloseButton={false} className="w-3/4 max-w-xs">
@@ -79,6 +82,7 @@ export function RailShell({current,activeProjectId,onNewChat,onProjectDeleted,ch
      <RailContent labels="always" {...rail} onNavigate={()=>setMenuOpen(false)}/>
     </SheetContent>
    </Sheet>
+   </div>
   </header>
   {/* Tablet and desktop: navigation rail on the start side */}
   <header className="hidden border-e border-line-tertiary md:block">
