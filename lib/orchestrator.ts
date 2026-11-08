@@ -30,7 +30,7 @@ import {devLiveTest} from "./policy";
 import {continuesWork} from "./follow-up";
 import {EDIT_CARDS_FA,EDIT_CARD_FA,EDIT_CARD_FINGLISH,EDIT_WHOLE_FA,EDIT_WHOLE_FINGLISH,SUGGESTED_FA,SUGGESTED_FINGLISH,editCheckSkip,mightEditPhoto,wantsEditCard,type SuggestedEdit} from "./edit-card";
 import {safeReview} from "./upload-review";
-import {rememberRegionEdit} from "./region-restore";
+import {cropForEdit,rememberRegionEdit} from "./region-restore";
 import {MEDIA_ROUTE,readMedia,storeMedia} from "./media-store";
 import {framePrompt,frameTimes,sourceFrames,type SourceFrame} from "./frame-draft";
 import {POPULAR_ASPECT_RATIOS,nearestAspectRatio,nearestByValue} from "./aspect";
@@ -868,6 +868,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   return {id:r.mediaId,url:MEDIA_ROUTE+r.mediaId,subjectFa:t,title:t,license:"user",creator:"",sourceUrl:"",source:"upload" as const,mime:r.mime};};
  const uploads:TurnReference[]=photos.flatMap(f=>f.regionEdit?[asRef(f.reviewId,f),asRef(f.regionEdit.guideReviewId,f,true)]:[asRef(f.reviewId,f)]);
  const painted=photos.filter(f=>f.regionEdit);
+ let editCrop:import("./region-restore").Crop|undefined;
  // An edit keeps the photo's own shape (owner, 2026-11-08: a retouch came back stretched): the planner's «source» or any other ratio becomes the photo's,
  // as the nearest standard ratio, so the model is asked for that shape (a ratio it lacks then snaps to its nearest one as usual).
  const editPhoto=painted[0]??photos.find(f=>f.role==="edit_reference");
@@ -881,10 +882,36 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
    const tagFa=displayTag(f.tag),list=f.regionEdit!.regions.map(r=>"#ادیت-"+faPlain(r.n)+" ("+REGION_COLOR_FA[r.color]+"): «"+r.note+"»").join("؛ ");
    plan.hardConstraints=["فقط ناحیه‌های رنگ‌شدهٔ "+tagFa+" تغییر می‌کنند — "+list+" — و بقیهٔ عکس دقیقاً همان می‌ماند: چهره، بافت پوست (منافذ و جزئیات، بدون صاف‌شدن)، بدن، ژست، کادر، نور، تنظیمات رنگ (وایت‌بالانس، نوردهی، کنتراست، اشباع و گریدینگ) و پس‌زمینه",...plan.hardConstraints.filter(c=>!c.startsWith("فقط ناحیه‌های رنگ‌شدهٔ "+tagFa))];
   }
-  const lead=painted.map(f=>"Edit "+describeTagEn(f)+" only inside the areas its region map marks, each as noted: "+f.regionEdit!.regions.map(r=>"the "+r.color+" area: "+r.note).join("; ")+". The region map is a separate black image where each area is a flat coloured shape at the same place as in the photo; it is a guide only: never draw its colours, shapes or black, and never tint the photo with them. Do not regenerate the photo: everything outside these areas is copied from the source unchanged, same framing and size. "+GENERIC_EDIT_RULE_EN+". Inside each area, keep the person's own skin tone and colours and match the surrounding texture, grain and light exactly so the change is invisible. The output is the edited photo only.").join(" ");
+  // Semantic region referencing (owner, 2026-11-08): each region is named by what it is when the editor knows («Region 01 (red, the lips)»), marks WHAT to
+  // edit (the whole element, naturally), and the map is a locator only. Task, regions, preserve, quality, output, in that order. The selection lock
+  // (lib/region-restore.ts) then keeps every pixel outside the regions exactly as it was.
+  const lead=painted.map(f=>{
+   const regions=f.regionEdit!.regions.map(r=>"Region "+String(r.n).padStart(2,"0")+" ("+r.color+(r.target?", the "+r.target:"")+"): "+r.note).join("\n");
+   return ["TASK: LOCALIZED PHOTO EDIT (inpainting) of "+describeTagEn(f)+".",
+    "SELECTION: its region map is a separate black image where each region is a flat coloured shape at the same place as in the photo. A region identifies WHAT to edit: recognise the element it covers and edit that whole element naturally (its real shape, material, edges, contact shadows and light), staying within the region. The map is a locator only: never draw its colours, shapes or black, and never tint the photo with them.",
+    "REGIONS:\n"+regions,
+    "PRESERVE: do not regenerate the photo; everything outside the regions is copied from the source unchanged, same framing and size. "+GENERIC_EDIT_RULE_EN+".",
+    "QUALITY: inside each region keep the person's own skin tone and colours, and match the surrounding texture, grain, sharpness and light so the change looks photographed, with no seams or pasted-on edges.",
+    "OUTPUT: the same photo with the requested edits naturally integrated, nothing else changed."].join("\n");
+  }).join("\n\n");
   // The provider prompt is the edit and the locks only (owner, 2026-11-06: change only that part, nothing else): no planner scene, camera, light or
   // style lines, which would read as a re-shoot of the whole photo.
   plan.mediaPrompt=lead.slice(0,3000);content=undefined;
+ }
+ // Crop and stitch (owner, 2026-11-08): one painted photo with an exact selection that is small enough gets close-ups of the photo and its region map,
+ // at a standard ratio, so the model spends its resolution on the selection; the result goes back in its place before the lock (lib/region-restore.ts).
+ if(devLiveTest().enabled&&painted.length)console.info("[whoush dev-live] edit close-up check: painted",painted.length,"mask",Boolean(painted[0].regionEdit!.mask),"kind",kind);
+ if(painted.length===1&&painted[0].regionEdit!.mask&&kind==="image"){
+  const f=painted[0],srcId=safeReview(f.reviewId)!.mediaId,guideId=safeReview(f.regionEdit!.guideReviewId)!.mediaId;
+  const c=await cropForEdit(srcId,guideId,Buffer.from(f.regionEdit!.mask!,"base64"),POPULAR_ASPECT_RATIOS);
+  const i=uploads.findIndex(u=>u.id===srcId);
+  if(c&&i>=0&&uploads[i+1]?.id===guideId){
+   uploads[i]={...uploads[i],id:c.photo.id,url:c.photo.url,mime:"image/jpeg"};uploads[i+1]={...uploads[i+1],id:c.map.id,url:c.map.url,mime:"image/jpeg"};
+   if(plan.camera)plan.camera={...plan.camera,aspectRatio:c.ratio};
+   plan.mediaPrompt=plan.mediaPrompt.replace("TASK: LOCALIZED PHOTO EDIT (inpainting) of "+describeTagEn(f)+".","TASK: LOCALIZED PHOTO EDIT (inpainting) of a close-up crop of "+describeTagEn(f)+": edit the close-up as it is, same framing.");
+   editCrop=c.crop;
+   if(devLiveTest().enabled)console.info("[whoush dev-live] edit close-up",c.crop.w+"x"+c.crop.h,"ratio",c.ratio);
+  }
  }
  if(uploads.length){
   const order=" Attached reference images, in this order: "+photos.flatMap(f=>{const also=alsoNamed(f),names=describeTagEn(f)+(also.length?" (also named "+also.join(", ")+")":"");return f.regionEdit?[names,"its region map: black, with each area to change as a flat coloured shape (a guide only, never drawn)"]:[names];}).map((d,i)=>(i+1)+" = "+d).join("; ")+".";
@@ -956,7 +983,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // A brush edit: after generation, everything outside the edited areas is restored from the source photo exactly (lib/region-restore.ts).
  const firstPainted=painted[0];
  if(firstPainted&&kind==="image")rememberRegionEdit(turnId,{sourceId:safeReview(firstPainted.reviewId)!.mediaId,guideId:safeReview(firstPainted.regionEdit!.guideReviewId)!.mediaId,
-  ...(firstPainted.regionEdit!.mask?{mask:Buffer.from(firstPainted.regionEdit!.mask,"base64")}:{})});
+  ...(firstPainted.regionEdit!.mask?{mask:Buffer.from(firstPainted.regionEdit!.mask,"base64")}:{}),...(editCrop?{crop:editCrop}:{})});
  if(research){
   if(usedAsImages&&refCount)refStore().set(turnId,research.references);
   const notes=[...research.notesFa,...(refCount&&!usedAsImages?[kind==="video"?"برای ویدیو، مرجع‌ها فعلاً در نوشتن صحنه به کار رفتن، نه به‌عنوان تصویر.":"مدل‌های پیشنهادی مرجع تصویری نمی‌گیرن؛ مرجع‌ها در نوشتن صحنه به کار رفتن."]:[])];

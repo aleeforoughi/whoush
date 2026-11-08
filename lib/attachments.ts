@@ -484,7 +484,7 @@ export type LocalAttachment={
  id:string;tag:string;kind:AttachmentKind;mime:string;bytes:number;sha256:string;name:string;role?:AttachmentRole;
  width?:number;height?:number;durationSeconds?:number;textExcerpt?:string;speech?:AttachmentSpeech;previewUrl?:string;
  /** «ویرایش با قلم» (lib/region-edit.ts): each painted region (number, colour, what to change) and the marked copy (its blob kept by the studio under `guideId`). Memory only. */
- regionEdit?:{regions:{n:number;color:RegionColorName;note:string}[];guideId:string;guideUrl:string;/** The exact selection, a base64 PNG (white = selected). */mask?:string};
+ regionEdit?:{regions:{n:number;color:RegionColorName;note:string;target?:import("./region-targets").RegionTarget}[];guideId:string;guideUrl:string;/** The exact selection, a base64 PNG (white = selected). */mask?:string};
  /** The generation this photo is a copy of (opened for «ادیت»): one copy per generation, and the # list shows the generation once. */
  fromGeneration?:string;
 };
@@ -511,7 +511,7 @@ export const REGION_COLOR_NAMES=["red","blue","green","yellow","magenta"] as con
 export type RegionColorName=(typeof REGION_COLOR_NAMES)[number];
 export const REGION_COLOR_FA:Record<RegionColorName,string>={red:"قرمز",blue:"آبی",green:"سبز",yellow:"زرد",magenta:"بنفش"};
 export function toWireAttachment(a:LocalAttachment,reviewId?:string,guideReviewId?:string){
- return {...(reviewId&&(a.kind==="image"||a.kind==="video")?{reviewId}:{}),...(a.regionEdit&&guideReviewId&&a.kind==="image"?{regionEdit:{guideReviewId,regions:a.regionEdit.regions.map(r=>({n:r.n,color:r.color,note:r.note})),...(a.regionEdit.mask?{mask:a.regionEdit.mask}:{})}}:{}),id:a.id,tag:a.tag,kind:a.kind,mime:a.mime,bytes:a.bytes,sha256:a.sha256,...(a.role?{role:a.role}:{}),
+ return {...(reviewId&&(a.kind==="image"||a.kind==="video")?{reviewId}:{}),...(a.regionEdit&&guideReviewId&&a.kind==="image"?{regionEdit:{guideReviewId,regions:a.regionEdit.regions.map(r=>({n:r.n,color:r.color,note:r.note,...(r.target?{target:r.target}:{})})),...(a.regionEdit.mask?{mask:a.regionEdit.mask}:{})}}:{}),id:a.id,tag:a.tag,kind:a.kind,mime:a.mime,bytes:a.bytes,sha256:a.sha256,...(a.role?{role:a.role}:{}),
   ...(a.width!==undefined?{width:a.width}:{}),...(a.height!==undefined?{height:a.height}:{}),
   ...(a.durationSeconds!==undefined?{durationSeconds:a.durationSeconds}:{}),
   ...(a.textExcerpt!==undefined?{textExcerpt:a.textExcerpt}:{}),...(a.speech&&a.role==="lip_sync"?{speech:a.speech}:{})};

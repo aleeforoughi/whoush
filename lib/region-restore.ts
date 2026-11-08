@@ -96,7 +96,55 @@ export function alignOutside(S:Uint8Array,O:Uint8Array,outside:Uint8Array,w:numb
  for(let s=.95;s<=1.0501;s+=.01)for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){const e=err(s,dx,dy);if(e<best.e)best={scale:s,dx,dy,e};}
  return {scale:best.scale,dx:best.dx,dy:best.dy,gain:base>0?1-best.e/base:0};
 }
-export async function lockToSelection(i:{source:Uint8Array;mask:Uint8Array;output:Uint8Array}):Promise<LockResult>{
+export type Crop={x:number;y:number;w:number;h:number};
+/** The model's close-up result scaled to its crop and placed back into the full source (raw RGB at the source's size). */
+async function stitch(sharp:typeof import("sharp").default,source:Uint8Array,output:Uint8Array,c:Crop,w:number,h:number):Promise<Buffer>{
+ const piece=await sharp(output).rotate().resize(c.w,c.h,{fit:"cover",position:"centre",kernel:"lanczos3"}).removeAlpha().png().toBuffer();
+ return sharp(source).rotate().removeAlpha().composite([{input:piece,left:c.x,top:c.y}]).resize(w,h,{fit:"fill"}).raw().toBuffer();
+}
+/**
+ * Crop and stitch (owner, 2026-11-08): a small selection (lips, an eye, a necklace) gets a close-up instead of the whole photo, so the model spends its
+ * resolution on it. The crop is the selection's box with generous context around it (lighting and geometry), grown to a standard ratio and kept inside
+ * the photo. Null when the selection, with its context, would cover most of the photo anyway.
+ */
+export function planCrop(box:{x0:number;y0:number;x1:number;y1:number},w:number,h:number,ratios:readonly string[]):(Crop&{ratio:string})|null{
+ const bw=box.x1-box.x0,bh=box.y1-box.y0;if(bw<=0||bh<=0)return null;
+ // Context around the selection: 30% of its size, at least 5% of the photo (enough light and geometry, while the selection keeps most of the pixels).
+ const m=Math.max(.3*Math.max(bw,bh),.05*Math.max(w,h));
+ let cw=bw+2*m,ch=bh+2*m;
+ const value=(r:string)=>{const [a,b]=r.split(":").map(Number);return a/b;};
+ let ratio=ratios[0],bestD=Infinity;for(const r of ratios){const d=Math.abs(Math.log(value(r)/(cw/ch)));if(d<bestD){bestD=d;ratio=r;}}
+ const v=value(ratio);if(cw/ch<v)cw=ch*v;else ch=cw/v;
+ if(cw>w){cw=w;ch=cw/v;}if(ch>h){ch=h;cw=ch*v;}
+ if(cw*ch>.55*w*h)return null;
+ const cx=(box.x0+box.x1)/2,cy=(box.y0+box.y1)/2;
+ const x=Math.round(Math.min(w-cw,Math.max(0,cx-cw/2))),y=Math.round(Math.min(h-ch,Math.max(0,cy-ch/2)));
+ return {x,y,w:Math.round(cw),h:Math.round(ch),ratio};
+}
+/**
+ * The close-ups for a brush edit: the photo and its region map cut to the crop (planCrop), stored as Whoush's own media. Both are cut from media that
+ * already passed their checks, so no unchecked pixel reaches a model. Null when no crop is worth it or anything fails (the whole photo is then sent).
+ */
+export async function cropForEdit(sourceId:string,guideId:string,mask:Buffer,ratios:readonly string[]):Promise<{photo:{id:string;url:string};map:{id:string;url:string};crop:Crop;ratio:string}|null>{
+ try{
+  const sharp=(await import("sharp")).default;
+  const why=(r:string)=>{if(process.env.NODE_ENV!=="production")console.info("[whoush dev-live] edit close-up skipped:",r);return null;};
+  const [src,guide]=await Promise.all([readMedia(sourceId),readMedia(guideId)]);if(!src||!guide)return why("media_missing");
+  const meta=await sharp(src.bytes).rotate().toBuffer({resolveWithObject:true}),w=meta.info.width,h=meta.info.height;
+  const M=await sharp(mask).resize(w,h,{fit:"fill"}).removeAlpha().greyscale().raw().toBuffer();
+  let x0=w,y0=h,x1=-1,y1=-1;for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(M[y*w+x]>127){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;}
+  if(x1<0)return why("empty_mask");
+  const c=planCrop({x0,y0,x1:x1+1,y1:y1+1},w,h,ratios);if(!c)return why("selection_too_big "+Math.round((x1-x0)/w*100)+"x"+Math.round((y1-y0)/h*100)+"%");
+  const photo=await sharp(meta.data).extract({left:c.x,top:c.y,width:c.w,height:c.h}).jpeg({quality:95}).toBuffer();
+  const gm=await sharp(guide.bytes).metadata(),gw=gm.width??w,gh=gm.height??h,k=gw/w;
+  const map=await sharp(guide.bytes).extract({left:Math.round(c.x*k),top:Math.round(c.y*(gh/h)),width:Math.max(1,Math.min(gw-Math.round(c.x*k),Math.round(c.w*k))),height:Math.max(1,Math.min(gh-Math.round(c.y*(gh/h)),Math.round(c.h*(gh/h))))}).jpeg({quality:95}).toBuffer();
+  const [p,g]=await Promise.all([storeMedia(new Uint8Array(photo),"image/jpeg"),storeMedia(new Uint8Array(map),"image/jpeg")]);
+  return {photo:p,map:g,crop:{x:c.x,y:c.y,w:c.w,h:c.h},ratio:c.ratio};
+ }catch(e){if(process.env.NODE_ENV!=="production")console.info("[whoush dev-live] edit close-up failed:",e instanceof Error?e.message.slice(0,120):"error");return null;}
+}
+
+export async function lockToSelection(i:{source:Uint8Array;mask:Uint8Array;output:Uint8Array;
+ /** Crop and stitch: the model edited this close-up of the source (source pixels); its result goes back there first. */crop?:Crop}):Promise<LockResult>{
  const sharp=(await import("sharp")).default;
  const src=await sharp(i.source).rotate().removeAlpha().raw().toBuffer({resolveWithObject:true});
  const S=src.data,w=src.info.width,h=src.info.height,N=w*h;
@@ -104,7 +152,8 @@ export async function lockToSelection(i:{source:Uint8Array;mask:Uint8Array;outpu
  const [M,O]=await Promise.all([
   sharp(i.mask).resize(w,h,{fit:"fill",kernel:"lanczos3"}).removeAlpha().greyscale().raw().toBuffer(),
   // Never stretched (owner, 2026-11-08: a result of another shape came back with a stretched face): scaled to cover the source and centred, then lined up.
-  sharp(i.output).rotate().resize(w,h,{fit:"cover",position:"centre",kernel:"lanczos3"}).removeAlpha().raw().toBuffer()]);
+  // A close-up edit (crop and stitch) is scaled to its crop and put back in its place in the source.
+  i.crop?stitch(sharp,i.source,i.output,i.crop,w,h):sharp(i.output).rotate().resize(w,h,{fit:"cover",position:"centre",kernel:"lanczos3"}).removeAlpha().raw().toBuffer()]);
  const sel=new Uint8Array(N);let n=0;for(let p=0;p<N;p++)if(M[p]>127){sel[p]=1;n++;}
  if(n<20)return {skipped:"empty_mask"};
  // 1. Line the model's picture up with the source, measured outside the selection (kept clear of its edge) on a small grey copy.
@@ -160,7 +209,7 @@ export async function lockToSelection(i:{source:Uint8Array;mask:Uint8Array;outpu
 // ---- wiring: a brush-edit turn remembers its source and marked copy; its finished outputs are restored before they are shown ----
 import {readMedia,storeMedia,MEDIA_ROUTE} from "./media-store";
 /** `mask`: the exact selection the editor drew (a PNG, white = selected), when the edit has one: the result is then locked to it. */
-type RegionTurn={sourceId:string;guideId:string;mask?:Buffer};
+type RegionTurn={sourceId:string;guideId:string;mask?:Buffer;/** Crop and stitch: the close-up the model edited (source pixels). */crop?:Crop};
 const turns=()=>((globalThis as {__whoushRegionTurns?:Map<string,RegionTurn>}).__whoushRegionTurns??=new Map());
 /** The orchestrator records a brush edit's source photo and marked copy (Whoush-owned media ids) for its turn. */
 export function rememberRegionEdit(turnId:string,r:RegionTurn){const m=turns();m.set(turnId,r);if(m.size>500)m.delete(m.keys().next().value!);}
@@ -177,7 +226,7 @@ export async function restoreTurnOutputs<T extends {kind:string;url:string;mime?
    if(o.kind!=="image"||!o.url.startsWith(MEDIA_ROUTE))return o;
    const out=await readMedia(o.url.slice(MEDIA_ROUTE.length));if(!out)return o;
    const res:RestoreResult|LockResult=r.mask
-    ?await lockToSelection({source:src.bytes,mask:r.mask,output:out.bytes}).catch(()=>({skipped:"error"}) as LockResult)
+    ?await lockToSelection({source:src.bytes,mask:r.mask,output:out.bytes,...(r.crop?{crop:r.crop}:{})}).catch(()=>({skipped:"error"}) as LockResult)
     :await restoreOutsideEdit({source:src.bytes,guide:guide.bytes,output:out.bytes}).catch(()=>({skipped:"error"}) as RestoreResult);
    if("skipped" in res)return o;
    const s=await storeMedia(new Uint8Array(res.bytes),res.mime);

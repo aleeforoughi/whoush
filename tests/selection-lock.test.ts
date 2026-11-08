@@ -61,3 +61,33 @@ test("selection lock: an area the model moved on its own is lined up locally, so
  let outside=0;for(let p=0;p<W*H;p++)if(!M[p])for(let c=0;c<3;c++)outside=Math.max(outside,Math.abs(out[p*3+c]-S[p*3+c]));
  assert.equal(outside,0,"outside the selection is still exactly the source");
 });
+
+test("crop and stitch: a small selection gets a close-up at a standard ratio inside the photo; a big one does not",async()=>{
+ const {planCrop}=await import("../lib/region-restore");
+ const R=["9:16","16:9","1:1","4:5","3:4","4:3","2:3","3:2","21:9"];
+ const c=planCrop({x0:560,y0:400,x1:700,y1:450},1264,848,R)!;
+ assert.ok(c,"lips get a close-up");
+ assert.ok(c.x<=560&&c.y<=400&&c.x+c.w>=700&&c.y+c.h>=450,"the selection is inside the crop");
+ assert.ok(c.x>=0&&c.y>=0&&c.x+c.w<=1264&&c.y+c.h<=848,"inside the photo");
+ const [a,b]=c.ratio.split(":").map(Number);assert.ok(Math.abs(c.w/c.h-a/b)<0.02,"at its standard ratio "+c.ratio);
+ assert.ok(c.w*c.h<0.55*1264*848,"a close-up, not the whole photo");
+ const face=planCrop({x0:520,y0:150,x1:836,y1:540},1264,848,R)!;
+ assert.ok(face&&face.w*face.h<0.4*1264*848,"a face (25% × 46% of the photo) still gets a close-up: "+JSON.stringify(face));
+ assert.equal(planCrop({x0:100,y0:80,x1:1150,y1:800},1264,848,R),null,"a selection covering most of the photo is sent whole");
+});
+
+test("crop and stitch: the model's close-up goes back in its place, and outside the selection is the source",async()=>{
+ const S=source();
+ const M=Buffer.alloc(W*H);for(let y=100;y<130;y++)for(let x=140;x<200;x++)M[y*W+x]=255;
+ const crop={x:100,y:70,w:140,h:90};
+ // The model's answer for the close-up: the crop's own pixels at twice the size, with the selection painted green.
+ const O=Buffer.alloc(crop.w*2*crop.h*2*3);
+ for(let y=0;y<crop.h*2;y++)for(let x=0;x<crop.w*2;x++){const sx=crop.x+Math.floor(x/2),sy=crop.y+Math.floor(y/2),q=(y*crop.w*2+x)*3,p=(sy*W+sx)*3;
+  for(let c=0;c<3;c++)O[q+c]=S[p+c];if(sx>=140&&sx<200&&sy>=100&&sy<130){O[q]=0;O[q+1]=255;O[q+2]=0;}}
+ const r=await lockToSelection({source:await png(S,3),mask:await png(M,1),output:await sharp(O,{raw:{width:crop.w*2,height:crop.h*2,channels:3}}).png().toBuffer(),crop});
+ assert.ok(!("skipped" in r));if("skipped" in r)return;
+ const out=await sharp(r.bytes).raw().toBuffer(),mid=(115*W+170)*3;
+ assert.deepEqual([out[mid],out[mid+1],out[mid+2]],[0,255,0],"the edit is back in place");
+ let outside=0;for(let p=0;p<W*H;p++)if(!M[p])for(let c=0;c<3;c++)outside=Math.max(outside,Math.abs(out[p*3+c]-S[p*3+c]));
+ assert.equal(outside,0,"outside the selection is exactly the source");
+});

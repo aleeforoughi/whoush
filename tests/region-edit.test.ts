@@ -21,13 +21,17 @@ const photo=(over:Record<string,unknown>={})=>({id:crypto.randomUUID(),tag:"imag
 test("brush edit: each painted region (its colour and comment) changes only its area; everything else is locked; the marked copy follows the photo",async()=>{
  const src=await ok(),guide=await ok();
  const r=await orchestrateCreativeTurn({text:"#تصویر-۱ رو ادیت کن — ادیت ۱ (قرمز): رژ لب قرمز مات؛ ادیت ۲ (آبی): موها کمی روشن‌تر",
-  attachments:[photo({reviewId:src.reviewId,regionEdit:{guideReviewId:guide.reviewId,regions:[{n:1,color:"red",note:"رژ لب قرمز مات"},{n:2,color:"blue",note:"موها کمی روشن‌تر"}]}})]});
+  attachments:[photo({reviewId:src.reviewId,regionEdit:{guideReviewId:guide.reviewId,regions:[{n:1,color:"red",note:"رژ لب قرمز مات",target:"lips"},{n:2,color:"blue",note:"موها کمی روشن‌تر"}]}})]});
  assert.equal(r.status,"planned",JSON.stringify(r).slice(0,300));
  const p=r as Extract<OrchestratorResult,{status:"planned"}>;
  assert.equal(p.plan.references[0].role,"edit_reference","a painted photo is the photo to edit");
  assert.ok(p.plan.hardConstraints[0].startsWith("فقط ناحیه‌های رنگ‌شدهٔ #تصویر-۱ تغییر می‌کنند")&&p.plan.hardConstraints[0].includes("#ادیت-۲ (آبی)"),p.plan.hardConstraints[0]);
  const prompt=getPrivateMediaPrompt(p.turnId)!;
- assert.match(prompt,/^Edit \[reference image 1[^\]]*\] only inside the areas its region map marks, each as noted: the red area: رژ لب قرمز مات; the blue area: موها کمی روشن‌تر\. The region map is a separate black image .*never draw its colours, shapes or black.*Do not regenerate the photo: everything outside these areas is copied from the source unchanged, same framing and size\. Preserve all unedited source regions pixel-faithfully/);
+ assert.match(prompt,/^TASK: LOCALIZED PHOTO EDIT \(inpainting\) of \[reference image 1[^\]]*\]\./);
+ assert.match(prompt,/A region identifies WHAT to edit: recognise the element it covers.*never draw its colours, shapes or black/);
+ // A region the editor named (a face part) says what it is; an unnamed one goes by its colour (owner, 2026-11-08: semantic region referencing).
+ assert.match(prompt,/REGIONS:\nRegion 01 \(red, the lips\): رژ لب قرمز مات\nRegion 02 \(blue\): موها کمی روشن‌تر/);
+ assert.match(prompt,/PRESERVE: do not regenerate the photo; everything outside the regions is copied from the source unchanged, same framing and size\. Preserve all unedited source regions pixel-faithfully/);
  assert.ok(!/Camera and light|Key light|Wide shot|golden-hour|horizon/.test(prompt),"no scene, camera or light lines: they would read as a re-shoot");
  assert.ok(/skin texture exactly as in the source/.test(prompt)&&/same white balance, exposure, contrast, saturation/.test(prompt),"skin-texture and colour-settings locks");
  // Owner, 2026-11-08: the painted photo got its paint copied into the result; the model now gets a region map (black, flat colour areas) as the guide.

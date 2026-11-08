@@ -2,6 +2,7 @@
 import {useEffect,useRef,useState} from "react";
 import {Check,Hand,LoaderCircle,Pencil,Redo2,Trash2,Undo2,WandSparkles,X} from "lucide-react";
 import {Button,Icon} from "@aleeforoughi/feather-react";
+import {TARGET_OF_PART,type RegionTarget} from "@/lib/region-targets";
 import {BRUSH_DONE_FA,BRUSH_EDIT_FA,BRUSH_HINT_FA,BRUSH_MISSING_NOTE_FA,BRUSH_NOTE_PLACEHOLDER_FA,BRUSH_SIZES,MAX_NOTE,MAX_REGIONS,NEON_SHADOW,REGION_COLORS,
  maskHasPaint,regionTagFa,type Region} from "@/lib/region-edit";
 import {displayTag} from "@/lib/attachments";
@@ -11,7 +12,8 @@ import {maskTop,refineMask} from "@/lib/mask-refine";
 import {analyzeFaces,facePartAt,type FaceAnalysis} from "@/lib/face-parts";
 
 /** A region: its colour slot (0..4, one layer each), its number (#ادیت-n), its comment, whether the comment was submitted (✓), and where its pin sits. */
-type Draft={slot:number;n:number;note:string;done:boolean;pin:{x:number;y:number}};
+/** `parts`: the face parts the wand added to it (lib/face-parts.ts); one kind names the region in the edit prompt. */
+type Draft={slot:number;n:number;note:string;done:boolean;pin:{x:number;y:number};parts?:string[]};
 type View={s:number;x:number;y:number};
 /** Regions Whoush painted itself (boxes in 0..1 of the photo), opened for the user to confirm or change. */
 export type SuggestedRegion={note:string;boxes:readonly (readonly [number,number,number,number])[]};
@@ -93,6 +95,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
    const layer=layers.current[slot],ctx=layer?.getContext("2d");
    if(!m||!layer||!ctx||history.current.some(h=>h.slot===slot))return;
    ctx.clearRect(0,0,layer.width,layer.height);paintMask(ctx,m,REGION_COLORS[slot].css);
+   if(m.part){const next=regionsRef.current.map(r=>r.slot===slot?{...r,parts:[m.part!]}:r);regionsRef.current=next;setRegions(next);}
   })).catch(()=>{});
  },[natural,suggested,photoUrl]);
  // eslint-disable-next-line react-hooks/exhaustive-deps -- encode once per photo; ensureSeg keeps its own promise
@@ -132,7 +135,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
  async function objectAt(key:string,x:number,y:number){
   const fa=faces.current?await faces.current:null,part=fa?facePartAt(fa,x,y):null;
   if(part){const {w,h,plane}=part.mask,fromClasses=part.part==="skin"||part.part==="hair"||part.part==="neck"||part.part==="ear";
-   return {...part.mask,plane:refineMask(plane,w,h,{maxHole:0.002,minIsland:fromClasses?0.05:0.3,smooth:fromClasses?0.004:0.0012})};}
+   return {...part.mask,part:part.part,plane:refineMask(plane,w,h,{maxHole:0.002,minIsland:fromClasses?0.05:0.3,smooth:fromClasses?0.004:0.0012})};}
   return maskAt(key,[[x,y]]);
  }
  async function wandTapNow(cx:number,cy:number){
@@ -166,8 +169,11 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
   const m=layers.current[slot],ctx=m?.getContext("2d");if(!m||!ctx)return;
   history.current.push({slot,data:ctx.getImageData(0,0,m.width,m.height),created});if(history.current.length>30)history.current.shift();redoStack.current=[];bump();
   paintMask(ctx,mask,REGION_COLORS[slot].css);setOverSelection(true);
+  // What the area is: the face parts added to it (a general object leaves it unnamed).
+  const part=mask.part??"object";
   // The badge sits on the selection's top edge, never on the object (a second tap there removes it).
-  if(created){const n=Math.max(0,...regionsRef.current.map(r=>r.n))+1,next=[...regionsRef.current,{slot,n,note:"",done:false,pin:maskTop(mask.plane,mask.w,mask.h)??{x:p.x/m.width,y:p.y/m.height}}];regionsRef.current=next;setRegions(next);}
+  if(created){const n=Math.max(0,...regionsRef.current.map(r=>r.n))+1,next=[...regionsRef.current,{slot,n,note:"",done:false,parts:[part],pin:maskTop(mask.plane,mask.w,mask.h)??{x:p.x/m.width,y:p.y/m.height}}];regionsRef.current=next;setRegions(next);}
+  else{const next=regionsRef.current.map(r=>r.slot===slot?{...r,parts:[...(r.parts??[]),part]}:r);regionsRef.current=next;setRegions(next);}
   openRef.current=slot;setOpen(slot);
  }
 
@@ -257,7 +263,9 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
   if(!regions.length)return;
   const empty=regions.find(r=>!r.note.trim());
   if(empty){setMissing(true);reopen(empty.slot);return;}
-  onDone({masks:regions.map(r=>layers.current[r.slot]!),regions:regions.map(r=>({n:r.n,color:REGION_COLORS[r.slot].name,note:r.note.trim().slice(0,MAX_NOTE)}))});
+  // A region named by one kind of face part («the lips») when that is all it holds; anything else (brush, an object) leaves it unnamed.
+  const targetOf=(r:Draft)=>{const kinds=[...new Set((r.parts??[]).map(p=>(TARGET_OF_PART[p] as string|undefined)??"object"))];return kinds.length===1&&kinds[0]!=="object"?kinds[0] as RegionTarget:undefined;};
+  onDone({masks:regions.map(r=>layers.current[r.slot]!),regions:regions.map(r=>{const t=targetOf(r);return {n:r.n,color:REGION_COLORS[r.slot].name,note:r.note.trim().slice(0,MAX_NOTE),...(t?{target:t}:{})};})});
  }
  const nextSlot=[0,1,2,3,4].find(s=>!regions.some(r=>r.slot===s));
  const brushColor=painting!==null?REGION_COLORS[painting].css:open!==null?REGION_COLORS[open].css:nextSlot!==undefined?REGION_COLORS[nextSlot].css:REGION_COLORS[regions[regions.length-1].slot].css;

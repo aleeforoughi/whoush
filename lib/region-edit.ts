@@ -27,7 +27,9 @@ export const NEON_SHADOW="0 0 0 1px rgba(255,255,255,.25)";
 export type RegionColor=RegionColorName;
 /** Five brush sizes, in screen pixels (so zooming in paints finer). */
 export const BRUSH_SIZES=[{id:"xs",px:6,labelFa:"خیلی کوچک"},{id:"s",px:12,labelFa:"کوچک"},{id:"m",px:22,labelFa:"متوسط"},{id:"l",px:38,labelFa:"بزرگ"},{id:"xl",px:64,labelFa:"خیلی بزرگ"}] as const;
-export type Region={n:number;color:RegionColor;note:string};
+import {type RegionTarget} from "./region-targets";
+export {REGION_TARGETS,TARGET_OF_PART,type RegionTarget} from "./region-targets";
+export type Region={n:number;color:RegionColor;note:string;target?:RegionTarget};
 export type RegionEdit={regions:Region[];guideId:string;guideUrl:string};
 /** A region's tag as the user sees it: #ادیت-۱. */
 export const regionTagFa=(n:number)=>"#ادیت-"+fa(n);

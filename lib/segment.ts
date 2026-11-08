@@ -3,7 +3,8 @@
  * (`prepare`), then each tap or box returns a mask in the photo's own pixels. Browser only. Everything degrades: when the worker or the model cannot
  * run, callers fall back to the brush (wand) or to the soft ovals (Whoush's marked areas).
  */
-export type Mask={w:number;h:number;score:number;plane:Uint8Array};
+/** `part`: the face part it is, when it came from lib/face-parts.ts (it names the region in the edit prompt). */
+export type Mask={w:number;h:number;score:number;plane:Uint8Array;part?:string};
 type Pending={resolve:(v:unknown)=>void;reject:(e:Error)=>void};
 
 let worker:Worker|null=null,seq=0;

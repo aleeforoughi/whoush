@@ -2,7 +2,7 @@
  * The areas Whoush marked on a photo (boxes in 0..1, lib/edit-card.ts) as brush masks, one canvas per area at the photo's own size: what the editor
  * opens with, and what «بساز» on the edit card sends without opening the editor. Browser only.
  */
-import {MAX_NOTE,MAX_REGIONS,REGION_COLORS,type Region} from "./region-edit";
+import {MAX_NOTE,MAX_REGIONS,REGION_COLORS,TARGET_OF_PART,type Region} from "./region-edit";
 import {maskInBox,paintMask,prepare,type Mask} from "./segment";
 import {analyzeFaces,facePartMasks} from "./face-parts";
 import {refineMask} from "./mask-refine";
@@ -38,16 +38,16 @@ export function exactAreas(photoUrl:string,areas:readonly SuggestedArea[],waitMs
    const parts=faces?facePartMasks(faces):[];
    const out:(Mask|null)[]=[];
    for(const a of areas.slice(0,MAX_REGIONS)){
-    const plane=new Uint8Array(w*h);let any=false;
+    const plane=new Uint8Array(w*h);let any=false;const used=new Set<string>();
     for(const box of a.boxes){
      const best=parts.map(p=>({p,o:iou(p.box,box)})).sort((x,y)=>y.o-x.o)[0];
-     let m:Mask|null=best&&best.o>=0.45?best.p.mask:null;
+     let m:Mask|null=best&&best.o>=0.45?best.p.mask:null;if(m)used.add(best!.p.part);else used.add("object");
      if(!m&&samReady){try{m=await maskInBox(photoUrl,[box[0]*w,box[1]*h,box[2]*w,box[3]*h]);}catch{m=null;}}
      if(!m)continue;
      // Masks may come at another size (the segmenter's photo size equals this one; SAM's too): sampled to this photo's size.
      for(let y=0;y<h;y++){const sy=Math.min(m.h-1,Math.floor(y*m.h/h));for(let x=0;x<w;x++)if(m.plane[sy*m.w+Math.min(m.w-1,Math.floor(x*m.w/w))]){plane[y*w+x]=1;any=true;}}
     }
-    out.push(any?{w,h,score:1,plane:refineMask(plane,w,h,{maxHole:0.002,minIsland:0.05,smooth:0.002})}:null);
+    out.push(any?{w,h,score:1,plane:refineMask(plane,w,h,{maxHole:0.002,minIsland:0.05,smooth:0.002}),...(used.size===1&&!used.has("object")?{part:[...used][0]}:{})}:null);
    }
    return out;
   })();
@@ -70,7 +70,8 @@ export async function suggestedMasks(photoUrl:string,areas:readonly SuggestedAre
   const ctx=c.getContext("2d");if(!ctx)continue;
   const m=exact[slot];
   if(m)paintMask(ctx,m,REGION_COLORS[slot].css);else paintSuggested(ctx,slot,a.boxes,w,h);
-  masks.push(c);regions.push({n:slot+1,color:REGION_COLORS[slot].name,note:a.note.trim().slice(0,MAX_NOTE)});
+  const target=m?.part?TARGET_OF_PART[m.part]:undefined;
+  masks.push(c);regions.push({n:slot+1,color:REGION_COLORS[slot].name,note:a.note.trim().slice(0,MAX_NOTE),...(target?{target}:{})});
  }
  return {masks,regions};
 }
