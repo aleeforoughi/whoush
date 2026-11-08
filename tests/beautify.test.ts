@@ -33,7 +33,7 @@ test("Beautify brief: identity, place, outfit and styles locked; never guesses; 
  assert.match(all,/no side of the face or head that is hidden, no teeth when the mouth is closed, no opened eyes when they are closed/);
  assert.match(all,/bring the viewpoint to a flattering, near eye-level height/);assert.match(all,/the head keeps its turn and tilt, nothing hidden becomes visible, and the same background/);
  assert.match(all,/MOOD \(owner, 2026-11-08\): keep the vibe of the original photo.*the person's own expression and face language/);
- assert.match(all,/where it is thinning, filled to a natural, healthy density while the original hairline stays exactly where it is/);assert.match(all,/Lint-free and wrinkle-free is required/);assert.match(all,/never show teeth that are not visible/);assert.match(all,/read the emotion and vibe of the face and keep them, refined into a slight editorial modelling gesture/);
+ assert.match(all,/where it is thinning, filled to a natural, healthy density while the original hairline stays exactly where it is/);assert.match(all,/Lint-free and wrinkle-free is required/);assert.match(all,/dark circles, bags and puffiness from tiredness brightened and smoothed to a rested, fresh look/);assert.match(all,/never show teeth that are not visible/);assert.match(all,/read the emotion and vibe of the face and keep them, refined into a slight editorial modelling gesture/);
  assert.match(all,/CAMERA AND LENS: .* Seen in this photo: shot from below with a close wide lens; the face looks wider\./);
  for(const h of ["POSTURE AND EXPRESSION:","LIGHT:","SKIN:","HAIR, BEARD AND BROWS:","FACE AND FEATURES:","CLOTHES:","COLOUR SETTINGS:"])assert.ok(all.includes(h),h);
  const some=beautifyPrompt("[r]",["light","color"]);
