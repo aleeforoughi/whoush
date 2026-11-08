@@ -223,3 +223,24 @@ html[lang="fa-Latn"] body:not([data-translated]){visibility:hidden}
 .whoush-fold > * { min-height: 0; overflow: hidden; }
 .whoush-fold[data-folding] { grid-template-rows: 0fr; opacity: 0; margin-block: -0.375rem; }
 @media (prefers-reduced-motion: reduce) { .whoush-fold { transition: none; } }
+
+/* The empty chat's illustration (components/chat-empty.tsx): a slow, quiet loop. */
+.whoush-empty g, .whoush-empty path, .whoush-empty circle { transform-box: fill-box; transform-origin: center; }
+@keyframes whoush-empty-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes whoush-empty-twinkle { 0%, 100% { opacity: .35; transform: scale(.8) rotate(0deg); } 50% { opacity: 1; transform: scale(1.1) rotate(45deg); } }
+@keyframes whoush-empty-glow { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+@keyframes whoush-empty-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+@keyframes whoush-empty-write { 0%, 15% { stroke-dashoffset: 1; } 45%, 85% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 1; } }
+.whoush-empty-float { animation: whoush-empty-float 5s ease-in-out infinite; }
+.whoush-empty-late { animation-delay: -1.6s; }
+.whoush-empty-later { animation-delay: -3.2s; }
+.whoush-empty-twinkle { animation: whoush-empty-twinkle 3.2s ease-in-out infinite; }
+.whoush-empty-twinkle.whoush-empty-late { animation-delay: -1.6s; }
+.whoush-empty-glow { animation: whoush-empty-glow 4s ease-in-out infinite; }
+.whoush-empty-pulse { animation: whoush-empty-pulse 2.4s ease-in-out infinite; }
+.whoush-empty-write { stroke-dasharray: 1; animation: whoush-empty-write 4.5s ease-in-out infinite; }
+.whoush-empty-write-2 { animation-delay: .5s; }
+@media (prefers-reduced-motion: reduce) {
+  .whoush-empty-float, .whoush-empty-twinkle, .whoush-empty-glow, .whoush-empty-pulse, .whoush-empty-write { animation: none; }
+  .whoush-empty-write { stroke-dasharray: none; }
+}

@@ -1367,7 +1367,7 @@ export function Studio(){
         onPreview={r.file?()=>openViewer(r.file!):undefined}/>)}
        {cards.map(c=>c.type==="slot"
         ?<UploadSlotCard key={c.slot.id} slot={c.slot} disabled={reading} onUpload={()=>openSlotPicker(c.slot)} onDropFiles={f=>void fillSlot(c.slot,f)} onRemove={()=>dropSlot(c.slot.id)}/>
-        :<AttachmentCard key={c.attachment.id} item={c.attachment} onBrush={()=>editAttachment(c.attachment,true)} review={reviews[c.attachment.id]} onRetryReview={()=>void checkPhoto(c.attachment,true)} onChange={patch=>patchAttachment(c.attachment.id,patch)} onRemove={()=>removeAttachment(c.attachment.id)} onPreview={()=>openViewer(c.attachment)} onMention={()=>mentionTag(c.attachment.tag)}
+        :<AttachmentCard key={c.attachment.id} item={c.attachment} review={reviews[c.attachment.id]} onRetryReview={()=>void checkPhoto(c.attachment,true)} onChange={patch=>patchAttachment(c.attachment.id,patch)} onRemove={()=>removeAttachment(c.attachment.id)} onPreview={()=>openViewer(c.attachment)} onMention={()=>mentionTag(c.attachment.tag)}
          main={mainSubject===c.attachment.tag} onToggleMain={()=>toggleMain(c.attachment.tag)}/>)}
       </ul>:undefined}
       endPad={voice.enabled?"sm:pe-24":"sm:pe-14"}

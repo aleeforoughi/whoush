@@ -87,7 +87,7 @@ export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention,mai
    {onBrush&&a.kind==="image"&&<button type="button" onClick={onBrush} aria-label={BRUSH_EDIT_FA+" "+displayTag(a.tag)} title={a.regionEdit?BRUSH_MARKED_FA:BRUSH_EDIT_FA}
     className={"hit-area flex size-7 shrink-0 items-center justify-center rounded-control motion-hover hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring "+"ms-auto "+(a.regionEdit?"text-primary":"text-fg-secondary")}>
     <Icon icon={Brush} size={16} aria-hidden="true"/></button>}
-   {onToggleMain&&<MainSubjectStar tag={a.tag} on={Boolean(main)} onToggle={onToggleMain} className={onBrush&&a.kind==="image"?"":"ms-auto"}/>}
+   {onToggleMain&&<MainSubjectStar tag={a.tag} on={Boolean(main)} onToggle={onToggleMain} labelled className={onBrush&&a.kind==="image"?"":"ms-auto"}/>}
   </span>
   {/* A role the user chose is fixed: the card shows it, and changing it means removing the card and adding another. A file with no role, or with a role
       Whoush detected (owner, 2026-11-08: «if Whoush got it wrong, the user changes it»), keeps the menu, the detected role selected. */}
