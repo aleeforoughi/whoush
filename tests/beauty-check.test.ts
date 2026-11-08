@@ -21,6 +21,8 @@ test("«زیباسازی» self-check: the result is judged against the goal (sh
  assert.equal(not?.shareReady,false,"not the same person: not share-ready, whatever else");assert.equal(not?.fixFa,"فرم صورت رو کمتر تغییر بده");
  const latin=await beautyVerdictFor("turn-a",[{kind:"image",url:out.url}],{check:async()=>({shareReady:false,beautiful:false,samePerson:true,moodKept:true,verdictFa:"not good",fixFa:"fix the light"})});
  assert.ok(latin&&!latin.fixFa&&/[؀-ۿ]/.test(latin.verdictFa),"only Persian text reaches the card");
+ const brand=await beautyVerdictFor("turn-a",[{kind:"image",url:out.url}],{check:async()=>({shareReady:true,beautiful:true,samePerson:true,moodKept:true,verdictFa:"برای Instagram عالیه و کاملاً خودتی.",fixFa:""})});
+ assert.equal(brand?.verdictFa,"برای Instagram عالیه و کاملاً خودتی.","a brand word in a Persian sentence is fine");
  assert.equal(await beautyVerdictFor("another-turn",[{kind:"image",url:out.url}],{check:async()=>{throw new Error("not called");}}),undefined,"not a «زیباسازی» turn");
  assert.equal(await beautyVerdictFor("turn-a",[{kind:"image",url:out.url}],{check:async()=>{throw new Error("down");}}),undefined,"a check that cannot run says nothing");
 });

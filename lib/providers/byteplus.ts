@@ -23,14 +23,16 @@ export function seedreamSize(pixels:number,aspect?:string):string{
  return w+"x"+h;
 }
 /** With references, `image` carries them as base64 data URLs (docs/evidence/BYTEPLUS.md, image request fields). */
+/** Whether Seedream images carry BytePlus's visible «AI-generated» mark (the owner's decision, docs/PROVIDERS.md; on until they decide). */
+export const SEEDREAM_IMAGE_WATERMARK=true;
 export function buildSeedreamRequest(model:MediaModel,prompt:string,c:MediaConfiguration,references:readonly {bytes:Uint8Array;mime:string}[]=[]):Record<string,unknown>{
  if(model.provider!=="byteplus"||model.kind!=="image"||!model.providerModel)throw new Error("Not a Seedream model");
  const px=model.providerParams?.pixels;if(typeof px!=="number")throw new Error("SKU has no pixel budget");
- // `watermark` defaults to true at BytePlus (a visible «AI-generated» mark); kept until the owner decides (docs/PROVIDERS.md).
+ // `watermark` defaults to true at BytePlus (a visible «AI-generated» mark); kept until the owner decides (docs/PROVIDERS.md): SEEDREAM_IMAGE_WATERMARK.
  const max=model.capabilities.referenceImages.supported?model.capabilities.referenceImages.max??0:0;
  if(references.length>max)throw new Error("Too many reference images for this model");
  const image=references.map(r=>"data:"+r.mime+";base64,"+Buffer.from(r.bytes).toString("base64"));
- return {model:model.providerModel,prompt:references.length?prompt+REFERENCE_PROMPT_NOTE:prompt,size:seedreamSize(px,c.aspectRatio),response_format:"url",output_format:"png",watermark:true,...(image.length?{image}:{})};
+ return {model:model.providerModel,prompt:references.length?prompt+REFERENCE_PROMPT_NOTE:prompt,size:seedreamSize(px,c.aspectRatio),response_format:"url",output_format:"png",watermark:SEEDREAM_IMAGE_WATERMARK,...(image.length?{image}:{})};
 }
 const SEEDANCE_RATIOS=["16:9","4:3","1:1","3:4","9:16","21:9"];
 /** `withAudio`: only when the soundtrack check can run (lib/audio-check.ts) and the SKU has sound at its approved price; otherwise silent. */

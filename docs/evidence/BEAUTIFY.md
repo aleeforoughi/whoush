@@ -64,3 +64,25 @@ The never-guess rule stays.
 | 5 | Near eye level, the face slimmer and no longer puffy, a natural jawline, the beard and brows clean, the T-shirt clean, the calm expression kept. The sky is still out of view: moving the camera changes what is behind. |
 
 **One shot:** every run is a single generation (one Neuron in dev). The owner's goal is one shot to save money. A multi-step pipeline (relight, then face, then clothes), with each step priced on the card, is only worth building if one shot stops being enough.
+
+## Goal, self-check and quality (2026-11-08)
+
+- **Goal (owner):** social-media ready. The person proudly posts it and gets likes; it is beautiful and still them. The goal leads the brief.
+- **Self-check:** after the result, a private vision call compares it with the original, asking:
+  - would they share it for likes;
+  - is it beautiful and natural (not CGI or plastic);
+  - is it the same person;
+  - is the mood kept.
+
+  The card shows «آماده‌ی انتشار» with one sentence, or «هنوز آماده‌ی انتشار نیست» with the one fix. This is advice only; nothing is generated or charged again on its own.
+- **Quality:** the brief demands a real photograph with every pore and texture kept, and no pixelation. The proposal recommends the cheapest 2K-or-higher model, but never one that stamps a visible mark.
+- **The card:** four general switches and one line of what was seen.
+
+**Run 6 (Seedream 5.0 Pro · 2K, 1776×2368):**
+- **Better than before:** the sky and window were kept in view (the mood held), the angle corrected, the face slimmer, the beard groomed, the shirt clean, real pores at full resolution.
+- **Wrong:**
+  - BytePlus's visible «AI generated» mark sat bottom right;
+  - the identity drifted more than with Nano Banana (heavier brows, wider eyes).
+
+  The self-check judged it not ready.
+- **Since then:** a watermarking model is never preferred, so «زیباسازی» uses Nano Banana again until the owner decides on Seedream's watermark (docs/PROVIDERS.md).

@@ -13,7 +13,9 @@ export type BeautyVerdict={shareReady:boolean;samePerson:boolean;verdictFa:strin
 const turns=()=>((globalThis as {__whoushBeautifyTurns?:Map<string,string>}).__whoushBeautifyTurns??=new Map());
 /** A «زیباسازی» turn and its source photo (media id). In memory, like the other turn stores. */
 export function rememberBeautifyTurn(turnId:string,sourceId:string){const m=turns();m.set(turnId,sourceId);if(m.size>500)m.delete(m.keys().next().value!);}
-const clean=(t:string)=>{const s=t.trim().slice(0,160);return s&&/[؀-ۿ]/.test(s)&&!/[A-Za-z<>{}]/.test(s)&&evaluatePlanTextSafety(s).decision==="allow"?s:"";};
+// Persian text (a brand word such as Instagram may be in it: more Persian than Latin letters), no markup, passing the text checks.
+const clean=(t:string)=>{const s=t.trim().slice(0,160),fa=(s.match(/[\u0600-\u06FF]/g)??[]).length,la=(s.match(/[A-Za-z]/g)??[]).length;
+ return s&&fa>la&&!/[<>{}]|https?:/.test(s)&&evaluatePlanTextSafety(s).decision==="allow"?s:"";};
 /** The verdict for a finished «زیباسازی» image, or undefined (another kind of turn, no image, or the check could not run). */
 export async function beautyVerdictFor(turnId:string,outputs:readonly {kind:string;url:string}[],deps:{check?:typeof checkShareReady}={}):Promise<BeautyVerdict|undefined>{
  const sourceId=turns().get(turnId),out=outputs.find(o=>o.kind==="image"&&o.url.startsWith(MEDIA_ROUTE));

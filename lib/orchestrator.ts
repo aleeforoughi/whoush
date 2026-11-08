@@ -22,6 +22,7 @@ import {MEDIA_KIND_CHOICES,MEDIA_KIND_QUESTION_FA,MEDIA_KIND_QUESTION_FINGLISH,t
 import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
 import {SKILLS,SKILL_REGISTRY_VERSION} from "./skills";
 import {rememberBeautifyTurn} from "./beauty-check";
+import {SEEDREAM_IMAGE_WATERMARK} from "./providers/byteplus";
 import {REFERENCE_NEEDS,detectReferenceNeeds,type ReferenceRequest} from "./reference-needs";
 import {DRIFT_MARKER_FA,DRIFT_MARKER_FINGLISH,DRIFT_SKIP,DRIFT_SKIP_FINGLISH,driftAngles,driftAskFa,driftAskFinglish,missingNeeds} from "./drift";
 import type {GenerationProposal,MediaRequirements,ProposalResearch,SuggestedModel,UnsupportedReason} from "./types";
@@ -125,10 +126,12 @@ export function faMediaReview(tags:readonly string[],kinds:readonly string[]):st
 /**
  * «زیباسازی» keeps the photo's quality (owner, 2026-11-08: no pixelation, pores and texture kept): the proposal recommends the cheapest offered model with
  * a 2K or higher version when one is among its suggestions; the others stay in the menu with their prices. Unchanged when none is 2K or higher.
+ * A model that stamps a visible «AI-generated» mark on the photo is never preferred (a watermarked photo is not share-ready; live, 2026-11-08: Seedream).
  */
 export function preferDetail(p:GenerationProposal):GenerationProposal{
  const px=(r?:string)=>{const m=/^(\d+)K$/i.exec(r??"");return m?Number(m[1]):0;};
- const hi=p.suggestions.filter(s=>px(s.resolution)>=2).sort((a,b)=>a.neurons-b.neurons)[0];
+ const marked=(id:string)=>{const m=findMediaModel(id);return Boolean(m&&m.provider==="byteplus"&&m.kind==="image"&&SEEDREAM_IMAGE_WATERMARK);};
+ const hi=p.suggestions.filter(s=>px(s.resolution)>=2&&!marked(s.modelId)).sort((a,b)=>a.neurons-b.neurons)[0];
  return hi&&px(p.suggestions.find(s=>s.modelId===p.selectedModelId)?.resolution)<2?{...p,recommendedModelId:hi.modelId,selectedModelId:hi.modelId,fixedNeurons:hi.neurons}:p;
 }
 /**
