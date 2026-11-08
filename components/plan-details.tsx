@@ -1,7 +1,7 @@
 "use client";
 import {TagText} from "@/components/message-text";
 import {useState,type ReactNode} from "react";
-import {Aperture,ArrowLeft,Brush,Camera,SlidersHorizontal,CircleCheck,CircleHelp,Clapperboard,ImagePlus,Image as ImageIcon,Film,Focus,Frame,Gauge,Layers,Lightbulb,ListChecks,MessageCircle,Move,Paperclip,RefreshCw,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Star,Thermometer,Timer,Upload,type LucideIcon,LoaderCircle,WandSparkles,Check,X} from "lucide-react";
+import {Aperture,ArrowLeft,Brush,Camera,SlidersHorizontal,CircleCheck,CircleHelp,Clapperboard,ImagePlus,Image as ImageIcon,Film,Focus,Frame,Gauge,Layers,Lightbulb,ListChecks,MessageCircle,Move,Paperclip,RefreshCw,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Star,Thermometer,Timer,Upload,type LucideIcon,LoaderCircle,WandSparkles,Check,X,ScanFace,SunMedium,Shirt} from "lucide-react";
 import {Accordion,AccordionContent,AccordionItem,AccordionTrigger,Badge,Button,Icon} from "@aleeforoughi/feather-react";
 import type {ReferenceRequest} from "@/lib/reference-needs";
 import {StagingEditor} from "@/components/staging-editor";
@@ -194,6 +194,8 @@ const CHOICE_ICON:Record<string,LucideIcon>={image:ImageIcon,video:Clapperboard,
  * has been sent since), it is highlighted with a flashing «نیاز به پاسخ تو» badge (a gentle pulse; still under reduced motion) and «پاسخ بده» moves focus to the
  * prompt. Once answered it stays as a quiet record.
  */
+/** Each «زیباسازی» group's icon on the card. */
+const GROUP_ICON:Record<string,typeof Check>={face:ScanFace,pose:Camera,light:SunMedium,clothes:Shirt};
 /** «Beautify it» offered on a photo (lib/beautify.ts). */
 export type BeautifyCardOffer={tag:string;parts:readonly BeautifyPart[];notes?:Partial<Record<BeautifyPart,string>>;minor?:true;thumbUrl?:string};
 /**
@@ -216,13 +218,17 @@ function BeautifySection({offer,alone,busy,onBeautify,onSkip}:{offer:BeautifyCar
     :<span className="flex aspect-video items-center justify-center text-fg-secondary"><Icon icon={ImageIcon} size={24} aria-hidden="true"/></span>}
   </span>}
   {seen&&<p className="type-body-sm text-fg-primary">{seen}</p>}
-  {/* A switch per group: on (filled, a check) or off (outlined). */}
-  <div role="group" aria-label={"بخش‌های "+BEAUTIFY_NAME} className="flex flex-wrap gap-2">
-   {groups.map(g=>{const active=on.has(g.id);return <button key={g.id} type="button" aria-pressed={active} onClick={()=>toggle(g.id)} disabled={!onBeautify}
-    className={"inline-flex min-h-11 items-center gap-1.5 rounded-control px-3 py-2 type-body-sm motion-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60 "
-     +(active?"bg-primary/15 text-fg-primary hover:bg-primary/25":"bg-transparent text-fg-secondary ring-1 ring-line-secondary hover:bg-surface-hover")}>
-    {active&&<Icon icon={Check} size={16} aria-hidden="true" className="size-4 text-primary"/>}{g.labelFa}</button>;})}
-  </div>
+  {/* A switch per group, stacked the full width (owner, 2026-11-08): its icon and label on the right, the check on the left; on is tinted with a filled
+      check, off is plain with an empty box. */}
+  <ul role="group" aria-label={"بخش‌های "+BEAUTIFY_NAME} className="flex flex-col gap-1.5">
+   {groups.map(g=>{const active=on.has(g.id);return <li key={g.id}><button type="button" aria-pressed={active} onClick={()=>toggle(g.id)} disabled={!onBeautify}
+    className={"flex min-h-12 w-full items-center gap-2.5 rounded-control px-3 py-2.5 text-start type-body-sm motion-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60 "
+     +(active?"bg-primary/10 text-fg-primary hover:bg-primary/20":"bg-transparent text-fg-secondary hover:bg-surface-hover")}>
+    <Icon icon={GROUP_ICON[g.id]} size={20} aria-hidden="true" className={"size-5 shrink-0 "+(active?"text-primary":"")}/>
+    <span className="min-w-0 flex-1">{g.labelFa}</span>
+    <span aria-hidden="true" className={"flex size-5 shrink-0 items-center justify-center rounded-[4px] "+(active?"bg-primary text-primary-foreground":"ring-1 ring-line-primary")}>{active&&<Icon icon={Check} size={16} className="size-3.5"/>}</span>
+   </button></li>;})}
+  </ul>
   {offer.minor&&<p className="type-caption text-fg-secondary">{BEAUTIFY_MINOR_FA}</p>}
   {onBeautify&&<WidgetActions label={BEAUTIFY_NAME}>
    <Button type="button" onClick={()=>onBeautify(offer.tag,chosen)} disabled={!chosen.length||busy} aria-busy={busy||undefined} className={WIDGET_BUTTON}>
