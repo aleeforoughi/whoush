@@ -20,3 +20,29 @@ test("owner (2026-11-08): a replacement in a video lasts as long as that video: 
  assert.equal(matchSourceLength(p,4.8).seconds,5,"a 4.8 s clip fits the 5 s version");
  assert.equal(matchSourceLength(p,25).seconds,10,"longer than any version: the longest");
 });
+
+test("owner (2026-11-08): with a source video the draft is the frame preview: first, middle, last and one every 3 s, each edited with the photos",async()=>{
+ const {forgetReviewsForTests,reviewUpload}=await import("../lib/upload-review");
+ const {reviewVideoUpload}=await import("../lib/video-review");
+ const {orchestrateCreativeTurn,deterministicPlanner,getTurnReferences,getPrivateMediaPrompt}=await import("../lib/orchestrator");
+ const {frameTimes,previewFramesFor}=await import("../lib/frame-draft");
+ assert.deepEqual(frameTimes(7),[0,3.5,6.9],"a 7 s clip: first, middle, last");
+ assert.equal(previewFramesFor(12),4);assert.equal(previewFramesFor(2),3);assert.equal(previewFramesFor(120),12);
+ forgetReviewsForTests();
+ const vid=await reviewVideoUpload(new Uint8Array([0,0,0,24,0x66,0x74,0x79,0x70,0x69,0x73,0x6f,0x6d,0,0,0]),"video/mp4",{sample:async()=>[new Uint8Array([1])],inspect:async()=>({category:"none",person:false}),soundtrack:async()=>"clean",store:async()=>({id:"77777777-7777-4777-8777-777777777777",url:"/x"})});
+ const pic=await reviewUpload(new Uint8Array([0xff,0xd8,0xff,0]),"image/jpeg",{inspect:async()=>({category:"none",person:true}),store:async()=>({id:"88888888-8888-4888-8888-888888888888",url:"/y"})});
+ let stored=0,asked:readonly number[]=[];
+ const frames={read:async()=>new Uint8Array([9]),sample:async(_v:Uint8Array,t:readonly number[])=>{asked=t;return t.map(at=>({atSeconds:at,bytes:new Uint8Array([at])}));},store:async()=>({id:"9999999"+(stored++)+"-9999-4999-8999-999999999999"})};
+ const r=await orchestrateCreativeTurn({text:"آدم توی #ویدیو-۱ رو با #تصویر-۱ عوض کن",attachments:[
+  {id:crypto.randomUUID(),tag:"video1",kind:"video",mime:"video/mp4",width:720,height:1280,durationSeconds:7,bytes:4096,sha256:"a".repeat(64),role:"reference",reviewId:vid.reviewId},
+  {id:crypto.randomUUID(),tag:"image1",kind:"image",mime:"image/jpeg",width:800,height:800,bytes:2048,sha256:"b".repeat(64),role:"character",reviewId:pic.reviewId}]},{planner:deterministicPlanner,frames});
+ assert.equal(r.status,"planned",JSON.stringify(r).slice(0,300));
+ const d=(r as {proposal:{draft?:{kind?:string;frames?:{turnId:string;atSeconds:number}[];neurons:number;aspectRatio?:string}}}).proposal.draft!;
+ assert.equal(d.kind,"frames");assert.deepEqual(asked,[0,3.5,6.9]);assert.equal(d.frames!.length,3);assert.equal(d.neurons,3,"one Neuron a frame");
+ assert.equal(d.aspectRatio,"9:16","the frames keep the clip's shape");
+ for(const [i,f] of d.frames!.entries()){
+  const refs=getTurnReferences(f.turnId);
+  assert.equal(refs[0].id,"88888888-8888-4888-8888-888888888888","the photo keeps number 1");assert.match(refs.at(-1)!.subjectFa,/فریم/,"the frame is last");
+  assert.match(getPrivateMediaPrompt(f.turnId)!,new RegExp("frame "+(i+1)+" of a video"));
+ }
+});

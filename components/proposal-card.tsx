@@ -11,7 +11,7 @@ import {fa} from "@/lib/format";
 import {nearestAspectRatio} from "@/lib/aspect";
 import {ResearchReport,ReviewNote} from "@/components/research-report";
 
-export const GENERATE_FA="بسازش",GENERATE_WITH_REFS_FA="با این مرجع‌ها بسازش",DRAFT_FA="اول پیش‌نویس ارزون",SKIP_DRAFT_FA="بدون پیش‌نویس بساز",VIDEO_NOW_FA="حالا ویدیو رو بساز",DEMO_NOTE_FA="نسخهٔ نمایشی: نه پولی کسر می‌شود و نه رسانهٔ واقعی ساخته می‌شود.";
+export const GENERATE_FA="بسازش",GENERATE_WITH_REFS_FA="با این مرجع‌ها بسازش",DRAFT_FA="اول پیش‌نویس ارزون",FRAMES_DRAFT_FA="اول پیش‌نمایش فریم‌ها",SKIP_DRAFT_FA="بدون پیش‌نویس بساز",VIDEO_NOW_FA="حالا ویدیو رو بساز",DEMO_NOTE_FA="نسخهٔ نمایشی: نه پولی کسر می‌شود و نه رسانهٔ واقعی ساخته می‌شود.";
 const RECOMMENDED_FA="پیشنهاد هووش",ALTERNATE_FA="جایگزین";
 /** Latin model names keep their own direction inside Persian text. */
 const ModelName=({name}:{name:string})=><bdi dir="ltr">{name}</bdi>;
@@ -85,11 +85,13 @@ export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onA
   {proposal.quoteMode==="demo"&&<p className="type-caption text-fg-secondary">{DEMO_NOTE_FA}</p>}
   {/* Video drafts first (owner, 2026-11-06): a cheap still of the opening frame to check the look before the expensive video; the user may skip it. */}
   {proposal.draft&&onDraft&&!drafted&&<div className="-mx-3 -mb-3 mt-1 flex flex-col gap-2 rounded-b-[inherit] border-t border-line-secondary bg-surface-subtle px-3 py-2.5">
-   <p className="type-caption text-fg-secondary">{proposal.draft.kind==="video"
+   <p className="type-caption text-fg-secondary">{proposal.draft.kind==="frames"
+    ?"پیشنهادم اینه اول "+fa(proposal.draft.frames?.length??0)+" فریم از ویدیوت (اول، وسط، آخر و هر ۳ ثانیه یکی) رو با عکس‌هات ویرایش کنم، تا نتیجهٔ ویرایش رو قبل از خرج اصلی ببینی و اگه چیزی اشتباهه درستش کنیم. این پیش‌نمایشِ ویرایشه: مدل‌های ویدیویی فعلی فقط پرامپت رو می‌خونن، ویدیو و عکس‌هات رو نمی‌بینن، پس ویدیوی نهایی ممکنه با این فریم‌ها فرق داشته باشه."
+    :proposal.draft.kind==="video"
     ?"پیشنهادم اینه اول یه پیش‌نویس ارزون بسازیم: یه ویدیوی کوتاه ۴۸۰p بی‌صدا با همین پرامپت، تا قبل از خرج اصلی حرکت و صحنه رو ببینی و اگه چیزی اشتباهه درستش کنیم. اگه نمی‌خوای، مستقیم بساز."
     :"پیشنهادم اینه اول یه پیش‌نویس ارزون بسازیم: یه عکس از فریم اول، تا قبل از خرج اصلی ظاهرش رو ببینی و اگه چیزی اشتباهه درستش کنیم. اگه نمی‌خوای، مستقیم بساز."}</p>
    <div className="flex flex-wrap items-center justify-between gap-2">
-    <Button type="button" onClick={onDraft} disabled={busy||!proposal.turnId} className="shrink-0"><Icon icon={Sparkles} aria-hidden="true"/>{DRAFT_FA}<span className="type-caption opacity-80">{fa(proposal.draft.neurons)} نورون</span></Button>
+    <Button type="button" onClick={onDraft} disabled={busy||!proposal.turnId} className="shrink-0"><Icon icon={Sparkles} aria-hidden="true"/>{proposal.draft.kind==="frames"?FRAMES_DRAFT_FA:DRAFT_FA}<span className="type-caption opacity-80">{fa(proposal.draft.neurons)} نورون</span></Button>
     <Button type="button" variant="outline" onClick={onApprove} disabled={busy||!proposal.turnId} className="shrink-0"><Icon icon={Clapperboard} aria-hidden="true"/>{SKIP_DRAFT_FA}<span className="type-caption text-fg-secondary">{fa(price)} نورون</span></Button>
    </div>
   </div>}

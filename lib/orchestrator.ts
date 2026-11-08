@@ -29,7 +29,9 @@ import {continuesWork} from "./follow-up";
 import {EDIT_CARDS_FA,EDIT_CARD_FA,EDIT_CARD_FINGLISH,SUGGESTED_FA,SUGGESTED_FINGLISH,mightEditPhoto,wantsEditCard,type SuggestedEdit} from "./edit-card";
 import {safeReview} from "./upload-review";
 import {rememberRegionEdit} from "./region-restore";
-import {MEDIA_ROUTE,readMedia} from "./media-store";
+import {MEDIA_ROUTE,readMedia,storeMedia} from "./media-store";
+import {framePrompt,frameTimes,sourceFrames,type SourceFrame} from "./frame-draft";
+import {nearestAspectRatio} from "./aspect";
 import {reviewAvailable,reviewPlan,promptWithFixes,type PlanReviewer} from "./plan-review";
 import {findMediaModel} from "./catalog";
 import {triageAvailable,triageTurn,type TriageEffort,type TurnTriager} from "./turn-triage";
@@ -56,6 +58,7 @@ export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;no
  /** Turn triage (reply, ask or make) before planning: the cheapest private model by default when no test planner is given; tests pass a stub. */
  triage?:TurnTriager;
  /** Whether generated sound can be checked here (tests pass a stub). */audioCheckAvailable?:()=>Promise<boolean>;
+ /** The frame preview's source frames and their storage (lib/frame-draft.ts); tests pass stubs. */frames?:{read?:(mediaId:string)=>Promise<Uint8Array|undefined>;sample?:(video:Uint8Array,times:readonly number[])=>Promise<SourceFrame[]>;store?:(bytes:Uint8Array)=>Promise<{id:string}>};
  /** Tests only: plan even with unchecked files (fixtures that exercise the planner's role invariants); the turn still stops before a price. */planUncheckedMedia?:boolean};
 export {TURN_STAGES,type TurnStage,type TurnNote} from "./orchestrator-stages";
 import type {TurnNote,TurnStage} from "./orchestrator-stages";
@@ -922,8 +925,33 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // Video drafts first (owner, 2026-11-08): a short, silent 480p video on the cheapest model that can run, from the same prompt, to test the motion and the
  // scene before the real price. Where none can run, a still of the opening frame on the cheapest image model (taking the references when it can).
  // Both are quoted against their own private turn.
- const videoDraft=kind==="video"?draftVideoModel(plan.camera?.aspectRatio):undefined;
- if(videoDraft&&videoDraft.id!==proposal.selectedModelId&&videoDraft.neurons<proposal.fixedNeurons){
+ // With a source video (an edit or a replacement in the user's own clip), the draft is the frame preview instead (owner, 2026-11-08): the clip's frames
+ // (first, middle, last, one every 3 s), each edited by the cheap image model with the user's photos. A preview of the edit: the card says the video
+ // models read only the prompt. Anything that fails leaves the usual draft.
+ const frameModel=findMediaModel(DRAFT_IMAGE_MODEL),sourceVideo=kind==="video"?files.find(f=>f.kind==="video"&&f.role!=="continue"&&f.durationSeconds&&safeReview(f.reviewId)?.kind==="video"):undefined;
+ if(sourceVideo&&frameModel&&!frameModel.pricePending&&frameModel.neurons){
+  try{
+   const fd=deps.frames??{},mediaId=safeReview(sourceVideo.reviewId)!.mediaId;
+   const video=await (fd.read??(async(id:string)=>(await readMedia(id))?.bytes))(mediaId);
+   if(!video)throw new Error("source_missing");
+   const shots=await (fd.sample??sourceFrames)(video,frameTimes(sourceVideo.durationSeconds!));
+   const cap=frameModel.capabilities.referenceImages.supported?frameModel.capabilities.referenceImages.max??1:1,photosFor=uploads.slice(0,Math.max(0,cap-1));
+   const frames=await Promise.all(shots.map(async(s,i)=>{
+    const stored=await (fd.store??(b=>storeMedia(b,"image/jpeg")))(s.bytes),label=displayTag(sourceVideo.tag)+" · فریم "+faPlain(i+1);
+    const turn=randomUUID();
+    keepPrompt(turn,framePrompt(plan.mediaPrompt,i+1,photosFor.length,s.atSeconds));
+    refStore().set(turn,[...photosFor,{id:stored.id,url:MEDIA_ROUTE+stored.id,subjectFa:label,title:label,license:"user",creator:"",sourceUrl:"",source:"upload" as const,mime:"image/jpeg"}]);
+    return {turnId:turn,atSeconds:s.atSeconds};
+   }));
+   // Each frame keeps the source video's shape: its ratio, or the nearest the image model offers.
+   const ratio=(w:number,h:number)=>{const g=(a:number,b:number):number=>b?g(b,a%b):a,k=g(w,h);return w/k<100&&h/k<100?w/k+":"+h/k:w>=h?"16:9":"9:16";};
+   const shape=sourceVideo.width&&sourceVideo.height?nearestAspectRatio(ratio(sourceVideo.width,sourceVideo.height),frameModel.capabilities.aspectRatios):undefined;
+   if(frames.length)proposal={...proposal,draft:{turnId:frames[0].turnId,modelId:frameModel.id,modelName:frameModel.name,neurons:frames.length*frameModel.neurons,kind:"frames",frames,...(shape?{aspectRatio:shape}:{})}};
+  }catch(e){if(devLiveTest().enabled)console.info("[whoush dev-live] frame preview skipped:",e instanceof Error?e.message:"error");}
+ }
+ const videoDraft=kind==="video"&&!proposal.draft?draftVideoModel(plan.camera?.aspectRatio):undefined;
+ if(proposal.draft){/* the frame preview */}
+ else if(videoDraft&&videoDraft.id!==proposal.selectedModelId&&videoDraft.neurons<proposal.fixedNeurons){
   const draftTurn=randomUUID();
   keepPrompt(draftTurn,plan.mediaPrompt);
   proposal={...proposal,draft:{turnId:draftTurn,modelId:videoDraft.id,modelName:videoDraft.name,neurons:videoDraft.neurons,kind:"video"}};
@@ -943,8 +971,8 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  rec({planner:label,fallbackReason,corrections:corrections.length?corrections:undefined,usage:label==="live"?result?.usage:undefined});
  // The proposal speaks in Whoush's voice; a rejected explicit model request keeps its factual note after the reply.
  // «هر دو»: the video's opening-frame draft is the photo, then the video from it.
- const photoNote=uploads.length&&kind==="video"&&proposal.draft&&proposal.draft.kind!=="video"?(script==="finglish"?"\nAksato too pish-nevis (frame-e aval) estefade mikonam; khod-e video felan az roo-ye prompt sakhte mishe.":"\nعکس‌هات توی پیش‌نویس (فریم اول) به کار می‌رن؛ خود ویدیو فعلاً از روی پرامپت ساخته می‌شه."):"";
- const bothNote=wantsBoth&&proposal.draft&&proposal.draft.kind!=="video"?(script==="finglish"?"\nHar do ro misazam: aval aks (frame-e aval), baad video.":"\nهر دو رو می‌سازم: اول عکس (فریم اول)، بعد ویدیو از روی همون."):"";
+ const photoNote=uploads.length&&kind==="video"&&proposal.draft&&!proposal.draft.kind?(script==="finglish"?"\nAksato too pish-nevis (frame-e aval) estefade mikonam; khod-e video felan az roo-ye prompt sakhte mishe.":"\nعکس‌هات توی پیش‌نویس (فریم اول) به کار می‌رن؛ خود ویدیو فعلاً از روی پرامپت ساخته می‌شه."):"";
+ const bothNote=wantsBoth&&proposal.draft&&!proposal.draft.kind?(script==="finglish"?"\nHar do ro misazam: aval aks (frame-e aval), baad video.":"\nهر دو رو می‌سازم: اول عکس (فریم اول)، بعد ویدیو از روی همون."):"";
  // Sound (owner, 2026-11-08): a video model with checked sound gets the card's toggle, and Whoush asks (or confirms what the brief said). Without the
  // check here no model is offered sound: the toggle is hidden and the video stays silent.
  let soundNote="";

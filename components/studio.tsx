@@ -38,7 +38,7 @@ import {RegionEditor} from "@/components/region-editor";
 import {renderGuide,type Region} from "@/lib/region-edit";
 import type {SuggestedEdit} from "@/lib/edit-card";
 import {STORAGE_FULL_FA,getProject,listAssets,saveAsset,saveProject} from "@/lib/project-store";
-import {MAX_MESSAGES,assetToAttachment,attachmentToAsset,autoTitle,rerunSource,uniqueById,answerBrief,historyFor,toggleReaction,generationTagsIn,referencedGenerations,toGenerationRef,withGenerationTags,type GifSnapshot,type ProposalSnapshot,type JobRerun,type JobSnapshot,type Project,type StoredMessage} from "@/lib/projects";
+import {MAX_MESSAGES,draftLabelFa,assetToAttachment,attachmentToAsset,autoTitle,rerunSource,uniqueById,answerBrief,historyFor,toggleReaction,generationTagsIn,referencedGenerations,toGenerationRef,withGenerationTags,type GifSnapshot,type ProposalSnapshot,type JobRerun,type JobSnapshot,type Project,type StoredMessage} from "@/lib/projects";
 import {MAX_GENERATION_REFS,type ReactionEmoji,type Staging} from "@/lib/creative-plan";
 import {LIGHT_SOURCE_FA,describeStagingChangesFa,followUpFocus,lightTags,propTags,sectionsFromWords} from "@/lib/staging";
 import {normalizePersian} from "@/lib/safety";
@@ -862,9 +862,13 @@ export function Studio(){
    const live=messages.find(m=>m.id===liveId),edit=sceneEdit&&sceneEdit.id===liveId?sceneEdit:null;
    const planAspect=live?.kind==="proposal"?live.snapshot.plan.camera?.aspectRatio:undefined,wanted=aspectChoice??edit?.aspect??planAspect;
    // A ratio this model lacks snaps to the nearest one it offers (4:5 → 3:4), never to the model's square default.
-   const offered=d?undefined:proposal.suggestions.find(s=>s.modelId===selected)?.aspectRatios,aspect=offered?.length?nearestAspectRatio(wanted,offered)??wanted:wanted;
+   // A frame preview keeps the source video's shape (the server sends it); other drafts and the video use the plan's or the canvas's ratio.
+   const offered=d?undefined:proposal.suggestions.find(s=>s.modelId===selected)?.aspectRatios,aspect=d?.kind==="frames"?d.aspectRatio:offered?.length?nearestAspectRatio(wanted,offered)??wanted:wanted;
    // A draft quotes the draft model on the draft's own turn (no canvas override: that belongs to the video turn).
-   const quoteBody={modelId:d?d.modelId:selected,turnId,...(!d&&edit?{stagingOverride:edit.staging,...(edit.aspect!==planAspect?{aspectOverride:edit.aspect}:{})}:{}),
+   // A frame preview (owner, 2026-11-08) is one image per frame, each on its own turn: every frame is quoted, started and shown as its own card, in order.
+   const targets=d?.kind==="frames"&&d.frames?.length?d.frames.map((f,i)=>({turnId:f.turnId,frame:i+1})):[{turnId,frame:undefined as number|undefined}];
+   for(const target of targets){
+   const quoteBody={modelId:d?d.modelId:selected,turnId:target.turnId,...(!d&&edit?{stagingOverride:edit.staging,...(edit.aspect!==planAspect?{aspectOverride:edit.aspect}:{})}:{}),
     ...(excludedRefs.size?{excludeReferences:[...excludedRefs]}:{})};
    // Sound goes with the quote only for a video model with checked sound (never for the draft still): the toggle, else what the brief said, else on.
    // A video draft is always silent: it tests the picture and the motion, and needs no soundtrack check.
@@ -884,14 +888,15 @@ export function Studio(){
    // The job's message goes into the transcript now (with its id), and is updated in place as the job moves: a project saved or reopened mid-generation
    // still knows which job to follow, and a finished one keeps its outputs.
    // What was quoted goes with the job, so a failed one can be run again from its card (a new quote and a new approval, never the old charge).
-   const rerun:JobRerun={turnId,modelId:quoteBody.modelId,...(aspect?{aspectRatio:aspect}:{}),...withSound,...(!d&&edit?{stagingOverride:edit.staging,...(edit.aspect!==planAspect?{aspectOverride:edit.aspect}:{})}:{}),...(excludedRefs.size?{excludeReferences:[...excludedRefs]}:{})};
-   const snap:JobSnapshot={...jobSnapshot(current,genTag),...(d?{draft:{modelName:d.modelName,...(d.kind==="video"?{video:true as const}:{})}}:{}),rerun},msg=item({role:"agent",text:current.messageFa,kind:"job",snapshot:snap});
+   const rerun:JobRerun={turnId:target.turnId,modelId:quoteBody.modelId,...(aspect?{aspectRatio:aspect}:{}),...withSound,...(!d&&edit?{stagingOverride:edit.staging,...(edit.aspect!==planAspect?{aspectOverride:edit.aspect}:{})}:{}),...(excludedRefs.size?{excludeReferences:[...excludedRefs]}:{})};
+   const snap:JobSnapshot={...jobSnapshot(current,genTag),...(d?{draft:{modelName:d.modelName,...(d.kind==="video"?{video:true as const}:{}),...(target.frame?{frame:target.frame,frames:targets.length}:{})}}:{}),rerun},msg=item({role:"agent",text:current.messageFa,kind:"job",snapshot:snap});
    // On a phone the preview would cover the chat: the generation stays in the chat as its card, and «نمایش» opens the preview when wanted (owner, 2026-11-06).
    setPreview(current.messageFa);setJob(snap);setPreviewOpen(previewFits());setGalleryFocus(galleryFocusOn(msg.id));
    setMessages(m=>[...m,msg]);
    if(d)setDraftedFor(liveId);else{setProposal(null);setLiveId(null);}
    touch();
    followJob(msg.id,snap);
+   }
   }catch(err){setError(err instanceof Error?err.message:"خطای ناشناخته");}
   finally{setBusy(false);}
  }
@@ -938,7 +943,7 @@ export function Studio(){
  const galleryItems:GalleryItem[]=messages.flatMap(m=>m.kind!=="job"?[]:[{id:m.id,
   job:{...m.snapshot,outputs:m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined)},
   kind:m.snapshot.draft?(m.snapshot.draft.video?"video":"image"):m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind:undefined,
-  model:m.snapshot.draft?"پیش‌نویس · "+m.snapshot.draft.modelName:m.snapshot.tag?generationMap.get(m.snapshot.tag)?.modelName:undefined}]);
+  model:m.snapshot.draft?draftLabelFa(m.snapshot.draft):m.snapshot.tag?generationMap.get(m.snapshot.tag)?.modelName:undefined}]);
  const showPreview=hasPreview&&previewOpen;
  /** Opens the preview panel, on a given generation's job when a preview card asks (the latest job keeps its live outputs). */
  function openPreview(snapshot?:JobSnapshot,messageId?:string){
@@ -1058,7 +1063,7 @@ export function Studio(){
          :m.kind!=="job"&&<p className="whitespace-pre-wrap break-words type-body-sm text-fg-primary">
           <span className="sr-only">هووش: </span><TypeOut text={m.text} animate={fresh.has(m.id)}/>
          </p>}
-        {m.kind==="job"&&<PreviewCard tag={m.snapshot.tag} state={m.snapshot.state} messageFa={m.snapshot.messageFa} job={m.snapshot} model={m.snapshot.draft?"پیش‌نویس · "+m.snapshot.draft.modelName:m.snapshot.tag?generationMap.get(m.snapshot.tag)?.modelName:undefined}
+        {m.kind==="job"&&<PreviewCard tag={m.snapshot.tag} state={m.snapshot.state} messageFa={m.snapshot.messageFa} job={m.snapshot} model={m.snapshot.draft?draftLabelFa(m.snapshot.draft):m.snapshot.tag?generationMap.get(m.snapshot.tag)?.modelName:undefined}
          output={(m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined))?.find(o=>isOwnedOutputUrl(o.url,window.location.origin))} video={m.snapshot.draft?Boolean(m.snapshot.draft.video):(m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false)} onOpen={()=>openPreview(m.snapshot,m.id)}
          onView={()=>openGenerationViewer(m.id)}
          onRetry={m.snapshot.rerun&&!busy?()=>void rerunJob(m.id):undefined} retryNeurons={m.snapshot.draft?undefined:m.snapshot.tag?generationMap.get(m.snapshot.tag)?.neurons:undefined}

@@ -30,7 +30,7 @@ export type NoModelSnapshot={message:string;plan?:PublicCreativePlan;reason?:Uns
  */
 export type JobSnapshot={state:string;messageFa:string;tag?:string;jobId?:string;outputs?:{kind:"image"|"video";url:string}[];typicalMs?:number;
  /** While it works: the live progress lines and stage facts (lib/job-progress.ts liveStatusFa). */progressFa?:string[];progressFacts?:{references?:number;brushEdit?:boolean};
- /** A video's cheap draft (made on `draftModel`), not the video itself: a 480p video (`video`), else the opening-frame still. */draft?:{modelName:string;video?:true};
+ /** A video's cheap draft (made on `draftModel`), not the video itself: a 480p video (`video`), else the opening-frame still. */draft?:{modelName:string;video?:true;/** A frame preview's frame, «فریم ۲ از ۴». */frame?:number;frames?:number};
  /** Why a finished video is silent (its soundtrack failed the check and was removed). */audioNoteFa?:string;
  /** What was quoted (owner, 2026-11-07: a failed generation can be run again): the same plan's turn, model and settings. A rerun asks for a NEW quote and a
   *  new approval with these; nothing is charged again without them. */rerun?:JobRerun};
@@ -169,7 +169,7 @@ function checkMessage(m:unknown,i:number){
    ||(s.rerun!==undefined&&!isJobRerun(s.rerun))||(s.audioNoteFa!==undefined&&!(typeof s.audioNoteFa==="string"&&s.audioNoteFa.length<=200))
    ||(s.progressFa!==undefined&&!(Array.isArray(s.progressFa)&&s.progressFa.length<=8&&s.progressFa.every(l=>typeof l==="string"&&l.length<=120)))
    ||(s.progressFacts!==undefined&&!(isObject(s.progressFacts)&&Object.entries(s.progressFacts).every(([k,v])=>k==="references"?Number.isSafeInteger(v)&&(v as number)>=0&&(v as number)<=20:k==="brushEdit"&&v===true)))
-   ||(s.draft!==undefined&&!(isObject(s.draft)&&typeof (s.draft as Record<string,unknown>).modelName==="string"&&((s.draft as Record<string,unknown>).modelName as string).length<=80&&[undefined,true].includes((s.draft as Record<string,unknown>).video as true|undefined))))bad("وضعیت تولید");break;
+   ||(s.draft!==undefined&&!(isObject(s.draft)&&typeof (s.draft as Record<string,unknown>).modelName==="string"&&((s.draft as Record<string,unknown>).modelName as string).length<=80&&[undefined,true].includes((s.draft as Record<string,unknown>).video as true|undefined)&&[(s.draft as Record<string,unknown>).frame,(s.draft as Record<string,unknown>).frames].every(n=>n===undefined||(Number.isInteger(n)&&(n as number)>=1&&(n as number)<=12)))))bad("وضعیت تولید");break;
   default:bad("نوع پیام");
  }
 }
@@ -308,6 +308,10 @@ export function groupReactions(list:readonly Reaction[]|undefined):{emoji:Reacti
  const m=new Map<ReactionEmoji,{emoji:ReactionEmoji;user:boolean;whoush:boolean}>();
  for(const r of list??[]){const g=m.get(r.emoji)??{emoji:r.emoji,user:false,whoush:false};g[r.by]=true;m.set(r.emoji,g);}
  return [...m.values()].sort((a,b)=>REACTION_EMOJIS.indexOf(a.emoji)-REACTION_EMOJIS.indexOf(b.emoji));
+}
+/** A draft card's label: a frame preview's «پیش‌نمایش فریم ۲ از ۴», else «پیش‌نویس · model». */
+export function draftLabelFa(d:{modelName:string;frame?:number;frames?:number}):string{
+ return d.frame?"پیش‌نمایش فریم "+faPlain(d.frame)+(d.frames?" از "+faPlain(d.frames):""):"پیش‌نویس · "+d.modelName;
 }
 type HistorySource={role:"user"|"agent";text:string;kind?:string;snapshot?:unknown;brief?:string};
 /**

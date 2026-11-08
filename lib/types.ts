@@ -119,7 +119,9 @@ export interface GenerationProposal {
    * Video only: a cheap draft first (owner, 2026-11-06). A still of the opening frame on the cheapest image model, from the same plan and references, to check
    * the look before the expensive video. `turnId` is the draft's own private turn; the user may skip it.
    */
-  draft?: { turnId: string; modelId: string; modelName: string; neurons: number; /** A cheap 480p video (owner, 2026-11-08), else the opening-frame still. */ kind?: "video" };
+  draft?: { turnId: string; modelId: string; modelName: string; neurons: number;
+   /** "video": a cheap 480p video (owner, 2026-11-08); "frames": the source video's frames edited one by one (`frames`, each its own turn, `neurons` in all);
+    *  none: the opening-frame still. */ kind?: "video"|"frames"; frames?: { turnId: string; atSeconds: number }[]; /** The frames' ratio (the source video's). */ aspectRatio?: string };
   explicitRejected?: { modelId: string; reasonFa: string }; // user named a model that cannot satisfy the request
   /** Video: what the brief said about sound (lib/sound-intent.ts); the card's toggle starts there, else on. */
   soundWanted?: boolean;
