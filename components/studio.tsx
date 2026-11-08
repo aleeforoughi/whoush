@@ -729,7 +729,8 @@ export function Studio(){
   const linked=carriedTag?[...changes,carriedTag]:changes;
   const outgoing=uniqueById([...messages.flatMap(m=>m.attachments??[]).filter(a=>mentioned.includes(a.tag)&&!own.has(a.id)),...files,...(carried?[carried]:[])]);
   // Photos sent earlier in this chat (details only, no bytes): Whoush reuses ones it asked for instead of asking again. The latest ten, at most.
-  const priorPhotos=uniqueById(messages.flatMap(m=>m.attachments??[])).filter(a=>a.kind==="image"&&!outgoing.some(o=>o.id===a.id)).slice(-MAX_ATTACHMENTS);
+  // Earlier photos, and earlier videos where videos are checked (owner, 2026-11-08: a checked video stays usable in the next messages).
+  const priorPhotos=uniqueById(messages.flatMap(m=>m.attachments??[])).filter(a=>(a.kind==="image"||(a.kind==="video"&&videoReviewOn))&&!outgoing.some(o=>o.id===a.id)).slice(-MAX_ATTACHMENTS);
   const refs=referencedGenerations(linked,mentioned,generationSet),cardRefs=linked.filter(t=>generationSet.has(t));
   const generations=refs.flatMap(t=>{const g=generationMap.get(t);return g?[toGenerationRef(g)]:[];});
   const fits=validateAttachmentSet(outgoing);

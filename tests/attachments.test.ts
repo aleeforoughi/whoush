@@ -388,3 +388,11 @@ test("«فریم» resolves to the start or end frame from the brief; two frames
  assert.deepEqual(frames("یک ویدیو بساز",2),["start_frame","end_frame"],"no hint: first and last");
  assert.ok(inferAttachmentRoles("x",[{tag:"image1",kind:"image",role:"frame"}]).every(r=>r.roleSource==="user"));
 });
+test("owner (2026-11-08): a checked video goes to the server with its check id, like a photo; other kinds never carry one",()=>{
+ const id="33333333-3333-4333-8333-333333333333";
+ const video:LocalAttachment={id:crypto.randomUUID(),tag:"video1",kind:"video",mime:"video/mp4",bytes:2048,sha256:"c".repeat(64),name:"clip.mp4",width:64,height:64,durationSeconds:3};
+ const w=toWireAttachment(video,id);
+ assert.equal(w.reviewId,id,"the video's tick on the phone must reach the server");
+ assert.equal(CreativeTurnInputSchema.safeParse({text:"x",attachments:[w]}).success,true);
+ assert.equal(toWireAttachment({...video,tag:"audio1",kind:"audio",mime:"audio/mpeg"},id).reviewId,undefined);
+});
