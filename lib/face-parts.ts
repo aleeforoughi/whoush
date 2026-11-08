@@ -8,6 +8,7 @@
  */
 import {FaceLandmarker,FilesetResolver,ImageSegmenter} from "@mediapipe/tasks-vision";
 import type {Mask} from "./segment";
+import {refineHairEdge} from "./hair-matte";
 
 export type FacePart="lips"|"mouth"|"left_iris"|"right_iris"|"left_eye"|"right_eye"|"left_brow"|"right_brow"|"nose"|"skin"|"ear"|"hair"|"neck";
 export const FACE_PART_FA:Record<FacePart,string>={lips:"لب‌ها",mouth:"داخل دهان",left_iris:"عنبیه",right_iris:"عنبیه",left_eye:"چشم",right_eye:"چشم",left_brow:"ابرو",right_brow:"ابرو",nose:"بینی",skin:"پوست صورت",ear:"گوش",hair:"مو",neck:"گردن و پوست بدن"};
@@ -18,7 +19,7 @@ const NOSE=[168,6,197,195,5,4,1,19,94,2,98,97,326,327,64,294,48,278,49,279,129,3
 
 type Pt={x:number;y:number};
 type Face={lipsOuter:Pt[];lipsInner:Pt[];leftEye:Pt[];rightEye:Pt[];/** The coloured ring of each eye (iris and pupil) as a circle, clipped to the eye's lids. */leftIris:Pt[];rightIris:Pt[];leftBrow:Pt[];rightBrow:Pt[];nose:Pt[];oval:Pt[]};
-export type FaceAnalysis={w:number;h:number;cls:Uint8Array;faces:Face[]};
+export type FaceAnalysis={w:number;h:number;cls:Uint8Array;faces:Face[];/** The photo's pixels (RGBA), for the hair's strand edge. */rgba?:Uint8ClampedArray};
 
 let tasks:Promise<{face:FaceLandmarker;seg:ImageSegmenter}>|null=null;
 function load(){
@@ -88,6 +89,8 @@ export async function analyzeFaces(img:HTMLImageElement):Promise<FaceAnalysis|nu
    }
   }
   sr.close?.();
+  let rgba:Uint8ClampedArray|undefined;
+  try{const c=document.createElement("canvas");c.width=w;c.height=h;const x=c.getContext("2d",{willReadFrequently:true});if(x){x.drawImage(img,0,0,w,h);rgba=x.getImageData(0,0,w,h).data;}}catch{rgba=undefined;}
   const faces=fr.faceLandmarks.map(lm=>{
    const pts=lm.map(p=>({x:p.x*w,y:p.y*h}));
    const lips=loops(FaceLandmarker.FACE_LANDMARKS_LIPS,pts).sort((a,b)=>area(b)-area(a));
@@ -96,10 +99,20 @@ export async function analyzeFaces(img:HTMLImageElement):Promise<FaceAnalysis|nu
     leftBrow:browOutline(FaceLandmarker.FACE_LANDMARKS_LEFT_EYEBROW,pts),rightBrow:browOutline(FaceLandmarker.FACE_LANDMARKS_RIGHT_EYEBROW,pts),
     nose:hull(NOSE.filter(i=>pts[i]).map(i=>pts[i])),oval:loops(FaceLandmarker.FACE_LANDMARKS_FACE_OVAL,pts)[0]??[]};
   });
-  return {w,h,cls,faces};
+  return {w,h,cls,faces,...(rgba?{rgba}:{})};
  }catch(e){if(process.env.NODE_ENV!=="production")console.warn("[whoush] face parts unavailable:",e instanceof Error?e.message:e);return null;}
 }
 
+/**
+ * All the hair, with its strands (owner, 2026-11-08: "even thin hairs on the edge"): the segmenter's hair class, then the soft edge and flyaway strands
+ * added from the photo's colours (lib/hair-matte.ts), never over skin.
+ */
+export function hairPlane(a:FaceAnalysis):Uint8Array{
+ const {w,h,cls}=a,m=new Uint8Array(w*h);for(let i=0;i<m.length;i++)m[i]=cls[i]===HAIR?1:0;
+ if(!a.rgba)return m;
+ const skin=new Uint8Array(w*h);for(let i=0;i<skin.length;i++)skin[i]=cls[i]===FACE||cls[i]===BODY?1:0;
+ return refineHairEdge(a.rgba,4,w,h,m,skin);
+}
 /** Fills polygons into a 0/1 plane (w×h). */
 function rasterize(w:number,h:number,polys:Pt[][]):Uint8Array{
  const c=document.createElement("canvas");c.width=w;c.height=h;const ctx=c.getContext("2d",{willReadFrequently:true})!;
@@ -136,7 +149,7 @@ export function facePartAt(a:FaceAnalysis,x:number,y:number):{part:FacePart;mask
    if(inside(p,poly))return out(part,rasterize(w,h,[poly]));
  }
  const k=cls[Math.floor(y)*w+Math.floor(x)];
- if(k===HAIR){const m=new Uint8Array(w*h);for(let i=0;i<m.length;i++)m[i]=cls[i]===HAIR?1:0;return out("hair",m);}
+ if(k===HAIR)return out("hair",hairPlane(a));
  if(k===BODY)return out("neck",component(a,Math.floor(x),Math.floor(y),i=>cls[i]===BODY));
  if(k===FACE){
   const ovals=rasterize(w,h,faces.map(f=>f.oval));
@@ -179,7 +192,7 @@ export function facePartMasks(a:FaceAnalysis):{part:FacePart|"eyes"|"brows"|"iri
  // hands, without the eyes, eyebrows and lips, so a new tone never stops at the jaw.
  {const features=rasterize(w,h,faces.flatMap(f=>[f.lipsOuter,f.leftEye,f.rightEye,f.leftBrow,f.rightBrow]));
   const all=new Uint8Array(w*h);for(let i=0;i<all.length;i++)all[i]=(cls[i]===FACE||cls[i]===BODY||(ovals[i]&&cls[i]!==HAIR))&&!features[i]?1:0;add("all_skin",all);}
- const hair=new Uint8Array(w*h);for(let i=0;i<hair.length;i++)hair[i]=cls[i]===HAIR?1:0;add("hair",hair);
+ add("hair",hairPlane(a));
  const body=new Uint8Array(w*h);for(let i=0;i<body.length;i++)body[i]=cls[i]===BODY?1:0;add("neck",body);
  return out;
 }

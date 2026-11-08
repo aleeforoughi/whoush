@@ -95,7 +95,16 @@ Also found and fixed in testing:
 - The owner saw a rim of the old picture around a face and a cup. The lock faded in about 8 px inside the selection, so its edge kept the old colour. Now the whole selection is the model's, and a ring of about 0.5% of the longer side just outside it blends into the source. Re-locking the bronze-skin result removed the pale ring around the lips.
 - The generation card forced the planned ratio (a 3:4 close-up) on a locked edit that comes back at the photo's 3:2, which stretched it. The planned ratio now only reserves space until the picture loads.
 
-**Not verified:** colour-only hair changes (the edge strands), people with several faces, and all of this on an iPhone.
+**Hair strands (owner, 2026-11-08: "a more accurate hair masking, even thin hairs on the edge"):** the segmenter's hair is a 256×256 class scaled up, so the soft edge and flyaway strands fell outside it. `lib/hair-matte.ts` now adds them:
+- **Band:** a band of 3.5% of the longer side around the outline.
+- **Colour test:** a pixel is added when its colour lies at least 15% of the way from the local background colour towards the local hair colour.
+- **Connected only:** it must be connected to the hair (8 neighbours), and the result is cleaned into a solid halo.
+- **Add-only, never on skin:** it never removes hair and never adds pixels the segmenter calls skin.
+- **No smoothing:** hair masks are no longer edge-smoothed, which erased strands one or two pixels wide.
+
+On the portrait it added about 43,000 pixels around the hair in about 0.1 s (Node). A live copper colour change (dev, no charge) recoloured every flyaway strand and the parting, with no white left at the edges and no halo at the cheek.
+
+**Not verified:** people with several faces, dark hair on a dark background (low contrast: nothing is added there), and all of this on an iPhone.
 
 ## SAM 3.1: considered, not used
 

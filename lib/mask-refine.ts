@@ -52,7 +52,8 @@ export function refineMask(plane:Uint8Array,w:number,h:number,o:RefineOptions=RE
  // Specks: separate bits much smaller than the main part.
  const fg=components(m,w,h,1),largest=Math.max(...fg.size.slice(1));
  for(let i=0;i<w*h;i++){const l=fg.label[i];if(l&&fg.size[l]<o.minIsland*largest)m[i]=0;}
- // Edges: blur twice (close to a Gaussian) and cut at the middle.
+ // Edges: blur twice (close to a Gaussian) and cut at the middle. None for hair (smooth 0): it would erase strands a pixel or two wide.
+ if(o.smooth<=0)return m;
  const r=Math.max(1,Math.round(o.smooth*Math.max(w,h)));
  const f=new Float32Array(w*h);for(let i=0;i<w*h;i++)f[i]=m[i];
  boxBlur(f,w,h,r);boxBlur(f,w,h,r);

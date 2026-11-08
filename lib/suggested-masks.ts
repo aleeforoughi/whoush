@@ -89,7 +89,7 @@ export function exactAreas(photoUrl:string,areas:readonly SuggestedArea[],waitMs
       }else one=withRoom(one,w,h,box,clear);}
      for(let i=0;i<one.length;i++)if(one[i]){plane[i]=1;any=true;}
     }
-    out.push(any?{w,h,score:1,plane:refineMask(plane,w,h,{maxHole:0.002,minIsland:0.05,smooth:0.002}),...(used.size===1&&!used.has("object")?{part:[...used][0]}:{})}:null);
+    out.push(any?{w,h,score:1,plane:refineMask(plane,w,h,{maxHole:0.002,minIsland:0.05,smooth:used.has("hair")?0:0.002}),...(used.size===1&&!used.has("object")?{part:[...used][0]}:{})}:null);
    }
    return out;
   })();

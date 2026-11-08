@@ -135,7 +135,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
  async function objectAt(key:string,x:number,y:number){
   const fa=faces.current?await faces.current:null,part=fa?facePartAt(fa,x,y):null;
   if(part){const {w,h,plane}=part.mask,fromClasses=part.part==="skin"||part.part==="hair"||part.part==="neck"||part.part==="ear";
-   return {...part.mask,part:part.part,plane:refineMask(plane,w,h,{maxHole:0.002,minIsland:fromClasses?0.05:0.3,smooth:fromClasses?0.004:0.0012})};}
+   return {...part.mask,part:part.part,plane:refineMask(plane,w,h,{maxHole:0.002,minIsland:fromClasses?0.05:0.3,smooth:part.part==="hair"?0:fromClasses?0.004:0.0012})};}
   return maskAt(key,[[x,y]]);
  }
  async function wandTapNow(cx:number,cy:number){
