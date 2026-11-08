@@ -103,7 +103,8 @@ export async function lockToSelection(i:{source:Uint8Array;mask:Uint8Array;outpu
  if(!w||!h||src.info.channels!==3)return {skipped:"no_size"};
  const [M,O]=await Promise.all([
   sharp(i.mask).resize(w,h,{fit:"fill",kernel:"lanczos3"}).removeAlpha().greyscale().raw().toBuffer(),
-  sharp(i.output).rotate().resize(w,h,{fit:"fill",kernel:"lanczos3"}).removeAlpha().raw().toBuffer()]);
+  // Never stretched (owner, 2026-11-08: a result of another shape came back with a stretched face): scaled to cover the source and centred, then lined up.
+  sharp(i.output).rotate().resize(w,h,{fit:"cover",position:"centre",kernel:"lanczos3"}).removeAlpha().raw().toBuffer()]);
  const sel=new Uint8Array(N);let n=0;for(let p=0;p<N;p++)if(M[p]>127){sel[p]=1;n++;}
  if(n<20)return {skipped:"empty_mask"};
  // 1. Line the model's picture up with the source, measured outside the selection (kept clear of its edge) on a small grey copy.

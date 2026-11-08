@@ -33,7 +33,7 @@ import {safeReview} from "./upload-review";
 import {rememberRegionEdit} from "./region-restore";
 import {MEDIA_ROUTE,readMedia,storeMedia} from "./media-store";
 import {framePrompt,frameTimes,sourceFrames,type SourceFrame} from "./frame-draft";
-import {nearestAspectRatio} from "./aspect";
+import {POPULAR_ASPECT_RATIOS,nearestAspectRatio,nearestByValue} from "./aspect";
 import {reviewAvailable,reviewPlan,promptWithFixes,type PlanReviewer} from "./plan-review";
 import {findMediaModel} from "./catalog";
 import {triageAvailable,triageTurn,type TriageEffort,type TurnTriager,triageDeclines} from "./turn-triage";
@@ -868,19 +868,26 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   return {id:r.mediaId,url:MEDIA_ROUTE+r.mediaId,subjectFa:t,title:t,license:"user",creator:"",sourceUrl:"",source:"upload" as const,mime:r.mime};};
  const uploads:TurnReference[]=photos.flatMap(f=>f.regionEdit?[asRef(f.reviewId,f),asRef(f.regionEdit.guideReviewId,f,true)]:[asRef(f.reviewId,f)]);
  const painted=photos.filter(f=>f.regionEdit);
+ // An edit keeps the photo's own shape (owner, 2026-11-08: a retouch came back stretched): the planner's «source» or any other ratio becomes the photo's,
+ // as the nearest standard ratio, so the model is asked for that shape (a ratio it lacks then snaps to its nearest one as usual).
+ const editPhoto=painted[0]??photos.find(f=>f.role==="edit_reference");
+ if(editPhoto?.width&&editPhoto.height&&plan.camera){
+  const own=nearestAspectRatio(editPhoto.width+":"+editPhoto.height,POPULAR_ASPECT_RATIOS)??nearestByValue(editPhoto.width/editPhoto.height);
+  if(own)plan.camera={...plan.camera,aspectRatio:own};
+ }
  if(painted.length){
   // Change only the painted area, as the note says; everything else is locked. The rule leads the plan, the sentence leads the edit in the prompt.
   for(const f of painted){
    const tagFa=displayTag(f.tag),list=f.regionEdit!.regions.map(r=>"#ادیت-"+faPlain(r.n)+" ("+REGION_COLOR_FA[r.color]+"): «"+r.note+"»").join("؛ ");
    plan.hardConstraints=["فقط ناحیه‌های رنگ‌شدهٔ "+tagFa+" تغییر می‌کنند — "+list+" — و بقیهٔ عکس دقیقاً همان می‌ماند: چهره، بافت پوست (منافذ و جزئیات، بدون صاف‌شدن)، بدن، ژست، کادر، نور، تنظیمات رنگ (وایت‌بالانس، نوردهی، کنتراست، اشباع و گریدینگ) و پس‌زمینه",...plan.hardConstraints.filter(c=>!c.startsWith("فقط ناحیه‌های رنگ‌شدهٔ "+tagFa))];
   }
-  const lead=painted.map(f=>"Edit "+describeTagEn(f)+" only inside the areas painted in its marked copy, each as noted: "+f.regionEdit!.regions.map(r=>"the "+r.color+" area: "+r.note).join("; ")+". Do not regenerate the photo: everything outside these areas is copied from the source unchanged. "+GENERIC_EDIT_RULE_EN+". Inside each area, match the surrounding skin texture, grain, light and colour exactly so the change is invisible. The output is the edited photo only, with no paint and no marks.").join(" ");
+  const lead=painted.map(f=>"Edit "+describeTagEn(f)+" only inside the areas its region map marks, each as noted: "+f.regionEdit!.regions.map(r=>"the "+r.color+" area: "+r.note).join("; ")+". The region map is a separate black image where each area is a flat coloured shape at the same place as in the photo; it is a guide only: never draw its colours, shapes or black, and never tint the photo with them. Do not regenerate the photo: everything outside these areas is copied from the source unchanged, same framing and size. "+GENERIC_EDIT_RULE_EN+". Inside each area, keep the person's own skin tone and colours and match the surrounding texture, grain and light exactly so the change is invisible. The output is the edited photo only.").join(" ");
   // The provider prompt is the edit and the locks only (owner, 2026-11-06: change only that part, nothing else): no planner scene, camera, light or
   // style lines, which would read as a re-shoot of the whole photo.
   plan.mediaPrompt=lead.slice(0,3000);content=undefined;
  }
  if(uploads.length){
-  const order=" Attached reference images, in this order: "+photos.flatMap(f=>{const also=alsoNamed(f),names=describeTagEn(f)+(also.length?" (also named "+also.join(", ")+")":"");return f.regionEdit?[names,"the same photo with the areas to change painted in translucent colours (a guide only, never draw the paint)"]:[names];}).map((d,i)=>(i+1)+" = "+d).join("; ")+".";
+  const order=" Attached reference images, in this order: "+photos.flatMap(f=>{const also=alsoNamed(f),names=describeTagEn(f)+(also.length?" (also named "+also.join(", ")+")":"");return f.regionEdit?[names,"its region map: black, with each area to change as a flat coloured shape (a guide only, never drawn)"]:[names];}).map((d,i)=>(i+1)+" = "+d).join("; ")+".";
   plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-order.length))+order;
   if(content)content={...content,content:(content.content.slice(0,Math.max(0,3000-order.length))+order)};
  }

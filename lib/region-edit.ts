@@ -46,6 +46,27 @@ export async function renderGuide(photo:Blob,masks:readonly HTMLCanvasElement[])
  return out;
 }
 /**
+ * What the image model gets as the guide (owner, 2026-11-08: a retouch came back with the red and blue paint drawn on the face): not the photo with paint
+ * on it, which a model copies as if it were part of the picture, but a region map: black, with each area a flat shape in its colour, at the photo's
+ * proportions. Nothing in it looks like the photo, so nothing of it is drawn. The painted copy stays on the device, for the user to see.
+ */
+export async function renderRegionMap(masks:readonly HTMLCanvasElement[]):Promise<Blob>{
+ const m0=masks[0];if(!m0)throw new Error("no mask");
+ const k=Math.min(1,1536/Math.max(m0.width,m0.height)),w=Math.max(1,Math.round(m0.width*k)),h=Math.max(1,Math.round(m0.height*k));
+ const c=document.createElement("canvas");c.width=w;c.height=h;
+ const ctx=c.getContext("2d");if(!ctx)throw new Error("no canvas");
+ ctx.fillStyle="#000";ctx.fillRect(0,0,w,h);
+ for(const m of masks){
+  // Each layer's paint, made fully opaque in its own colour.
+  const t=document.createElement("canvas");t.width=w;t.height=h;const tx=t.getContext("2d")!;
+  tx.drawImage(m,0,0,w,h);const d=tx.getImageData(0,0,w,h);for(let i=3;i<d.data.length;i+=4)d.data[i]=d.data[i]>24?255:0;tx.putImageData(d,0,0);
+  ctx.drawImage(t,0,0);
+ }
+ const out=await new Promise<Blob|null>(r=>c.toBlob(r,"image/jpeg",0.95));
+ if(!out)throw new Error("no image");
+ return out;
+}
+/**
  * The exact selection for the lock (owner, 2026-11-08): every area's paint as white on black, at most 1536 pixels on its longer side, as a base64 PNG.
  * It goes to Whoush's server only, to keep every pixel outside it as it was; never to a model.
  */

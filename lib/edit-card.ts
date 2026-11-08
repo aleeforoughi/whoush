@@ -7,9 +7,9 @@ import {normalizePersian} from "./safety";
 export const EDIT_CARD_FA="عکس رو باز کن، روی همون قسمتی که می‌خوای عوض بشه بکش و بنویس چی بشه؛ بعدش خودم انجامش می‌دم.";
 export const EDIT_CARD_FINGLISH="Aks ro baz kon, ruye hamun ghesmati ke mikhay avaz besheh bekesh va benevis chi besheh; badesh khodam anjamesh midam.";
 export const EDIT_CARD_OPEN_FA="ادیت";
-/** «بساز» on an edit card: the areas Whoush marked go as they are, without opening the editor. */
-export const EDIT_CARD_GENERATE_FA="بساز";
-/** While «بساز» prepares the exact areas (a few seconds on a phone). */
+/** «اعمال کن» on an edit card (owner, 2026-11-08; was «بساز»): the areas Whoush marked go as they are, without opening the editor. */
+export const EDIT_CARD_GENERATE_FA="اعمال کن";
+/** While «اعمال کن» prepares the exact areas (a few seconds on a phone). */
 export const EDIT_PREPARING_FA="دارم آماده‌ش می‌کنم…";
 /** More than one photo: one card each. */
 export const EDIT_CARDS_FA="هر عکس رو باز کن، روی جاهایی که می‌خوای عوض بشه بکش و بنویس چی بشه؛ بعدش خودم انجامش می‌دم.";
@@ -68,8 +68,8 @@ export function editCheckSkip(text:string):string|null{
 /** An edit card may come with regions Whoush painted itself: each with its comment and its boxes (0..1 of the photo). */
 export type SuggestedEdit={note:string;boxes:[number,number,number,number][]};
 /** An edit of the whole photo: go ahead as asked, or mark places first. */
-export const EDIT_WHOLE_FA="این تغییر روی کل عکسه. اگه همین‌طوری درسته «بساز» رو بزن؛ اگه می‌خوای فقط جاهای خاصی عوض بشه، «ادیت» رو بزن و علامتشون بزن.";
-export const EDIT_WHOLE_FINGLISH="In taghir ruye kole akseh. Ageh hamintori dorosteh \"Besaz\" ro bezan; ageh mikhay faghat jahaye khasi avaz besheh, \"Edit\" ro bezan o alamateshun bezan.";
+export const EDIT_WHOLE_FA="این تغییر روی کل عکسه. اگه همین‌طوری درسته «اعمال کن» رو بزن؛ اگه می‌خوای فقط جاهای خاصی عوض بشه، «ادیت» رو بزن و علامتشون بزن.";
+export const EDIT_WHOLE_FINGLISH="In taghir ruye kole akseh. Ageh hamintori dorosteh \"Emal kon\" ro bezan; ageh mikhay faghat jahaye khasi avaz besheh, \"Edit\" ro bezan o alamateshun bezan.";
 /** «بساز» on a card with nothing marked: the user's answer, which goes ahead with the request as asked. */
 export const EDIT_AS_ASKED_FA="همین‌طوری بساز";
 export const SUGGESTED_FA="این قسمت‌ها رو برات علامت زدم و توضیح هر کدوم رو نوشتم. اگه درسته «ادیت» رو بزن و ثبت کن، یا تغییرش بده.";

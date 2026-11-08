@@ -42,7 +42,7 @@ import {fa,faBytes,faDimensions,faDuration} from "@/lib/format";
 import {REVIEW_FAILED_FA,WAITING_FA,photoReviewEnabled,reviewPhoto,reviewStopFa,reviewVideo,type PhotoReview} from "@/lib/photo-review";
 import {PhotoReviewOverlay,ReviewRing} from "@/components/photo-review-badge";
 import {RegionEditor} from "@/components/region-editor";
-import {renderGuide,renderMask,type Region} from "@/lib/region-edit";
+import {renderGuide,renderMask,renderRegionMap,type Region} from "@/lib/region-edit";
 import type {SuggestedEdit} from "@/lib/edit-card";
 import {STORAGE_FULL_FA,getProject,listAssets,saveAsset,saveProject} from "@/lib/project-store";
 import {MAX_MESSAGES,draftLabelFa,assetToAttachment,attachmentToAsset,autoTitle,rerunSource,uniqueById,answerBrief,historyFor,toggleReaction,generationTagsIn,referencedGenerations,toGenerationRef,withGenerationTags,type GifSnapshot,type ProposalSnapshot,type JobRerun,type JobSnapshot,type Project,type StoredMessage} from "@/lib/projects";
@@ -676,8 +676,9 @@ export function Studio(){
  }
  async function applyEditTo(e:{a:LocalAttachment;fromTray:boolean},{masks,regions}:{masks:HTMLCanvasElement[];regions:Region[]}){
   const blob=blobs.current.get(e.a.id);if(!blob)return;
-  let guide:Blob;try{guide=await renderGuide(blob,masks);}catch{setError("علامت‌ها ذخیره نشد. دوباره امتحان کن.");return;}
-  const guideId=crypto.randomUUID(),guideUrl=URL.createObjectURL(guide);urls.current.add(guideUrl);blobs.current.set(guideId,guide);
+  // The user sees the photo with its marks (`guide`); the model gets the region map (black, flat colour areas), never the painted photo, which it would copy.
+  let guide:Blob,map:Blob;try{[guide,map]=await Promise.all([renderGuide(blob,masks),renderRegionMap(masks)]);}catch{setError("علامت‌ها ذخیره نشد. دوباره امتحان کن.");return;}
+  const guideId=crypto.randomUUID(),guideUrl=URL.createObjectURL(guide);urls.current.add(guideUrl);blobs.current.set(guideId,map);
   // The exact selection goes with it, so the result is locked to it (lib/region-restore.ts); an edit without one still gets the guessed restore.
   const mask=await renderMask(masks).catch(()=>undefined);
   const edited:LocalAttachment={...e.a,regionEdit:{regions,guideId,guideUrl,...(mask?{mask}:{})}};

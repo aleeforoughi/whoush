@@ -35,3 +35,11 @@ export function popularAspectRatios(offered:readonly string[],keep:ReadonlyArray
  for(const r of [...offered].sort((a,b)=>rank(a)-rank(b))){if(out.length>=n)break;if(!out.includes(r))out.push(r);}
  return byShape(out.slice(0,Math.max(n,out.length)));
 }
+
+/** The standard ratio closest to a width/height value (a photo's 1264×848 is 3:2), by log distance. */
+export function nearestByValue(v:number):string|undefined{
+ if(!(v>0))return undefined;
+ let best:string|undefined,bestD=Infinity;
+ for(const r of POPULAR_ASPECT_RATIOS){const x=aspectValue(r)!;const d=Math.abs(Math.log(x/v));if(d<bestD){best=r;bestD=d;}}
+ return best;
+}

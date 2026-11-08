@@ -46,3 +46,11 @@ test("popular ratios: the most used ones the model offers, tallest to widest; a 
  assert.deepEqual(popularAspectRatios(["4:3"],[],3),["4:3"]);
  assert.deepEqual(byShape(["16:9","9:16","1:1"]),["9:16","1:1","16:9"]);
 });
+
+test("an edit keeps the photo's own shape: pixel sizes map to the nearest standard ratio",async()=>{
+ const {nearestByValue}=await import("../lib/aspect");
+ assert.equal(nearestByValue(1264/848),"3:2");
+ assert.equal(nearestByValue(1650/2048),"4:5");
+ assert.equal(nearestByValue(1080/1920),"9:16");
+ assert.equal(nearestByValue(0),undefined);
+});

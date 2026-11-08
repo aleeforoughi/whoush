@@ -31,3 +31,15 @@ test("selection lock: an empty mask changes nothing",async()=>{
  const S=source(),r=await lockToSelection({source:await png(S,3),mask:await png(Buffer.alloc(W*H),1),output:await png(S,3)});
  assert.ok("skipped" in r);
 });
+
+test("selection lock: a result of another shape is scaled proportionally, never stretched",async()=>{
+ const S=source();
+ const M=Buffer.alloc(W*H);for(let y=90;y<150;y++)for(let x=130;x<190;x++)M[y*W+x]=255;
+ // The model answered square (240×240): the source's centre, uncropped height, edit drawn as a green square in the middle.
+ const SQ=240,O=Buffer.alloc(SQ*SQ*3),off=(W-SQ)/2;
+ for(let y=0;y<SQ;y++)for(let x=0;x<SQ;x++){const q=(y*SQ+x)*3,p=(y*W+x+off)*3;for(let c=0;c<3;c++)O[q+c]=S[p+c];if(x+off>=135&&x+off<185&&y>=95&&y<145){O[q]=0;O[q+1]=255;O[q+2]=0;}}
+ const r=await lockToSelection({source:await png(S,3),mask:await png(M,1),output:await sharp(O,{raw:{width:SQ,height:SQ,channels:3}}).png().toBuffer()});
+ assert.ok(!("skipped" in r));if("skipped" in r)return;
+ const out=await sharp(r.bytes).raw().toBuffer(),mid=(120*W+160)*3;
+ assert.deepEqual([out[mid],out[mid+1],out[mid+2]],[0,255,0],"the edit lands in place, at its own proportions");
+});

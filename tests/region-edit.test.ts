@@ -27,10 +27,11 @@ test("brush edit: each painted region (its colour and comment) changes only its 
  assert.equal(p.plan.references[0].role,"edit_reference","a painted photo is the photo to edit");
  assert.ok(p.plan.hardConstraints[0].startsWith("فقط ناحیه‌های رنگ‌شدهٔ #تصویر-۱ تغییر می‌کنند")&&p.plan.hardConstraints[0].includes("#ادیت-۲ (آبی)"),p.plan.hardConstraints[0]);
  const prompt=getPrivateMediaPrompt(p.turnId)!;
- assert.match(prompt,/^Edit \[reference image 1[^\]]*\] only inside the areas painted in its marked copy, each as noted: the red area: رژ لب قرمز مات; the blue area: موها کمی روشن‌تر\. Do not regenerate the photo: everything outside these areas is copied from the source unchanged\. Preserve all unedited source regions pixel-faithfully/);
+ assert.match(prompt,/^Edit \[reference image 1[^\]]*\] only inside the areas its region map marks, each as noted: the red area: رژ لب قرمز مات; the blue area: موها کمی روشن‌تر\. The region map is a separate black image .*never draw its colours, shapes or black.*Do not regenerate the photo: everything outside these areas is copied from the source unchanged, same framing and size\. Preserve all unedited source regions pixel-faithfully/);
  assert.ok(!/Camera and light|Key light|Wide shot|golden-hour|horizon/.test(prompt),"no scene, camera or light lines: they would read as a re-shoot");
  assert.ok(/skin texture exactly as in the source/.test(prompt)&&/same white balance, exposure, contrast, saturation/.test(prompt),"skin-texture and colour-settings locks");
- assert.match(prompt,/1 = \[reference image 1[^\]]*\]; 2 = the same photo with the areas to change painted in translucent colours/);
+ // Owner, 2026-11-08: the painted photo got its paint copied into the result; the model now gets a region map (black, flat colour areas) as the guide.
+ assert.match(prompt,/1 = \[reference image 1[^\]]*\]; 2 = its region map: black, with each area to change as a flat coloured shape \(a guide only, never drawn\)/);
  assert.deepEqual(getTurnReferences(p.turnId).map(x=>x.id),[safeReview(src.reviewId)!.mediaId,safeReview(guide.reviewId)!.mediaId],"the photo, then its marked copy");
 });
 
