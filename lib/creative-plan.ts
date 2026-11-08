@@ -58,7 +58,11 @@ export const MAX_GENERATION_SUMMARY_CHARS=2000;
 export const GenerationRefSchema=z.object({tag:z.string().regex(GENERATION_TAG_PATTERN),mediaKind:z.enum(["image","video"]),summaryFa:z.string().min(1).max(MAX_GENERATION_SUMMARY_CHARS)}).strict();
 export type GenerationRef=z.infer<typeof GenerationRefSchema>;
 /** Recent turns of the chat sent with a message, so Whoush stays conversation aware. Untrusted data, safety-checked, shown to the planner only inside <history>. */
-export const MAX_HISTORY_TURNS=8,MAX_HISTORY_CHARS=600;
+/**
+ * The chat Whoush reads again with every message (owner, 2026-11-08: "the solution is the ability of Whoush to read the chats again"; it forgot a request a few
+ * messages back): up to 40 turns, each up to 1500 characters, within 24,000 characters in all (newest kept first).
+ */
+export const MAX_HISTORY_TURNS=40,MAX_HISTORY_CHARS=1500,MAX_HISTORY_TOTAL_CHARS=24_000;
 const HistoryTurnSchema=z.object({role:z.enum(["user","agent"]),text:z.string().max(MAX_HISTORY_CHARS),gif:z.literal(true).optional()}).strict();
 export type HistoryTurn=z.infer<typeof HistoryTurnSchema>;
 /** GIF moods Whoush can send; the server turns one into a G-rated GIF (or nothing). */
@@ -89,7 +93,7 @@ export const CreativeTurnInputSchema=z.object({
  continueWith:z.array(z.string().regex(TAG_PATTERN)).max(MAX_ATTACHMENTS).optional(),
  /** The message answers Whoush's question: the brief is the original request plus the answer, and Whoush decides instead of asking again. */
  answersQuestion:z.boolean().optional(),
- history:z.array(HistoryTurnSchema).max(MAX_HISTORY_TURNS).optional(),
+ history:z.array(HistoryTurnSchema).max(MAX_HISTORY_TURNS).refine(h=>h.reduce((n,t)=>n+t.text.length,0)<=MAX_HISTORY_TOTAL_CHARS,"history too long").optional(),
  /** The scene the user arranged in the interactive diagrams (camera, framing, lights). Applied to the plan exactly; the media prompt and constraints follow it. */
  stagingOverride:z.lazy(()=>StagingSchema.extend({subject:z.enum(SUBJECTS)})).optional(),
  /** The aspect ratio the user chose in the frame diagram (images): applied to the camera plan. */

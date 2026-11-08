@@ -108,7 +108,7 @@ export const triageTurn:TurnTriager=async input=>{
  const model=triageModel();
  if(!llmGate().live||!model||!process.env.ANTHROPIC_API_KEY)return null;
  const prep=preparePrivateCreativeRequest({prompt:input.text});
- const chat=input.history.slice(-6).map(t=>(t.role==="user"?"user: ":"whoush: ")+t.text.replace(/\s+/g," ").slice(0,1200)).join("\n");
+ const chat=input.history.map(t=>(t.role==="user"?"user: ":"whoush: ")+t.text.replace(/\s+/g," ").slice(0,1200)).join("\n");
  const files=input.files?.length?input.files.map(f=>f.tagFa+": "+(f.checked?"passed":"not checked")).join("\n"):"none";
  const user=(chat?"<chat>\n"+chat+"\n</chat>\n":"")+"<files>\n"+files+"\n</files>\n"+"Earlier generations in this chat: "+input.generations+". Script: "+input.script+".\n<message>\n"+input.text.slice(0,4000)+"\n</message>";
  const client=new Anthropic({apiKey:process.env.ANTHROPIC_API_KEY,maxRetries:0,timeout:15_000});

@@ -5,7 +5,8 @@ import {reviewVideoUpload} from "../lib/video-review";
 import {forgetReviewsForTests} from "../lib/upload-review";
 import {orchestrateCreativeTurn,deterministicPlanner,seriousCorrections,faMediaReview,resumeAfterReview,RESUME_QUESTION_FA,type OrchestratorResult} from "../lib/orchestrator";
 import {parseNdjson} from "../lib/agent-stream";
-import {validateProject,type Project} from "../lib/projects";
+import {historyFor,validateProject,type Project} from "../lib/projects";
+import {MAX_HISTORY_TOTAL_CHARS,MAX_HISTORY_TURNS} from "../lib/creative-plan";
 import {newTagCounters} from "../lib/attachments";
 
 const base={mode:"make" as const,effort:"standard" as const,replyFa:"",questionFa:"",choices:[],react:null,storyFa:[]};
@@ -102,4 +103,24 @@ test("owner (2026-11-08): «تموم شد؟» after files were set aside: once t
  assert.match(q.message,/#ویدیو-۲/);assert.equal(q.choices?.[0].replyFa,request);assert.equal(q.question,RESUME_QUESTION_FA);
  assert.equal(resumeAfterReview("تموم شد؟",0,history,[video()]),undefined,"still unchecked: no offer");
  assert.equal(resumeAfterReview("یه گربه بساز",0,history,[video(ok.reviewId)]),undefined,"a new request is not a status question");
+});
+test("owner (2026-11-08): Whoush reads the chat again: the whole chat goes with a message, newest first within the budget",()=>{
+ const long=Array.from({length:60},(_,k)=>({role:(k%2?"agent":"user") as "user"|"agent",text:"پیام "+k+" "+"ا".repeat(900)}));
+ const h=historyFor(long);
+ assert.ok(h.length<=MAX_HISTORY_TURNS&&h.reduce((n,t)=>n+t.text.length,0)<=MAX_HISTORY_TOTAL_CHARS);
+ assert.match(h.at(-1)!.text,/^پیام 59 /,"the newest message is always there");
+ const short=historyFor(Array.from({length:30},(_,k)=>({role:(k%2?"agent":"user") as "user"|"agent",text:"پیام "+k})));
+ assert.equal(short.length,30,"a normal chat is read in full, not only its last 8 messages");
+ assert.equal(short[0].text,"پیام 0");
+});
+test("owner live chat (2026-11-08): the request is resumed even after made-up 'still checking' replies, from its brief and its #files message",async()=>{
+ forgetReviewsForTests();
+ const ok=await reviewVideoUpload(new Uint8Array([0,0,0,24,0x66,0x74,0x79,0x70,0x69,0x73,0x6f,0x6d,0,0,0]),"video/mp4",{sample:async()=>[new Uint8Array([1])],inspect:async()=>({category:"none",person:false}),soundtrack:async()=>"clean",store:async()=>({id:"66666666-6666-4666-8666-666666666666",url:"/x"})});
+ const video={id:crypto.randomUUID(),tag:"video2",kind:"video",mime:"video/mp4",reviewId:ok.reviewId};
+ const brief="می‌خوام همه حرکات این فیلم رو نگه دارم ولی آدم اول رو ریپلیس کنم.";
+ const history=[{role:"user" as const,text:brief},{role:"user" as const,text:brief+" #ویدیو-۲"},{role:"user" as const,text:"#ویدیو-۲"},
+  {role:"agent" as const,text:faMediaReview(["#ویدیو-۲"],["video"])},{role:"user" as const,text:"ایمنی شد؟"},{role:"agent" as const,text:"هنوز نه، خبرت می‌کنم."}];
+ const r=resumeAfterReview("تموم شد؟",0,history,[video]);
+ assert.equal(r?.request,brief+" #ویدیو-۲","each message once, the one already inside another dropped");
+ assert.equal(resumeAfterReview("تموم شد؟",0,[...history,{role:"user",text:"نه ولش کن، یه گربه‌ی نارنجی روی پشت‌بوم تهران بساز با نور غروب"}],[video]),undefined,"a new request since: nothing to resume");
 });

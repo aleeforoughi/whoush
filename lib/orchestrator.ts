@@ -112,9 +112,13 @@ export const RESUME_QUESTION_FA="دوباره بسازمش؟",RESUME_LABEL_FA="�
 /** When «تموم شد؟» follows a turn that set files aside, and every file the set-aside request named has now passed: what to say, and the request to send again. */
 export function resumeAfterReview(text:string,ownFiles:number,history:readonly {role:"user"|"agent";text:string}[],prior:readonly {tag:string;kind:string;reviewId?:string}[]):{message:string;request:string}|undefined{
  if(ownFiles||text.length>60||!DONE_QUESTION.test(normalizePersian(text)))return undefined;
- const i=history.length-1;
- if(i<1||history[i].role!=="agent"||!history[i].text.includes(SET_ASIDE_FA))return undefined;
- const request=[...history.slice(0,i)].reverse().find(t=>t.role==="user")?.text;
+ // The latest turn that set files aside, with only short messages from the user since («ایمنی شد؟», «تموم شد؟»), whatever Whoush answered them.
+ const i=history.findLastIndex(t=>t.role==="agent"&&t.text.includes(SET_ASIDE_FA));
+ if(i<1||history.slice(i+1).some(t=>t.role==="user"&&t.text.length>60))return undefined;
+ // The request is the user's messages just before it (a brief, then its #files): each kept once, a message already inside another one dropped.
+ let j=i;while(j>0&&history[j-1].role==="user")j--;
+ const run=[...new Set(history.slice(j,i).map(t=>t.text.trim()).filter(Boolean))];
+ const request=run.filter(t=>!run.some(o=>o!==t&&o.includes(t))).join(" ");
  if(!request)return undefined;
  const named=parseMentions(request).map(tag=>prior.find(p=>p.tag===tag)).filter((p):p is NonNullable<typeof p>=>Boolean(p)&&isMediaKind(p!.kind as never));
  if(!named.length||named.some(isUnchecked))return undefined;

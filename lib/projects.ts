@@ -3,7 +3,7 @@ import {isQuestionChoices,type QuestionChoice} from "./media-intent";
 import type {SuggestedEdit} from "./edit-card";
 import {findReferenceNeed,type ReferenceRequest} from "./reference-needs";
 import {ATTACHMENT_KIND_IDS,ATTACHMENT_ROLE_IDS,MAX_ATTACHMENTS,displayTag,isGenerationTag,nextGenerationTag,splitMentions,tagPrefix,type AttachmentKind,type AttachmentRole,type AttachmentSpeech,type LocalAttachment,type TagCounters} from "./attachments";
-import {GENERATION_STYLES,MAX_GENERATION_REFS,MAX_GENERATION_SUMMARY_CHARS,MAX_HISTORY_CHARS,MAX_HISTORY_TURNS,REACTION_EMOJIS,STYLE_LABEL_FA,type GenerationRef,type GenerationStyle,type HistoryTurn,type PublicCreativePlan,type ReactionEmoji} from "./creative-plan";
+import {GENERATION_STYLES,MAX_GENERATION_REFS,MAX_GENERATION_SUMMARY_CHARS,MAX_HISTORY_CHARS,MAX_HISTORY_TOTAL_CHARS,MAX_HISTORY_TURNS,REACTION_EMOJIS,STYLE_LABEL_FA,type GenerationRef,type GenerationStyle,type HistoryTurn,type PublicCreativePlan,type ReactionEmoji} from "./creative-plan";
 import {faPlain} from "./format";
 import {MODES} from "./mode";
 import {UNSUPPORTED_REASONS,type AgentPreference,type UnsupportedReason} from "./types";
@@ -311,15 +311,19 @@ export function groupReactions(list:readonly Reaction[]|undefined):{emoji:Reacti
 }
 type HistorySource={role:"user"|"agent";text:string;kind?:string;snapshot?:unknown;brief?:string};
 /**
- * The recent turns sent with a message so Whoush stays conversation aware: the last MAX_HISTORY_TURNS messages, each cut to MAX_HISTORY_CHARS. A proposal adds its
+ * The chat sent with a message so Whoush reads it again (owner, 2026-11-08): as many of the latest messages as fit MAX_HISTORY_TURNS and
+ * MAX_HISTORY_TOTAL_CHARS (newest first, so a long chat drops its oldest messages), each cut to MAX_HISTORY_CHARS. A proposal adds its
  * generation tag and intent, a question its question, a GIF reads as «[GIF: title]» and is flagged so Whoush does not send GIFs back to back.
  */
 export function historyFor(messages:readonly HistorySource[]):HistoryTurn[]{
- return messages.slice(-MAX_HISTORY_TURNS).map(m=>{
+ const turns=messages.map(m=>{
   let text=m.text;
   if(m.kind==="proposal"){const s=m.snapshot as ProposalSnapshot;text=[m.text,(s.tag?displayTag(s.tag)+": ":"")+s.intentSummaryFa].filter(Boolean).join("\n");}
   else if(m.kind==="question")text=[m.text,(m.snapshot as QuestionSnapshot).question].filter(Boolean).join("\n");
   else if(m.kind==="gif")text="[GIF: "+(m.snapshot as GifSnapshot).title+"]";
   return {role:m.role,text:text.slice(0,MAX_HISTORY_CHARS),...(m.kind==="gif"?{gif:true as const}:{})};
  }).filter(t=>t.text.trim().length>0);
+ const kept:HistoryTurn[]=[];let chars=0;
+ for(let i=turns.length-1;i>=0&&kept.length<MAX_HISTORY_TURNS;i--){chars+=turns[i].text.length;if(chars>MAX_HISTORY_TOTAL_CHARS)break;kept.unshift(turns[i]);}
+ return kept;
 }
