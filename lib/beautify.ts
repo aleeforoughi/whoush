@@ -40,11 +40,11 @@ const ON:Record<BeautifyPart,string>={
  camera:"CAMERA: undo the low/high angle and close wide lens that deform the face: a slight move to eye level, 85 mm look, a perspective warp of the face to its true shape. Head keeps its turn; level, centred; focus on the eyes, f/2.8.",
  pose:"POSE: keep the face's emotion, refined into a slight model gesture: eyes to the lens with a slight squinch, chin a touch forward and down, gentle tilt, relaxed angled shoulders; confident, never sexualised.",
  light:"LIGHT: soften harsh, top or back light; soft frontal fill on face and eyes, even flattering exposure, catchlights.",
- skin:"SKIN: even tone, no shine, blemishes and tired under-eyes softened; pores and texture fully kept.",
- grooming:"GROOMING: hair cleanly brushed and styled, neat edges, no flyaways; thinning filled with the hairline unchanged. Beard freshly barber-trimmed to an even length, the skin above the cheek line and below the neckline clean-shaven and smooth, crisp lines; same style. Brows shaped.",
+ skin:"SKIN: even tone, no shine; acne, bumps, blemishes and irregular or enlarged pores polished away; tired under-eyes rested; natural fine pores and texture kept.",
+ grooming:"GROOMING: hair cleanly brushed and styled, neat edges, no flyaways; thinning filled with the hairline unchanged. Beard freshly barber-trimmed to an even length; the upper cheeks above the beard line (stray stubble included) and the neck below the neckline clean-shaven and smooth, crisp lines; same style. Brows shaped.",
  shape:"FACE: within their features: less puffiness, a natural defined jawline; the nose visibly but naturally refined (a slimmer bridge, a neater, slightly lifted tip, in proportion with the face); lips even.",
  clothes:"CLOTHES: same garment, freshly laundered and steamed: no lint, hair or creases.",
- color:"COLOUR: natural pro grade in the photo's mood: balanced exposure, refined contrast, richer true colour, recovered highlights, lifted shadows, gentle clarity."
+ color:"COLOUR: natural pro grade in the photo's mood: balanced exposure and contrast, richer true colour, recovered highlights, lifted shadows."
 };
 const OFF:Record<BeautifyPart,string>={
  camera:"Camera: the same angle, lens and focus.",pose:"Posture and expression: exactly as in the photo.",light:"Light: the photo's own light.",
@@ -60,7 +60,7 @@ const OFF:Record<BeautifyPart,string>={
 export function beautifyPrompt(ref:string,parts:readonly BeautifyPart[],issues:readonly BeautifyIssue[]=[],minor=false):string{
  const on=new Set(parts.filter(p=>!minor||BEAUTIFY_PARTS_MINOR.includes(p)));
  // What was seen, in a few words per part (the brief stays within the plan's 3,000-character prompt).
- const seen=(p:BeautifyPart)=>{const n=issues.filter(i=>i.part===p).map(i=>i.noteEn.trim().slice(0,60)).filter(Boolean);return n.length?" Seen: "+n.join("; ")+".":"";};
+ const seen=(p:BeautifyPart)=>{const n=issues.filter(i=>i.part===p).map(i=>i.noteEn.trim().slice(0,50)).filter(Boolean);return n.length?" Seen: "+n.join("; ")+".":"";};
  return ["TASK: EDITORIAL BEAUTIFY of "+ref+": a pro photographer's and retoucher's version of this photo. Every fix below done fully and visibly, all natural.",
   "GOAL: social-media ready: they proudly post it and get likes. Before finishing ask: would I share it for compliments? Beautiful? Still them? All three must be yes.",
   "MOOD: keep the vibe: same moment, setting and background in view, same daylight and colour mood, their own expression.",
