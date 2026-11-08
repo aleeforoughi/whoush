@@ -49,11 +49,20 @@ function hasWebGL():boolean{
 const noSubscribe=()=>()=>{};
 /** The 3D frame is used when the browser can draw it (never on the server). */
 const useWebGL=()=>useSyncExternalStore(noSubscribe,hasWebGL,()=>false);
-/** Whether an element is on screen (or near it), so heavy views draw only while they can be seen. */
-function useOnScreen(el:Element|null):boolean{
+/**
+ * Whether an element is on screen (or near it), so heavy views draw only while they can be seen. Building a view is held until scrolling pauses
+ * (owner, 2026-11-08: on the iPhone the chat jumped at the card under «بوم»: building the scene mid-scroll stalled the momentum scroll). `keep`: once
+ * built, it stays (the CSS scene: no rebuilding each time it scrolls past); without it a view is dropped off screen (WebGL: phones allow few contexts).
+ */
+function useOnScreen(el:Element|null,keep=false):boolean{
  const [on,setOn]=useState(false);
  useEffect(()=>{if(!el||typeof IntersectionObserver==="undefined")return;
-  const io=new IntersectionObserver(es=>setOn(es.some(e=>e.isIntersecting)),{rootMargin:"200px"});io.observe(el);return ()=>io.disconnect();},[el]);
+  let near=false,t=0,last=0;
+  const settle=()=>{window.clearTimeout(t);t=window.setTimeout(()=>{if(performance.now()-last<140)return settle();setOn(v=>near||(keep&&v));},150);};
+  const onScroll=()=>{last=performance.now();};
+  const io=new IntersectionObserver(es=>{near=es.some(e=>e.isIntersecting);if(near)settle();else if(!keep)setOn(false);},{rootMargin:"200px"});
+  io.observe(el);document.addEventListener("scroll",onScroll,{capture:true,passive:true});
+  return ()=>{io.disconnect();document.removeEventListener("scroll",onScroll,{capture:true});window.clearTimeout(t);};},[el,keep]);
  return Boolean(el)&&on;
 }
 /** Sets a state only when its value really changed (the 3D view reports on every draw). */
@@ -170,9 +179,9 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  // The frame in 3D when the browser can draw it, and its full-screen view.
  const webgl=useWebGL(),[fullscreen,setFullscreen]=useState(false);
  // One WebGL view per open, visible frame (browsers allow only a few at once): hidden or scrolled-away cards draw nothing in 3D.
- const frameArea=useRef<HTMLDivElement|null>(null),[frameEl,setFrameEl]=useState<HTMLDivElement|null>(null),onScreen=useOnScreen(frameEl);
+ const frameArea=useRef<HTMLDivElement|null>(null),[frameEl,setFrameEl]=useState<HTMLDivElement|null>(null),onScreen=useOnScreen(frameEl,FRAME_RENDERER==="css");
  // The collapsed card's frame snapshot: the real frame, drawn only while it is on screen (a long chat holds many cards).
- const [snapEl,setSnapEl]=useState<HTMLSpanElement|null>(null),snapOnScreen=useOnScreen(snapEl);
+ const [snapEl,setSnapEl]=useState<HTMLSpanElement|null>(null),snapOnScreen=useOnScreen(snapEl,FRAME_RENDERER==="css");
  /** Back to Whoush's own choice: the centre point on the dominant subject where it stands now, with Whoush's original framing (the crop pan). */
  const resetFocus=()=>{
   setFocusProps(draft.props);

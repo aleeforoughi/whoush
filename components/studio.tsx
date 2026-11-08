@@ -1,6 +1,6 @@
 "use client";
 import {useUiLang} from "@/components/ui-language";
-import {useEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
+import {useEffect,useLayoutEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
 import Link from "next/link";
 import {useRouter,useSearchParams} from "next/navigation";
 import {ArrowUp,ChevronLeft,CircleAlert,Clapperboard,Eye,Hash,Info,LoaderCircle,MessageCircle,Mic,Smile,Sparkles,Star,Upload as UploadIcon,UserRound,X} from "lucide-react";
@@ -121,9 +121,12 @@ export function Studio(){
  }
  // Measured only while unfolded (owner, 2026-11-08: the last card jumped): folding the chat box must not change the chat's size, or the browser moves
  // the scroll and the end-follower pulls the reader back down. The padding keeps the full box's height.
- const compactRef=useRef(false);
- useEffect(()=>{compactRef.current=compact;},[compact]);
- useEffect(()=>{const el=composerRef.current;if(!el||typeof ResizeObserver==="undefined")return;const ro=new ResizeObserver(()=>{if(!compactRef.current)setComposerH(Math.round(el.getBoundingClientRect().height));});ro.observe(el);return()=>ro.disconnect();},[]);
+ // The fold state is known before the browser measures (a layout effect), and the 300ms fold animation is never measured: a height from the middle of
+ // the animation would change the padding too. After unfolding, the settled height is measured once.
+ const compactRef=useRef(false),foldAt=useRef(0);
+ useLayoutEffect(()=>{compactRef.current=compact;foldAt.current=performance.now();
+  if(compact)return;const t=window.setTimeout(()=>{const el=composerRef.current;if(el&&!compactRef.current)setComposerH(Math.round(el.getBoundingClientRect().height));},360);return()=>window.clearTimeout(t);},[compact]);
+ useEffect(()=>{const el=composerRef.current;if(!el||typeof ResizeObserver==="undefined")return;const ro=new ResizeObserver(()=>{if(!compactRef.current&&performance.now()-foldAt.current>340)setComposerH(Math.round(el.getBoundingClientRect().height));});ro.observe(el);return()=>ro.disconnect();},[]);
  const uiLang=useUiLang();
  const [proposal,setProposal]=useState<AgentProposal|null>(null);
  /** The message that carries the live (approvable) proposal; every other proposal in the transcript is a read-only record. */
@@ -439,15 +442,17 @@ export function Studio(){
   * sends a message or is already at the end. A generation's card updates every few seconds; scrolling to the end on each update pulled the user back
   * down while they read. While at the end, content that grows (an image finishing loading) keeps them at the end; Safari has no scroll anchoring.
   */
+ const logRef=useRef<HTMLDivElement>(null);
+ /** To the chat's end by its own scroll position: scrollIntoView also scrolls every scrolling ancestor, which moved the whole page on the iPhone. */
+ const toEnd=()=>{const sc=logRef.current?.parentElement;if(sc)sc.scrollTop=sc.scrollHeight;};
  const atEndRef=useRef(true),[atEnd,setAtEnd]=useState(true),[atStart,setAtStart]=useState(true),lastCount=useRef(0);
  useEffect(()=>{
   const sent=messages.length>lastCount.current&&messages.at(-1)?.role==="user";lastCount.current=messages.length;
-  if(sent||atEndRef.current)endRef.current?.scrollIntoView({block:"end"});
+  if(sent||atEndRef.current)toEnd();
  },[messages,proposal,error,thinking?.stage]);
- const logRef=useRef<HTMLDivElement>(null);
  useEffect(()=>{
   const log=logRef.current;if(!log||typeof ResizeObserver==="undefined")return;
-  const ro=new ResizeObserver(()=>{if(atEndRef.current)endRef.current?.scrollIntoView({block:"end"});});
+  const ro=new ResizeObserver(()=>{if(atEndRef.current)toEnd();});
   ro.observe(log);return()=>ro.disconnect();
  },[]);
  const blobFor=(id:string)=>blobs.current.get(id);
