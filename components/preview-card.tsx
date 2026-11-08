@@ -38,45 +38,49 @@ export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,o
  // A generation that stopped without an output: the card turns red with the reason and a rerun button (owner, 2026-11-07).
  const failed=!output&&RETRY_STATES.includes(state);
  // The placeholder keeps a 16:9 frame; a real output sets its own frame, so the whole image or video shows at its own ratio (never cropped to fill).
- // A narrower output sits at the start (right, in Persian), at most 300px tall, with no letterbox around it.
+ // An output fills the card's width and takes the height of its own ratio (owner, 2026-11-08): never cut, no empty space around it. The ratio reserves
+ // that height before the picture loads, so the chat does not jump.
  const frame="relative flex w-full items-center overflow-hidden rounded-control text-fg-secondary",media=frame+(output?" justify-start":" aspect-video justify-center bg-surface-hover");
- return <div data-preview-card={tag??""} data-failed={failed||undefined} className={"flex w-full max-w-md flex-col gap-2 rounded-card border p-2 "+(failed?"border-destructive/60 bg-destructive/5":"border-line-secondary bg-surface-subtle")}>
+ return <div data-preview-card={tag??""} data-failed={failed||undefined} className={"flex w-full max-w-md flex-col gap-2.5 rounded-card border p-2.5 "+(failed?"border-destructive/60 bg-destructive/5":"border-line-secondary bg-surface-subtle")}>
+  {/* The card reads top to bottom (owner, 2026-11-08): its title, the picture, the description, then «ادیت» and «دانلود». The full-screen button sits on
+      the picture's top-left corner (the end side in Persian). */}
   {output?.kind==="video"
-   ?<span className="relative block w-fit max-w-full">{onView&&<button type="button" onClick={onView} aria-label={"نمایش تمام‌صفحه"+(tag?" "+displayTag(tag):"")} title="نمایش تمام‌صفحه"
-     className="absolute start-1.5 top-1.5 z-10 flex size-7 items-center justify-center rounded-[4px] bg-background/85 text-fg-primary shadow-sm backdrop-blur-sm hover:bg-background"><Icon icon={Maximize2} size={16} aria-hidden="true"/></button>}<video src={output.url+"#t=0.1"} controls playsInline preload="metadata" aria-label={"ویدیوی "+(tag?displayTag(tag):"پیش‌نمایش")} className="block h-auto max-h-[300px] w-auto max-w-full rounded-control bg-background"/></span>
+   ?<span className="relative order-2 block w-full">{onView&&<button type="button" onClick={onView} aria-label={"نمایش تمام‌صفحه"+(tag?" "+displayTag(tag):"")} title="نمایش تمام‌صفحه"
+     className="absolute end-1.5 top-1.5 z-10 flex size-7 items-center justify-center rounded-[4px] bg-background/85 text-fg-primary shadow-sm backdrop-blur-sm hover:bg-background"><Icon icon={Maximize2} size={16} aria-hidden="true"/></button>}<video src={output.url+"#t=0.1"} controls playsInline preload="metadata" aria-label={"ویدیوی "+(tag?displayTag(tag):"پیش‌نمایش")} className="block h-auto w-full rounded-control bg-background"/></span>
    :working
-    ?<button type="button" onClick={onOpen} aria-label={label} className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-control bg-surface-hover motion-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+    ?<button type="button" onClick={onOpen} aria-label={label} className="relative order-2 flex aspect-video w-full items-center justify-center overflow-hidden rounded-control bg-surface-hover motion-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
      <GenerationProgress compact status={live.status} percent={live.percent!}/>
     </button>
-   :<span className="group relative block w-fit max-w-full"><button type="button" onClick={output&&onView?onView:onOpen} aria-label={output&&onView?"نمایش تمام‌صفحه"+(tag?" "+displayTag(tag):""):label} className={media+" motion-hover not-disabled:hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"}>
+   :<span className="group relative order-2 block w-full">{output&&onView&&<button type="button" onClick={onView} tabIndex={-1} aria-hidden="true"
+     className="absolute end-1.5 top-1.5 z-10 flex size-7 items-center justify-center rounded-[4px] bg-background/85 text-fg-primary shadow-sm backdrop-blur-sm hover:bg-background"><Icon icon={Maximize2} size={16} aria-hidden="true"/></button>}<button type="button" onClick={output&&onView?onView:onOpen} aria-label={output&&onView?"نمایش تمام‌صفحه"+(tag?" "+displayTag(tag):""):label} className={media+" motion-hover not-disabled:hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"}>
     {output
      // eslint-disable-next-line @next/next/no-img-element -- a provider output URL shown as the card's preview
-     ?<img src={output.url} alt="" style={ratio?{aspectRatio:ratio,height:300}:undefined} className={"block max-h-[300px] max-w-full rounded-control "+(ratio?"w-auto object-contain":"h-auto w-auto")}/>
+     ?<img src={output.url} alt="" style={ratio?{aspectRatio:ratio}:undefined} className="block h-auto w-full rounded-control"/>
      :<Icon icon={failed?TriangleAlert:video?Clapperboard:ImageIcon} size={32} aria-hidden="true" className={failed?"text-destructive":undefined}/>}
    </button></span>}
-  {failed&&<div className="flex flex-wrap items-center justify-between gap-2 px-1">
-   <span role="alert" className="type-caption text-destructive">{messageFa}</span>
+  {failed&&<span role="alert" className="order-4 px-1 type-caption text-destructive">{messageFa}</span>}
+  {/* Card buttons (owner, 2026-11-08): the full card width, split evenly, at least 48px tall with generous padding. */}
+  {failed&&(onRetry||(onSwitch&&job?.alternative))&&<div className="order-4 flex gap-2">
    {/* Refused by the model's own rules (owner, 2026-11-08): the same request on a model with other rules comes first. */}
-   {onSwitch&&job?.alternative&&<Button type="button" size="sm" variant="destructive" onClick={onSwitch}><Icon icon={Shuffle} aria-hidden="true"/>با {job.alternative.name} بساز<span className="type-caption opacity-80">{fa(job.alternative.neurons)} نورون</span></Button>}
-   {onRetry&&<Button type="button" size="sm" variant={onSwitch&&job?.alternative?"outline":"destructive"} onClick={onRetry}><Icon icon={RotateCcw} aria-hidden="true"/>دوباره بساز{retryNeurons?<span className="type-caption opacity-80">{fa(retryNeurons)} نورون</span>:null}</Button>}
+   {onSwitch&&job?.alternative&&<Button type="button" size="sm" variant="destructive" onClick={onSwitch} className="h-auto min-h-12 flex-1 px-4 py-3"><Icon icon={Shuffle} aria-hidden="true"/>با {job.alternative.name} بساز<span className="type-caption opacity-80">{fa(job.alternative.neurons)} نورون</span></Button>}
+   {onRetry&&<Button type="button" size="sm" variant={onSwitch&&job?.alternative?"outline":"destructive"} onClick={onRetry} className="h-auto min-h-12 flex-1 px-4 py-3"><Icon icon={RotateCcw} aria-hidden="true"/>دوباره بساز{retryNeurons?<span className="type-caption opacity-80">{fa(retryNeurons)} نورون</span>:null}</Button>}
   </div>}
   {/* A silent video says why (its soundtrack failed the check and was removed): calm, never an error. */}
-  {output?.kind==="video"&&job?.audioNoteFa&&<p className="flex items-center gap-1.5 px-1 type-caption text-fg-secondary"><Icon icon={VolumeX} size={16} aria-hidden="true" className="size-3.5 shrink-0"/>{job.audioNoteFa}</p>}
+  {output?.kind==="video"&&job?.audioNoteFa&&<p className="order-4 flex items-center gap-1.5 px-1 type-caption text-fg-secondary"><Icon icon={VolumeX} size={16} aria-hidden="true" className="size-3.5 shrink-0"/>{job.audioNoteFa}</p>}
   {/* In the chat (owner, 2026-11-06): «ادیت» and «دانلود» as action buttons under the picture, not on hover. */}
-  {output&&<div className="flex flex-wrap items-center gap-2 px-1">
-   {onEdit&&output.kind!=="video"&&<Button type="button" size="sm" variant="secondary" onClick={onEdit}><Icon icon={Brush} aria-hidden="true"/>ادیت</Button>}
-   <Button type="button" size="sm" variant="outline" onClick={()=>void saveOutput.save()}><Icon icon={Download} aria-hidden="true"/>{saveOutput.again?SAVE_AGAIN_FA:"دانلود"}</Button>
+  {output&&<div className="order-6 flex gap-2">
+   {onEdit&&output.kind!=="video"&&<Button type="button" size="sm" variant="secondary" onClick={onEdit} className="h-auto min-h-12 flex-1 px-4 py-3"><Icon icon={Brush} aria-hidden="true"/>ادیت</Button>}
+   <Button type="button" size="sm" variant="outline" onClick={()=>void saveOutput.save()} className="h-auto min-h-12 flex-1 px-4 py-3"><Icon icon={Download} aria-hidden="true"/>{saveOutput.again?SAVE_AGAIN_FA:"دانلود"}</Button>
   </div>}
   <button type="button" onClick={onOpen} aria-label={label+": "+jobStateFa(state)}
-   className="group/preview flex w-full items-center gap-2 rounded-control px-1 py-1 text-start motion-hover hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+   className="group/preview order-1 flex w-full items-center gap-2 rounded-control px-1 py-0.5 text-start motion-hover hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
    <span className="flex min-w-0 flex-1 flex-col gap-1">
     <span className="flex flex-wrap items-center gap-2">
      <span className="type-label text-fg-primary">پیش‌نمایش{tag?" "+displayTag(tag):""}</span>
      <Badge variant="outline">{jobStateFa(state)}</Badge>
     </span>
-    {!working&&!failed&&<span aria-live={live.active?"polite":undefined} className="line-clamp-2 type-caption text-fg-secondary">{line}</span>}
    </span>
-   <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-control text-fg-secondary group-hover/preview:text-fg-primary"><Icon icon={Maximize2} size={16} className="size-4"/></span>
   </button>
+  {!working&&!failed&&<p aria-live={live.active?"polite":undefined} className="order-5 line-clamp-2 px-1 type-caption text-fg-secondary">{line}</p>}
  </div>;
 }

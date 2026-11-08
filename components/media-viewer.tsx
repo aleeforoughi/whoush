@@ -1,7 +1,8 @@
 "use client";
+import {faPlain} from "@/lib/format";
 import {useCallback,useEffect,useLayoutEffect,useRef,useState,type KeyboardEvent,type PointerEvent,type RefObject} from "react";
 import Link from "next/link";
-import {AudioLines,Brush,ChevronLeft,Info,ChevronRight,Download,FileJson,FileQuestion,FileText,FolderOpen,Images,Film,X,type LucideIcon} from "lucide-react";
+import {AudioLines,Brush,ChevronLeft,Info,ChevronRight,Download,FileJson,FileQuestion,FileText,FolderOpen,Images,Film,X,type LucideIcon,ZoomIn,ZoomOut} from "lucide-react";
 import {Dialog as DialogPrimitive} from "@base-ui/react/dialog";
 import {Badge,Button,Dialog,DialogPortal,Icon} from "@aleeforoughi/feather-react";
 import {ATTACHMENT_KINDS,displayTag,roleLabelFa,type AttachmentKind,type AttachmentRole} from "@/lib/attachments";
@@ -99,7 +100,7 @@ function Missing(){
  * A picture you can explore (owner, 2026-11-06): pinch to zoom and drag to move on a phone, the wheel and drag on a computer, double-tap or double-click to
  * zoom in or back. While zoomed (or mid-pinch) the gestures are the picture's, so a drag never turns into a swipe to the next item (`onBusy`).
  */
-function ZoomableImage({src,alt,onBusy}:{src:string;alt:string;onBusy:(busy:boolean)=>void}){
+function ZoomableImage({src,alt,onBusy,controls=true}:{src:string;alt:string;onBusy:(busy:boolean)=>void;/** The desktop zoom bar shows with the other controls. */controls?:boolean}){
  const [v,setV]=useState({s:1,x:0,y:0});
  const pts=useRef(new Map<number,{x:number;y:number}>());
  const pinch=useRef<{d:number;mx:number;my:number;v:{s:number;x:number;y:number}}|null>(null);
@@ -121,19 +122,26 @@ function ZoomableImage({src,alt,onBusy}:{src:string;alt:string;onBusy:(busy:bool
  }
  function up(e:PointerEvent<HTMLDivElement>){pts.current.delete(e.pointerId);if(pts.current.size<2)pinch.current=null;if(!pts.current.size){drag.current=null;setMoving(false);onBusy(v.s>1);}}
  return <div onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
-  onWheel={e=>set({...v,s:v.s*(e.deltaY<0?1.15:1/1.15)})} className="flex size-full touch-none items-center justify-center" style={{cursor:v.s>1?"grab":"zoom-in"}}>
+  onWheel={e=>set({...v,s:v.s*(e.deltaY<0?1.15:1/1.15)})} className="relative flex size-full touch-none items-center justify-center" style={{cursor:v.s>1?"grab":"default"}}>
   {/* eslint-disable-next-line @next/next/no-img-element -- a local blob: URL or an owned output */}
   <img src={src} alt={alt} draggable={false} className="max-h-dvh max-w-full select-none object-contain" style={{transform:`translate(${v.x}px,${v.y}px) scale(${v.s})`,transition:moving?"none":"transform .15s ease-out"}}/>
+  {/* Desktop (owner, 2026-11-08): a zoom bar instead of a magnifier cursor: −, a slider with the zoom in percent, +. Phones pinch and double-tap. */}
+  <div data-viewer-chrome dir="ltr" onPointerDown={e=>e.stopPropagation()} className={"absolute inset-x-0 bottom-4 mx-auto hidden w-fit items-center gap-2 rounded-control border border-line-secondary bg-surface-subtle px-2 py-1 text-fg-primary shadow-sm [@media(hover:hover)]:flex motion-state "+(controls?"opacity-100":"pointer-events-none opacity-0")}>
+   <Button type="button" variant="ghost" size="icon" aria-label="کوچک‌نمایی" title="کوچک‌نمایی" disabled={v.s<=1} onClick={()=>set({...v,s:v.s/1.25})}><Icon icon={ZoomOut} aria-hidden="true"/></Button>
+   <input type="range" dir="ltr" min={100} max={600} step={1} value={Math.round(v.s*100)} onChange={e=>set({...v,s:Number(e.target.value)/100})} aria-label="بزرگ‌نمایی" aria-valuetext={faPlain(Math.round(v.s*100))+"٪"} className="h-5 w-32 cursor-pointer accent-primary"/>
+   <span className="min-w-10 text-center type-caption tabular-nums">{faPlain(Math.round(v.s*100))}٪</span>
+   <Button type="button" variant="ghost" size="icon" aria-label="بزرگ‌نمایی" title="بزرگ‌نمایی" disabled={v.s>=6} onClick={()=>set({...v,s:v.s*1.25})}><Icon icon={ZoomIn} aria-hidden="true"/></Button>
+  </div>
  </div>;
 }
 
 /** The file itself, as large as fits: images and video are contained, never cropped. */
-function Media({item,autoPlay,onBusy}:{item:ViewerItem;autoPlay:boolean;onBusy:(busy:boolean)=>void}){
+function Media({item,autoPlay,onBusy,controls=true}:{item:ViewerItem;autoPlay:boolean;onBusy:(busy:boolean)=>void;controls?:boolean}){
  const url=useItemUrl(item);
  if(!item.blob&&!item.url)return <Missing/>;
  if(!url)return null;
  if(item.kind==="image")
-  return <ZoomableImage src={url} alt={displayTag(item.tag)} onBusy={onBusy}/>;
+  return <ZoomableImage src={url} alt={displayTag(item.tag)} onBusy={onBusy} controls={controls}/>;
  // The bottom strip stays free for the native controls and the counter.
  if(item.kind==="video")return <video src={url} controls playsInline muted autoPlay={autoPlay} aria-label={displayTag(item.tag)} className="max-h-[calc(100dvh-4rem)] max-w-full object-contain"/>;
  if(item.kind==="audio")return <div className="flex w-full max-w-md flex-col items-center gap-6 p-6">
@@ -156,6 +164,14 @@ function focusInChrome(root:HTMLElement|null):boolean{
  try{return el.matches(":focus-visible");}catch{return true;}
 }
 
+/**
+ * The viewer's two-line description (owner, 2026-11-08: "summarize and reword, max two lines"): for a generation, Whoush's own summary of what was made
+ * (the plan's intent, its «ساخت تصویر:»-style lead-in dropped); otherwise the chat's title. Kept to two lines on screen.
+ */
+export function viewerCaption(brief:string|undefined,title:string|undefined):string|undefined{
+ const b=brief?.replace(/^\s*(?:ساخت|ویرایش|ادیت|ایجاد)[^:：]{0,48}[:：]\s*/u,"").replace(/\s+/g," ").trim();
+ return b||title||undefined;
+}
 function ViewerBody({items,index,onIndexChange,onClose,projectTitleOf,stageRef,onEdit}:{items:ViewerItem[];index:number;onIndexChange:(i:number)=>void;onClose:()=>void;projectTitleOf?:(item:ViewerItem)=>string|undefined;stageRef:RefObject<HTMLDivElement|null>;
  onEdit?:(item:ViewerItem)=>void}){
  const item=items[index],n=items.length;
@@ -168,9 +184,12 @@ function ViewerBody({items,index,onIndexChange,onClose,projectTitleOf,stageRef,o
  const [rtl]=useState(isRtl);
  const reduced=useReducedMotion();
  const [shown,setShown]=useState(true);
+ /** Tapping the picture hides everything but «جزییات»; tapping again brings it back (owner, 2026-11-08). */
+ const [bare,setBare]=useState(false),tapTimer=useRef(0);
+ useEffect(()=>()=>window.clearTimeout(tapTimer.current),[]);
  const rootRef=useRef<HTMLDivElement>(null);
  const timer=useRef(0);
- const swipe=useRef<{x:number;y:number;id:number}|null>(null);
+ const swipe=useRef<{x:number;y:number;id:number;/** It began on a picture: a tap there shows or hides the controls. */t:boolean}|null>(null);
  const projectTitle=projectTitleOf?.(item);
  const arm=useCallback(()=>{
   window.clearTimeout(timer.current);
@@ -189,7 +208,7 @@ function ViewerBody({items,index,onIndexChange,onClose,projectTitleOf,stageRef,o
   return()=>window.clearTimeout(timer.current);
  },[arm]);
  // Reduced motion: always visible (a state that was hidden before the preference changed is overridden at render).
- const visible=shown||reduced;
+ const visible=(shown||reduced)&&!bare;
  const go=useCallback((step:ViewerStep)=>{
   const to=nextIndex(index,n,step,rtl);
   if(to!==index){onIndexChange(to);wake();}
@@ -214,7 +233,7 @@ function ViewerBody({items,index,onIndexChange,onClose,projectTitleOf,stageRef,o
   if(!e.isPrimary||(e.pointerType==="mouse"&&e.button!==0)||t.closest("[data-viewer-chrome],audio")){swipe.current=null;return;}
   // The bottom strip of a video is its own seek bar.
   if(t instanceof HTMLVideoElement&&e.clientY>t.getBoundingClientRect().bottom-64){swipe.current=null;return;}
-  swipe.current={x:e.clientX,y:e.clientY,id:e.pointerId};
+  swipe.current={x:e.clientX,y:e.clientY,id:e.pointerId,t:e.target instanceof HTMLImageElement};
  }
  function onPointerUp(e:PointerEvent<HTMLDivElement>){
   const s=swipe.current;swipe.current=null;
@@ -222,26 +241,32 @@ function ViewerBody({items,index,onIndexChange,onClose,projectTitleOf,stageRef,o
   if(!s||s.id!==e.pointerId||busy.current)return;
   const step=swipeStep(e.clientX-s.x,rtl,SWIPE_THRESHOLD,e.clientY-s.y);
   if(step)go(step);
+  // A tap on a picture (not a swipe, not on a control or a video) shows or hides the controls, once it is clearly not the first tap of a double tap
+  // (which zooms the picture).
+  else if(s.t&&Math.hypot(e.clientX-s.x,e.clientY-s.y)<10){window.clearTimeout(tapTimer.current);tapTimer.current=window.setTimeout(()=>{setBare(b=>!b);wake();},320);}
  }
  const fade="motion-state "+(visible?"opacity-100":"pointer-events-none opacity-0");
  const PrevIcon=rtl?ChevronRight:ChevronLeft,NextIcon=rtl?ChevronLeft:ChevronRight;
  const role=item.role?roleLabelFa(item.role,item.kind):undefined;
  const projectHref=item.projectId?"/studio?project="+item.projectId:undefined;
- return <div ref={rootRef} onKeyDown={onKeyDown} onPointerMove={wake} onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={()=>{swipe.current=null;}} onFocusCapture={wake} className="absolute inset-0 overflow-hidden">
+ const caption=viewerCaption(item.info?.briefFa,projectTitle);
+ return <div ref={rootRef} onKeyDown={onKeyDown} onPointerMove={wake} onPointerDownCapture={()=>window.clearTimeout(tapTimer.current)} onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={()=>{swipe.current=null;}} onFocusCapture={wake} className="absolute inset-0 overflow-hidden">
   <div ref={stageRef} tabIndex={-1} className="absolute inset-0 flex touch-pan-y items-center justify-center outline-none">
-   <Media key={item.id} item={item} autoPlay={!reduced} onBusy={b=>{busy.current=b;}}/>
+   <Media key={item.id} item={item} autoPlay={!reduced} onBusy={b=>{busy.current=b;}} controls={visible}/>
   </div>
   <p className="sr-only" aria-live="polite">{displayTag(item.tag)} · {viewerCounter(index,n)}</p>
-  <div data-viewer-chrome className={"absolute inset-x-0 top-0 z-10 flex flex-wrap items-start gap-2 bg-linear-to-b from-background/80 to-background/0 p-4 "+fade}>
+  {/* A soft gradient under the top controls and the description keeps them readable on any picture. */}
+  <div data-viewer-chrome className={"absolute inset-x-0 top-0 z-10 flex flex-wrap items-start gap-2 bg-linear-to-b from-black/75 via-black/45 to-transparent p-4 pb-12 "+fade}>
    <DialogPrimitive.Close render={<Button type="button" variant="secondary" size="icon" aria-label="بستن" className="order-1"/>}><Icon icon={X} aria-hidden="true"/></DialogPrimitive.Close>
-   <div className="order-3 flex w-full min-w-0 flex-col items-center gap-1 text-center sm:order-2 sm:w-auto sm:flex-1">
-    <div className="flex min-w-0 max-w-full flex-wrap items-center justify-center gap-2">
+   {/* The tag and a two-line description, from the start side (owner, 2026-11-08: right in Persian, left in Finglish). */}
+   <div className="order-3 flex w-full min-w-0 flex-col items-start gap-1 text-start sm:order-2 sm:w-auto sm:flex-1">
+    <div className="flex min-w-0 max-w-full flex-wrap items-center justify-start gap-2">
      <Badge variant="secondary"><bdi>{displayTag(item.tag)}</bdi></Badge>
      {role&&<span className="type-caption text-fg-primary">{role}</span>}
     </div>
-    {projectTitle&&(projectHref
-     ?<Link href={projectHref} onClick={onClose} className="max-w-full truncate type-label text-fg-primary underline-offset-4 hover:underline"><bdi>{projectTitle}</bdi></Link>
-     :<span className="max-w-full truncate type-label text-fg-primary"><bdi>{projectTitle}</bdi></span>)}
+    {caption&&(projectHref
+     ?<Link href={projectHref} onClick={onClose} className="line-clamp-2 max-w-full type-label text-fg-primary underline-offset-4 hover:underline">{caption}</Link>
+     :<p className="line-clamp-2 max-w-full type-label text-fg-primary">{caption}</p>)}
    </div>
    <div className="order-2 ms-auto flex items-center gap-2 sm:order-3 sm:ms-0">
     {onEdit&&item.kind==="image"&&<Button type="button" variant="secondary" onClick={()=>onEdit(item)} aria-label={"ادیت "+displayTag(item.tag)}><Icon icon={Brush} aria-hidden="true"/>ادیت</Button>}
