@@ -867,7 +867,8 @@ export function Studio(){
    const quoteBody={modelId:d?d.modelId:selected,turnId,...(!d&&edit?{stagingOverride:edit.staging,...(edit.aspect!==planAspect?{aspectOverride:edit.aspect}:{})}:{}),
     ...(excludedRefs.size?{excludeReferences:[...excludedRefs]}:{})};
    // Sound goes with the quote only for a video model with checked sound (never for the draft still): the toggle, else what the brief said, else on.
-   const audio=!d&&proposal.suggestions.find(s=>s.modelId===selected)?.audio?(soundChoice??proposal.soundWanted??true):undefined,withSound=audio!==undefined?{audio}:{};
+   // A video draft is always silent: it tests the picture and the motion, and needs no soundtrack check.
+   const audio=d?(d.kind==="video"?false:undefined):proposal.suggestions.find(s=>s.modelId===selected)?.audio?(soundChoice??proposal.soundWanted??true):undefined,withSound=audio!==undefined?{audio}:{};
    let q=await post("/api/generation/quote",{...quoteBody,...(aspect||audio!==undefined?{configuration:{...(aspect?{aspectRatio:aspect}:{}),...withSound}}:{})});
    if(q.status===422&&aspect)q=await post("/api/generation/quote",{...quoteBody,...(audio!==undefined?{configuration:withSound}:{})}); // last resort if the ratio is still refused (invalid_configuration): the prompt still carries it
    if(!q.ok){
@@ -884,7 +885,7 @@ export function Studio(){
    // still knows which job to follow, and a finished one keeps its outputs.
    // What was quoted goes with the job, so a failed one can be run again from its card (a new quote and a new approval, never the old charge).
    const rerun:JobRerun={turnId,modelId:quoteBody.modelId,...(aspect?{aspectRatio:aspect}:{}),...withSound,...(!d&&edit?{stagingOverride:edit.staging,...(edit.aspect!==planAspect?{aspectOverride:edit.aspect}:{})}:{}),...(excludedRefs.size?{excludeReferences:[...excludedRefs]}:{})};
-   const snap:JobSnapshot={...jobSnapshot(current,genTag),...(d?{draft:{modelName:d.modelName}}:{}),rerun},msg=item({role:"agent",text:current.messageFa,kind:"job",snapshot:snap});
+   const snap:JobSnapshot={...jobSnapshot(current,genTag),...(d?{draft:{modelName:d.modelName,...(d.kind==="video"?{video:true as const}:{})}}:{}),rerun},msg=item({role:"agent",text:current.messageFa,kind:"job",snapshot:snap});
    // On a phone the preview would cover the chat: the generation stays in the chat as its card, and «نمایش» opens the preview when wanted (owner, 2026-11-06).
    setPreview(current.messageFa);setJob(snap);setPreviewOpen(previewFits());setGalleryFocus(galleryFocusOn(msg.id));
    setMessages(m=>[...m,msg]);
@@ -936,7 +937,7 @@ export function Studio(){
  /** Every generation of this chat for the preview gallery, oldest first. An older saved job without outputs borrows the live job's when it is that job. */
  const galleryItems:GalleryItem[]=messages.flatMap(m=>m.kind!=="job"?[]:[{id:m.id,
   job:{...m.snapshot,outputs:m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined)},
-  kind:m.snapshot.draft?"image":m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind:undefined,
+  kind:m.snapshot.draft?(m.snapshot.draft.video?"video":"image"):m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind:undefined,
   model:m.snapshot.draft?"پیش‌نویس · "+m.snapshot.draft.modelName:m.snapshot.tag?generationMap.get(m.snapshot.tag)?.modelName:undefined}]);
  const showPreview=hasPreview&&previewOpen;
  /** Opens the preview panel, on a given generation's job when a preview card asks (the latest job keeps its live outputs). */
@@ -1058,7 +1059,7 @@ export function Studio(){
           <span className="sr-only">هووش: </span><TypeOut text={m.text} animate={fresh.has(m.id)}/>
          </p>}
         {m.kind==="job"&&<PreviewCard tag={m.snapshot.tag} state={m.snapshot.state} messageFa={m.snapshot.messageFa} job={m.snapshot} model={m.snapshot.draft?"پیش‌نویس · "+m.snapshot.draft.modelName:m.snapshot.tag?generationMap.get(m.snapshot.tag)?.modelName:undefined}
-         output={(m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined))?.find(o=>isOwnedOutputUrl(o.url,window.location.origin))} video={!m.snapshot.draft&&(m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false)} onOpen={()=>openPreview(m.snapshot,m.id)}
+         output={(m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined))?.find(o=>isOwnedOutputUrl(o.url,window.location.origin))} video={m.snapshot.draft?Boolean(m.snapshot.draft.video):(m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false)} onOpen={()=>openPreview(m.snapshot,m.id)}
          onView={()=>openGenerationViewer(m.id)}
          onRetry={m.snapshot.rerun&&!busy?()=>void rerunJob(m.id):undefined} retryNeurons={m.snapshot.draft?undefined:m.snapshot.tag?generationMap.get(m.snapshot.tag)?.neurons:undefined}
          onEdit={m.snapshot.tag&&!busy?()=>void editGeneration(m.snapshot.tag!):undefined}/>}

@@ -2,7 +2,7 @@ import { MEDIA_CATALOG } from "./catalog";
 import { hasApprovedPrice, isPriced, type AgentPreference, type MediaKind, type MediaModel, type MediaRequirements, type PricedMediaModel, type ReasoningTier, type SuggestedModel } from "./types";
 import {needsHostedMedia} from "./policy";
 import {mediaIntent,type MediaIntent} from "./media-intent";
-import {offerable} from "./model-availability";
+import {offerable,realGenerationOn,runnableNow} from "./model-availability";
 const norm=(s:string)=>s.toLocaleLowerCase("en-US").trim();
 /** What the prompt asks to make (lib/media-intent.ts), else the kind of a model it names («با کلینگ»), else undefined: nothing says. */
 export function requestedMediaKind(prompt:string):MediaIntent|undefined {
@@ -62,6 +62,15 @@ export function recommendMediaModels(prompt:string, preference:AgentPreference="
  // Three different models, not three versions of one (owner, 2026-11-08: Seedance 2.5 now has 480p and 720p versions too): each family's best version.
  const families=ranked.filter((m,i)=>ranked.findIndex(x=>x.name.split(" · ")[0].trim()===m.name.split(" · ")[0].trim())===i);
  return {kind,explicit:explicit?.id,explicitRejected,ranked,alternatives:explicitRejected?families.slice(0,3):[]};
+}
+/**
+ * The draft of a video (owner, 2026-11-08: "the cheapest option to test, a cheap 480p video, not an image"): the cheapest 480p video model that can run now
+ * and offers the plan's aspect ratio (when one is given). Undefined when none can; the draft is then the opening-frame still.
+ */
+export function draftVideoModel(aspect?:string):PricedMediaModel|undefined{
+ // Only a model that can really run while generation is on (offerable() falls back to every model when none can, for the demo card; a draft must not).
+ return MEDIA_CATALOG.filter(proposable).filter(m=>m.kind==="video"&&m.resolution==="480p"&&m.capabilities.verified&&(!realGenerationOn()||runnableNow(m))&&(!aspect||(m.capabilities.aspectRatios as readonly string[]).includes(aspect)))
+  .sort((a,b)=>a.neurons-b.neurons)[0];
 }
 // Mirrors the fail-closed media review in lib/orchestrator.ts: no inspector for image, video or audio exists yet (docs/MODERATION_POLICY.md step 4).
 const MEDIA_REVIEW_ACTIVE=false;

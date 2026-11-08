@@ -14,7 +14,7 @@ import {compileImagePrompt,SCENE_COMPILER_VERSION,FA_EDIT_SCOPE_MIXED,GENERIC_ED
 import {propTags,applyStagingCues,applyTypedMappings,lensFor,describeStagingEn,describeStagingFa,sceneLeadEn,detectProps,detectSubject,expandMappings,mapReferences,tidyProps,typedMappings} from "./staging";
 import {findGif,type ChatGif} from "./giphy";
 import {describeFocus} from "./frame-css";
-import {requestedMediaKind,suggestModel} from "./router";
+import {draftVideoModel,requestedMediaKind,suggestModel} from "./router";
 import {mainSubjectNote,mainSubjectRule,shownTag,typedMainSubject} from "./main-subject";
 import {MEDIA_KIND_CHOICES,MEDIA_KIND_QUESTION_FA,MEDIA_KIND_QUESTION_FINGLISH,type QuestionChoice} from "./media-intent";
 import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
@@ -104,6 +104,19 @@ export function faMediaReview(tags:readonly string[],kinds:readonly string[]):st
  return "از "+tags.join("، ")+" فعلاً استفاده نمی‌کنم: "+(audio?"فایل صوتی هنوز بررسی ایمنی نمی‌شه. ":"")+
   (kinds.some(k=>k!=="audio")?"عکس و ویدیو رو فقط بعد از بررسی ایمنی که موقع آپلود انجام می‌شه به کار می‌برم؛ اگه بررسیش هنوز تموم نشده، چند لحظه صبر کن و دوباره بفرست. ":"")+
   "یا بدون "+(tags.length>1?"این فایل‌ها":"این فایل")+" بگو چی بسازم.";
+}
+/**
+ * The proposal set to the version of its recommended model whose length covers a source video (owner, 2026-11-08): the shortest at least as long, else the
+ * longest; same resolution when that version exists. `seconds`: the length chosen, when the model has lengths to choose from.
+ */
+export function matchSourceLength(p:GenerationProposal,sourceSeconds:number):{proposal:GenerationProposal;seconds?:number}{
+ const fam=(n:string)=>n.split(" · ")[0].trim(),rec=p.suggestions.find(s=>s.modelId===p.selectedModelId)??p.suggestions[0];
+ if(!rec)return {proposal:p};
+ const family=p.suggestions.filter(s=>fam(s.name)===fam(rec.name)&&s.durationSeconds),lengths=[...new Set(family.map(s=>s.durationSeconds!))].sort((a,b)=>a-b);
+ if(!lengths.length)return {proposal:p};
+ const want=lengths.find(d=>d>=sourceSeconds-0.5)??lengths[lengths.length-1];
+ const pick=family.find(s=>s.durationSeconds===want&&s.resolution===rec.resolution)??family.find(s=>s.durationSeconds===want)!;
+ return {proposal:{...p,recommendedModelId:pick.modelId,selectedModelId:pick.modelId,fixedNeurons:pick.neurons},seconds:want};
 }
 /** The marker of the turn that set files aside for their checks (faMediaReview). */
 const SET_ASIDE_FA=" فعلاً استفاده نمی‌کنم";
@@ -869,6 +882,14 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   const suggestedModel=suggestModel(modelReq,kind),base=ref?FA_NO_REFS:uploads.length&&!modelReq.lipSync?FA_NO_PHOTO_MODEL:lipsMsg;
   return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,suggestedModel,input.style)),message:base+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{}),reason:"no_model"};
  }
+ // Length from the source video (owner, 2026-11-08: an edit or a replacement in a video lasts as long as that video): the recommended model's version
+ // that covers it, at the same resolution. A video to continue is not a source of length.
+ const source=kind==="video"?files.find(f=>f.kind==="video"&&f.role!=="continue"&&f.durationSeconds):undefined;
+ let lengthNote="";
+ if(source?.durationSeconds){const m=matchSourceLength(proposal,source.durationSeconds);proposal=m.proposal;if(m.seconds){
+  const src=Math.round(source.durationSeconds),same=Math.abs(m.seconds-source.durationSeconds)<=0.5,tag=displayTag(source.tag);
+  lengthNote=script==="finglish"?(same?"\nToole video ba "+tag+" yekie: "+m.seconds+" sanie.":"\n"+tag+" "+src+" sanie-st; noskhe-ye "+m.seconds+" sanie-i ro gozashtam ke kamel ja beshe.")
+   :(same?"\nمدت ویدیو با "+tag+" یکیه: "+faPlain(m.seconds)+" ثانیه.":"\n"+tag+" "+faPlain(src)+" ثانیه‌ست؛ نسخهٔ "+faPlain(m.seconds)+" ثانیه‌ای رو گذاشتم که کامل جا بشه.");}}
  {const m=findMediaModel(proposal.selectedModelId);if(m)note("pricing","facts",["مدل پیشنهادی: "+m.name]);}
  // Pre-generation risk check: the cheapest model stress-tests the plan for the chosen model before any generation is paid for. Fixes go into the prompt (and
  // into the scene text, so a canvas change keeps them); each risk shown passes the same safety and leak checks as the planner's own text.
@@ -898,8 +919,15 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   proposal={...proposal,research:report};
  }
  if(review)proposal={...proposal,review:{risks:review.map(x=>({severity:x.severity,issueFa:x.issueFa}))}};
- // Video drafts first: a still of the opening frame on the cheapest image model (taking the references when it can), quoted against its own private turn.
- if(kind==="video"){
+ // Video drafts first (owner, 2026-11-08): a short, silent 480p video on the cheapest model that can run, from the same prompt, to test the motion and the
+ // scene before the real price. Where none can run, a still of the opening frame on the cheapest image model (taking the references when it can).
+ // Both are quoted against their own private turn.
+ const videoDraft=kind==="video"?draftVideoModel(plan.camera?.aspectRatio):undefined;
+ if(videoDraft&&videoDraft.id!==proposal.selectedModelId&&videoDraft.neurons<proposal.fixedNeurons){
+  const draftTurn=randomUUID();
+  keepPrompt(draftTurn,plan.mediaPrompt);
+  proposal={...proposal,draft:{turnId:draftTurn,modelId:videoDraft.id,modelName:videoDraft.name,neurons:videoDraft.neurons,kind:"video"}};
+ }else if(kind==="video"){
   const draftModel=findMediaModel(DRAFT_IMAGE_MODEL);
   if(draftModel&&!draftModel.pricePending&&draftModel.neurons){
    const draftTurn=randomUUID();
@@ -915,8 +943,8 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  rec({planner:label,fallbackReason,corrections:corrections.length?corrections:undefined,usage:label==="live"?result?.usage:undefined});
  // The proposal speaks in Whoush's voice; a rejected explicit model request keeps its factual note after the reply.
  // «هر دو»: the video's opening-frame draft is the photo, then the video from it.
- const photoNote=uploads.length&&kind==="video"&&proposal.draft?(script==="finglish"?"\nAksato too pish-nevis (frame-e aval) estefade mikonam; khod-e video felan az roo-ye prompt sakhte mishe.":"\nعکس‌هات توی پیش‌نویس (فریم اول) به کار می‌رن؛ خود ویدیو فعلاً از روی پرامپت ساخته می‌شه."):"";
- const bothNote=wantsBoth&&proposal.draft?(script==="finglish"?"\nHar do ro misazam: aval aks (frame-e aval), baad video.":"\nهر دو رو می‌سازم: اول عکس (فریم اول)، بعد ویدیو از روی همون."):"";
+ const photoNote=uploads.length&&kind==="video"&&proposal.draft&&proposal.draft.kind!=="video"?(script==="finglish"?"\nAksato too pish-nevis (frame-e aval) estefade mikonam; khod-e video felan az roo-ye prompt sakhte mishe.":"\nعکس‌هات توی پیش‌نویس (فریم اول) به کار می‌رن؛ خود ویدیو فعلاً از روی پرامپت ساخته می‌شه."):"";
+ const bothNote=wantsBoth&&proposal.draft&&proposal.draft.kind!=="video"?(script==="finglish"?"\nHar do ro misazam: aval aks (frame-e aval), baad video.":"\nهر دو رو می‌سازم: اول عکس (فریم اول)، بعد ویدیو از روی همون."):"";
  // Sound (owner, 2026-11-08): a video model with checked sound gets the card's toggle, and Whoush asks (or confirms what the brief said). Without the
  // check here no model is offered sound: the toggle is hidden and the video stays silent.
  let soundNote="";
@@ -926,7 +954,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   else{const w=soundWanted(parsed.text);proposal={...proposal,...(w!==undefined?{soundWanted:w}:{})};
    if(proposal.suggestions.find(s=>s.modelId===proposal.selectedModelId)?.audio)soundNote="\n"+soundLineFa(w,script);}
  }
- proposal={...proposal,message:replyText("planned")+soundNote+bothNote+photoNote+(proposal.explicitRejected?"\n"+proposal.message:"")};
+ proposal={...proposal,message:replyText("planned")+lengthNote+soundNote+bothNote+photoNote+(proposal.explicitRejected?"\n"+proposal.message:"")};
  const gif=gifMood?await (deps.findGif??findGif)(gifMood).catch(()=>undefined):undefined;
  return {status:"planned",turnId,proposal,plan:withMain(toPublicPlan(plan,refs,undefined,input.style)),...(gif?{gif}:{}),...(reaction?{reaction}:{})};
 }
