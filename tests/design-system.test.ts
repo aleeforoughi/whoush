@@ -57,7 +57,7 @@ test("no old prototype purple, no hardcoded hex colors in TSX, and the old style
 test("root layout is Persian, RTL and dark by default, and applies the saved theme before paint",()=>{
  const layout=read("app/layout.tsx");
  // The language comes from its cookie (owner, 2026-11-08: Finglish, left to right); without one the page is Persian, right to left.
- assert.match(layout,/lang=\{htmlLangFor\(lang\)\}/);assert.match(layout,/dir=\{dirFor\(lang\)\}/);assert.match(layout,/isUiLang\(saved\)\?saved:"fa"/);assert.match(layout,/className="dark"/);
+ assert.match(layout,/lang=\{htmlLangFor\(lang\)\}/);assert.match(layout,/dir=\{dirFor\(lang\)\}/);assert.match(layout,/isUiLang\(saved\)\?saved:"fa"/);assert.match(layout,/className=\{"dark "\+figtree\.variable\}/);assert.match(layout,/Figtree\(\{subsets:\["latin"\]/);
  assert.match(layout,/whoush-theme/);assert.match(layout,/try\{/);
  const globals=read("app/globals.css");
  for(const imp of ["tailwindcss","@aleeforoughi/feather-react/styles.css","./styles/brand-fonts.css","./styles/brand.css","./fonts.css","./feather-rtl.css"])

@@ -35,11 +35,11 @@ export function useMode():[AgentPreference,(m:AgentPreference)=>void]{
 export function ModeControl({value,onChange,notify}:{value:AgentPreference;onChange:(m:AgentPreference)=>void;notify:boolean}){
  const [hint,setHint]=useState(false);
  function choose(m:AgentPreference){if(m!==value){onChange(m);setHint(notify);}}
- return <div className="flex flex-wrap items-center gap-2">
+ return <div className="flex min-w-0 shrink flex-wrap items-center gap-2">
   <DropdownMenu>
    {/* Outlined in the mode's own color (text, icon and border), never filled: the only filled control in the composer stays the send button. */}
-   <DropdownMenuTrigger render={<Button type="button" variant="outline" aria-label={"حالت ساخت: "+modeLabelFa(value)+"، برای تغییر کلیک کن"} aria-haspopup="menu" className={cn(TONE[value],"bg-transparent")}/>}>
-    <Icon icon={ICONS[value]} aria-hidden="true"/>{modeLabelFa(value)}<Icon icon={ChevronDown} aria-hidden="true"/>
+   <DropdownMenuTrigger render={<Button type="button" variant="outline" aria-label={"حالت ساخت: "+modeLabelFa(value)+"، برای تغییر کلیک کن"} aria-haspopup="menu" className={cn(TONE[value],"min-w-0 max-w-full bg-transparent")}/>}>
+    <Icon icon={ICONS[value]} aria-hidden="true"/><span className="min-w-0 truncate">{modeLabelFa(value)}</span><Icon icon={ChevronDown} aria-hidden="true"/>
    </DropdownMenuTrigger>
    <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-56">
     <DropdownMenuGroup>

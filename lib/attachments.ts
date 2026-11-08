@@ -132,13 +132,30 @@ export function nextGenerationTag(used:Iterable<string>):string|undefined{
 }
 const WORD_FA:Record<MentionPrefix,string>={...TAG_WORD_FA,generation:GENERATION_WORD_FA};
 /** Every spelling accepted in a mention, as normalized by `normalizeMention`: Persian words (ویدئو too) and the legacy English prefixes. */
-const MENTION_WORDS:Record<string,MentionPrefix>={"تصویر":"image","ویدیو":"video","ویدئو":"video","صدا":"audio","فایل":"file","تولید":"generation",image:"image",video:"video",audio:"audio",file:"file",generation:"generation"};
+const MENTION_WORDS:Record<string,MentionPrefix>={"تصویر":"image","ویدیو":"video","ویدئو":"video","صدا":"audio","فایل":"file","تولید":"generation",image:"image",video:"video",audio:"audio",file:"file",generation:"generation",
+ // Finglish (owner, 2026-11-08: «#tasvir-1»): typed and shown in the Finglish interface.
+ tasvir:"image",seda:"audio",tolid:"generation"};
+/** The Finglish word of each tag kind: `image1` is «#tasvir-1». */
+export const TAG_WORD_FI:Record<MentionPrefix,string>={image:"tasvir",video:"video",audio:"seda",file:"file",generation:"tolid"};
+/**
+ * The script tags are shown in: Persian (default) or Finglish (lib/ui-lang.ts). Set once in the browser by the language provider; the server always
+ * writes Persian tags (Whoush's replies are in the user's own script, and the Finglish page converts tags as it shows them).
+ */
+let tagScript:"fa"|"fi"="fa";
+export const setTagScript=(s:"fa"|"fi")=>{tagScript=s;};
 const faNumber=(n:number|string)=>String(n).replace(/\d/g,d=>String.fromCharCode(0x06f0+Number(d)));
 /** The user-facing form of an internal tag: the Persian word, an ASCII hyphen and Persian digits. `image1` is `#تصویر-۱`, `file12` is `#فایل-۱۲`. */
-export function displayTag(tag:string):string{
+export function displayTag(tag:string):string{return displayTagIn(tag,tagScript);}
+/** A tag in a given script (Persian «#تصویر-۱» or Finglish «#tasvir-1»). */
+export function displayTagIn(tag:string,script:"fa"|"fi"):string{
  if(isPropTag(tag))return tag;
  const m=/^(image|video|audio|file|generation)(\d+)$/.exec(tag);
- return m?"#"+WORD_FA[m[1] as MentionPrefix]+"-"+faNumber(m[2]):"#"+tag;
+ if(!m)return "#"+tag;
+ return script==="fi"?"#"+TAG_WORD_FI[m[1] as MentionPrefix]+"-"+m[2]:"#"+WORD_FA[m[1] as MentionPrefix]+"-"+faNumber(m[2]);
+}
+/** Persian tags in a text in their Finglish form («#تصویر-۱» is «#tasvir-1»), for the Finglish page. */
+export function finglishTags(text:string):string{
+ return text.replace(mentionRe(),(raw,word:string,num:string)=>{const p=MENTION_WORDS[normalizeMention(word)],n=normalizeMention(num);return p&&/^[1-9]\d?$/.test(n)?raw[0]+TAG_WORD_FI[p]+"-"+n:raw;});
 }
 /** Case and script tolerant form of a typed token: Arabic ي/ى become ی, ك becomes ک, Arabic-Indic and Persian digits become ASCII, the dashes U+2010, U+2011, U+2013 and U+2212 become `-`, ZWNJ and tatweel vanish. */
 const normalizeMention=(s:string)=>s.replace(/[\u200c\u0640]/g,"").replace(/[\u064a\u0649]/g,"\u06cc").replace(/\u0643/g,"\u06a9").replace(/[\u2010\u2011\u2013\u2212]/g,"-")

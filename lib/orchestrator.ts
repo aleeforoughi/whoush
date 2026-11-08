@@ -88,9 +88,9 @@ const VOICE={
   needsInput:["قبل از اینکه شروع کنم، یه چیز مهم رو باید بدونم.","یه سؤال کوچیک دارم تا دقیقاً همونی بشه که می‌خوای."]
  },
  finglish:{
-  planned:["Ine barnamash 🎬 Ye negah bendaz, age oki bood bezan berim!","Halle! Naghshash amadas ✨ Joziyato bebin, har jash ro khasti begu avazesh konim.","Eyval, ide-ye khubie 😎 Barnamaro chidam; harvaght amade budi besazimesh."],
-  revision:(tag:string)=>["Radife! Taghiraro ru "+tag+" emal kardam 👌 Baghiash hamun-tor ke bud mund.","Halle, "+tag+" ro ba taghirat-e to dobare chidam ✨ Ye negah bendaz."],
-  needsInput:["Ghabl az inke shoru konam, ye chiz-e mohem ro bayad bedunam.","Ye soal-e kuchik daram ta daghighan hamuni beshe ke mikhay."]
+  planned:["Ine barnamash 🎬 Ye negah bendaz, age oki bud bezan berim!","Halle! Naghshash amadas ✨ Joziyato bebin, har jash ro khasti begu avazesh konim.","Eyval, idehye khubieh 😎 Barnamaro chidam; harvaght amadeh budi besazimesh."],
+  revision:(tag:string)=>["Radife! Taghiraro ru "+tag+" emal kardam 👌 Baghiash hamuntor ke bud mund.","Halle, "+tag+" ro ba taghirate to dobareh chidam ✨ Ye negah bendaz."],
+  needsInput:["Ghabl az inke shoru konam, ye chize mohem ro bayad bedunam.","Ye soale kuchik daram ta daghighan hamuni besheh ke mikhay."]
  }
 } as const;
 const pickLine=(lines:readonly string[],seed:string)=>lines[[...seed].reduce((n,c)=>(n*31+c.charCodeAt(0))>>>0,7)%lines.length];
@@ -557,7 +557,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
    const tags=priorImages.slice(0,6).map(f=>displayTag(f.tag)).join("، ");
    return early({status:"needs_input",turnId:askTurn,message:finglish?need.askFinglish:need.askFa,
     question:(finglish?REUSE_MARKER_FINGLISH+" ("+tags+") baraye "+need.titleFa+" estefade konam? Age na, aks-e taze befrest.":REUSE_MARKER_FA+" ("+tags+") رو برای "+need.titleFa+" استفاده کنم؟ اگه نه، عکس تازه بفرست."),
-    choices:[{id:"reuse",labelFa:finglish?"Are, hamuna":"آره، همونا",replyFa:finglish?"are, hamuna ro estefade kon":"آره، همونا رو استفاده کن"}],
+    choices:[{id:"reuse",labelFa:finglish?"Are, hamuna":"آره، همونا",replyFa:finglish?"Are, hamuna ro estefade kon":"آره، همونا رو استفاده کن"}],
     references:{need:need.id,titleFa:need.titleFa,role:need.role,angles:need.angles.map(a=>({id:a.id,titleFa:a.titleFa}))}});
   }
   // Asked only when the message brought no photo at all and none is in the chat (a photo the user gave another role is theirs to decide); an answer to
@@ -894,7 +894,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  let lengthNote="";
  if(source?.durationSeconds){const m=matchSourceLength(proposal,source.durationSeconds);proposal=m.proposal;if(m.seconds){
   const src=Math.round(source.durationSeconds),same=Math.abs(m.seconds-source.durationSeconds)<=0.5,tag=displayTag(source.tag);
-  lengthNote=script==="finglish"?(same?"\nToole video ba "+tag+" yekie: "+m.seconds+" sanie.":"\n"+tag+" "+src+" sanie-st; noskhe-ye "+m.seconds+" sanie-i ro gozashtam ke kamel ja beshe.")
+  lengthNote=script==="finglish"?(same?"\nTule video ba "+tag+" yekieh: "+m.seconds+" sanieh.":"\n"+tag+" "+src+" sanieh ast; noskheh "+m.seconds+" saniehi ro gozashtam ke kamel ja besheh.")
    :(same?"\nمدت ویدیو با "+tag+" یکیه: "+faPlain(m.seconds)+" ثانیه.":"\n"+tag+" "+faPlain(src)+" ثانیه‌ست؛ نسخهٔ "+faPlain(m.seconds)+" ثانیه‌ای رو گذاشتم که کامل جا بشه.");}}
  {const m=findMediaModel(proposal.selectedModelId);if(m)note("pricing","facts",["مدل پیشنهادی: "+m.name]);}
  // Pre-generation risk check: the cheapest model stress-tests the plan for the chosen model before any generation is paid for. Fixes go into the prompt (and
@@ -974,8 +974,8 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  rec({planner:label,fallbackReason,corrections:corrections.length?corrections:undefined,usage:label==="live"?result?.usage:undefined});
  // The proposal speaks in Whoush's voice; a rejected explicit model request keeps its factual note after the reply.
  // «هر دو»: the video's opening-frame draft is the photo, then the video from it.
- const photoNote=uploads.length&&kind==="video"&&proposal.draft&&!proposal.draft.kind?(script==="finglish"?"\nAksato too pish-nevis (frame-e aval) estefade mikonam; khod-e video felan az roo-ye prompt sakhte mishe.":"\nعکس‌هات توی پیش‌نویس (فریم اول) به کار می‌رن؛ خود ویدیو فعلاً از روی پرامپت ساخته می‌شه."):"";
- const bothNote=wantsBoth&&proposal.draft&&!proposal.draft.kind?(script==="finglish"?"\nHar do ro misazam: aval aks (frame-e aval), baad video.":"\nهر دو رو می‌سازم: اول عکس (فریم اول)، بعد ویدیو از روی همون."):"";
+ const photoNote=uploads.length&&kind==="video"&&proposal.draft&&!proposal.draft.kind?(script==="finglish"?"\nAksato tu pishnevis (frame aval) estefadeh mikonam; khode video felan az ruye prompt sakhteh misheh.":"\nعکس‌هات توی پیش‌نویس (فریم اول) به کار می‌رن؛ خود ویدیو فعلاً از روی پرامپت ساخته می‌شه."):"";
+ const bothNote=wantsBoth&&proposal.draft&&!proposal.draft.kind?(script==="finglish"?"\nHar do ro misazam: aval aks (frame aval), baad video.":"\nهر دو رو می‌سازم: اول عکس (فریم اول)، بعد ویدیو از روی همون."):"";
  // Sound (owner, 2026-11-08): a video model with checked sound gets the card's toggle, and Whoush asks (or confirms what the brief said). Without the
  // check here no model is offered sound: the toggle is hidden and the video stays silent.
  let soundNote="";

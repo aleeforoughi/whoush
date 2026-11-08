@@ -23,8 +23,8 @@ export const AUTO_STYLE_PILL_FA="سبک اتوماتیک";
 /** «سبک» beside the build mode: a neutral secondary pill showing only the current style; clicking it opens a radio menu (اتوماتیک · واقع‌گرایانه · سه‌بعدی · کارتونی). */
 export function StyleControl({value,onChange}:{value:GenerationStyle|null;onChange:(s:GenerationStyle|null)=>void}){
  return <DropdownMenu>
-  <DropdownMenuTrigger render={<Button type="button" variant="outline" aria-label={(value?"سبک: "+styleLabelFa(value):AUTO_STYLE_PILL_FA)+"، برای تغییر کلیک کن"} aria-haspopup="menu"/>}>
-   <Icon icon={ICONS[value??AUTO]} aria-hidden="true"/>{value?styleLabelFa(value):AUTO_STYLE_PILL_FA}<Icon icon={ChevronDown} aria-hidden="true"/>
+  <DropdownMenuTrigger render={<Button type="button" variant="outline" aria-label={(value?"سبک: "+styleLabelFa(value):AUTO_STYLE_PILL_FA)+"، برای تغییر کلیک کن"} aria-haspopup="menu" className="min-w-0 max-w-full shrink"/>}>
+   <Icon icon={ICONS[value??AUTO]} aria-hidden="true"/><span className="min-w-0 truncate">{value?styleLabelFa(value):AUTO_STYLE_PILL_FA}</span><Icon icon={ChevronDown} aria-hidden="true"/>
   </DropdownMenuTrigger>
   <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-64">
    <DropdownMenuGroup>

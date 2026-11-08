@@ -61,7 +61,7 @@ export function mediaIntent(text:string):MediaIntent|undefined{
 
 /** The question when nothing says photo or video, with its answer buttons (each sends its reply as the user's answer). */
 export const MEDIA_KIND_QUESTION_FA="عکس می‌خوای، ویدیو یا هر دو؟";
-export const MEDIA_KIND_QUESTION_FINGLISH="aks mikhay, video ya har do?";
+export const MEDIA_KIND_QUESTION_FINGLISH="Aks mikhay, video ya har do?";
 export type QuestionChoice={id:string;labelFa:string;/** Sent as the user's answer. */replyFa:string};
 export const MEDIA_KIND_CHOICES:readonly QuestionChoice[]=[
  {id:"image",labelFa:"عکس",replyFa:"عکس"},

@@ -5,7 +5,7 @@
 import {normalizePersian} from "./safety";
 
 export const EDIT_CARD_FA="عکس رو باز کن، روی همون قسمتی که می‌خوای عوض بشه بکش و بنویس چی بشه؛ بعدش خودم انجامش می‌دم.";
-export const EDIT_CARD_FINGLISH="Aks ro baz kon, roo-ye hamoon ghesmati ke mikhay avaz beshe bekesh va benevis chi beshe; badesh khodam anjamesh midam.";
+export const EDIT_CARD_FINGLISH="Aks ro baz kon, ruye hamun ghesmati ke mikhay avaz besheh bekesh va benevis chi besheh; badesh khodam anjamesh midam.";
 export const EDIT_CARD_OPEN_FA="ادیت";
 /** More than one photo: one card each. */
 export const EDIT_CARDS_FA="هر عکس رو باز کن، روی جاهایی که می‌خوای عوض بشه بکش و بنویس چی بشه؛ بعدش خودم انجامش می‌دم.";
@@ -50,4 +50,4 @@ export function mightEditPhoto(text:string):boolean{
 /** An edit card may come with regions Whoush painted itself: each with its comment and its boxes (0..1 of the photo). */
 export type SuggestedEdit={note:string;boxes:[number,number,number,number][]};
 export const SUGGESTED_FA="این قسمت‌ها رو برات علامت زدم و توضیح هر کدوم رو نوشتم. اگه درسته «ادیت» رو بزن و ثبت کن، یا تغییرش بده.";
-export const SUGGESTED_FINGLISH="In ghesmata ro barat alamat zadam o tozih-e har kodoom ro neveshtam. Age doroste «edit» ro bezan o sabt kon, ya taghiresh bede.";
+export const SUGGESTED_FINGLISH="In ghesmata ro barat alamat zadam o tozihe har kodum ro neveshtam. Ageh dorosteh \"edit\" ro bezan o sabt kon, ya taghiresh bedeh.";

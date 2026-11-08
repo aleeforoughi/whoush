@@ -1,4 +1,6 @@
 "use client";
+import {roleBrief} from "@/lib/role-briefs";
+import {useUiLang} from "@/components/ui-language";
 import {useEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
 import Link from "next/link";
 import {useRouter,useSearchParams} from "next/navigation";
@@ -89,6 +91,9 @@ export function Studio(){
  const projectParam=useSearchParams().get("project");
  const [messages,setMessages]=useState<TranscriptItem[]>([]);
  const [draft,setDraft]=useState("");
+ /** The ready prompt last put in the message box (lib/role-briefs.ts): a second file adds its own; anything the user typed is never replaced. */
+ const lastBrief=useRef("");
+ const uiLang=useUiLang();
  const [proposal,setProposal]=useState<AgentProposal|null>(null);
  /** The message that carries the live (approvable) proposal; every other proposal in the transcript is a read-only record. */
  const [liveId,setLiveId]=useState<string|null>(null);
@@ -504,6 +509,12 @@ export function Studio(){
   if(reviewOn)for(const a of added)if((a.kind==="image"||(a.kind==="video"&&videoReviewOn))&&reviewsRef.current[a.id]?.state!=="safe")void checkPhoto(a);
   setAnnounce((added.length?fa(added.length)+" فایل اضافه شد. ":"")+(bad.length?fa(bad.length)+" فایل رد شد.":""));
   readingRef.current=false;setReading(false);
+  // A ready prompt for the role picked in «+» (owner, 2026-11-08, lib/role-briefs.ts): an empty message box (or one holding only the last ready prompt)
+  // gets it, naming the file, so the user can send it as it is or change it.
+  if(upload?.role)for(const a of added){
+   const b=roleBrief(a.kind,upload.role,uiLang==="fi"?"@"+a.tag:displayTag(a.tag),uiLang);if(!b)continue;
+   setDraft(d=>{const t=d.trim();if(t&&t!==lastBrief.current.trim())return d;const next=(t?t+" ":"")+b.text;lastBrief.current=next;return next;});
+  }
   return added;
  }
  /** Fills an upload card with one file (picked or dropped). The card stays in place and shows the file; a rejected file leaves it empty for another try. */
@@ -1091,7 +1102,7 @@ export function Studio(){
          onEdit={(tag,suggested)=>void openEditFor(tag,suggested)}
          references={m.snapshot.references} uploaded={m.snapshot.references?Object.fromEntries(m.snapshot.references.angles.map(a=>[a.id,Boolean(slots.find(s=>s.id==="ref-"+m.id+"-"+a.id)?.attachmentId)])):undefined}
          onUpload={m.snapshot.references?a=>uploadForRequest(m.id,m.snapshot.references!,a):undefined}
-         onContinue={m.snapshot.references&&i===messages.length-1&&!busy?()=>answer(replyScriptFor(m.text)==="finglish"?"aksa ro gozashtam":"عکس‌ها رو گذاشتم"):undefined}/>}
+         onContinue={m.snapshot.references&&i===messages.length-1&&!busy?()=>answer(replyScriptFor(m.text)==="finglish"?"Aksa ro gozashtam":"عکس‌ها رو گذاشتم"):undefined}/>}
         {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan?.clarifyingQuestionFa&&<AgentQuestion question={m.snapshot.plan.clarifyingQuestionFa} waiting={i===messages.length-1&&!busy} onAnswer={()=>promptRef.current?.focus()}/>}
         {reactions}
         <div className="-mt-2">{actions}</div>
@@ -1124,7 +1135,7 @@ export function Studio(){
      <Label className="sr-only" id="whoush-prompt-label">توضیح تصویر یا ویدیو</Label>
      <MentionTextarea id="whoush-prompt" handleRef={promptRef} value={draft} onValueChange={setDraft} options={mentionOptions} onPaste={onPaste} placeholder="چی می‌خوای بسازیم؟" labelledBy="whoush-prompt-label" describedBy="prompt-hint" maxLength={4000}
       onSubmitShortcut={()=>{if(draft.trim()&&!busy&&!reading)formRef.current?.requestSubmit();}}
-      startPad={COMPOSER_EXTRAS_ENABLED?"ps-40":"ps-24"}
+      startPad={COMPOSER_EXTRAS_ENABLED?"sm:ps-40":"sm:ps-24"}
       startAction={<div className="flex items-center">
        <InsertMenu disabled={reading} onPick={pickInsert}/>
        <TagPicker options={mentionOptions} onPick={mentionTag} main={mainSubject} onToggleMain={toggleMain}
@@ -1143,7 +1154,7 @@ export function Studio(){
         :<AttachmentCard key={c.attachment.id} item={c.attachment} onBrush={()=>editAttachment(c.attachment,true)} review={reviews[c.attachment.id]} onRetryReview={()=>void checkPhoto(c.attachment,true)} onChange={patch=>patchAttachment(c.attachment.id,patch)} onRemove={()=>removeAttachment(c.attachment.id)} onPreview={()=>openViewer(c.attachment)} onMention={()=>mentionTag(c.attachment.tag)}
          main={mainSubject===c.attachment.tag} onToggleMain={()=>toggleMain(c.attachment.tag)}/>)}
       </ul>:undefined}
-      endPad={voice.enabled?"pe-24":"pe-14"}
+      endPad={voice.enabled?"sm:pe-24":"sm:pe-14"}
       // The blue button always sends. Beside it, a borderless mic opens voice mode when the server can transcribe (the transcript is sent like a typed message).
       endAction={<div className="flex items-center gap-1">
        {voice.enabled&&<button type="button" disabled={busy||reading||loadingProject} onClick={()=>setVoiceOpen(true)} aria-label="پیام صوتی" title="پیام صوتی"
@@ -1158,7 +1169,8 @@ export function Studio(){
       <button type="button" onClick={()=>setMainSubject(null)} aria-label={"برداشتن "+MAIN_SUBJECT_FA} className="hit-area flex size-6 items-center justify-center rounded-control text-fg-secondary motion-hover hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-2 focus-visible:outline-ring"><Icon icon={X} size={16} aria-hidden="true" className="size-3.5"/></button>
      </p>}
      <p id="prompt-hint" className="flex items-start gap-1 type-caption text-fg-secondary"><Icon icon={Info} size={16} aria-hidden="true" className="mt-0.5 shrink-0"/>با # می‌تونی به پیوست‌ها اشاره کنی؛ با ستاره یکی رو {MAIN_SUBJECT_FA} کن (اختیاری).</p>
-     <div className="flex flex-wrap items-start gap-2">
+     {/* Build mode and style always share one row (owner, 2026-11-08), on a phone and in Finglish: each may shrink and cut its label, never wrap. */}
+     <div className="flex min-w-0 flex-nowrap items-start gap-2">
       <ModeControl value={mode} onChange={changeMode} notify={Boolean(proposal)}/>
       <StyleControl value={style} onChange={changeStyle}/>
      </div>

@@ -35,3 +35,19 @@ test("the dictionary covers the interface: every Persian string the components a
  const covered=1-missing.length/all.length;
  assert.ok(covered>=0.97,"Finglish coverage "+(covered*100).toFixed(1)+"%; missing (add to lib/i18n/finglish.json): "+missing.slice(0,15).join(" | "));
 });
+test("owner (2026-11-08): Finglish is capitalised like English: a label or sentence starts with a capital, and so does a new sentence",async()=>{
+ const dict=(await import("../lib/i18n/finglish.json")).default as Record<string,string>;
+ const STARTS_WITH_WORD=/^[ء-يپچژکگیآ]/;
+ for(const [fa,fi] of Object.entries(dict)){
+  const first=fi.match(/[A-Za-z]/);
+  if(STARTS_WITH_WORD.test(fa)&&first&&!/[A-Za-z0-9]/.test(fi.slice(0,first.index)))assert.match(first[0],/[A-Z]/,"capital: "+fi);
+  assert.doesNotMatch(fi,/[.!?]\s+["(]?[a-z]/,"a new sentence starts with a capital: "+fi);
+ }
+});
+test("owner (2026-11-08): Finglish tags: «#tasvir-1» is typed and shown, Persian tags on the page become Finglish, no Persian is left in interface text",async()=>{
+ const {parseMentions,finglishTags,displayTagIn}=await import("../lib/attachments");
+ assert.deepEqual(parseMentions("ba #tasvir-1 va #video-2 va #seda-3 va #tolid-1"),["image1","video2","audio3","generation1"]);
+ assert.equal(finglishTags("#تصویر-۱ رو با #ویدیو-۲ ببین"),"#tasvir-1 رو با #video-2 ببین");
+ assert.equal(displayTagIn("image1","fi"),"#tasvir-1");assert.equal(displayTagIn("image1","fa"),"#تصویر-۱");
+ assert.doesNotMatch(toFinglish("یه متن که توی فرهنگ نیست"),/[؀-ۿ]/,"unknown interface text is written in Latin letters");
+});

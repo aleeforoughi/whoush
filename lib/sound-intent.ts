@@ -14,6 +14,6 @@ export function soundWanted(text:string):boolean|undefined{
 }
 /** Whoush's line about sound on a video proposal: it asks when the brief said nothing, and confirms what the brief said. */
 export function soundLineFa(wanted:boolean|undefined,script:"fa"|"finglish"):string{
- if(script==="finglish")return wanted===false?"Bi-seda misazamesh.":wanted===true?"Ba seda misazamesh.":"Seda ham dashte bashe? Alan roshane; age bi-seda mikhay, az roo-ye kart khamooshesh kon.";
+ if(script==="finglish")return wanted===false?"Biseda misazamesh.":wanted===true?"Ba seda misazamesh.":"Seda ham dashteh basheh? Alan roshaneh; ageh biseda mikhay, az ruye kart khamushesh kon.";
  return wanted===false?"بی‌صدا می‌سازمش.":wanted===true?"با صدا می‌سازمش.":"صدا هم داشته باشه؟ الان روشنه؛ اگه بی‌صدا می‌خوای از روی کارت خاموشش کن.";
 }
