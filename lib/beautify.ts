@@ -39,7 +39,7 @@ export function wantsBeautify(text:string):boolean{
 
 /** Each part as a professional instruction (on), and what stays when it is off. Every one slight and natural (owner, 2026-11-08). */
 const ON:Record<BeautifyPart,string>={
- camera:"CAMERA: undo the low/high angle and close wide lens that deform the face: a slight move to eye level, 85 mm look, a perspective warp of the face to its true shape. Head keeps its turn; level, centred; focus on the eyes, f/2.8.",
+ camera:"CAMERA: undo the low/high angle and close wide lens that deform the face: a slight move to eye level, 85 mm look, a perspective warp of the face to its true shape. One camera for the whole frame: the background's horizon, lines and vanishing points match the new viewpoint, never a person on the old background. Head keeps its turn; level, centred; focus on the eyes, f/2.8.",
  pose:"POSE: keep the face's emotion, refined into a slight model gesture: eyes to the lens with a slight squinch, chin a touch forward and down, gentle tilt, relaxed angled shoulders; confident, never sexualised.",
  light:"LIGHT: soften harsh, top or back light; soft frontal fill on face and eyes, even flattering exposure, catchlights.",
  skin:"SKIN: even tone, no shine; acne, bumps, blemishes and irregular or enlarged pores polished away; tired under-eyes rested; natural fine pores and texture kept.",
@@ -63,10 +63,10 @@ const OFF:Record<BeautifyPart,string>={
 export function beautifyPrompt(ref:string,parts:readonly BeautifyPart[],issues:readonly BeautifyIssue[]=[],minor=false):string{
  const on=new Set(parts.filter(p=>!minor||BEAUTIFY_PARTS_MINOR.includes(p)));
  // What was seen, in a few words per part (the brief stays within the plan's 3,000-character prompt).
- const short=(t:string)=>{const x=t.trim().replace(/[.;\s]+$/,"");if(x.length<=50)return x;const c=x.slice(0,50);return c.slice(0,Math.max(c.lastIndexOf(" "),20)).replace(/[,;\s]+$/,"");};
+ const short=(t:string)=>{const x=t.trim().replace(/[.;\s]+$/,"");if(x.length<=40)return x;const c=x.slice(0,40);return c.slice(0,Math.max(c.lastIndexOf(" "),20)).replace(/[,;\s]+$/,"");};
  const seen=(p:BeautifyPart)=>{const n=issues.filter(i=>i.part===p).map(i=>short(i.noteEn)).filter(Boolean);return n.length?" Seen: "+n.join("; ")+".":"";};
  return ["TASK: EDITORIAL BEAUTIFY of "+ref+": a pro photographer's and retoucher's version of this photo. Every fix below done fully and visibly, all natural.",
-  "GOAL: social-media ready: they proudly post it and get likes. Before finishing ask: would I share it for compliments? Beautiful? Still them? All three must be yes.",
+  "GOAL: social-media ready, they proudly post it for likes. Ask before finishing: would I share it? Beautiful? Still them? All three yes.",
   "MOOD: keep the vibe: same moment, setting and background in view, same daylight and colour mood, their own expression.",
   "KEEP: identity (bones, eye shape and colour, skin tone, marks, age), hairline, hairstyle, beard style, outfit, place.",
   "NEVER GUESS: invent nothing hidden: no hidden side of the face or head, no teeth if the mouth is closed, no opening closed eyes.",

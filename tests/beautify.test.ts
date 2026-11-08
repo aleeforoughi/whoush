@@ -27,13 +27,13 @@ test("Beautify words: looking better is recognised, an ordinary change is not",(
 test("Beautify brief: identity, place, outfit and styles locked; never guesses; each chosen part with what was seen; under 18 keeps to the photo craft",()=>{
  const all=beautifyPrompt("[reference image 1]",BEAUTIFY_PARTS,[{part:"camera",noteFa:"زاویه از پایینه",noteEn:"shot from below; the face looks wider"}]);
  assert.match(all,/^TASK: EDITORIAL BEAUTIFY of \[reference image 1\]: .*Every fix below done fully and visibly, all natural\./);
- assert.match(all,/GOAL: social-media ready: .*would I share it for compliments\? Beautiful\? Still them\? All three must be yes\./);
+ assert.match(all,/GOAL: social-media ready, they proudly post it for likes\. Ask before finishing: would I share it\? Beautiful\? Still them\? All three yes\./);
  assert.match(all,/MOOD: keep the vibe: same moment, setting and background in view, same daylight and colour mood, their own expression\./);
  assert.match(all,/KEEP: identity .*hairline, hairstyle, beard style, outfit, place\./);
  // Owner, 2026-11-08: Whoush never guesses what the photo does not show; never CGI or plastic; full detail, pores and texture.
  assert.match(all,/NEVER GUESS: invent nothing hidden: no hidden side of the face or head, no teeth if the mouth is closed, no opening closed eyes\./);
  assert.match(all,/REAL: a real photograph, never CGI, plastic or airbrushed skin: full detail and sharpness, every pore and fine texture kept, no pixelation, smearing or blur\./);
- assert.match(all,/a slight move to eye level, 85 mm look, a perspective warp of the face to its true shape\. Head keeps its turn/);
+ assert.match(all,/a slight move to eye level, 85 mm look, a perspective warp of the face to its true shape\. One camera for the whole frame: the background's horizon, lines and vanishing points match the new viewpoint, never a person on the old background\. Head keeps its turn/);
  assert.match(all,/eyes to the lens with a slight squinch.*never sexualised/);
  assert.match(all,/hair cleanly brushed and styled.*thinning filled with the hairline unchanged\. Beard freshly barber-trimmed to an even length; the upper cheeks above the beard line \(stray stubble included\) and the neck below the neckline clean-shaven and smooth/);
  assert.match(all,/the nose visibly but naturally refined \(a slimmer bridge, a neater, slightly lifted tip, in proportion with the face\)/);
@@ -41,7 +41,7 @@ test("Beautify brief: identity, place, outfit and styles locked; never guesses; 
  assert.match(all,/CAMERA: .* Seen: shot from below; the face looks wider\./);
  for(const h of ["POSE:","LIGHT:","SKIN:","GROOMING:","FACE:","CLOTHES:","BACKGROUND:","COLOUR:"])assert.ok(all.includes(h),h);
  assert.match(all,/BACKGROUND: the same place made presentable: clutter, mess, rubbish, cables and stray unwanted objects removed; layout, main objects, colours and light kept\./);
- assert.ok(all.length<=2600,"within the plan's prompt cap with room for the findings: "+all.length);
+ assert.ok(all.length<=2700,"within the plan's prompt cap with room for the findings: "+all.length);
  const worst=beautifyPrompt("[reference image 1 · #تصویر-۱]",BEAUTIFY_PARTS,BEAUTIFY_PARTS.map(p=>({part:p,noteFa:"x",noteEn:"y".repeat(160)})));
  assert.ok(worst.length<=2950,"a long finding on every part still fits: "+worst.length);
  const some=beautifyPrompt("[r]",["light","color"]);
@@ -98,7 +98,7 @@ test("Beautify it: the photo is the photo to edit, at its own shape, with the fi
 
 test("Beautify on upload: the photo check's findings are kept by the server and go into the brief; a minor's face parts are dropped",async()=>{
  const issues=[{part:"camera" as const,noteFa:"زاویه از پایینه و صورت پهن‌تر افتاده",noteEn:"shot from below; the face looks wider"},
-  {part:"clothes" as const,noteFa:"تیشرت چروکه و پرز داره",noteEn:"the t-shirt is creased and covered in lint"},
+  {part:"clothes" as const,noteFa:"تیشرت چروکه و پرز داره",noteEn:"the t-shirt is creased and linty"},
   {part:"skin" as const,noteFa:"پوست کمی ناصافه",noteEn:"uneven skin tone"}];
  const adult=await reviewUpload(Uint8Array.from([...JPEG,7]),"image/jpeg",{inspect:async()=>({category:"none",person:true,beautify:{needed:true,minor:false,issues}})});
  assert.equal(adult.state,"safe");if(adult.state!=="safe")return;
@@ -106,7 +106,7 @@ test("Beautify on upload: the photo check's findings are kept by the server and 
  const r=await orchestrateCreativeTurn({text:beautifyRequestFa("#تصویر-۱",["camera","clothes","color"]),attachments:[photo({reviewId:adult.reviewId,beautify:{parts:["camera","clothes","color"]}})]});
  const prompt=getPrivateMediaPrompt((r as Extract<OrchestratorResult,{status:"planned"}>).turnId)!;
  assert.match(prompt,/CAMERA: .*Seen: shot from below; the face looks wider\./);
- assert.match(prompt,/CLOTHES: .*Seen: the t-shirt is creased and covered in lint\./);
+ assert.match(prompt,/CLOTHES: .*Seen: the t-shirt is creased and linty\./);
  assert.ok(prompt.includes("Skin: as in the photo."),"skin was not chosen, so its finding is not used");
  const kid=await reviewUpload(Uint8Array.from([...JPEG,8]),"image/jpeg",{inspect:async()=>({category:"none",person:true,beautify:{needed:true,minor:true,issues}})});
  assert.ok(kid.state==="safe"&&kid.beautify?.minor&&kid.beautify.issues.every(i=>i.part!=="skin"),"no face parts for a minor");
@@ -135,8 +135,8 @@ test("«زیباسازی» keeps quality: the cheapest 2K-or-higher model is rec
 
 test("Beautify findings in the brief are cut at a word, never mid-word",()=>{
  const p=beautifyPrompt("[r]",["camera"],[{part:"camera",noteFa:"x",noteEn:"the photo was shot from far below with a very close wide phone lens, widening everything"}]);
- const seen=/Seen: ([^\n]*)\./.exec(p)![1];
- assert.ok(seen.length<=50&&/ (lens|close|wide|phone|very)$/.test(" "+seen.split(" ").pop()),seen);
+ const seen=/Seen: ([^\n]*)\./.exec(p)![1],source="the photo was shot from far below with a very close wide phone lens, widening everything";
+ assert.ok(seen.length<=40&&source.startsWith(seen)&&source[seen.length]===" ",seen);
 });
 
 test("the card's four switches use the owner's words, and the line of what was seen names them briefly",async()=>{
