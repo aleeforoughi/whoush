@@ -37,7 +37,7 @@ test("Beautify brief: identity, place, outfit and styles locked; never guesses; 
  assert.match(all,/eyes to the lens with a slight squinch.*never sexualised/);
  assert.match(all,/hair cleanly brushed and styled.*thinning filled with the hairline unchanged\. Beard freshly barber-trimmed to an even length, the skin above the cheek line and below the neckline clean-shaven and smooth/);
  assert.match(all,/the nose visibly but naturally refined \(a slimmer bridge, a neater, slightly lifted tip, in proportion with the face\)/);
- assert.match(all,/tired under-eyes softened; pores and texture fully kept/);assert.match(all,/less puffiness, natural defined jawline/);assert.match(all,/no lint, hair or creases/);
+ assert.match(all,/tired under-eyes softened; pores and texture fully kept/);assert.match(all,/less puffiness, a natural defined jawline/);assert.match(all,/no lint, hair or creases/);
  assert.match(all,/CAMERA: .* Seen: shot from below with a close wide lens; the face looks wider\./);
  for(const h of ["POSE:","LIGHT:","SKIN:","GROOMING:","FACE:","CLOTHES:","COLOUR:"])assert.ok(all.includes(h),h);
  assert.ok(all.length<=2400,"within the plan's prompt cap with room for the findings: "+all.length);
