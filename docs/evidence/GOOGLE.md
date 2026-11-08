@@ -52,6 +52,7 @@
 - Accepted types are png, jpeg, webp, heic, heif, gif, bmp and tiff.
 - Use the Files API above 100 MB total.
 - Up to 14 references (4 characters and 10 objects) on Nano Banana 2 and 2.1.
+- **Nano Banana Pro (`gemini-3-pro-image`), checked 2026-11-08** at https://aistudio.google.com/docs/image-generation (redirected from ai.google.dev): up to 6 object images, up to 5 character images and up to 3 style references, 14 at most in total. Editing applies to it too ("Provide an image and use text prompts to add, remove, or modify elements"). Outputs: 1K by default, plus 2K and 4K. The catalog now allows 6 reference images on Pro, with 5 identity references.
 
 **Other settings.**
 - `generation_config.seed` is accepted. Its effect on image models is not stated.

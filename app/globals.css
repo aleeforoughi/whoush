@@ -91,6 +91,11 @@ bdi,
    it wins over a component's own border and background utilities. */
 .whoush-widget { background-color: var(--secondary); border-color: transparent; }
 .whoush-widget [data-slot="badge"] { background-color: color-mix(in oklab, var(--foreground) 16%, var(--secondary)); border-color: transparent; }
+/* A grey (secondary) button on a card (owner, 2026-11-08: it blended into the card, which has the same colour, and had no visible hover): a lighter shade
+   of the card so it stands out, and a clearly stronger one on hover and press. */
+.whoush-widget [data-slot="button"][data-variant="secondary"] { background-color: color-mix(in oklab, var(--foreground) 12%, var(--secondary)); }
+.whoush-widget [data-slot="button"][data-variant="secondary"]:not(:disabled):hover { background-color: color-mix(in oklab, var(--foreground) 20%, var(--secondary)); }
+.whoush-widget [data-slot="button"][data-variant="secondary"]:not(:disabled):active { background-color: color-mix(in oklab, var(--foreground) 26%, var(--secondary)); }
 .dark {
   --whoush-on-tone: #000;
   --whoush-primary-ink: color-mix(in oklab, var(--primary) 70%, white);

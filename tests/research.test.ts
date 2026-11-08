@@ -122,7 +122,10 @@ test("research: Nano Banana gets the prompt and the images as typed blocks; Seed
  assert.equal(typeof (buildGoogleImageRequest(findMediaModel("nano-banana-2-1")!,"p",{}) as {input:unknown}).input,"string","no references: plain prompt as before");
  const s=buildSeedreamRequest(findMediaModel("seedream-5-pro-2k")!,"p",{},refs) as {image:string[];prompt:string};
  assert.ok(s.image.every(u=>u.startsWith("data:image/jpeg;base64,")));assert.ok(s.prompt.endsWith(REFERENCE_PROMPT_NOTE));
- assert.throws(()=>buildGoogleImageRequest(findMediaModel("nano-banana-pro-2k")!,"p",{},refs),/Too many/,"Pro takes none (not documented)");
+ // Pro takes references too (6 objects, 5 characters; checked 2026-11-08, docs/evidence/GOOGLE.md): typed blocks, at most 6 here.
+ const pro=buildGoogleImageRequest(findMediaModel("nano-banana-pro-2k")!,"p",{},refs) as {input:{type:string}[]};
+ assert.deepEqual(pro.input.slice(1).map(b=>b.type),refs.map(()=>"image"));
+ assert.throws(()=>buildGoogleImageRequest(findMediaModel("nano-banana-pro-2k")!,"p",{},Array.from({length:7},()=>refs[0])),/Too many/,"more than 6 is refused");
 });
 
 test("research: never when the user gave references of their own (an attached image or a saved character); planner told to research only public subjects",async()=>{

@@ -273,9 +273,10 @@ test("router: ineligible explicit model is rejected with reason and compatible a
  const ref=recommendMediaModels("generate an image with soul","quality",{referenceImages:1});
  assert.equal(ref.explicitRejected?.id,"soul-image");
  // Research images go to the direct models that take reference images; a person's own checked photos (identityReference) only to the models documented to
- // keep a face (Nano Banana 2 and 2.1, "4 characters", docs/evidence/GOOGLE.md); a saved character's photos (on the device) still route nowhere.
+ // keep a face (Nano Banana 2 and 2.1, "4 characters"; Nano Banana Pro, "5 characters", checked 2026-11-08, docs/evidence/GOOGLE.md); a saved
+ // character's photos (on the device) still route nowhere.
  assert.ok(ref.alternatives.length>0&&ref.alternatives.every(m=>m.capabilities.referenceImages.supported&&m.provider!=="higgsfield"),ref.alternatives.map(m=>m.id).join());
- assert.deepEqual(recommendMediaModels("generate an image with soul","quality",{referenceImages:1,identityReference:true}).alternatives.map(m=>m.id).sort(),["nano-banana-2","nano-banana-2-1"]);
+ assert.deepEqual(recommendMediaModels("generate an image with soul","quality",{referenceImages:1,identityReference:true}).alternatives.map(m=>m.id).sort(),["nano-banana-2","nano-banana-2-1","nano-banana-pro-2k"]);
  assert.deepEqual(recommendMediaModels("generate an image with soul","quality",{referenceImages:1,identityReference:true,savedCharacter:true}).alternatives,[]);
  const lip=recommendMediaModels("video with seedance lip sync","quality",{lipSync:true});
  assert.equal(lip.explicitRejected?.id,"seedance-2-5-5s");

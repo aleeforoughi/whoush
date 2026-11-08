@@ -50,7 +50,7 @@ test("checked photos are not a blocker: the turn is priced on a model that keeps
  const r=await orchestrateCreativeTurn({text:"یه عکس از من با #تصویر-۱ توی جای #تصویر-۲",attachments:[photo({tag:"image2",role:"environment",reviewId:place.reviewId}),photo({tag:"image1",role:"character",reviewId:face.reviewId})]});
  assert.equal(r.status,"planned",JSON.stringify(r).slice(0,400));
  const p=(r as Extract<OrchestratorResult,{status:"planned"}>);
- assert.ok(p.proposal.suggestions.every(s=>s.modelId.startsWith("nano-banana-2")),"only models documented to keep a person: "+p.proposal.suggestions.map(s=>s.modelId).join());
+ assert.ok(p.proposal.suggestions.every(s=>s.modelId.startsWith("nano-banana-")),"only models documented to keep a person (Nano Banana 2, 2.1, Pro): "+p.proposal.suggestions.map(s=>s.modelId).join());
  const refs=getTurnReferences(p.turnId);
  assert.deepEqual(refs.map(x=>x.id),[safeReview(face.reviewId)!.mediaId,safeReview(place.reviewId)!.mediaId],"tag order: image1, then image2");
  assert.ok(refs.every(x=>x.source==="upload"));
@@ -81,7 +81,7 @@ test("a video with checked photos: the photos serve the opening-frame draft (a v
 
 test("router: a person's own photos go only to models documented to keep a face; a saved character (photos on the device) still to none",()=>{
  const ids=recommendMediaModels("یه عکس",undefined,{referenceImages:3,identityReference:true},"image").ranked.map(m=>m.id);
- assert.ok(ids.length&&ids.every(id=>id==="nano-banana-2"||id==="nano-banana-2-1"),ids.join());
+ assert.ok(ids.length&&ids.every(id=>id==="nano-banana-2"||id==="nano-banana-2-1"||id==="nano-banana-pro-2k"),ids.join());
  assert.ok(recommendMediaModels("یه عکس",undefined,{referenceImages:2},"image").ranked.some(m=>m.id.startsWith("seedream")),"a place or outfit photo: Seedream too");
  assert.equal(recommendMediaModels("یه عکس",undefined,{referenceImages:2,identityReference:true,savedCharacter:true},"image").ranked.length,0);
 });
