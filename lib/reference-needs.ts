@@ -5,7 +5,7 @@
  */
 import type {AttachmentRole} from "./attachments";
 
-export type ReferenceNeedId="tattoo"|"logo"|"product"|"face"|"outfit";
+export type ReferenceNeedId="tattoo"|"logo"|"product"|"face"|"outfit"|"face_angle"|"full_body"|"smile"|"eyes_open";
 export type ReferenceAngle={id:string;titleFa:string};
 export type ReferenceNeed={
  id:ReferenceNeedId;
@@ -43,6 +43,16 @@ export const REFERENCE_NEEDS:readonly ReferenceNeed[]=[
   askFinglish:"hatman! baraye inke daghighan khodet bashi, chand ta aks az soorat-et lazeme 👇",
   keepFa:r=>"چهره دقیقاً مثل "+r+" باشد",
   keepEn:r=>"Keep the person's face and identity exactly as in "+r+"."},
+ // Drift awareness (lib/drift.ts): the photos of the person that a request needs and their photos do not show. Asked by the drift check with its own
+ // words and slots (driftAskFa, driftAngles); never found by the keep-words below.
+ {id:"face_angle",titleFa:"زاویه‌ی دیگه‌ی صورت",role:"character",mapsTo:"person",angles:[{id:"profile",titleFa:"صورت از نیم‌رخ"}],
+  askFa:"",askFinglish:"",keepFa:r=>"چهره از همه‌ی زاویه‌ها مثل "+r+" باشد",keepEn:r=>"Keep the person's face from every angle exactly as in "+r+"."},
+ {id:"full_body",titleFa:"عکس تمام‌قد",role:"character",mapsTo:"person",angles:[{id:"full_front",titleFa:"تمام‌قد از روبه‌رو"}],
+  askFa:"",askFinglish:"",keepFa:r=>"اندام و قد مثل "+r+" باشد",keepEn:r=>"Keep the person's body shape and height exactly as in "+r+"."},
+ {id:"smile",titleFa:"عکس با لبخند",role:"character",mapsTo:"person",angles:[{id:"smile",titleFa:"صورت با لبخند، دندون‌ها پیدا"}],
+  askFa:"",askFinglish:"",keepFa:r=>"لبخند و دندان‌ها مثل "+r+" باشد",keepEn:r=>"Keep the person's smile and teeth exactly as in "+r+"."},
+ {id:"eyes_open",titleFa:"عکس با چشم باز",role:"character",mapsTo:"person",angles:[{id:"eyes_open",titleFa:"صورت با چشم‌های باز"}],
+  askFa:"",askFinglish:"",keepFa:r=>"شکل و رنگ چشم‌ها مثل "+r+" باشد",keepEn:r=>"Keep the person's eye shape and colour exactly as in "+r+"."},
  {id:"outfit",titleFa:"لباس",role:"outfit",mapsTo:"person",
   angles:[{id:"front",titleFa:"لباس کامل از روبه‌رو"},{id:"back",titleFa:"لباس از پشت (اگه داری)"}],
   askFa:"اوکی! برای اینکه لباست دقیق همون باشه، یه عکس ازش بفرست 👇",
@@ -57,7 +67,8 @@ const NAMES:Record<ReferenceNeedId,string[]>={
  logo:["لوگو","لوگوی","لوگوم","logo","brand logo"],
  product:["محصولم","محصول من","محصولمون","محصولمو","my product","our product"],
  face:["صورت خودم","چهره خودم","صورتم","چهره ام","my face","myself","خودم"],
- outfit:["لباس خودم","لباسم","لباسمو","my outfit","my dress","my clothes"]
+ outfit:["لباس خودم","لباسم","لباسمو","my outfit","my dress","my clothes"],
+ face_angle:[],full_body:[],smile:[],eyes_open:[]
 };
 const NAMES_POSSESSIVE=["تتوهام","تتوهامو","تتوم","تتومو","لوگومون","لوگوم","لوگومو","محصولم","محصولمون","لباسم","لباسمو","صورتم"];
 /** A brief that wants it kept as it really is: keep, intact, unchanged, exactly, my own... */

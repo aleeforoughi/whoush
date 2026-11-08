@@ -43,10 +43,13 @@ All are generation only (no reference images yet), with audio off and the price 
 
 **Approved by the owner on 2026-11-06** as listed. The margin is thin: for example, about 11% on Seedance.
 
+## Owner decisions
+
+- **BytePlus watermark: off (owner, 2026-11-08).** Seedream adds a visible "AI-generated" mark by default. The owner turned it off so that photos are share-ready (`SEEDREAM_IMAGE_WATERMARK` in `lib/providers/byteplus.ts`). This is the owner's choice under BytePlus's labeling rules, and any labeling those rules or local law require is the owner's responsibility. Seedance videos were already sent without it.
+
 ## Open owner decisions
 
-1. **BytePlus watermark.** Seedream adds a visible "AI-generated" mark by default, and it is kept. Turning it off is the owner's choice under BytePlus's labeling rules.
-2. **Written permissions before any customer use:**
+1. **Written permissions before any customer use:**
    - BytePlus: reselling video (Service-Specific Terms §4.2) and the SaaS resale clause (§6.2)
    - Kling: "own use only" (§10.3)
    - Google: available regions only, and 18+ users only

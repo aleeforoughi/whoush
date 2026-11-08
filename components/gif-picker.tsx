@@ -33,7 +33,7 @@ export function GifPicker({trigger,onPick}:{trigger:ReactElement;onPick:(gif:Gif
    <Input type="search" value={q==="yes"?"":q} onChange={e=>setQ(e.target.value)} placeholder="جستجوی گیف…" aria-label="جستجوی گیف" autoComplete="off"/>
    <div className="flex flex-wrap gap-1">{QUICK.map(([fa,en])=><button key={en} type="button" onClick={()=>setQ(en)} aria-pressed={q===en}
     className={"h-7 rounded-control border px-2 type-caption motion-hover "+(q===en?"border-primary bg-surface-selected text-fg-primary":"border-line-secondary text-fg-secondary hover:bg-surface-hover")}>{fa}</button>)}</div>
-   <div className="max-h-72 overflow-y-auto">
+   <div className="scrollbar-right max-h-72 overflow-y-auto">
     {state==="off"?<p role="status" className="p-4 text-center type-caption text-fg-secondary">{GIFS_OFF_FA}</p>
      :state==="empty"?<p role="status" className="p-4 text-center type-caption text-fg-secondary">گیفی پیدا نشد</p>
      :<ul aria-label="گیف‌ها" aria-busy={state==="loading"} className="grid grid-cols-2 gap-1">

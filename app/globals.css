@@ -60,3 +60,197 @@ bdi,
 @media (prefers-reduced-motion: reduce) {
   .whoush-generating { animation: none; background-position: 50% 0; }
 }
+
+/* Generation progress around the frame (owner, 2026-11-07): a ring on the frame's border that fills with blue, clockwise from the top, as the estimate
+   grows. A conic gradient shown only on a 3px border ring (mask), so it follows any frame size and its rounded corners; the fill eases between updates. */
+@property --whoush-progress { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
+.whoush-progress-ring {
+  --whoush-progress: 0%;
+  position: absolute; inset: 0; pointer-events: none; border-radius: inherit; padding: 3px;
+  background: conic-gradient(from 0deg, var(--primary) var(--whoush-progress), color-mix(in oklab, var(--color-line-tertiary) 70%, transparent) var(--whoush-progress));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  transition: --whoush-progress 600ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) { .whoush-progress-ring { transition: none; } }
+
+/* Scrollbars: minimal, quiet and the same everywhere. One size for every scroll area on every platform: a 10px lane with a 4px rounded thumb, no track,
+   no arrows. Hidden until the area is hovered or being scrolled (components/providers.tsx marks a scrolling element with data-scrolling). Feather's
+   ScrollArea below uses the same lane and thumb. Candidate to move into Feather. */
+:root {
+  --whoush-scrollbar-size: 10px;
+  --whoush-scrollbar-inset: 3px;
+  --whoush-scrollbar-thumb: color-mix(in oklab, var(--color-fg-secondary) 45%, transparent);
+  /* The icon on a mode-colored send button: white on the deep light-theme green, orange and blue; black on the bright dark-theme ones. */
+  --whoush-on-tone: #fff;
+  /* The brand primary as text (the «با کیفیت» pill): primary itself in light; in dark #005bff on black is under 4.5:1, so a lighter mix of it. */
+  --whoush-primary-ink: var(--primary);
+}
+/* Cards and widgets in the chat (owner, 2026-11-08): no border, the same surface as the user's message bubbles (--secondary) so they read as one
+   family, clearly lifted off the page in both themes. Badges on it take a lighter fill (darker in light mode) so they stand out from it. Unlayered, so
+   it wins over a component's own border and background utilities. */
+.whoush-widget { background-color: var(--secondary); border-color: transparent; }
+.whoush-widget [data-slot="badge"] { background-color: color-mix(in oklab, var(--foreground) 16%, var(--secondary)); border-color: transparent; }
+/* A grey (secondary) button on a card (owner, 2026-11-08: it blended into the card, which has the same colour, and had no visible hover): a lighter shade
+   of the card so it stands out, and a clearly stronger one on hover and press. */
+.whoush-widget [data-slot="button"][data-variant="secondary"] { background-color: color-mix(in oklab, var(--foreground) 12%, var(--secondary)); }
+.whoush-widget [data-slot="button"][data-variant="secondary"]:not(:disabled):hover { background-color: color-mix(in oklab, var(--foreground) 20%, var(--secondary)); }
+.whoush-widget [data-slot="button"][data-variant="secondary"]:not(:disabled):active { background-color: color-mix(in oklab, var(--foreground) 26%, var(--secondary)); }
+.dark {
+  --whoush-on-tone: #000;
+  --whoush-primary-ink: color-mix(in oklab, var(--primary) 70%, white);
+}
+/* Chrome, Edge, Safari, Opera: exact size. (Setting scrollbar-width or scrollbar-color would make Chrome ignore these, so those are for Firefox only.) */
+::-webkit-scrollbar {
+  width: var(--whoush-scrollbar-size);
+  height: var(--whoush-scrollbar-size);
+  background: transparent;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+::-webkit-scrollbar-thumb {
+  border: var(--whoush-scrollbar-inset) solid transparent;
+  border-radius: 9999px;
+  background-color: transparent;
+  background-clip: padding-box;
+}
+:hover::-webkit-scrollbar-thumb,
+[data-scrolling]::-webkit-scrollbar-thumb {
+  background-color: var(--whoush-scrollbar-thumb);
+}
+/* Firefox: no exact size exists there; thin is the closest. */
+@supports (-moz-appearance: none) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  :hover,
+  [data-scrolling] {
+    scrollbar-color: var(--whoush-scrollbar-thumb) transparent;
+  }
+}
+/* Feather's ScrollArea: a slimmer bar that fades in on hover or scroll. */
+[data-slot="scroll-area-scrollbar"] {
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease-standard);
+}
+[data-slot="scroll-area-scrollbar"][data-hovering],
+[data-slot="scroll-area-scrollbar"][data-scrolling] {
+  opacity: 1;
+}
+[data-slot="scroll-area-scrollbar"] {
+  border: 0 !important;
+}
+[data-slot="scroll-area-scrollbar"][data-orientation="vertical"] {
+  width: var(--whoush-scrollbar-size) !important;
+  padding: var(--whoush-scrollbar-inset) !important;
+}
+[data-slot="scroll-area-scrollbar"][data-orientation="horizontal"] {
+  height: var(--whoush-scrollbar-size) !important;
+  padding: var(--whoush-scrollbar-inset) !important;
+}
+[data-slot="scroll-area-thumb"] {
+  background-color: var(--whoush-scrollbar-thumb) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="scroll-area-scrollbar"] {
+    transition: none;
+  }
+}
+
+/* Vertical scrollbars always on the right, as on most of the web, also in this Persian (RTL) app. Browsers put an RTL element's scrollbar on the
+   left; a scroll container marked .scrollbar-right scrolls in LTR (scrollbar on the right) while its children stay RTL. Use it only on containers whose
+   content is wrapped in child elements (never on a text field: its own text would turn LTR). */
+html[dir="rtl"] .scrollbar-right {
+  direction: ltr;
+}
+/* Room for the bar: its lane is always reserved (no jump when it appears) and the content keeps a small gap from it. */
+.scrollbar-right {
+  scrollbar-gutter: stable;
+  padding-right: 0.25rem;
+}
+html[dir="rtl"] .scrollbar-right > * {
+  direction: rtl;
+}
+/* Feather's ScrollArea pins its vertical bar to the inline end (left in RTL): keep it on the right. */
+html[dir="rtl"] [data-slot="scroll-area-scrollbar"][data-orientation="vertical"] {
+  inset-inline-end: auto !important;
+  right: 0 !important;
+  left: auto !important;
+}
+
+/* The preview panel's backdrop: a faint tint of the text color over the page background, so it reads slightly brighter in dark mode and slightly darker in
+   light mode than the chat beside it. Just enough to tell the two spaces apart. */
+.surface-preview {
+  background-color: color-mix(in oklab, var(--color-fg-primary) 3%, var(--background));
+}
+
+
+/* A live progress line (owner, 2026-11-07: alive, with a soft flash): it fades in, and a light sweep passes across the text while Whoush works. */
+@keyframes whoush-line-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+@keyframes whoush-shimmer-sweep { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+.whoush-shimmer {
+  animation: whoush-line-in 280ms ease-out, whoush-shimmer-sweep 2.2s linear infinite;
+  background-image: linear-gradient(100deg, currentColor 40%, var(--color-fg-primary) 50%, currentColor 60%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text; background-clip: text;
+  color: var(--color-fg-secondary); -webkit-text-fill-color: transparent;
+}
+@media (prefers-reduced-motion: reduce) { .whoush-shimmer { animation: none; -webkit-text-fill-color: currentColor; background: none; } }
+
+/* Finglish (lib/ui-lang.ts): the page shows once its first translation pass is done (components/ui-language.tsx), so Persian never flashes. */
+html[lang="fa-Latn"] body:not([data-translated]){visibility:hidden}
+
+/* Glass bars (owner, 2026-11-08): the studio's phone top bar and the chat box float over the content, which scrolls under them, blurred like iOS:
+   a light tint so the blurred content shows through, a little darker for reading. The blur and tint are one layer behind the bar that reaches past its
+   inner edge and fades out there (a mask), so the content goes from blurred to sharp gradually, never at a hard line. The bar is its own GPU layer and
+   stacking context, so the layer stays behind its controls. No `position` here: this CSS is outside Tailwind's layers and would beat the bars' `absolute`. */
+.whoush-glass{transform:translateZ(0);background:transparent}
+.whoush-glass::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;
+  -webkit-backdrop-filter:blur(16px) saturate(150%);backdrop-filter:blur(16px) saturate(150%);
+  background:color-mix(in oklab,var(--color-surface-base) 35%,transparent)}
+.whoush-glass-top::before{bottom:-2.5rem;
+  -webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 2.5rem),rgba(0,0,0,.6) calc(100% - 1.5rem),transparent);
+  mask-image:linear-gradient(to bottom,#000 calc(100% - 2.5rem),rgba(0,0,0,.6) calc(100% - 1.5rem),transparent)}
+.whoush-glass-bottom::before{top:-3rem;
+  -webkit-mask-image:linear-gradient(to top,#000 calc(100% - 3rem),rgba(0,0,0,.6) calc(100% - 1.75rem),transparent);
+  mask-image:linear-gradient(to top,#000 calc(100% - 3rem),rgba(0,0,0,.6) calc(100% - 1.75rem),transparent)}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.whoush-glass::before{background:color-mix(in oklab,var(--color-surface-base) 92%,transparent)}}
+
+/* A dismissed suggestion (owner, 2026-11-08: "the card collapses with animation and hides from the conversation"): its height folds to nothing while it
+   fades, then it is removed. Reduced motion: it simply goes. */
+.whoush-fold { display: grid; grid-template-rows: 1fr; opacity: 1; transition: grid-template-rows 280ms ease, opacity 220ms ease, margin 280ms ease; }
+.whoush-fold > * { min-height: 0; overflow: hidden; }
+.whoush-fold[data-folding] { grid-template-rows: 0fr; opacity: 0; margin-block: -0.375rem; }
+@media (prefers-reduced-motion: reduce) { .whoush-fold { transition: none; } }
+
+/* The empty chat's illustration (components/chat-empty.tsx): a slow, quiet loop. */
+.whoush-empty g, .whoush-empty path, .whoush-empty circle { transform-box: fill-box; transform-origin: center; }
+@keyframes whoush-empty-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes whoush-empty-twinkle { 0%, 100% { opacity: .35; transform: scale(.8) rotate(0deg); } 50% { opacity: 1; transform: scale(1.1) rotate(45deg); } }
+@keyframes whoush-empty-glow { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+@keyframes whoush-empty-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+@keyframes whoush-empty-write { 0%, 15% { stroke-dashoffset: 1; } 45%, 85% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 1; } }
+.whoush-empty-float { animation: whoush-empty-float 5s ease-in-out infinite; }
+.whoush-empty-late { animation-delay: -1.6s; }
+.whoush-empty-later { animation-delay: -3.2s; }
+.whoush-empty-twinkle { animation: whoush-empty-twinkle 3.2s ease-in-out infinite; }
+.whoush-empty-twinkle.whoush-empty-late { animation-delay: -1.6s; }
+.whoush-empty-glow { animation: whoush-empty-glow 4s ease-in-out infinite; }
+.whoush-empty-pulse { animation: whoush-empty-pulse 2.4s ease-in-out infinite; }
+.whoush-empty-write { stroke-dasharray: 1; animation: whoush-empty-write 4.5s ease-in-out infinite; }
+.whoush-empty-write-2 { animation-delay: .5s; }
+@media (prefers-reduced-motion: reduce) {
+  .whoush-empty-float, .whoush-empty-twinkle, .whoush-empty-glow, .whoush-empty-pulse, .whoush-empty-write { animation: none; }
+  .whoush-empty-write { stroke-dasharray: none; }
+}
+
+/* The main subject's badge in the chat box (owner, 2026-11-08): blue, with a star and «سوژه» before the tag (components/mention-textarea.tsx). */
+#whoush-prompt [data-tag][data-main] { background-color: var(--primary); color: var(--primary-foreground); }
+#whoush-prompt [data-tag][data-main]::before { content: "★ " attr(data-main-label); margin-inline-end: .3em; font-size: .85em; opacity: .9; }
+#whoush-prompt [data-tag][data-main] [data-badge-remove] { color: inherit; }

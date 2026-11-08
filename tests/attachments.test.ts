@@ -147,7 +147,7 @@ test("roles: media may have none, a role must fit its kind, files have none, voi
  for(const [label,list] of [["image","wire"],["video","clip"],["audio","sound"]].map(([l,f])=>[l,[({wire,clip,sound} as Record<string,typeof wire>)[f]({role:undefined})]] as const))assert.equal(parse(list).success,true,label+" without a role is valid: Whoush infers it");
  assert.equal(parse([sound({role:"voice_clone",consent:true})]).success,true);
  assert.equal(parse([sound({speech:{hasSpeech:true,language:"unknown",accent:"unspecified"}})]).success,true);
- assert.equal(roleLabelFa("character"),"کاراکتر");assert.equal(roleLabelFa("edit_reference"),"ادیت عکس");assert.equal(roleLabelFa("edit_reference","video"),"ادیت ویدیو");assert.equal(roleLabelFa("lip_sync"),"الگوی گفتار");assert.equal(roleLabelFa("music"),"موزیک");assert.equal(roleLabelFa("environment"),"محیط");assert.equal(roleLabelFa("object"),"اشیا");assert.equal(roleLabelFa("motion_reference"),"الگوی حرکت");assert.equal(roleLabelFa("voice_clone"),"کلون صدا");
+ assert.equal(roleLabelFa("character"),"شخص");assert.equal(roleLabelFa("edit_reference"),"ادیت عکس");assert.equal(roleLabelFa("edit_reference","video"),"ادیت ویدیو");assert.equal(roleLabelFa("lip_sync"),"الگوی گفتار");assert.equal(roleLabelFa("music"),"موزیک");assert.equal(roleLabelFa("environment"),"محیط");assert.equal(roleLabelFa("object"),"اشیا و محصول");assert.equal(roleLabelFa("motion_reference"),"الگوی حرکت");assert.equal(roleLabelFa("voice_clone"),"کلون صدا");
  assert.equal(roleLabelFa("general"),"مرجع کلی");assert.ok(!ATTACHMENT_ROLE_IDS.includes("general" as never)&&!rolesFor("image").some(r=>r.id==="general")&&!rolesFor("audio").some(r=>r.id==="voice_clone"),"general is never offered or accepted");
  assert.deepEqual(rolesFor("pdf"),[]);assert.deepEqual(rolesFor("image").map(r=>r.id),["reference","character","hairstyle","outfit","environment","object","graphic","frame"]);assert.deepEqual(rolesFor("video").map(r=>r.id),["reference","motion_reference"]);assert.deepEqual(rolesFor("audio").map(r=>r.id),["lip_sync","music"]);assert.ok(!ATTACHMENT_ROLE_IDS.includes("style" as never));
 });
@@ -350,11 +350,11 @@ test("accept lists follow the kind, and the role labels are the curated Persian 
  assert.ok(acceptFor("audio").includes(".mp3")&&acceptFor("audio").includes("audio/mpeg")&&!acceptFor("audio").includes(".mp4,"));
  assert.equal(acceptFor("file"),".pdf,.json,.md,.markdown,application/pdf,application/json,text/markdown,text/x-markdown,text/plain");
  const labels=(k:"image"|"video"|"audio")=>rolesFor(k).map(r=>r.labelFa);
- assert.deepEqual(labels("image"),["عکس رفرنس","کاراکتر","پیرایش","پوشاک","محیط","اشیا","گرافیک","فریم"]);
- assert.deepEqual(labels("video"),["فیلم رفرنس","الگوی حرکت"]);
+ assert.deepEqual(labels("image"),["عکس رفرنس","شخص","پیرایش و آرایش","پوشاک","محیط","اشیا و محصول","گرافیک","فریم"]);
+ assert.deepEqual(labels("video"),["ویدیو رفرنس","الگوی حرکت"]);
  // roles that left the menu keep their labels for sent messages and older projects
- assert.deepEqual(["start_frame","end_frame","makeup"].map(r=>roleLabelFa(r as never,"image")),["فریم اول","فریم آخر","آرایش"]);assert.equal(roleLabelFa("continue","video"),"امتداد ویدیو");assert.deepEqual(labels("audio"),["الگوی گفتار","موزیک"]);
- assert.equal(rolesFor("image").find(r=>r.id==="hairstyle")!.hintFa,"مدل مو و فرم ریش");
+ assert.deepEqual(["start_frame","end_frame","makeup"].map(r=>roleLabelFa(r as never,"image")),["فریم اول","فریم آخر","آرایش"]);assert.equal(roleLabelFa("continue","video"),"امتداد ویدیو به جلو");assert.deepEqual(labels("audio"),["الگوی گفتار","موزیک"]);
+ assert.equal(rolesFor("image").find(r=>r.id==="hairstyle")!.hintFa,"عکس مدل مو، ریش یا آرایشی که می‌خوای روی سوژه بیاد");
 });
 
 test("lowestFreeTag: the lowest number not in use, so a number freed by a removal comes back; sent tags stay taken",async()=>{
@@ -387,4 +387,12 @@ test("«فریم» resolves to the start or end frame from the brief; two frames
  assert.deepEqual(frames("#تصویر-۱ فریم آخر است، #تصویر-۲ هم باشد",2),["end_frame","start_frame"],"the other frame takes the free slot");
  assert.deepEqual(frames("یک ویدیو بساز",2),["start_frame","end_frame"],"no hint: first and last");
  assert.ok(inferAttachmentRoles("x",[{tag:"image1",kind:"image",role:"frame"}]).every(r=>r.roleSource==="user"));
+});
+test("owner (2026-11-08): a checked video goes to the server with its check id, like a photo; other kinds never carry one",()=>{
+ const id="33333333-3333-4333-8333-333333333333";
+ const video:LocalAttachment={id:crypto.randomUUID(),tag:"video1",kind:"video",mime:"video/mp4",bytes:2048,sha256:"c".repeat(64),name:"clip.mp4",width:64,height:64,durationSeconds:3};
+ const w=toWireAttachment(video,id);
+ assert.equal(w.reviewId,id,"the video's tick on the phone must reach the server");
+ assert.equal(CreativeTurnInputSchema.safeParse({text:"x",attachments:[w]}).success,true);
+ assert.equal(toWireAttachment({...video,tag:"audio1",kind:"audio",mime:"audio/mpeg"},id).reviewId,undefined);
 });

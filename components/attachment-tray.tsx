@@ -5,7 +5,8 @@ import {MAX_ATTACHMENTS,type LocalAttachment} from "@/lib/attachments";
 import {fa} from "@/lib/format";
 
 export type AttachmentProblem={key:string;name:string;message:string};
-export const ATTACHMENT_NOTE="فایل‌ها فقط در همین مرورگر نگه داشته می‌شوند و فعلاً به سرویس تولید ارسال نمی‌شوند.";
+/** Honest about where files go (2026-11-06): photos are checked for safety right away, and only a checked photo goes to the model; other files stay here. */
+export const ATTACHMENT_NOTE="عکس‌ها همون لحظه بررسی ایمنی می‌شن و فقط عکسِ تأییدشده برای ساخت به مدل می‌ره. بقیهٔ فایل‌ها توی همین مرورگر می‌مونن.";
 
 /**
  * Above the chat input: per-file problems, a running count and the privacy note. The files themselves are cards inside the input (`components/attachment-card.tsx`).
@@ -13,7 +14,7 @@ export const ATTACHMENT_NOTE="فایل‌ها فقط در همین مرورگر 
  */
 export function AttachmentTray({items,cards=items.length,problems,reading,onDismiss}:{items:LocalAttachment[];cards?:number;problems:AttachmentProblem[];reading:boolean;onDismiss:(key:string)=>void}){
  if(!cards&&!items.length&&!problems.length&&!reading)return null;
- return <div className="flex max-h-[45dvh] flex-col gap-2 overflow-y-auto">
+ return <div className="scrollbar-right flex max-h-[45dvh] flex-col gap-2 overflow-y-auto">
   {problems.map(p=><Alert key={p.key} variant="destructive" role="alert" className="flex items-center gap-2">
    <Icon icon={CircleAlert} aria-hidden="true"/>
    <AlertDescription className="min-w-0 flex-1 break-words"><bdi>{p.name}</bdi>: {p.message}</AlertDescription>

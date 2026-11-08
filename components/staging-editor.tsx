@@ -1,4 +1,5 @@
 "use client";
+import {useUiLang} from "@/components/ui-language";
 import {useEffect,useId,useRef,useState,useSyncExternalStore,type KeyboardEvent,type PointerEvent,type ReactNode} from "react";
 import dynamic from "next/dynamic";
 import {Dialog as DialogPrimitive} from "@base-ui/react/dialog";
@@ -48,11 +49,20 @@ function hasWebGL():boolean{
 const noSubscribe=()=>()=>{};
 /** The 3D frame is used when the browser can draw it (never on the server). */
 const useWebGL=()=>useSyncExternalStore(noSubscribe,hasWebGL,()=>false);
-/** Whether an element is on screen (or near it), so heavy views draw only while they can be seen. */
-function useOnScreen(el:Element|null):boolean{
+/**
+ * Whether an element is on screen (or near it), so heavy views draw only while they can be seen. Building a view is held until scrolling pauses
+ * (owner, 2026-11-08: on the iPhone the chat jumped at the card under «بوم»: building the scene mid-scroll stalled the momentum scroll). `keep`: once
+ * built, it stays (the CSS scene: no rebuilding each time it scrolls past); without it a view is dropped off screen (WebGL: phones allow few contexts).
+ */
+function useOnScreen(el:Element|null,keep=false):boolean{
  const [on,setOn]=useState(false);
  useEffect(()=>{if(!el||typeof IntersectionObserver==="undefined")return;
-  const io=new IntersectionObserver(es=>setOn(es.some(e=>e.isIntersecting)),{rootMargin:"200px"});io.observe(el);return ()=>io.disconnect();},[el]);
+  let near=false,t=0,last=0;
+  const settle=()=>{window.clearTimeout(t);t=window.setTimeout(()=>{if(performance.now()-last<140)return settle();setOn(v=>near||(keep&&v));},150);};
+  const onScroll=()=>{last=performance.now();};
+  const io=new IntersectionObserver(es=>{near=es.some(e=>e.isIntersecting);if(near)settle();else if(!keep)setOn(false);},{rootMargin:"200px"});
+  io.observe(el);document.addEventListener("scroll",onScroll,{capture:true,passive:true});
+  return ()=>{io.disconnect();document.removeEventListener("scroll",onScroll,{capture:true});window.clearTimeout(t);};},[el,keep]);
  return Boolean(el)&&on;
 }
 /** Sets a state only when its value really changed (the 3D view reports on every draw). */
@@ -84,7 +94,8 @@ function withProps(s:Staging):Staging{
  if(s.props||subject==="environment")return {...s,subject,props:tidyProps(s.props)??[]};
  return {...s,subject,props:[{kind:subject,label:SUBJECT_FA[subject],x:0,z:-0.25,y:0,main:true}]};
 }
-export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{staging:Staging;aspectRatio?:string;
+export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus,embedded}:{staging:Staging;aspectRatio?:string;
+ /** Inside a change widget (owner, 2026-11-08): no box or «بوم» title of its own, the widget's title says what changed. */embedded?:boolean;
  /** A follow-up about one or two parts: «بوم» opens on just those parts (less is more), with «همهٔ تنظیمات بوم» to show everything. */focus?:readonly CanvasSection[];/** For the wording («این عکس», «این ویدیو»). */mediaKind?:"image"|"video";
  /** Live: every adjustment is reported (with whether it differs from Whoush's scene), so the generation card below uses it directly; without it, read-only. */
  onChange?:(s:Staging,aspect:string,changed:boolean)=>void}){
@@ -157,7 +168,8 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  // Expanded, the frame, the camera and the lighting are sub-sections and only one is open at a time (opening one closes the other): the frame at first,
  // or, for a follow-up about one part, that part.
  const subOf=(sec?:CanvasSection):"frame"|"camera"|"light"=>sec==="light"?"light":sec==="angle"||sec==="distance"||sec==="lens"?"camera":"frame";
- const [openSub,setOpenSub]=useState<"frame"|"camera"|"light"|null>(()=>focus?.length?subOf(focus[0]):null);
+ // Inside a change widget the sections start closed: the previews above them already show the change; a tap opens one to adjust it.
+ const [openSub,setOpenSub]=useState<"frame"|"camera"|"light"|null>(()=>focus?.length&&!embedded?subOf(focus[0]):null);
  const toggleSub=(x:"frame"|"camera"|"light")=>setOpenSub(o=>o===x?null:x);
  // Every part is always reachable: the card itself doesn't open or close, its sub-sections do.
  const show=(sec:CanvasSection)=>Boolean(sec);
@@ -169,9 +181,9 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  // The frame in 3D when the browser can draw it, and its full-screen view.
  const webgl=useWebGL(),[fullscreen,setFullscreen]=useState(false);
  // One WebGL view per open, visible frame (browsers allow only a few at once): hidden or scrolled-away cards draw nothing in 3D.
- const frameArea=useRef<HTMLDivElement|null>(null),[frameEl,setFrameEl]=useState<HTMLDivElement|null>(null),onScreen=useOnScreen(frameEl);
+ const frameArea=useRef<HTMLDivElement|null>(null),[frameEl,setFrameEl]=useState<HTMLDivElement|null>(null),onScreen=useOnScreen(frameEl,FRAME_RENDERER==="css");
  // The collapsed card's frame snapshot: the real frame, drawn only while it is on screen (a long chat holds many cards).
- const [snapEl,setSnapEl]=useState<HTMLSpanElement|null>(null),snapOnScreen=useOnScreen(snapEl);
+ const [snapEl,setSnapEl]=useState<HTMLSpanElement|null>(null),snapOnScreen=useOnScreen(snapEl,FRAME_RENDERER==="css");
  /** Back to Whoush's own choice: the centre point on the dominant subject where it stands now, with Whoush's original framing (the crop pan). */
  const resetFocus=()=>{
   setFocusProps(draft.props);
@@ -192,13 +204,13 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
  <div role="group" aria-label="بوم" className="@container flex min-w-0 flex-col gap-3">
   {/* One card holds everything: its title, the preview, then its sub-sections (frame, camera, lighting), so the layout never splits. The card itself never
       opens or closes; its sub-sections do, one at a time. */}
-  <div className="flex min-w-0 flex-col gap-3 rounded-card border border-line-secondary bg-surface-subtle p-2">
-  <div className="flex w-full flex-col gap-3 p-3 pb-0 text-start">
-   <span className="flex items-center gap-2 px-1">
+  <div className={"flex min-w-0 flex-col gap-3 "+(embedded?"":"whoush-widget rounded-card p-2")}>
+  <div className={"flex w-full flex-col gap-3 pb-0 text-start "+(embedded?"":"p-3")}>
+   {!embedded&&<span className="flex items-center gap-2 px-1">
     <Icon icon={Box} size={16} aria-hidden="true" className="size-4 shrink-0 text-fg-secondary"/>
     <span className="type-label text-fg-primary">بوم</span><span className="type-caption text-fg-secondary">تنظیمات پیشرفته</span>
     {changed&&<span className="rounded-control bg-surface-selected px-2 py-0.5 type-caption text-fg-primary">تغییر کرده</span>}
-   </span>
+   </span>}
    {/* The preview while the frame's own section is closed: just the frame, exactly the photo's crop as the frame simulates it, and the details of the frame,
        the camera and the lighting, one under another, right-aligned: under it on a phone; where the card is wide, beside it (to its left). A scene with no
        character (no frame) shows the camera and the lighting as small tiles instead. */}
@@ -287,7 +299,7 @@ export function StagingEditor({staging,aspectRatio,mediaKind,onChange,focus}:{st
     </>}
     {/* Lens and aperture: Whoush's pick for the scene (lib/staging.ts, lensFor) until the user moves a slider; bokeh is the aperture opened wide. */}
     {editable&&show("lens")&&(show("angle")||show("distance"))&&<SectionRule/>}
-    {editable&&show("lens")&&(()=>{const l=lensFor(draft),auto=(on:boolean)=>on?" · خودکار":"";
+    {editable&&show("lens")&&(()=>{const l=lensFor(draft),auto=(on:boolean)=>on?" · اتوماتیک":"";
      return <>
       {/* Right after the distance: Whoush Autopilot (on: Whoush keeps the lens and aperture right for the scene; off: fully manual). The bokeh toggle is
           off the canvas for now (the aperture slider still sets the background blur). */}
@@ -367,7 +379,7 @@ function SnapCaption({c,icon}:{c:{title:string;value:string};/** Its icon, in th
 }
 /** A smaller snapshot tile (the camera, the lighting): its drawing in a dark tile with the frame's rounded border, its details under it. */
 function SnapTile({c,icon,children}:{c:{title:string;value:string};icon?:LucideIcon;children:ReactNode}){
- return <span className="flex w-36 min-w-0 flex-col gap-1.5 @lg:w-44">
+ return <span className="flex min-w-0 max-w-44 flex-1 basis-32 flex-col gap-1.5">
   <span className="dark flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-card border border-line-secondary bg-background p-2 text-fg-primary [&_svg]:h-full! [&_svg]:max-h-full! [&_svg]:w-auto! [&_svg]:max-w-full! [&_svg]:pointer-events-none">{children}</span>
   <SnapCaption c={c} icon={icon}/>
  </span>;
@@ -698,7 +710,7 @@ function Backdrop({env,W,H,horizon,bf,slide,wallY,gradient}:{env:NonNullable<Sta
 /** A switch: the switch itself first (on the right, as Persian reads), its label after it, the row aligned to the right. */
 function Toggle({label,on,onChange}:{label:string;on:boolean;onChange:(on:boolean)=>void}){
  return <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={()=>onChange(!on)}
-  className="flex min-h-9 items-center gap-2 rounded-control px-1 type-label text-fg-primary outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+  className="flex min-h-9 items-center gap-2 rounded-control px-1 type-label text-fg-primary outline-none motion-hover hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
   <span dir="ltr" className={"relative inline-block h-5 w-9 shrink-0 rounded-full transition-colors motion-reduce:transition-none "+(on?"bg-primary":"bg-surface-hover")}><span className={"absolute top-0.5 size-4 rounded-full transition-[inset-inline-start] motion-reduce:transition-none "+(on?"start-4.5 bg-primary-foreground":"start-0.5 bg-fg-secondary")}/></span>
   <span>{label}</span>
  </button>;
@@ -772,6 +784,7 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
  /** Draw the frame in real 3D (the lens's perspective, any height angle, fisheye, depth of field); the 2D drawing's overlays stay on top. */three?:boolean;
  /** Opens the frame full screen. */onFullscreen?:()=>void;
  /** The angle joystick: a new camera height (a stop) or orbit (a side). */onAngle?:(c:{elevation?:number;azimuth?:number})=>void}){
+ const lang=useUiLang();
  // In 3D: where the centre point and the selected prop land on screen (fractions of the frame), and whether a press just landed on a prop.
  const [proj,setProjRaw]=useState<Record<string,[number,number]>>({});
  const setProj=(p:Record<string,[number,number]>)=>setProjRaw(o=>sameJSON(o,p)?o:p);
@@ -939,10 +952,10 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
     <bdi dir="ltr" aria-hidden="true" className="absolute rounded-[4px] bg-background/60 px-1 text-[10px] font-medium leading-4 text-primary" style={{left:(2/(W+4)*100)+"%",top:(2/(H+4)*100)+"%",margin:"4px"}}>{faText(aspect)}</bdi>
     {/* Tag text, then (on its right) the lock in a small button: outline when unlocked, filled blue with a white lock when locked. On touch screens the
       button is larger and its tap area reaches about 44px around it (an invisible ::before), so it is easy to hit with a finger. */}
-  {tag&&(FRAME_MOVES_PROPS||(sel!=null&&base[sel]))&&<div dir="rtl" className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
+  {tag&&(FRAME_MOVES_PROPS||(sel!=null&&base[sel]))&&<div dir={lang==="fi"?"ltr":"rtl"} className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
    style={{right:((W+2-tag.x)/(W+4)*100)+"%",top:((tag.y+2)/(H+4)*100)+"%"}}>
    {FRAME_MOVES_PROPS&&onLock&&<button type="button" aria-pressed={locked} aria-label={(locked?"باز کردن قفل انتخاب ":"قفل کردن انتخاب ")+tag.text} onClick={()=>onLock(!locked)}
-    className={"pointer-events-auto relative flex size-6 items-center justify-center rounded-[4px] before:absolute before:-inset-2.5 before:content-[''] pointer-coarse:size-7 border border-primary motion-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring "+(locked?"bg-primary text-primary-foreground":"bg-transparent text-primary")}>
+    className={"pointer-events-auto relative flex size-6 items-center justify-center rounded-[4px] before:absolute before:-inset-2.5 before:content-[''] pointer-coarse:size-7 border border-primary motion-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring "+(locked?"bg-primary text-primary-foreground hover:bg-primary/80":"bg-transparent text-primary hover:bg-primary/15")}>
     <Icon icon={locked?Lock:LockOpen} size={16} aria-hidden="true" className={"size-3.5! "+(locked?"[&_rect]:fill-current":"")}/></button>}
    <bdi className="whitespace-nowrap text-xs font-medium leading-none text-primary pointer-coarse:text-[13px]">{tag.text}</bdi>
   </div>}
@@ -957,12 +970,12 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   {FRAME_MOVES_PROPS&&((sel!=null&&base[sel])||centerSel)&&onBack&&<div className="absolute top-3 start-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1.5">
    {/* Each badge hugs its text in full (never cut); when two do not fit side by side, the second wraps under the first. */}
    <button type="button" onClick={onBack} aria-label={"تنظیم "+(centerSel?"مرکز":propTags(base)[sel!])+"، برگشت به تنظیمات کادر"}
-   className="flex h-7 w-max shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-primary ps-2.5 pe-1.5 text-xs font-medium text-primary-foreground shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:h-8">
+   className="flex h-7 w-max shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-primary ps-2.5 pe-1.5 text-xs font-medium text-primary-foreground shadow-1 outline-none motion-hover hover:bg-primary/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:h-8">
    <span>تنظیم {centerSel?"مرکز":<bdi>{propTags(base)[sel!]}</bdi>}</span><Icon icon={X} size={16} aria-hidden="true" className="size-3.5! shrink-0"/>
    </button>
    {/* With the centre point selected: back to Whoush's default centre (on the dominant subject, Whoush's framing); white badge, blue text. */}
    {centerSel&&<button type="button" onClick={()=>onFocus?.(null)} aria-label="بازگشت به مرکز سوژه"
-    className="flex h-7 w-max shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-white ps-2 pe-2.5 text-xs font-medium text-primary shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60 pointer-coarse:h-8">
+    className="flex h-7 w-max shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-white ps-2 pe-2.5 text-xs font-medium text-primary shadow-1 outline-none motion-hover not-disabled:hover:bg-white/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60 pointer-coarse:h-8">
     <Icon icon={Undo2} size={16} aria-hidden="true" className="size-3.5! shrink-0"/>بازگشت به مرکز سوژه</button>}
   </div>}
  </div>;
@@ -975,20 +988,20 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   {FRAME_MOVES_PROPS&&((sel!=null&&base[sel])||centerSel)&&onBack&&<div className="absolute top-3 start-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1.5">
    {/* Each badge hugs its text in full (never cut); when two do not fit side by side, the second wraps under the first. */}
    <button type="button" onClick={onBack} aria-label={"تنظیم "+(centerSel?"مرکز":propTags(base)[sel!])+"، برگشت به تنظیمات کادر"}
-   className="flex h-7 w-max shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-primary ps-2.5 pe-1.5 text-xs font-medium text-primary-foreground shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:h-8">
+   className="flex h-7 w-max shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-primary ps-2.5 pe-1.5 text-xs font-medium text-primary-foreground shadow-1 outline-none motion-hover hover:bg-primary/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:h-8">
    <span>تنظیم {centerSel?"مرکز":<bdi>{propTags(base)[sel!]}</bdi>}</span><Icon icon={X} size={16} aria-hidden="true" className="size-3.5! shrink-0"/>
    </button>
    {/* With the centre point selected: back to Whoush's default centre (on the dominant subject, Whoush's framing); white badge, blue text. */}
    {centerSel&&<button type="button" onClick={()=>onFocus?.(null)} aria-label="بازگشت به مرکز سوژه"
-    className="flex h-7 w-max shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-white ps-2 pe-2.5 text-xs font-medium text-primary shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60 pointer-coarse:h-8">
+    className="flex h-7 w-max shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-white ps-2 pe-2.5 text-xs font-medium text-primary shadow-1 outline-none motion-hover not-disabled:hover:bg-white/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60 pointer-coarse:h-8">
     <Icon icon={Undo2} size={16} aria-hidden="true" className="size-3.5! shrink-0"/>بازگشت به مرکز سوژه</button>}
   </div>}
   {/* Tag text, then (on its right) the lock in a small button: outline when unlocked, filled blue with a white lock when locked. On touch screens the
       button is larger and its tap area reaches about 44px around it (an invisible ::before), so it is easy to hit with a finger. */}
-  {tag&&(FRAME_MOVES_PROPS||(sel!=null&&base[sel]))&&<div dir="rtl" className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
+  {tag&&(FRAME_MOVES_PROPS||(sel!=null&&base[sel]))&&<div dir={lang==="fi"?"ltr":"rtl"} className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
    style={{right:((W+2-tag.x)/(W+4)*100)+"%",top:((tag.y+2)/(H+4)*100)+"%"}}>
    {FRAME_MOVES_PROPS&&onLock&&<button type="button" aria-pressed={locked} aria-label={(locked?"باز کردن قفل انتخاب ":"قفل کردن انتخاب ")+tag.text} onClick={()=>onLock(!locked)}
-    className={"pointer-events-auto relative flex size-6 items-center justify-center rounded-[4px] before:absolute before:-inset-2.5 before:content-[''] pointer-coarse:size-7 border border-primary motion-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring "+(locked?"bg-primary text-primary-foreground":"bg-transparent text-primary")}>
+    className={"pointer-events-auto relative flex size-6 items-center justify-center rounded-[4px] before:absolute before:-inset-2.5 before:content-[''] pointer-coarse:size-7 border border-primary motion-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring "+(locked?"bg-primary text-primary-foreground hover:bg-primary/80":"bg-transparent text-primary hover:bg-primary/15")}>
     <Icon icon={locked?Lock:LockOpen} size={16} aria-hidden="true" className={"size-3.5! "+(locked?"[&_rect]:fill-current":"")}/></button>}
    <bdi className="whitespace-nowrap text-xs font-medium leading-none text-primary pointer-coarse:text-[13px]">{tag.text}</bdi>
   </div>}
@@ -1194,7 +1207,7 @@ function LightInspector({light:l,tag,canRemove,onChange,onRemove,onAdd}:{light:S
   <div className="flex flex-wrap items-center gap-1" role="radiogroup" aria-label="رنگ نور">
    <Chip role="radio" on={!l.colorHex} onClick={()=>onChange({colorHex:undefined})}>بدون رنگ</Chip>
    {GEL_COLORS.map(c=><button key={c} type="button" role="radio" aria-checked={l.colorHex===c} aria-label={"رنگ "+c} onClick={()=>onChange({colorHex:c})}
-    className={"size-7 rounded-control border-2 "+(l.colorHex===c?"border-fg-primary":"border-transparent")} style={{background:c}}/>)}
+    className={"size-7 rounded-control border-2 "+(l.colorHex===c?"border-fg-primary":"border-transparent hover:border-fg-secondary")+" motion-hover"} style={{background:c}}/>)}
   </div>
   {LIGHTS_EDITABLE&&<div className="flex flex-wrap gap-2">
    {onAdd&&<Button type="button" variant="outline" size="sm" onClick={onAdd}><Icon icon={Plus} aria-hidden="true"/>نور جدید</Button>}

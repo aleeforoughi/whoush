@@ -78,10 +78,10 @@ test("Whoush finds the main props in the brief and lays them out for the camera;
  const moved=props.map((p,i)=>i===1?{...p,x:-0.7,z:0.8,y:0.4}:p);
  assert.deepEqual(describeStagingChangesFa({...base,props},{...base,props:moved}),["ماشین: سمت راست، وسط عمق ← سمت چپ، عقب، بالاتر از زمین"]);
  assert.deepEqual(describeStagingChangesFa({...base,props},{...base,props:props.slice(0,2)}),["حذف: درخت"]);
- const r=planned(await orchestrateCreativeTurn({text:"a woman next to a red car under a tree",stagingOverride:{...base,props:moved}}));
+ const r=planned(await orchestrateCreativeTurn({text:"an image of a woman next to a red car under a tree",stagingOverride:{...base,props:moved}}));
  assert.ok(getPrivateMediaPrompt(r.turnId)!.includes("Layout: person (main subject) centre midground; vehicle left background, raised; tree left background."));
  assert.ok(r.plan.hardConstraints.some(c=>c.includes("چیدمان: زن (اصلی)")));
- const d=planned(await orchestrateCreativeTurn({text:"a woman next to a red car under a tree"}));
+ const d=planned(await orchestrateCreativeTurn({text:"an image of a woman next to a red car under a tree"}));
  assert.deepEqual(d.plan.staging?.props?.map(p=>p.kind),["person","vehicle","tree"]);
  assert.ok(!CreativeTurnInputSchema.safeParse({text:"x",stagingOverride:{...base,props:Array.from({length:7},()=>props[0])}}).success,"at most six props");
 });
@@ -459,4 +459,13 @@ test("the arranged scene opens the image prompt in plain words: angle, view, fra
  const back=sceneLeadEn({...base,cameraAzimuth:135,shotSize:"medium_close_up",lights:[]});
  assert.match(back,/Three-quarter back view: the back of the subject's head and upper back, with only a small part of one cheek visible\. Medium close-up: the head and upper back, cropped mid-back\./);
  assert.ok(!/chest/.test(back),back);
+});
+
+// A camera, light or frame change gets one widget titled by what changed (owner, 2026-11-08).
+test("change widget title names the changed parts in plain Persian",async()=>{
+ const {changeTitleFa}=await import("../lib/staging");
+ assert.equal(changeTitleFa(["light"]),"تغییر نور");
+ assert.equal(changeTitleFa(["angle","light"]),"تغییر زاویهٔ دوربین و نور");
+ assert.equal(changeTitleFa(["frame","lens","light","lens"]),"تغییر کادر، لنز و نور");
+ assert.equal(changeTitleFa([]),"تغییر صحنه");
 });

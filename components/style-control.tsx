@@ -12,17 +12,19 @@ const listeners=new Set<()=>void>();
 const subscribe=(cb:()=>void)=>{listeners.add(cb);window.addEventListener("storage",cb);return()=>{listeners.delete(cb);window.removeEventListener("storage",cb);};};
 const read=()=>{try{return parseStyle(window.localStorage.getItem(STYLE_STORAGE_KEY));}catch{return null;}};
 const write=(s:GenerationStyle|null)=>{try{if(s)window.localStorage.setItem(STYLE_STORAGE_KEY,s);else window.localStorage.removeItem(STYLE_STORAGE_KEY);}catch{ /* not persisted */ }listeners.forEach(l=>l());};
-/** The remembered style (null is «خودکار») and its setter. */
+/** The remembered style (null is «اتوماتیک») and its setter. */
 export function useStyleSetting():[GenerationStyle|null,(s:GenerationStyle|null)=>void]{
  const style=useSyncExternalStore(subscribe,read,()=>null);
  return [style,write];
 }
 
-/** «سبک» beside the build mode: a neutral secondary pill showing only the current style; clicking it opens a radio menu (خودکار · واقع‌گرایانه · سه‌بعدی · کارتونی). */
+/** The pill's text while no style is chosen (owner wording, 2026-11-06). */
+export const AUTO_STYLE_PILL_FA="سبک اتوماتیک";
+/** «سبک» beside the build mode: a neutral secondary pill showing only the current style; clicking it opens a radio menu (اتوماتیک · واقع‌گرایانه · سه‌بعدی · کارتونی). */
 export function StyleControl({value,onChange}:{value:GenerationStyle|null;onChange:(s:GenerationStyle|null)=>void}){
  return <DropdownMenu>
-  <DropdownMenuTrigger render={<Button type="button" variant="outline" aria-label={"سبک: "+styleLabelFa(value)+"، برای تغییر کلیک کن"} aria-haspopup="menu"/>}>
-   <Icon icon={ICONS[value??AUTO]} aria-hidden="true"/>{value?styleLabelFa(value):"سبک: "+AUTO_STYLE_FA.titleFa}<Icon icon={ChevronDown} aria-hidden="true"/>
+  <DropdownMenuTrigger render={<Button type="button" variant="outline" aria-label={(value?"سبک: "+styleLabelFa(value):AUTO_STYLE_PILL_FA)+"، برای تغییر کلیک کن"} aria-haspopup="menu" className="min-w-0 max-w-full shrink"/>}>
+   <Icon icon={ICONS[value??AUTO]} aria-hidden="true"/><span className="min-w-0 truncate">{value?styleLabelFa(value):AUTO_STYLE_PILL_FA}</span><Icon icon={ChevronDown} aria-hidden="true"/>
   </DropdownMenuTrigger>
   <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-64">
    <DropdownMenuGroup>

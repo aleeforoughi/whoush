@@ -13,7 +13,7 @@ afterEach(()=>{for(const k of KEYS){if(saved[k]===undefined)delete process.env[k
 const noNet=globalThis.fetch;
 const reqFor=(text:string):PlannerRequest=>{const input=CreativeTurnInputSchema.parse({text});const prep=preparePrivateCreativeRequest({prompt:text,kind:"image"});return {...prep,privateRoute:null,kind:"image",input};};
 /** Plan to its OpenAI wire shape: absent optionals become explicit nulls. */
-const toWire=(p:CreativePlan)=>{const w:Record<string,unknown>={...p};for(const k of ["camera","shot","staging","identityLock","speech","clarifyingQuestionFa"])w[k]??=null;
+const toWire=(p:CreativePlan)=>{const w:Record<string,unknown>={...p};for(const k of ["camera","shot","staging","identityLock","speech","clarifyingQuestionFa","research"])w[k]??=null;
  w.reply={text:p.reply?.text??"اینم برنامه‌ش",gif:p.reply?.gif??null,react:p.reply?.react??null};
  if(p.staging)w.staging={...p.staging,subject:p.staging.subject??"person",framing:p.staging.framing??null,environment:p.staging.environment??null,environmentDistance:p.staging.environmentDistance??null,
   props:(p.staging.props??[]).map(x=>({...x,main:x.main??false,size:x.size??null})),lights:p.staging.lights.map(l=>({...l,colorHex:l.colorHex??null}))};return w;};

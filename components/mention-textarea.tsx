@@ -1,13 +1,20 @@
 "use client";
+import {LRM,markLtrRuns,stripMarks} from "@/lib/bidi";
+import {textDir} from "@/lib/text-dir";
+import {useUiLang} from "@/components/ui-language";
+import {TagThumb,type TagThumbKind} from "@/components/tag-thumb";
 import {useEffect,useId,useImperativeHandle,useLayoutEffect,useRef,useState,type ClipboardEvent,type KeyboardEvent,type ReactNode,type RefObject} from "react";
 import {Badge,Card} from "@aleeforoughi/feather-react";
 import {ATTACHMENT_KINDS,displayTag,insertMention,isMediaKind,isPropTag,mentionTrigger,propMatchesQuery,propMention,roleLabelFa,tagMatchesQuery,type LocalAttachment} from "@/lib/attachments";
 import {editorSegments,removeBadge,type EditorSegment} from "@/lib/mention-editor";
+import {enterAction,isTouchOnly} from "@/lib/composer-keys";
 
 /** One entry of the `#` picker: a file or a generation of this chat, with a short badge («تصویر», «تولید») and an optional caption (role, intent). */
-export type MentionOption={id:string;tag:string;badgeFa:string;captionFa?:string};
-/** A conversation file as a picker entry: its kind, and for media its role or «انتخاب خودکار هووش». */
-export const attachmentOption=(a:Pick<LocalAttachment,"id"|"tag"|"kind"|"role">):MentionOption=>({id:a.id,tag:a.tag,badgeFa:ATTACHMENT_KINDS[a.kind].labelFa,...(isMediaKind(a.kind)?{captionFa:a.role?roleLabelFa(a.role,a.kind):"انتخاب خودکار هووش"}:{})});
+/** `thumbUrl`/`thumbKind`: the small thumbnail every option shows (components/tag-thumb.tsx). */
+export type MentionOption={id:string;tag:string;badgeFa:string;captionFa?:string;thumbUrl?:string;thumbKind:TagThumbKind};
+/** A conversation file as a picker entry: its kind, and for media its role or «انتخاب اتوماتیک هووش». */
+export const attachmentOption=(a:Pick<LocalAttachment,"id"|"tag"|"kind"|"role"|"previewUrl">):MentionOption=>({id:a.id,tag:a.tag,badgeFa:ATTACHMENT_KINDS[a.kind].labelFa,
+ thumbKind:a.kind==="image"||a.kind==="video"||a.kind==="audio"?a.kind:"file",...(a.kind==="image"&&a.previewUrl?{thumbUrl:a.previewUrl}:{}),...(isMediaKind(a.kind)?{captionFa:a.role?roleLabelFa(a.role,a.kind):"انتخاب اتوماتیک هووش"}:{})});
 /** What the studio can do with the prompt: focus it, or put a tag badge at the caret (at the end when the prompt is not focused). */
 export type MentionEditorHandle={focus:()=>void;insertTag:(tag:string)=>void;/** Inserts plain text (an emoji) at the caret, or at the end when the prompt is not focused. */insertText:(text:string)=>void};
 const NAV_KEYS=["ArrowUp","ArrowDown","Enter","Tab","Escape"];
@@ -18,7 +25,7 @@ const X_SVG='<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" view
 
 // ---- DOM <-> text: badges are non-editable spans carrying data-tag; their text is the canonical tag ----
 function serializeNode(n:Node,root:Node):string{
- if(n.nodeType===Node.TEXT_NODE)return (n as Text).data.replaceAll(ZWSP,"");
+ if(n.nodeType===Node.TEXT_NODE)return stripMarks((n as Text).data.replaceAll(ZWSP,""));
  if(!(n instanceof HTMLElement)){let s="";n.childNodes.forEach(c=>{s+=serializeNode(c,root);});return s;}
  if(n.dataset.tag)return displayTag(n.dataset.tag);
  if(n.tagName==="BR")return n===root.lastChild?"":"\n";
@@ -42,8 +49,9 @@ function placeCaret(root:HTMLElement,offset:number){
   for(let i=0;i<parent.childNodes.length;i++){
    const n=parent.childNodes[i];
    if(n.nodeType===Node.TEXT_NODE){
-    const data=(n as Text).data,len=data.replaceAll(ZWSP,"").length;
-    if(left<=len){let raw=0,count=0;while(raw<data.length&&(count<left||data[raw]===ZWSP)){if(data[raw]!==ZWSP)count++;raw++;}sel.collapse(n,raw);return true;}
+    // ZWSP and the left-to-right marks (lib/bidi.ts) are on screen only: they take no place in the text, and the caret steps over them.
+    const data=(n as Text).data,hidden=(c:string)=>c===ZWSP||c===LRM,len=[...data].filter(c=>!hidden(c)).length;
+    if(left<=len){let raw=0,count=0;while(raw<data.length&&(count<left||hidden(data[raw]))){if(!hidden(data[raw]))count++;raw++;}sel.collapse(n,raw);return true;}
     left-=len;continue;
    }
    if(n instanceof HTMLElement&&n.dataset.tag){
@@ -68,7 +76,9 @@ function badgeNode(tag:string):HTMLElement{
  return span;
 }
 function renderSegments(root:HTMLElement,segments:readonly EditorSegment[]){
- root.replaceChildren(...segments.map(s=>"tag" in s?badgeNode(s.tag):document.createTextNode(s.text)));
+ // Latin and number runs in Persian text get a left-to-right mark, so «$96.00» stays «$96.00» (lib/bidi.ts); serialize() drops the marks again.
+ const all=segments.map(s=>"tag" in s?"":s.text).join("");
+ root.replaceChildren(...segments.map(s=>"tag" in s?badgeNode(s.tag):document.createTextNode(markLtrRuns(s.text,all))));
  // A caret needs a text node after a trailing badge to sit in.
  if(root.lastChild instanceof HTMLElement)root.appendChild(document.createTextNode(ZWSP));
 }
@@ -80,16 +90,25 @@ function renderSegments(root:HTMLElement,segments:readonly EditorSegment[]){
  * English, either digit set, hyphen or not). Choosing one inserts its badge. A typed tag becomes a badge once the caret moves past it (a space); an unknown tag or an
  * ordinary hashtag (`#نوروز`) stays text. Backspace and Delete remove a badge as one unit; the × removes it with the pointer.
  * The value is plain text: a badge counts as its canonical tag (`#تصویر-۱`). The field looks like one input: the container owns the border, radius and focus ring.
- * `startAction` (the «+» menu) and `endAction` (send) are pinned to the bottom corners; the text reserves both with padding. Ctrl/Cmd+Enter calls
- * `onSubmitShortcut`, but never while the mention list is open (there Enter and Tab insert a mention).
+ * `startAction` (the «+» menu) and `endAction` (send) are pinned to the bottom corners; the text reserves both with padding. Enter (and Ctrl/Cmd+Enter)
+ * calls `onSubmitShortcut` and Shift+Enter starts a new line, but never while the mention list is open (there Enter and Tab insert a mention).
  */
-export function MentionTextarea({id,value,onValueChange,options,handleRef,startAction,endAction,top,onSubmitShortcut,onPaste,placeholder,maxLength,labelledBy,describedBy,startPad="ps-14"}:{
+export function MentionTextarea({id,value,onValueChange,options,handleRef,startAction,endAction,top,onSubmitShortcut,onPaste,placeholder,maxLength,labelledBy,describedBy,startPad="sm:ps-14",endPad="sm:pe-14",compact=false,mainTag,mainLabel}:{
  id?:string;value:string;onValueChange:(v:string)=>void;options:readonly MentionOption[];handleRef:RefObject<MentionEditorHandle|null>;startAction?:ReactNode;endAction?:ReactNode;
  /** Content inside the field's border, above the text (the upload cards). */top?:ReactNode;onSubmitShortcut?:()=>void;onPaste?:(e:ClipboardEvent<HTMLDivElement>)=>void;
- placeholder?:string;maxLength?:number;labelledBy?:string;describedBy?:string;/** Inline-start padding reserved for `startAction` (wider when it holds several buttons). */startPad?:string}){
+ placeholder?:string;maxLength?:number;labelledBy?:string;describedBy?:string;/** Inline-start padding reserved for `startAction` from `sm` up (wider when it holds several buttons), e.g. "sm:ps-24"; on a phone the buttons have their own row. */startPad?:string;
+ /** Inline-end padding reserved for `endAction` (wider when it holds several buttons). */endPad?:string;
+ /** Phones (owner, 2026-11-08): while the chat scrolls back, only the text row shows; the toolbar row slides down out of sight. */compact?:boolean;
+ /** The main subject's tag: its badge is drawn blue with a star and `mainLabel` («سوژه») before it (owner, 2026-11-08). */mainTag?:string|null;mainLabel?:string}){
  const listId=useId(),optionId=(i:number)=>listId+"-"+i;
  const el=useRef<HTMLDivElement>(null);
  const rendered=useRef<string|null>(null);
+ // The main subject's badge (owner, 2026-11-08): marked after every draw, so a redrawn badge keeps it. Only an attribute: the text stays the tag.
+ useEffect(()=>{
+  el.current?.querySelectorAll<HTMLElement>("[data-tag]").forEach(b=>{
+   if(mainTag&&b.dataset.tag===mainTag){b.dataset.main="";if(mainLabel)b.dataset.mainLabel=mainLabel;}else{delete b.dataset.main;delete b.dataset.mainLabel;}
+  });
+ });
  const composing=useRef(false);
  const [trigger,setTrigger]=useState<{start:number;query:string;prop?:string}|null>(null);
  const [active,setActive]=useState(0);
@@ -133,8 +152,10 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
   if(maxLength&&text.length>maxLength){show(rendered.current??value,Math.min(caret,(rendered.current??value).length));return;}
   const r=editorSegments(text,known,caret);
   const badges=r.segments.filter(s=>"tag" in s).length;
-  // Redraw only when a tag just became a badge (or was rewritten); plain typing keeps the browser's own DOM and caret.
-  if(r.value!==text||badges!==root.querySelectorAll("[data-tag]").length)show(text,caret);
+  // Redraw only when a tag just became a badge (or was rewritten), or a Latin or number run needs its left-to-right mark; otherwise plain typing keeps
+  // the browser's own DOM and caret.
+  const marks=(root.textContent??"").split(LRM).length-1,want=r.segments.reduce((n,x)=>"tag" in x?n:n+markLtrRuns(x.text,text).split(LRM).length-1,0);
+  if(r.value!==text||badges!==root.querySelectorAll("[data-tag]").length||marks!==want)show(text,caret);
   else rendered.current=text;
   onValueChange(r.value);
   sync();
@@ -178,18 +199,27 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
   const v=show(r.value,r.caret);
   onValueChange(v);
  }
- const empty=value==="";
+ const empty=value==="",uiLang=useUiLang(),dir=textDir(value,uiLang==="fi"?"ltr":"rtl");
+ // On a phone (owner, 2026-11-08) the text has the whole width on its own row and the buttons sit in a toolbar row under it; wider, they sit beside it.
+ // The pads are written out by the callers with their `sm:` prefix, so Tailwind finds them.
+ const pads=(compact?"max-sm:pb-control ":"max-sm:pb-12 ")+"transition-[padding] duration-300 ease-out motion-reduce:transition-none "+(startAction?startPad+" ":"")+(endAction?endPad:"");
+ const tools=" transition-[translate,opacity] duration-300 ease-out motion-reduce:transition-none "+(compact?"max-sm:pointer-events-none max-sm:translate-y-full max-sm:opacity-0":"");
  return <div className="relative">
-  <div className={"relative rounded-control border border-line-primary bg-transparent motion-state has-[[contenteditable]:focus-visible]:outline-2 has-[[contenteditable]:focus-visible]:outline-offset-2 has-[[contenteditable]:focus-visible]:outline-ring"}>
-  {startAction&&<div className="absolute bottom-1 start-1 z-10">{startAction}</div>}
-  {endAction&&<div className="absolute bottom-1 end-1 z-10">{endAction}</div>}
+  <div className={"relative rounded-control border border-line-primary bg-surface-base/45 motion-state has-[[contenteditable]:focus-visible]:outline-2 has-[[contenteditable]:focus-visible]:outline-offset-2 has-[[contenteditable]:focus-visible]:outline-ring"}>
+  {startAction&&<div className={"absolute bottom-1 start-1 z-10"+tools} aria-hidden={compact||undefined}>{startAction}</div>}
+  {endAction&&<div className={"absolute bottom-1 end-1 z-10"+tools}>{endAction}</div>}
   {top&&<div className="px-2 pt-2">{top}</div>}
   <div className="relative">
-   {empty&&placeholder&&<span aria-hidden="true" className={"pointer-events-none absolute inset-y-0 start-0 truncate px-control py-control type-body text-fg-tertiary "+(startAction?startPad+" ":"")+(endAction?"pe-14":"")}>{placeholder}</span>}
-   <div ref={el} id={id} contentEditable="plaintext-only" suppressContentEditableWarning spellCheck={false} tabIndex={0}
+   {empty&&placeholder&&<span aria-hidden="true" className={"pointer-events-none absolute inset-y-0 start-0 truncate px-control py-control type-body text-fg-tertiary "+pads}>{placeholder}</span>}
+   {/* The direction follows what is typed (owner, 2026-11-08): Persian runs right to left and Finglish left to right, whatever the interface language.
+       With no letter yet (empty, or only a new line after Enter, spaces or digits) it follows the page: right to left in Persian, left to right in Finglish
+       (Safari starts such an `auto` field left to right, so the cursor jumped to the left). The alignment is set physically too (right or left): Safari
+       can put the caret of an empty new line on the left in right-to-left editable text when the alignment is only `start`. `lang` tells
+       keyboards that offer it, spellcheck and screen readers the field is Persian (or Finglish); iOS lets no page switch the keyboard itself. */}
+   <div ref={el} id={id} dir={dir} style={{textAlign:dir==="rtl"?"right":"left"}} lang={uiLang==="fi"?"fa-Latn":"fa"} contentEditable="plaintext-only" suppressContentEditableWarning spellCheck={false} tabIndex={0}
     role="combobox" aria-labelledby={labelledBy} aria-describedby={describedBy}
     aria-autocomplete="list" aria-haspopup="listbox" aria-controls={listId} aria-expanded={open} aria-activedescendant={open?optionId(current):undefined}
-    className={"block max-h-40 min-h-13 overflow-y-auto whitespace-pre-wrap break-words px-control py-control type-body text-fg-primary outline-hidden "+(startAction?startPad+" ":"")+(endAction?"pe-14":"")}
+    className={"block max-h-40 min-h-13 overflow-y-auto whitespace-pre-wrap break-words px-control py-control type-body text-fg-primary outline-hidden "+pads}
     onInput={onInput}
     onCompositionStart={()=>{composing.current=true;}}
     onCompositionEnd={()=>{composing.current=false;onInput();}}
@@ -202,7 +232,8 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
     onKeyDown={(e:KeyboardEvent<HTMLDivElement>)=>{
      if(e.nativeEvent.isComposing)return;
      if(!open){
-      if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)&&onSubmitShortcut){e.preventDefault();onSubmitShortcut();}
+      // Enter sends, Shift+Enter starts a new line (the browser's own line break), Ctrl/Cmd+Enter sends (lib/composer-keys.ts).
+      if(onSubmitShortcut&&enterAction({key:e.key,shiftKey:e.shiftKey,ctrlKey:e.ctrlKey,metaKey:e.metaKey,altKey:e.altKey,isComposing:e.nativeEvent.isComposing},isTouchOnly())==="send"){e.preventDefault();onSubmitShortcut();}
       return;
      }
      if(e.key==="ArrowDown"){e.preventDefault();setActive((current+1)%matches.length);}
@@ -216,6 +247,7 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
    {matches.map((o,i)=><div key={o.id} id={optionId(i)} role="option" aria-selected={i===current}
     onMouseDown={e=>{e.preventDefault();pick(o);}} onMouseMove={()=>{if(i!==current)setActive(i);}}
     className={"flex min-h-control cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 rounded-control px-3 py-2 "+(i===current?"bg-surface-hover":"")}>
+    <TagThumb url={o.thumbUrl} kind={o.thumbKind}/>
     <bdi className="type-label text-fg-primary">{trigger?.prop?propMention(trigger.prop,o.tag):displayTag(o.tag)}</bdi>
     <Badge variant="outline">{o.badgeFa}</Badge>
     {o.captionFa&&<span className="min-w-0 truncate type-caption text-fg-secondary">{o.captionFa}</span>}

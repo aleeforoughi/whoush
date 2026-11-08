@@ -29,7 +29,7 @@ function ProjectRow({project,active,onNavigate,onAction}:{project:ProjectSummary
   <span className="type-caption text-fg-secondary">{relativeTimeFa(project.updatedAt)}</span>
  </Link>;
  return <li className="flex items-center gap-1">
-  <Tooltip><TooltipTrigger render={link}/><TooltipContent side="left" className="max-w-64 break-words">{project.title}</TooltipContent></Tooltip>
+  <Tooltip><TooltipTrigger render={link}/><TooltipContent side="inline-end" className="max-w-64 break-words">{project.title}</TooltipContent></Tooltip>
   <DropdownMenu>
    <DropdownMenuTrigger render={<Button type="button" variant="ghost" size="icon" aria-label={"گزینه‌های پروژهٔ «"+project.title+"»"}/>}><Icon icon={MoreHorizontal} aria-hidden="true"/></DropdownMenuTrigger>
    <DropdownMenuContent align="start" className="w-40">
@@ -128,9 +128,9 @@ export function ProjectsSection({mode,activeId,onNavigate,onDeleted}:{mode:"alwa
    <Popover open={popover} onOpenChange={setPopover}>
     <Tooltip>
      <TooltipTrigger render={<PopoverTrigger render={<Button type="button" variant="ghost" aria-label="پروژه‌ها" className="w-full justify-start"/>}><Icon icon={FolderOpen} aria-hidden="true"/></PopoverTrigger>}/>
-     <TooltipContent side="left">پروژه‌ها</TooltipContent>
+     <TooltipContent side="inline-end">پروژه‌ها</TooltipContent>
     </Tooltip>
-    <PopoverContent side="left" align="start" className="w-72">
+    <PopoverContent side="inline-end" align="start" className="w-72">
      <h2 className="type-label text-fg-primary">پروژه‌ها</h2>
      <ScrollArea className="max-h-80">{list}</ScrollArea>
      {note}

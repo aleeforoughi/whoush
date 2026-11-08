@@ -1,27 +1,29 @@
 "use client";
 import type React from "react";
-import {Box,CircleOff,Clapperboard,Image as ImageIcon,Sparkles} from "lucide-react";
-import {Badge,Button,Card,Icon,Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from "@aleeforoughi/feather-react";
+import {useState} from "react";
+import {Box,CircleOff,Clapperboard,Image as ImageIcon,ShieldAlert,Sparkles,Volume2,VolumeX} from "lucide-react";
+import {Badge,Button,Card,Icon,Select,SelectContent,SelectItem,SelectTrigger,SelectValue,Switch} from "@aleeforoughi/feather-react";
 import {SuggestedModelNote} from "@/components/plan-details";
 import {TagBadge} from "@/components/attachment-chip";
 import type {AgentProposal,NoModelResult} from "@/lib/studio-types";
+import type {UnsupportedReason} from "@/lib/types";
 import {PAST_PROPOSAL_FA,type ProposalSnapshot} from "@/lib/projects";
 import {fa} from "@/lib/format";
-import {nearestAspectRatio} from "@/lib/aspect";
+import {byShape,nearestAspectRatio,popularAspectRatios} from "@/lib/aspect";
+import {ResearchReport,ReviewNote} from "@/components/research-report";
+import {WIDGET_BUTTON,WidgetActions,WidgetHeader} from "@/components/widget";
 
-export const GENERATE_FA="بسازش",DEMO_NOTE_FA="نسخهٔ نمایشی: نه پولی کسر می‌شود و نه رسانهٔ واقعی ساخته می‌شود.";
+export const GENERATE_FA="بسازش",GENERATE_WITH_REFS_FA="با این مرجع‌ها بسازش",DRAFT_FA="اول پیش‌نویس ارزون",FRAMES_DRAFT_FA="اول پیش‌نمایش فریم‌ها",SKIP_DRAFT_FA="بدون پیش‌نویس بساز",VIDEO_NOW_FA="حالا ویدیو رو بساز",DEMO_NOTE_FA="نسخهٔ نمایشی: نه پولی کسر می‌شود و نه رسانهٔ واقعی ساخته می‌شود.";
 const RECOMMENDED_FA="پیشنهاد هووش",ALTERNATE_FA="جایگزین";
 /** Latin model names keep their own direction inside Persian text. */
 const ModelName=({name}:{name:string})=><bdi dir="ltr">{name}</bdi>;
 
 /** The card's top row: the kind's icon, «تصویر» or «ویدیو», the generation's tag (a button that puts it in the prompt) and the demo badge. */
-function Head({kind,tag,onMention}:{kind:"image"|"video";tag?:string;onMention?:()=>void}){
- return <div className="flex items-center gap-2">
-  <span className="flex size-9 shrink-0 items-center justify-center rounded-control bg-surface-hover text-fg-secondary"><Icon icon={kind==="video"?Clapperboard:ImageIcon} size={20} aria-hidden="true"/></span>
-  <span className="type-label text-fg-primary">{kind==="video"?"ساخت ویدیو":"ساخت تصویر"}</span>
+function Head({kind,tag,onMention,demo}:{kind:"image"|"video";tag?:string;onMention?:()=>void;/** Only a real demo (no media made) is labelled. */demo?:boolean}){
+ return <WidgetHeader icon={kind==="video"?Clapperboard:ImageIcon} title={kind==="video"?"ساخت ویدیو":"ساخت تصویر"}>
   {tag&&<TagBadge tag={tag} onMention={onMention}/>}
-  <Badge variant="outline" className="ms-auto">نسخه نمایشی</Badge>
- </div>;
+  {demo&&<Badge variant="outline" className="ms-auto">نسخه نمایشی</Badge>}
+ </WidgetHeader>;
 }
 
 /**
@@ -29,10 +31,16 @@ function Head({kind,tag,onMention}:{kind:"image"|"video";tag?:string;onMention?:
  * alternates marked «جایگزین», each with its fixed Neurons), its settings, its notes, then a full-width bar at its very bottom: [✦ بسازش] on the right, its cost
  * («۱۰ نورون») on the left. Tapping the tag mentions it in the chat to ask for changes.
  */
-export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onAspect,busy,onApprove,onMention}:{proposal:AgentProposal;tag?:string;
+export function ProposalCard({embedded,proposal,tag,adjusted,selected,onSelect,aspect,autoAspect,onAspect,sound,onSound,busy,onApprove,onMention,excludedReferences,onToggleReference,onDraft,drafted}:{proposal:AgentProposal;tag?:string;
+ /** Inside a change widget: no card or title of its own (the widget has them); its settings and «بسازش» at the widget's bottom. */embedded?:boolean;
+ /** Video: sound on or off (owner, 2026-11-08), shown only when the chosen model makes checked sound. */sound?:boolean;onSound?:(on:boolean)=>void;
  /** The scene was arranged in «بوم»: «بساز» builds exactly that scene. */adjusted?:boolean;selected:string;onSelect:(id:string)=>void;
- /** The aspect ratio the generation will use (Whoush's from the brief or «بوم», unless the user picked one here). */aspect?:string;onAspect?:(r:string)=>void;
- busy:boolean;onApprove:()=>void;onMention?:()=>void}){
+ /** The aspect ratio the generation will use (Whoush's from the brief or «بوم», unless the user picked one here). */aspect?:string;
+ /** Whoush's own ratio (from the brief or «بوم»): «اتوماتیک» is selected while the user has not picked one; picking it again (null) goes back to it. */autoAspect?:string;
+ onAspect?:(r:string|null)=>void;
+ busy:boolean;onApprove:()=>void;onMention?:()=>void;
+ /** Research references the user removed from the package, and the toggle (remove or restore). */excludedReferences?:ReadonlySet<string>;onToggleReference?:(id:string)=>void;
+ /** Video: make the cheap opening-frame draft first (the default), and whether it has been made. */onDraft?:()=>void;drafted?:boolean}){
  const chosen=proposal.suggestions.find(s=>s.modelId===selected);
  const price=chosen?.neurons??proposal.fixedNeurons;
  const ordered=[...proposal.suggestions].sort((a,b)=>Number(b.modelId===proposal.recommendedModelId)-Number(a.modelId===proposal.recommendedModelId));
@@ -48,72 +56,123 @@ export function ProposalCard({proposal,tag,adjusted,selected,onSelect,aspect,onA
  const pick=(res?:string,dur?:number)=>{const m=family.find(s=>(res===undefined||s.resolution===res)&&(dur===undefined||s.durationSeconds===dur))??family.find(s=>res!==undefined?s.resolution===res:s.durationSeconds===dur);if(m)onSelect(m.modelId);};
  const ratios=chosen?.aspectRatios??[];
  // The ratio that will really be used: the wanted one, or the nearest this model offers (the same rule as the quote in studio.tsx).
- const shownAspect=nearestAspectRatio(aspect,ratios)??aspect;
- return <Card size="sm" data-testid="proposal" data-generation={tag} className="gap-3 p-3">
-  <Head kind={proposal.operation==="generate_video"?"video":"image"} tag={tag} onMention={onMention}/>
+ const shownAspect=nearestAspectRatio(aspect,ratios)??aspect,autoShown=nearestAspectRatio(autoAspect,ratios)??autoAspect;
+ // «اتوماتیک» first, then only the popular ratios (owner, 2026-11-08), the rest behind «+». Automatic is on while the user has not picked a ratio here.
+ const auto=autoAspect!==undefined&&shownAspect===autoShown&&aspect===autoAspect;
+ const [allRatios,setAllRatios]=useState(false);
+ // The automatic ratio shows on «اتوماتیک» itself, so the popular pills are the others (the user's pick always among them).
+ const others=autoShown?ratios.filter(r=>r!==autoShown):ratios;
+ const popular=popularAspectRatios(others,[auto?undefined:shownAspect],autoAspect!==undefined?2:3),hidden=others.length-popular.length;
+ const Wrap=embedded?EmbeddedBox:Card;
+ return <Wrap size="sm" data-testid="proposal" data-generation={tag} className="whoush-widget gap-4 p-4">
+  {!embedded&&<Head kind={proposal.operation==="generate_video"?"video":"image"} tag={tag} onMention={onMention} demo={proposal.quoteMode==="demo"}/>}
   {heads.length>1
    ?<Select value={headOf(selected)} onValueChange={v=>onSelect(String(v))} items={items}>
     <SelectTrigger size="sm" aria-label="مدل تولید" className="w-full"><span className="text-fg-secondary">مدل</span><SelectValue/></SelectTrigger>
     <SelectContent>{heads.map(s=><SelectItem key={s.modelId} value={s.modelId}>
      <span className="flex min-w-0 flex-col">
-      <span className="flex items-center gap-2"><ModelName name={familyOf(s.name)}/><span className="type-caption text-fg-secondary">{familyOf(s.name)===familyOf(ordered.find(x=>x.modelId===proposal.recommendedModelId)?.name??"")?RECOMMENDED_FA:ALTERNATE_FA} · {fa(s.neurons)} نورون</span></span>
+      <span className="flex items-center gap-2"><ModelName name={familyOf(s.name)}/><span className="type-caption text-fg-secondary">{familyOf(s.name)===familyOf(ordered.find(x=>x.modelId===proposal.recommendedModelId)?.name??"")?RECOMMENDED_FA:ALTERNATE_FA}، {fa(s.neurons)} نورون</span></span>
       {s.reason&&<span className="type-caption text-fg-secondary">{s.reason}</span>}
      </span>
     </SelectItem>)}</SelectContent>
    </Select>
    :chosen&&<p className="flex items-center gap-2 type-body-sm text-fg-secondary">مدل: <span className="text-fg-primary"><ModelName name={familyOf(chosen.name)}/></span><Badge variant="secondary">{RECOMMENDED_FA}</Badge></p>}
   {/* The model's settings: Whoush's choice is selected (from the brief, «بوم» and the mode) until the user picks another. Only what this model really offers. */}
-  {(ratios.length>0||resolutions.length>0||durations.length>0)&&<div className="flex flex-col gap-2">
-   {ratios.length>0&&<Setting label="نسبت تصویر">{ratios.map(r=><Opt key={r} on={shownAspect===r} onClick={()=>onAspect?.(r)} disabled={!onAspect}><bdi dir="ltr">{r}</bdi></Opt>)}</Setting>}
+  {(ratios.length>0||resolutions.length>0||durations.length>0||chosen?.audio)&&<div className="flex flex-col gap-2">
+   {ratios.length>0&&<Setting label="نسبت تصویر" wrap={allRatios}>
+    {autoAspect!==undefined&&<Opt on={auto} onClick={()=>onAspect?.(null)} disabled={!onAspect}><Icon icon={Sparkles} size={16} aria-hidden="true" className="size-3.5"/>اتوماتیک{autoAspect==="source"?<span className="opacity-70">مثل عکس</span>:autoShown&&<bdi dir="ltr" className="opacity-70">{autoShown}</bdi>}</Opt>}
+    {(allRatios||hidden<=0?byShape(others):popular).map(r=><Opt key={r} on={!auto&&shownAspect===r} onClick={()=>onAspect?.(r)} disabled={!onAspect}><bdi dir="ltr">{r}</bdi></Opt>)}
+    {hidden>0&&onAspect&&<button type="button" onClick={()=>setAllRatios(v=>!v)} aria-expanded={allRatios} aria-label={allRatios?"نسبت‌های کمتر":"همهٔ نسبت‌ها"}
+     className="flex h-8 shrink-0 items-center rounded-control px-2 type-caption text-fg-secondary motion-hover hover:bg-surface-hover hover:text-fg-primary">{allRatios?"کمتر":"+"+fa(hidden)}</button>}
+   </Setting>}
    {resolutions.length>0&&<Setting label="کیفیت">{resolutions.map(r=><Opt key={r} on={chosen?.resolution===r} onClick={()=>pick(r,chosen?.durationSeconds)} disabled={resolutions.length<2}><bdi dir="ltr">{r.toUpperCase()}</bdi></Opt>)}</Setting>}
+   {chosen?.audio&&<div className="flex items-center gap-1.5"><span className="min-w-14 type-caption text-fg-secondary">صدا</span>
+    <label className="flex h-8 items-center gap-2 type-caption text-fg-primary">
+     <Switch checked={sound!==false} onCheckedChange={v=>onSound?.(Boolean(v))} disabled={!onSound} aria-label="صدای ویدیو"/>
+     <Icon icon={sound!==false?Volume2:VolumeX} size={16} aria-hidden="true" className="size-4 text-fg-secondary"/>{sound!==false?"روشن":"خاموش"}
+    </label>
+   </div>}
    {durations.length>0&&<Setting label="مدت">{durations.map(d=><Opt key={d} on={chosen?.durationSeconds===d} onClick={()=>pick(chosen?.resolution,d)} disabled={durations.length<2}>{fa(d)} ثانیه</Opt>)}</Setting>}
   </div>}
   {adjusted&&<p role="status" className="flex items-center gap-2 type-caption text-fg-primary"><Icon icon={Box} size={16} aria-hidden="true" className="size-4 text-primary"/>با صحنه‌ای که توی «بوم» چیدی ساخته می‌شه.</p>}
-  <p className="type-caption text-fg-secondary">{DEMO_NOTE_FA}</p>
+  {proposal.research&&<ResearchReport research={proposal.research} excluded={excludedReferences} onToggle={onToggleReference}/>}
+  {proposal.review&&<ReviewNote review={proposal.review}/>}
+  {proposal.quoteMode==="demo"&&<p className="type-caption text-fg-secondary">{DEMO_NOTE_FA}</p>}
+  {/* Video drafts first (owner, 2026-11-06): a cheap still of the opening frame to check the look before the expensive video; the user may skip it. */}
+  {proposal.draft&&onDraft&&!drafted&&<div className="flex flex-col gap-3">
+   <p className="type-caption text-fg-secondary">{proposal.draft.kind==="frames"
+    ?"پیشنهادم اینه اول "+fa(proposal.draft.frames?.length??0)+" فریم از ویدیوت (اول، وسط، آخر و هر ۳ ثانیه یکی) رو با عکس‌هات ویرایش کنم، تا نتیجهٔ ویرایش رو قبل از خرج اصلی ببینی و اگه چیزی اشتباهه درستش کنیم. این پیش‌نمایشِ ویرایشه: مدل‌های ویدیویی فعلی فقط پرامپت رو می‌خونن، ویدیو و عکس‌هات رو نمی‌بینن، پس ویدیوی نهایی ممکنه با این فریم‌ها فرق داشته باشه."
+    :proposal.draft.kind==="video"
+    ?"پیشنهادم اینه اول یه پیش‌نویس ارزون بسازیم: یه ویدیوی کوتاه ۴۸۰p بی‌صدا با همین پرامپت، تا قبل از خرج اصلی حرکت و صحنه رو ببینی و اگه چیزی اشتباهه درستش کنیم. اگه نمی‌خوای، مستقیم بساز."
+    :"پیشنهادم اینه اول یه پیش‌نویس ارزون بسازیم: یه عکس از فریم اول، تا قبل از خرج اصلی ظاهرش رو ببینی و اگه چیزی اشتباهه درستش کنیم. اگه نمی‌خوای، مستقیم بساز."}</p>
+   <WidgetActions>
+    <Button type="button" onClick={onDraft} disabled={busy||!proposal.turnId} className={WIDGET_BUTTON+" flex-col gap-0.5"}><span className="flex items-center gap-1.5"><Icon icon={Sparkles} aria-hidden="true"/>{proposal.draft.kind==="frames"?FRAMES_DRAFT_FA:DRAFT_FA}</span><span className="type-caption opacity-80">{fa(proposal.draft.neurons)} نورون</span></Button>
+    <Button type="button" variant="outline" onClick={onApprove} disabled={busy||!proposal.turnId} className={WIDGET_BUTTON+" flex-col gap-0.5"}><span className="flex items-center gap-1.5"><Icon icon={Clapperboard} aria-hidden="true"/>{SKIP_DRAFT_FA}</span><span className="type-caption text-fg-secondary">{fa(price)} نورون</span></Button>
+   </WidgetActions>
+  </div>}
   {/* The call to action, full width at the card's very bottom: [✦ بسازش] on the right (as Persian reads), the cost on the left. */}
-  <div className="-mx-3 -mb-3 mt-1 flex items-center justify-between gap-3 rounded-b-[inherit] border-t border-line-secondary bg-surface-subtle px-3 py-2.5">
-   <Button type="button" onClick={onApprove} disabled={busy||!proposal.turnId} className="shrink-0">
-    <Icon icon={Sparkles} aria-hidden="true"/>{GENERATE_FA}
-   </Button>
-   <span className="type-label text-fg-primary" aria-label={"هزینه: "+fa(price)+" نورون"}>{fa(price)} نورون</span>
-  </div>
- </Card>;
+  {!(proposal.draft&&onDraft&&!drafted)&&<div className="flex flex-col gap-3">
+   {drafted&&<p className="type-caption text-fg-secondary">پیش‌نویس آماده‌ست. اگه ظاهرش درسته ویدیو رو بساز؛ وگرنه توی چت بگو چی عوض بشه.</p>}
+   {/* The call to action the full width (owner, 2026-11-08), its cost inside it. */}
+   <WidgetActions>
+    <Button type="button" onClick={onApprove} disabled={busy||!proposal.turnId} className={WIDGET_BUTTON}>
+     <Icon icon={Sparkles} aria-hidden="true"/>{drafted?VIDEO_NOW_FA:!proposal.draft&&proposal.research?.usedAsImages&&proposal.research.references.some(r=>!excludedReferences?.has(r.id))?GENERATE_WITH_REFS_FA:GENERATE_FA}
+     <span className="type-caption opacity-80" aria-label={"هزینه: "+fa(price)+" نورون"}>{fa(price)} نورون</span>
+    </Button>
+   </WidgetActions>
+  </div>}
+ </Wrap>;
+}
+
+/** The generation card's body inside a change widget: the same layout, with no card of its own (the widget is the card). */
+function EmbeddedBox({children,className,size:_size,...rest}:React.ComponentProps<"div">&{size?:string}){
+ void _size;return <div {...rest} className={"flex flex-col "+(className??"").replace(/\bp-4\b/,"p-0").replace(/\bwhoush-widget\b/,"")}>{children}</div>;
 }
 
 /** One setting row of the generation card: its label, then its options. */
-function Setting({label,children}:{label:string;children:React.ReactNode}){
- return <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label={label}><span className="min-w-14 type-caption text-fg-secondary">{label}</span>{children}</div>;
+function Setting({label,children,wrap=true}:{label:string;children:React.ReactNode;/** False keeps every option on one row. */wrap?:boolean}){
+ return <div className={"flex items-center gap-1.5 "+(wrap?"flex-wrap":"flex-nowrap")} role="radiogroup" aria-label={label}><span className="min-w-14 shrink-0 type-caption text-fg-secondary">{label}</span>{children}</div>;
 }
 /** One option of a setting (a small pill; the selected one in the brand blue). A single option shows as fixed (nothing else to pick). */
 function Opt({on,onClick,disabled,children}:{on:boolean;onClick:()=>void;disabled?:boolean;children:React.ReactNode}){
  return <button type="button" role="radio" aria-checked={on} onClick={onClick} disabled={disabled&&!on?true:undefined}
-  className={"flex h-8 items-center rounded-control border px-2.5 type-caption motion-hover disabled:cursor-default "+(on?"border-primary bg-surface-selected text-fg-primary":"border-line-secondary text-fg-secondary hover:bg-surface-hover")}>{children}</button>;
+  className={"flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-control border px-2 type-caption motion-hover disabled:cursor-default "+(on?"border-primary bg-surface-selected text-fg-primary":"border-line-secondary text-fg-secondary hover:bg-surface-hover")}>{children}</button>;
 }
 
 /** A generation from earlier in the conversation: its quote has expired (or the page reloaded); its tag mentions it in the chat to ask for changes. */
-export function PastProposalCard({snapshot,onMention,adjusted,onBuildScene,busy}:{snapshot:ProposalSnapshot;onMention?:()=>void;
+export function PastProposalCard({embedded,snapshot,onMention,adjusted,onBuildScene,busy}:{snapshot:ProposalSnapshot;onMention?:()=>void;
+ /** Inside a change widget: no card or title of its own. */embedded?:boolean;
  /** The scene was arranged in «بوم»: «این صحنه رو بساز» asks Whoush for a revision with exactly that scene and a fresh quote. */adjusted?:boolean;onBuildScene?:()=>void;busy?:boolean}){
- return <Card size="sm" data-testid="past-proposal" data-generation={snapshot.tag} className="gap-3 p-3">
-  <Head kind={snapshot.operation==="generate_video"?"video":"image"} tag={snapshot.tag} onMention={onMention}/>
+ const Wrap=embedded?EmbeddedBox:Card;
+ return <Wrap size="sm" data-testid="past-proposal" data-generation={snapshot.tag} className="whoush-widget gap-4 p-4">
+  {!embedded&&<Head kind={snapshot.operation==="generate_video"?"video":"image"} tag={snapshot.tag} onMention={onMention}/>}
   <p className="flex flex-wrap items-center justify-between gap-2 type-body-sm text-fg-secondary">
    <span>مدل: <span className="text-fg-primary"><ModelName name={snapshot.modelName}/></span></span>
    <span className="type-label text-fg-primary">{fa(snapshot.neurons)} نورون</span>
   </p>
-  <div className="flex flex-wrap items-center gap-2">
-   {adjusted&&onBuildScene&&<Button type="button" onClick={onBuildScene} disabled={busy}><Icon icon={Box} aria-hidden="true"/>این صحنه رو بساز</Button>}
-   <p role="note" className="min-w-0 flex-1 type-caption text-fg-secondary">{adjusted?"صحنهٔ «بوم» تغییر کرده؛ هووش با همین صحنه یه پرامپت و قیمت تازه می‌ده.":PAST_PROPOSAL_FA}</p>
-  </div>
- </Card>;
+  <p role="note" className="type-caption text-fg-secondary">{adjusted?"صحنهٔ «بوم» تغییر کرده؛ هووش با همین صحنه یه پرامپت و قیمت تازه می‌ده.":PAST_PROPOSAL_FA}</p>
+  {adjusted&&onBuildScene&&<WidgetActions><Button type="button" onClick={onBuildScene} disabled={busy} className={WIDGET_BUTTON}><Icon icon={Box} aria-hidden="true"/>این صحنه رو بساز</Button></WidgetActions>}
+ </Wrap>;
 }
 
 /** 422 no_compatible_model: no price and nothing to generate; the model that fits but is not active yet, if any. The plan is in the conversation. */
+/**
+ * Why a plan came with no price, said as it is (owner, 2026-11-06: the iPhone session read «مدل سازگار پیدا نشد» when the real stop was its five photos,
+ * which no safety check can inspect yet). Older saved chats have no reason: they read as before.
+ */
+const NO_MODEL_COPY:Record<UnsupportedReason|"unknown",{title:string;body:string}>={
+ media_review:{title:"عکس‌هات هنوز بررسی ایمنی نمی‌شن",body:"ساخت با عکس یا ویدیوی خودت هنوز فعال نیست، چون بررسی ایمنی فایل‌ها هنوز آماده نیست. برنامه آماده‌ست؛ اگه بدون فایل‌ها بفرستی، فقط از روی توضیحت ساخته می‌شه."},
+ no_model:{title:"مدل سازگاری پیدا نشد",body:"تا پیدا شدن مدل سازگار، قیمتی نمایش داده نمی‌شود و چیزی برای ساخت وجود ندارد."},
+ voice_clone:{title:"ساخت صدا پشتیبانی نمی‌شه",body:"هووش فقط عکس و ویدیو می‌سازه و صدای کسی رو تقلید نمی‌کنه."},
+ unknown:{title:"مدل سازگاری پیدا نشد",body:"تا پیدا شدن مدل سازگار، قیمتی نمایش داده نمی‌شود و چیزی برای ساخت وجود ندارد."}
+};
+/** The card's title, also the chat's preview line. */
+export const noModelTitle=(reason?:UnsupportedReason)=>NO_MODEL_COPY[reason??"unknown"].title;
 export function NoModelCard({result}:{result:NoModelResult}){
- return <Card size="sm" className="gap-3 p-3">
-  <div className="flex items-center gap-2">
-   <span className="flex size-9 shrink-0 items-center justify-center rounded-control bg-surface-hover text-fg-secondary"><Icon icon={CircleOff} size={20} aria-hidden="true"/></span>
-   <span className="type-label text-fg-primary">مدل سازگاری پیدا نشد</span>
-  </div>
+ const copy=NO_MODEL_COPY[result.reason??"unknown"];
+ return <Card size="sm" className="whoush-widget gap-4 p-4">
+  <WidgetHeader icon={result.reason==="media_review"?ShieldAlert:CircleOff} title={copy.title}/>
   {result.plan?.suggestedModel&&<SuggestedModelNote model={result.plan.suggestedModel}/>}
-  <p className="type-caption text-fg-secondary">تا پیدا شدن مدل سازگار، قیمتی نمایش داده نمی‌شود و چیزی برای ساخت وجود ندارد.</p>
+  <p className="type-caption text-fg-secondary">{copy.body}</p>
  </Card>;
 }

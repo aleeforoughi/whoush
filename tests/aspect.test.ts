@@ -35,3 +35,22 @@ test("aspect: every snapped ratio is one the model really offers",()=>{
   if(m.capabilities.aspectRatios.length===0)assert.equal(got,undefined);else assert.ok(m.capabilities.aspectRatios.includes(got!),m.id+" "+want);
  }
 });
+
+// The generation card shows «اتوماتیک» and only the popular ratios; the rest behind «+» (owner, 2026-11-08).
+test("popular ratios: the most used ones the model offers, tallest to widest; a pick is never hidden",async()=>{
+ const {popularAspectRatios,byShape}=await import("../lib/aspect");
+ const offered=["21:9","16:9","4:3","1:1","3:4","9:16","2:3","3:2"];
+ assert.deepEqual(popularAspectRatios(offered,[],3),["9:16","1:1","16:9"]);
+ assert.deepEqual(popularAspectRatios(offered,["21:9"],2),["9:16","21:9"]);
+ assert.deepEqual(popularAspectRatios(offered,["3:2",undefined],3),["9:16","3:2","16:9"]);
+ assert.deepEqual(popularAspectRatios(["4:3"],[],3),["4:3"]);
+ assert.deepEqual(byShape(["16:9","9:16","1:1"]),["9:16","1:1","16:9"]);
+});
+
+test("an edit keeps the photo's own shape: pixel sizes map to the nearest standard ratio",async()=>{
+ const {nearestByValue}=await import("../lib/aspect");
+ assert.equal(nearestByValue(1264/848),"3:2");
+ assert.equal(nearestByValue(1650/2048),"4:5");
+ assert.equal(nearestByValue(1080/1920),"9:16");
+ assert.equal(nearestByValue(0),undefined);
+});

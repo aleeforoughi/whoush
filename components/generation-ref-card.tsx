@@ -19,7 +19,7 @@ export function GenerationRefCard({snapshot,onMention,onRemove,onOpen}:{snapshot
   <Icon icon={video?Clapperboard:ImageIcon} size={20} aria-hidden="true" className="absolute start-2 top-2 size-4"/>
   <span className="line-clamp-3 px-3 text-center type-caption text-fg-primary">{snapshot.intentSummaryFa}</span>
  </>;
- return <li className={CARD_FRAME+" border-line-primary bg-surface-subtle"}>
+ return <li className={CARD_FRAME+" whoush-widget"}>
   {onOpen
    ?<button type="button" onClick={onOpen} aria-label={"رفتن به "+displayTag(snapshot.tag)} className={CARD_MEDIA+" bg-surface-hover text-fg-secondary motion-hover not-disabled:hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"}>{body}</button>
    :<span className={CARD_MEDIA+" bg-surface-hover text-fg-secondary"}>{body}</span>}

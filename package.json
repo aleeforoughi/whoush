@@ -8,14 +8,17 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "node --conditions=react-server --import tsx --test tests/*.test.ts",
+    "test": "node --conditions=react-server --import tsx --import ./tests/setup-region.ts --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "brand": "node scripts/brand.mjs"
+    "brand": "node scripts/brand.mjs",
+    "models": "node scripts/fetch-sam.mjs"
   },
   "dependencies": {
     "@aleeforoughi/feather-react": "^1.17.0",
     "@aleeforoughi/feather-tokens": "^1.17.0",
     "@anthropic-ai/sdk": "^1.4.0",
+    "@huggingface/transformers": "4.3.2",
+    "@mediapipe/tasks-vision": "1.2.2",
     "@react-three/fiber": "^9.8.2",
     "@react-three/postprocessing": "^3.2.2",
     "@tailwindcss/postcss": "^4.3.4",

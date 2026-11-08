@@ -1,53 +1,79 @@
 "use client";
-import {useEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
+import {prepare} from "@/lib/segment";
+import {EDIT_AS_ASKED_FA} from "@/lib/edit-card";
+import {TagBadge} from "@/components/attachment-chip";
+import {changeTitleFa,type CanvasSection} from "@/lib/staging";
+import {WidgetHeader} from "@/components/widget";
+import {suggestedMasks} from "@/lib/suggested-masks";
+import {BEAUTIFY_UPLOAD_FA,beautifyRequestFa,parseBeautifyOffer,type BeautifyOffer,type BeautifyPart} from "@/lib/beautify";
+import {useUiLang} from "@/components/ui-language";
+import {useEffect,useLayoutEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
 import Link from "next/link";
 import {useRouter,useSearchParams} from "next/navigation";
-import {ArrowUp,CircleAlert,Clapperboard,Info,LoaderCircle,Minimize2,PanelLeftOpen,Smile,Upload as UploadIcon,UserRound,X} from "lucide-react";
+import {ArrowUp,ChevronLeft,CircleAlert,Clapperboard,Eye,Hash,Info,LoaderCircle,Mic,Smile,Sparkles,Star,Upload as UploadIcon,UserRound,X,ScanSearch,SlidersHorizontal,Lightbulb,Frame,Camera} from "lucide-react";
 import {Alert,AlertDescription,AlertTitle,Badge,Button,Icon,ScrollArea,Tabs,TabsContent,TabsList,TabsTrigger,Label,Tooltip,TooltipContent,TooltipTrigger} from "@aleeforoughi/feather-react";
-import {OPEN_PREVIEW_FA,PreviewCard} from "@/components/preview-card";
-import {GenerationPreview} from "@/components/generation-preview";
-import {isOwnedOutputUrl} from "@/lib/job-progress";
-import {NoModelCard,PastProposalCard,ProposalCard} from "@/components/proposal-card";
+import {CLOSE_PREVIEW_FA,OPEN_PREVIEW_FA,PreviewCard,RERUN_GONE_FA} from "@/components/preview-card";
+import {ChatEmpty} from "@/components/chat-empty";
+import {asStartFrame,continuedGeneration,type EarlierWork} from "@/lib/follow-up";
+import {GalleryThumbs,GenerationGallery,galleryFocusOn,type GalleryFocus,type GalleryItem} from "@/components/generation-gallery";
+import {isFinalJobState,isOwnedOutputUrl} from "@/lib/job-progress";
+import {followJobUntilDone,jobSnapshot,UNTRACKED_JOB_FA} from "@/lib/job-follow";
+import {NoModelCard,PastProposalCard,ProposalCard,noModelTitle} from "@/components/proposal-card";
 import {CharacterDialog} from "@/components/character-dialog";
 import {InsertMenu} from "@/components/insert-menu";
+import {VoiceMode} from "@/components/voice-mode";
 import {UploadSlotCard} from "@/components/upload-slot";
 import {SLOTS_FULL_FA,addSlot,composerCards,fillSlotWith,forgetAttachment,removeSlot,reserveSlotTag,slotFor,tagsInUse,uploadRejection,type Upload,type UploadSlot} from "@/lib/upload-slots";
-import {AttachmentCard,SentAttachmentCard} from "@/components/attachment-card";
+import {AttachmentCard,MentionRefCard,SentAttachmentCard} from "@/components/attachment-card";
 import {MessageActions,useNow} from "@/components/message-actions";
-import {ModeControl,useMode} from "@/components/mode-control";
+import {ModeControl,SEND_TONE,useMode} from "@/components/mode-control";
 import {StyleControl,useStyleSetting} from "@/components/style-control";
 import type {AttachmentPatch} from "@/components/attachment-chip";
 import {MediaViewer,type ViewerItem} from "@/components/media-viewer";
 import {MentionTextarea,attachmentOption,type MentionEditorHandle,type MentionOption} from "@/components/mention-textarea";
 import {GenerationRefCard} from "@/components/generation-ref-card";
-import {AgentQuestion,PlanStory} from "@/components/plan-details";
+import {AgentQuestion,PlanStory,RegionChip} from "@/components/plan-details";
 import {MessageText} from "@/components/message-text";
 import {AttachmentTray,type AttachmentProblem} from "@/components/attachment-tray";
 import {RailShell} from "@/components/studio-rail";
 import type {AgentProposal,JobView,NoModelResult} from "@/lib/studio-types";
 import {getLocalCharacter,listLocalCharacters} from "@/lib/character-store";
 import {characterCoverage,characterUsability,type CharacterProfile} from "@/lib/characters";
-import {fa} from "@/lib/format";
+import {fa,faBytes,faDimensions,faDuration} from "@/lib/format";
+import {REVIEW_FAILED_FA,WAITING_FA,photoReviewEnabled,reviewPhoto,reviewStopFa,reviewVideo,type PhotoReview} from "@/lib/photo-review";
+import {PhotoReviewOverlay,ReviewRing} from "@/components/photo-review-badge";
+import {RegionEditor} from "@/components/region-editor";
+import {renderGuide,renderMask,renderRegionMap,type Region} from "@/lib/region-edit";
+import type {SuggestedEdit} from "@/lib/edit-card";
 import {STORAGE_FULL_FA,getProject,listAssets,saveAsset,saveProject} from "@/lib/project-store";
-import {MAX_MESSAGES,assetToAttachment,attachmentToAsset,autoTitle,rerunSource,uniqueById,answerBrief,historyFor,toggleReaction,generationTagsIn,referencedGenerations,toGenerationRef,withGenerationTags,type GifSnapshot,type ProposalSnapshot,type Project,type StoredMessage} from "@/lib/projects";
+import {MAX_MESSAGES,draftLabelFa,assetToAttachment,attachmentToAsset,autoTitle,rerunSource,uniqueById,answerBrief,historyFor,toggleReaction,generationTagsIn,referencedGenerations,toGenerationRef,withGenerationTags,type GifSnapshot,type ProposalSnapshot,type JobRerun,type JobSnapshot,type Project,type StoredMessage} from "@/lib/projects";
 import {MAX_GENERATION_REFS,type ReactionEmoji,type Staging} from "@/lib/creative-plan";
 import {LIGHT_SOURCE_FA,describeStagingChangesFa,followUpFocus,lightTags,propTags,sectionsFromWords} from "@/lib/staging";
 import {normalizePersian} from "@/lib/safety";
 import {isReferenceRequest,type ReferenceRequest} from "@/lib/reference-needs";
-import {STAGE_TEXT,postAgentTurn} from "@/lib/agent-stream";
-import type {TurnStage} from "@/lib/orchestrator-stages";
+import {isQuestionChoices} from "@/lib/media-intent";
+import {MAIN_SUBJECT_FA,shownTag} from "@/lib/main-subject";
+import {SUBJECT_SHORT_FA} from "@/components/main-subject-star";
+import {PLAN_FIRST_FA,STAGE_DONE_TEXT,STAGE_TEXT,postAgentTurn} from "@/lib/agent-stream";
+import type {TurnNote,TurnStage} from "@/lib/orchestrator-stages";
 import {replyScriptFor} from "@/lib/finglish";
-import {ThinkingRow,TypeOut} from "@/components/type-out";
+import {TurnProgress,TypeOut} from "@/components/type-out";
 import {ChatGif} from "@/components/chat-gif";
 import {COMPOSER_EMOJIS,EmojiPalette} from "@/components/emoji-palette";
 import {GifPicker} from "@/components/gif-picker";
+import {TAG_PICKER_LABEL_FA,TagPicker} from "@/components/tag-picker";
 import {MessageReactions} from "@/components/message-reactions";
 import type {GenerationStyle} from "@/lib/creative-plan";
-import type {AgentPreference} from "@/lib/types";
-import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,acceptFor,bumpTagCounters,displayTag,insertMention,lowestFreeTag,nextGenerationTag,newTagCounters,parseMentions,tooManyFa,toWireAttachment,validateAttachmentSet,withRole,withoutRole,type AttachmentKind,type AttachmentRole,type LocalAttachment} from "@/lib/attachments";
+import {UNSUPPORTED_REASONS,type AgentPreference,type UnsupportedReason} from "@/lib/types";
+import {ATTACHMENT_ACCEPT,ATTACHMENT_ERRORS_FA,MAX_ATTACHMENTS,isMediaKind,acceptFor,roleAllowed,bumpTagCounters,displayTag,insertMention,lowestFreeTag,nextGenerationTag,newTagCounters,parseMentions,tooManyFa,toWireAttachment,validateAttachmentSet,withRole,withoutRole,type AttachmentKind,type AttachmentRole,type LocalAttachment} from "@/lib/attachments";
 import {readAttachment} from "@/lib/attachment-files";
+import {ATTACHMENT_KINDS,REGION_COLOR_FA,isGenerationTag,roleLabelFa,splitMentions} from "@/lib/attachments";
 import type {InsertItem} from "@/lib/insert-menu";
 import {nearestAspectRatio} from "@/lib/aspect";
+/** The preview panel's «تدوین» (editing) tab: off for now, until editing exists. */
+const EDIT_TAB_ENABLED=false;
+/** Emoji and GIF buttons in the composer: off for now by owner decision (2026-11-06). */
+const COMPOSER_EXTRAS_ENABLED=false;
 
 /** A stored message plus the live attachments of its turn (object URLs, not persisted). */
 type TranscriptItem=StoredMessage&{attachments?:LocalAttachment[]};
@@ -57,10 +83,11 @@ const item=(m:Omit<TranscriptItem,"id"|"at">):TranscriptItem=>({...m,id:crypto.r
 const toStored=({attachments,...m}:TranscriptItem):StoredMessage=>({...m,...(attachments?.length?{attachmentIds:attachments.map(a=>a.id)}:{})} as StoredMessage);
 const NOT_FOUND_FA="این پروژه در این مرورگر پیدا نشد؛ گفت‌وگوی تازه‌ای شروع شد.";
 const LIMIT_FA="این گفت‌وگو به سقف تعداد پیام‌ها رسیده؛ یک گفت‌وگوی جدید شروع کن.";
-const opening="سلام! دوست داری چه تصویر یا ویدیویی بسازیم؟ می‌تونی مدل موردعلاقه‌ات رو هم توی پیام بنویسی.";
 const idlePreview="شروع کن: ایده‌ات رو در چت بنویس.";
 const CHARACTER_KEY="whoush-character";
 /** The composer's compact tool buttons beside «+» (emoji, GIF): 36px to the eye, 44px touch targets. */
+/** The change widget's icon: the part that changed, or the sliders for several. */
+const changeIcon=(f:readonly CanvasSection[])=>f.length>1?SlidersHorizontal:f[0]==="light"?Lightbulb:f[0]==="frame"?Frame:Camera;
 const COMPOSER_TOOL="hit-area flex size-9 shrink-0 items-center justify-center rounded-control text-fg-secondary motion-hover hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
 /** sessionStorage can throw (private windows, blocked storage); the selection then simply does not persist. */
@@ -73,6 +100,44 @@ export function Studio(){
  const projectParam=useSearchParams().get("project");
  const [messages,setMessages]=useState<TranscriptItem[]>([]);
  const [draft,setDraft]=useState("");
+ /**
+  * The floating composer's height (owner, 2026-11-08: glass over the chat), so the last message scrolls clear of it and of its 3rem fade (the chat's
+  * bottom padding is this plus 56px); on a phone the top padding (6rem) clears the floating top bar and its fade the same way.
+  */
+ const composerRef=useRef<HTMLDivElement>(null);
+ const [composerH,setComposerH]=useState(160);
+ /**
+  * Phones (owner, 2026-11-08): scrolling back through the chat (up, to older messages) slides the top bar away and folds the chat box to its text row;
+  * scrolling down again, reaching the end, or touching the chat box brings everything back. Small movements are ignored, so it never flickers.
+  */
+ const [compact,setCompact]=useState(false);
+ const lastScroll=useRef({top:0,anchor:0,raf:0});
+ function onChatScroll(e:React.UIEvent<HTMLDivElement>){
+  const el=e.currentTarget,st=lastScroll.current;
+  if(st.raf)return;
+  st.raf=requestAnimationFrame(()=>{
+   st.raf=0;
+   const top=el.scrollTop,end=el.scrollHeight-top-el.clientHeight<48;
+   if(end!==atEndRef.current){atEndRef.current=end;setAtEnd(end);}
+   setAtStart(top<8);
+   if(!window.matchMedia("(max-width: 767px)").matches){setCompact(false);st.top=top;return;}
+   if(end){setCompact(false);st.anchor=top;}
+   // Folds only well away from the end (owner's recording, 2026-11-08: near the last card it folded and unfolded on every small move).
+   else if(top<st.top&&st.anchor-top>24&&el.scrollHeight-top-el.clientHeight>200)setCompact(true);
+   else if(top>st.top&&top-st.anchor>24)setCompact(false);
+   if((top<st.top)!==(st.anchor>st.top))st.anchor=st.top; // a change of direction starts a new run
+   st.top=top;
+  });
+ }
+ // Measured only while unfolded (owner, 2026-11-08: the last card jumped): folding the chat box must not change the chat's size, or the browser moves
+ // the scroll and the end-follower pulls the reader back down. The padding keeps the full box's height.
+ // The fold state is known before the browser measures (a layout effect), and the 300ms fold animation is never measured: a height from the middle of
+ // the animation would change the padding too. After unfolding, the settled height is measured once.
+ const compactRef=useRef(false),foldAt=useRef(0);
+ useLayoutEffect(()=>{compactRef.current=compact;foldAt.current=performance.now();
+  if(compact)return;const t=window.setTimeout(()=>{const el=composerRef.current;if(el&&!compactRef.current)setComposerH(Math.round(el.getBoundingClientRect().height));},360);return()=>window.clearTimeout(t);},[compact]);
+ useEffect(()=>{const el=composerRef.current;if(!el||typeof ResizeObserver==="undefined")return;const ro=new ResizeObserver(()=>{if(!compactRef.current&&performance.now()-foldAt.current>340)setComposerH(Math.round(el.getBoundingClientRect().height));});ro.observe(el);return()=>ro.disconnect();},[]);
+ const uiLang=useUiLang();
  const [proposal,setProposal]=useState<AgentProposal|null>(null);
  /** The message that carries the live (approvable) proposal; every other proposal in the transcript is a read-only record. */
  const [liveId,setLiveId]=useState<string|null>(null);
@@ -85,14 +150,26 @@ export function Studio(){
  const [selected,setSelected]=useState("");
  // The aspect ratio picked on the generation card (null: Whoush's, from the brief or «بوم»).
  const [aspectChoice,setAspectChoice]=useState<string|null>(null);
+ /** The video card's sound toggle (owner, 2026-11-08); null: what the brief said, else on. */
+ const [soundChoice,setSoundChoice]=useState<boolean|null>(null);
  const [busy,setBusy]=useState(false);
  const [preview,setPreview]=useState(idlePreview);
  const [job,setJob]=useState<JobView|null>(null);
+ /** Which generation the preview gallery should bring into view (a chat preview card, a new generation, an opened project). */
+ const [galleryFocus,setGalleryFocus]=useState<GalleryFocus|null>(null);
+ /** Research references the user removed from the live proposal's package (sent with the quote; the server binds the rest). */
+ const [excludedRefs,setExcludedRefs]=useState<ReadonlySet<string>>(new Set());
+ /** The live proposal whose cheap draft has been made: its card then offers the video itself. */
+ const [draftedFor,setDraftedFor]=useState<string|null>(null);
+ /** Voice messages: offered only when the server can transcribe now (`/api/voice`); `voiceOpen` shows the full-screen voice mode. */
+ const [voice,setVoice]=useState<{enabled:boolean;maxSeconds:number}>({enabled:false,maxSeconds:60}),[voiceOpen,setVoiceOpen]=useState(false);
+ useEffect(()=>{let alive=true;fetch("/api/voice").then(r=>r.ok?r.json():undefined).then((v:{enabled?:boolean;maxSeconds?:number}|undefined)=>{if(alive&&v?.enabled)setVoice({enabled:true,maxSeconds:v.maxSeconds??60});}).catch(()=>undefined);return()=>{alive=false;};},[]);
  const [activeTab,setActiveTab]=useState<"generations"|"cuts">("generations");
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
  const [storageNote,setStorageNote]=useState("");
- const [loadingProject,setLoadingProject]=useState(false);
+ // Opening a saved chat from its link (?project=) starts as loading, so the empty welcome view never flashes before the chat appears.
+ const [loadingProject,setLoadingProject]=useState(()=>Boolean(projectParam));
  const [projectId,setProjectId]=useState<string|null>(null);
  const [characters,setCharacters]=useState<CharacterProfile[]>([]);
  const [charactersLoaded,setCharactersLoaded]=useState(false);
@@ -104,6 +181,8 @@ export function Studio(){
   */
  const [previewOpen,setPreviewOpen]=useState(false);
  const [attachments,setAttachments]=useState<LocalAttachment[]>([]);
+ /** «سوژه اصلی» of the next message (optional): the tag of a file, generation or scene prop the whole work is built around (lib/main-subject.ts). */
+ const [mainSubject,setMainSubject]=useState<string|null>(null);
  const [problems,setProblems]=useState<AttachmentProblem[]>([]);
  const [reading,setReading]=useState(false);
  const [dragging,setDragging]=useState(false);
@@ -135,7 +214,46 @@ export function Studio(){
  const queue=useRef<Promise<void>>(Promise.resolve());
  const loadSeq=useRef(0);
  /** The files of this conversation: their bytes (to store with the project) and which ones are already stored. Replaced, never cleared, so a save in flight keeps its own. */
+ /** Whether the preview fits beside the chat (the side panel from the `md` breakpoint); on a phone it would cover the chat, so it opens only when asked. */
+ const previewFits=()=>typeof window!=="undefined"&&window.matchMedia("(min-width: 768px)").matches;
  const blobs=useRef(new Map<string,Blob>());
+ /** A generation's image as a chat photo, one copy per generation (generationPhoto). */
+ const genCopies=useRef(new Map<string,LocalAttachment>());
+ /** The same copies, for rendering (their thumbnails on edit cards). */
+ const [carriedPhotos,setCarriedPhotos]=useState<LocalAttachment[]>([]);
+ // The photo safety check (lib/photo-review.ts): each photo's state by attachment id, the checks still running, and the photos a sent message waits for.
+ const [reviewOn,setReviewOn]=useState(false);
+ /** Uploaded videos are checked too (frames and soundtrack), right after upload like photos (owner, 2026-11-08). */
+ const [videoReviewOn,setVideoReviewOn]=useState(false);
+ const [reviews,setReviews]=useState<Record<string,PhotoReview>>({});
+ const reviewsRef=useRef<Record<string,PhotoReview>>({});
+ const reviewJobs=useRef(new Map<string,Promise<PhotoReview>>());
+ const [waitingFor,setWaitingFor]=useState<LocalAttachment[]|null>(null);
+ // «ویرایش با قلم» (lib/region-edit.ts): the photo open in the full-screen editor, and whether it came from the chat box.
+ // Warm-up (owner, 2026-11-08: «بساز» seemed dead on the phone while the masks were prepared): when the latest message is an edit card with marked areas
+ // on an uploaded photo, the on-device model loads and reads that photo in the background, so «بساز» is near instant. Generated pictures are not warmed:
+ // that would add a new #تصویر to the chat the user did not ask for.
+ useEffect(()=>{
+  const last=messages[messages.length-1];
+  if(last?.kind!=="question")return;
+  const snap=last.snapshot as {editCards?:{tag:string;suggested?:unknown[]}[]};
+  for(const c of snap.editCards??[]){
+   if(!c.suggested?.length||isGenerationTag(c.tag))continue;
+   const url=messages.flatMap(m=>m.attachments??[]).find(a=>a.tag===c.tag)?.previewUrl;
+   if(url)void fetch(url).then(r=>r.blob()).then(b=>prepare(url,b)).catch(()=>{});
+  }
+ },[messages]);
+ /** «بساز» on an edit card is preparing its masks: the card's tag (its button shows it is working). */
+ const [preparingEdit,setPreparingEdit]=useState<string|null>(null);
+ /** The result whose «آره، اصلاحش کن» is being quoted and started. */
+ const [fixing,setFixing]=useState<string|null>(null);
+ /** Suggestion cards folding away after «لازم نیست», and how many offers were turned down in this chat (two: Whoush stops offering). */
+ const [folding,setFolding]=useState<ReadonlySet<string>>(()=>new Set());
+ const skips=useRef(0);
+ /** The photo whose «Beautify it» is being sent (its button shows it is working). */
+ const [beautifying,setBeautifying]=useState<string|null>(null);
+ const [editing,setEditing]=useState<{a:LocalAttachment;fromTray:boolean;suggested?:readonly SuggestedEdit[]}|null>(null);
+ useEffect(()=>{let alive=true;void photoReviewEnabled().then(on=>{if(alive){setReviewOn(on.photos);setVideoReviewOn(on.videos);}});return()=>{alive=false;};},[]);
  const savedAssets=useRef(new Set<string>());
  const latest=useRef({messages,mode,style,character:null as CharacterProfile|null});
  const character=characters.find(c=>c.id===characterId)??null;
@@ -143,7 +261,8 @@ export function Studio(){
  /** Every attachment of this conversation that still exists: sent messages first, then the tray. */
  const conversation=uniqueById([...messages.flatMap(m=>m.attachments??[]),...attachments]);
  /** While a turn runs: the real stage the server reports, in the script of the user's message. Shown at once as «هووش داره کار می‌کنه». */
- const [thinking,setThinking]=useState<{stage:TurnStage;script:"fa"|"finglish"}|null>(null);
+ /** The turn in progress: its current stage and the stages already done (the expandable progress list). */
+ const [thinking,setThinking]=useState<{stage:TurnStage;done:TurnStage[];script:"fa"|"finglish";notes:Partial<Record<TurnStage,{story:string[];facts:string[]}>>}|null>(null);
  /** Agent messages that arrived in this session: their text types out once. */
  const [fresh,setFresh]=useState<ReadonlySet<string>>(()=>new Set());
  /** The live generation's scene as the user arranged it in «بوم» (only while it differs from Whoush's): «بساز» builds exactly this scene. */
@@ -159,13 +278,36 @@ export function Studio(){
  /** The generations of this chat by tag (#تولید-۱ ...): every proposal is one. Only these can be referenced from this chat. */
  const generationMap=new Map(messages.flatMap(m=>m.kind==="proposal"&&m.snapshot.tag?[[m.snapshot.tag,m.snapshot as ProposalSnapshot&{tag:string}] as const]:[]));
  const generationSet=new Set(generationMap.keys());
+ /** This chat's generations, newest first, and whether each has a finished output (lib/follow-up.ts continuedGeneration). */
+ const earlierWorks:EarlierWork[]=[...generationMap.values()].reverse().map(g=>({tag:g.tag,kind:g.plan.mediaKind,
+  done:messages.some(m=>m.kind==="job"&&m.snapshot.tag===g.tag&&(m.snapshot.outputs?.length??0)>0)}));
  // The latest scene («بوم» of the newest generation, as the user arranged it): its props and lights can be named in the chat (#زن, #نور-۱).
  const sceneMsg=[...messages].reverse().find(m=>m.kind==="proposal"&&m.snapshot.plan?.staging);
  const scene=sceneMsg&&sceneMsg.kind==="proposal"?(sceneEdit?.id===sceneMsg.id?sceneEdit.staging:sceneMsg.snapshot.plan.staging):undefined;
  const sceneGen=sceneMsg&&sceneMsg.kind==="proposal"&&sceneMsg.snapshot.tag?" · "+displayTag(sceneMsg.snapshot.tag):"";
- const mentionOptions:MentionOption[]=[...conversation.map(attachmentOption),...[...generationMap.values()].map(g=>({id:"gen-"+g.tag,tag:g.tag,badgeFa:"تولید",captionFa:g.intentSummaryFa})),
-  ...(scene?.props?propTags(scene.props).map((t,i)=>({id:"prop-"+i,tag:t,badgeFa:"پراپ",captionFa:scene.props![i].label+sceneGen})):[]),
-  ...(scene?lightTags(scene.lights).map((t,i)=>({id:"light-"+i,tag:t,badgeFa:"نور",captionFa:LIGHT_SOURCE_FA[scene.lights[i].source]+sceneGen})):[])];
+ // Every # option carries a thumbnail (owner, 2026-11-06): the photo, the generated image, or the kind's icon.
+ const genThumb=(tag:string)=>(messages.find(m=>m.kind==="job"&&m.snapshot.tag===tag)?.snapshot as {outputs?:{kind:string;url:string}[]}|undefined)?.outputs?.find(o=>o.kind==="image")?.url;
+ // Last used first (owner, 2026-11-06): a #'s recency is the latest message that sent, mentioned or generated it; the chat box's own files are newest.
+ const recency=new Map<string,number>();
+ messages.forEach((m,i)=>{const bump=(t:string)=>recency.set(t,i);(m.attachments??[]).forEach(a=>bump(a.tag));(m.generationTags??[]).forEach(bump);
+  parseMentions(m.brief??m.text).forEach(bump);if((m.kind==="proposal"||m.kind==="job")&&m.snapshot.tag)bump(m.snapshot.tag);});
+ attachments.forEach((a,i)=>recency.set(a.tag,messages.length+1+i));
+ const byRecency=<T extends {tag:string}>(list:readonly T[])=>list.map((x,i)=>({x,i})).sort((a,b)=>(recency.get(b.x.tag)??-1)-(recency.get(a.x.tag)??-1)||a.i-b.i).map(o=>o.x);
+ // No duplicates: one entry per picture. The same file sent twice keeps its latest #; a photo copy of a generation is listed as the generation itself.
+ const distinctFiles=byRecency(conversation).filter((a,i,all)=>all.findIndex(b=>b.kind===a.kind&&b.sha256===a.sha256)===i&&!(a.fromGeneration&&generationMap.has(a.fromGeneration)));
+ const mentionOptions:MentionOption[]=byRecency([...distinctFiles.map(attachmentOption),...[...generationMap.values()].map(g=>{const u=genThumb(g.tag);return {id:"gen-"+g.tag,tag:g.tag,badgeFa:"تولید",captionFa:g.intentSummaryFa,thumbKind:g.plan.mediaKind==="video"?"video" as const:"image" as const,...(u?{thumbUrl:u}:{})};}),
+  ...(scene?.props?propTags(scene.props).map((t,i)=>({id:"prop-"+i,tag:t,badgeFa:"پراپ",captionFa:scene.props![i].label+sceneGen,thumbKind:"prop" as const})):[]),
+  ...(scene?lightTags(scene.lights).map((t,i)=>({id:"light-"+i,tag:t,badgeFa:"نور",captionFa:LIGHT_SOURCE_FA[scene.lights[i].source]+sceneGen,thumbKind:"light" as const})):[])])
+  .filter((o,i,all)=>all.findIndex(x=>x.tag===o.tag)===i);
+ // A # in the draft that points at a photo sent earlier or a generation shows as a card beside the new files (owner, 2026-11-06), like a reference.
+ const sentFiles=uniqueById([...messages].reverse().flatMap(m=>m.attachments??[]));
+ type DraftRef={tag:string;kind:AttachmentKind|"generation";thumbUrl?:string;label:string;file?:LocalAttachment};
+ const draftRefs=byRecency([...new Set(parseMentions(draft))].map(tag=>({tag}))).map(x=>x.tag).filter(t=>!attachments.some(a=>a.tag===t)).flatMap((t):DraftRef[]=>{
+  if(isGenerationTag(t)){const g=generationMap.get(t);return g?[{tag:t,kind:"generation" as const,thumbUrl:genThumb(t),label:"تولید · "+(g.plan.mediaKind==="video"?"ویدیو":"عکس")}]:[];}
+  const a=sentFiles.find(x=>x.tag===t);return a?[{tag:t,kind:a.kind,thumbUrl:a.kind==="image"?a.previewUrl:undefined,label:"از همین گفت‌وگو",file:a}]:[];
+ });
+ /** Takes a # out of the draft (every spelling of it), from its card's ✕. */
+ const dropMention=(tag:string)=>setDraft(d=>splitMentions(d).map(seg=>"tag" in seg?(seg.tag===tag?"":seg.raw):seg.text).join("").replace(/[ \t]{2,}/g," ").trim());
  /** Keep ?project= and ?character= in step with the state without reloading or adding history entries. */
  function syncUrl(project:string|null,character:string|null){
   const query=new URLSearchParams(window.location.search);
@@ -216,13 +358,27 @@ export function Studio(){
   dirty.current=true;window.clearTimeout(timer.current);
   timer.current=window.setTimeout(()=>void save(),400);
  }
+ /**
+  * Follows one job in the background until it ends (lib/job-follow.ts), so a slow model (Seedream ~2.5 min) is not left showing «running» at 95%. The chat
+  * stays usable meanwhile. Each change updates the job's transcript message (saved with the project) and the preview when it shows this job. Opening another
+  * project stops it; reopening this one follows the job again.
+  */
+ function followJob(messageId:string,start:JobSnapshot){
+  const project=active.current?.id;
+  void followJobUntilDone(start,next=>{
+   setMessages(m=>m.map(x=>x.id===messageId&&x.kind==="job"?{...x,text:next.messageFa,snapshot:next} as TranscriptItem:x));
+   setJob(j=>j&&j.jobId===next.jobId?{...next}:j);
+   if(isFinalJobState(next.state))setPreview(next.messageFa);
+   touch();
+  },()=>active.current?.id===project);
+ }
  /** The first successful turn of a draft creates the project (so there are never empty projects) and puts it in the URL. */
  function adoptProject(firstText:string,characterId:string|null){
   if(active.current)return touch();
   const a:ActiveProject={id:crypto.randomUUID(),createdAt:new Date().toISOString(),title:autoTitle(firstText),titleSource:"auto",persisted:false};
   active.current=a;setProjectId(a.id);setLocal({mode,style});syncUrl(a.id,characterId);touch();
  }
- // Save when the page is hidden or the studio unmounts (for example a click on «دارایی‌ها»).
+ // Save when the page is hidden or the studio unmounts (for example a click on «گالری»).
  useEffect(()=>{
   const onHide=()=>{if(document.visibilityState==="hidden")void save();};
   document.addEventListener("visibilitychange",onHide);
@@ -233,7 +389,7 @@ export function Studio(){
  function changeStyle(s:GenerationStyle|null){if(local){setLocal({...local,style:s});touch();}else setGlobalStyle(s);}
  function releaseAll(){
   urls.current.forEach(u=>URL.revokeObjectURL(u));urls.current.clear();
-  blobs.current=new Map();savedAssets.current=new Set();
+  blobs.current=new Map();genCopies.current=new Map();setCarriedPhotos([]);savedAssets.current=new Set();
   setAttachments([]);setSlots([]);setProblems([]);setAnnounce("");setViewer(null);tagCounters.current=newTagCounters();
   setMessages([]);setProposal(null);setLiveId(null);setJob(null);setPreviewOpen(false);
   setPreview(idlePreview);setError("");setNotice("");setStorageNote("");setDraft("");
@@ -245,7 +401,7 @@ export function Studio(){
  async function openProject(id:string|null){
   const seq=++loadSeq.current;
   save();
-  releaseAll();active.current=null;setProjectId(null);setLocal(null);
+  releaseAll();active.current=null;setProjectId(null);setLocal(null);skips.current=0;
   if(!id)return;
   setLoadingProject(true);
   try{
@@ -268,9 +424,13 @@ export function Studio(){
    savedAssets.current=new Set(assets.map(a=>a.id));
    tagCounters.current=p.tagCounters;
    active.current={id:p.id,createdAt:p.createdAt,title:p.title,titleSource:p.titleSource,persisted:true};
+   // A job saved mid-generation by an older version has no id to ask about, so it can never finish: show it as unknown rather than at 95% forever.
+   for(const m of restored)if(m.kind==="job"&&!m.snapshot.jobId&&!isFinalJobState(m.snapshot.state))m.snapshot={...m.snapshot,state:"lost",messageFa:UNTRACKED_JOB_FA};
    setProjectId(p.id);setLocal({mode:p.mode,style:p.style});setMessages(withGenerationTags(restored));
    const lastJob=[...restored].reverse().find(m=>m.kind==="job");
-   if(lastJob?.kind==="job"){setJob(lastJob.snapshot);setPreview(lastJob.snapshot.messageFa);setPreviewOpen(true);}
+   if(lastJob?.kind==="job"){setJob(lastJob.snapshot);setPreview(lastJob.snapshot.messageFa);setPreviewOpen(previewFits());setGalleryFocus(galleryFocusOn(lastJob.id));}
+   // A generation that was still running when the project was saved: ask the server again and follow it to its end.
+   for(const m of restored)if(m.kind==="job"&&m.snapshot.jobId&&!isFinalJobState(m.snapshot.state))followJob(m.id,m.snapshot);
    // The character: an explicit ?character= link wins, otherwise the project's own, and either must still be usable.
    const fromUrl=new URLSearchParams(window.location.search).get("character"),wanted=fromUrl??p.characterRef?.id??null;
    const found=wanted?items.find(c=>c.id===wanted):undefined,usable=found&&characterUsability(found);
@@ -309,15 +469,102 @@ export function Studio(){
   // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount; syncUrl only needs the router, which is stable
  },[]);
  useEffect(()=>{const live=urls.current;return()=>{live.forEach(u=>URL.revokeObjectURL(u));live.clear();};},[]);
- useEffect(()=>{endRef.current?.scrollIntoView({block:"end"});},[messages,proposal,error,thinking?.stage]);
+ /**
+  * Following the chat's end (owner, 2026-11-08: the chat jumped on a generated image card on the iPhone): it scrolls down by itself only when the user
+  * sends a message or is already at the end. A generation's card updates every few seconds; scrolling to the end on each update pulled the user back
+  * down while they read. While at the end, content that grows (an image finishing loading) keeps them at the end; Safari has no scroll anchoring.
+  */
+ const logRef=useRef<HTMLDivElement>(null);
+ /** To the chat's end by its own scroll position: scrollIntoView also scrolls every scrolling ancestor, which moved the whole page on the iPhone. */
+ const toEnd=()=>{const sc=logRef.current?.parentElement;if(sc)sc.scrollTop=sc.scrollHeight;};
+ const atEndRef=useRef(true),[atEnd,setAtEnd]=useState(true),[atStart,setAtStart]=useState(true),lastCount=useRef(0);
+ useEffect(()=>{
+  const sent=messages.length>lastCount.current&&messages.at(-1)?.role==="user";lastCount.current=messages.length;
+  if(sent||atEndRef.current)toEnd();
+ },[messages,proposal,error,thinking?.stage]);
+ useEffect(()=>{
+  const log=logRef.current;if(!log||typeof ResizeObserver==="undefined")return;
+  const ro=new ResizeObserver(()=>{if(atEndRef.current)toEnd();});
+  ro.observe(log);return()=>ro.disconnect();
+ },[]);
  const blobFor=(id:string)=>blobs.current.get(id);
  /** Opens the viewer on one attachment, with every attachment of this conversation (sent messages first, then the tray) to step through. */
+ /**
+  * Everything viewable in this chat for the full-screen viewer (owner, 2026-11-06), newest first: the files (one per picture) and every generated image or
+  * video, each with its essentials: title, date, the brief, the model and a few facts.
+  */
+ function viewerItems():ViewerItem[]{
+  const sentAt=(id:string)=>messages.find(m=>(m.attachments??[]).some(a=>a.id===id))?.at;
+  const files:ViewerItem[]=distinctFiles.map(c=>{const r=reviews[c.id];return {id:c.id,kind:c.kind,mime:c.mime,bytes:c.bytes,name:c.name,tag:c.tag,role:c.role,width:c.width,height:c.height,durationSeconds:c.durationSeconds,url:c.previewUrl,blob:blobs.current.get(c.id),
+   info:{titleFa:displayTag(c.tag)+(c.role?" · "+roleLabelFa(c.role,c.kind):""),dateIso:sentAt(c.id),facts:[
+    {labelFa:"نوع",value:ATTACHMENT_KINDS[c.kind].labelFa},{labelFa:"حجم",value:faBytes(c.bytes)},
+    ...(c.width&&c.height?[{labelFa:"ابعاد",value:faDimensions(c.width,c.height)}]:[]),...(c.durationSeconds!==undefined?[{labelFa:"مدت",value:faDuration(c.durationSeconds)}]:[]),
+    ...(r?.state==="safe"?[{labelFa:"بررسی ایمنی",value:"تأیید شد"}]:[])]}};});
+  const gens:ViewerItem[]=messages.flatMap(m=>{
+   if(m.kind!=="job"||!m.snapshot.tag)return [];
+   const tag=m.snapshot.tag,g=generationMap.get(tag),outs=(m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined))??[];
+   return outs.filter(o=>(o.kind==="image"||o.kind==="video")&&isOwnedOutputUrl(o.url,window.location.origin)).map((o,k):ViewerItem=>({id:"gen-"+m.id+"-"+k,kind:o.kind as "image"|"video",mime:o.kind==="video"?"video/mp4":"image/png",bytes:0,
+    name:displayTag(tag).slice(1)+(o.kind==="video"?".mp4":".png"),tag,url:o.url,info:{titleFa:displayTag(tag),dateIso:m.at,briefFa:g?.plan.intentSummaryFa,model:g?.modelName||undefined,facts:[
+     {labelFa:"نوع",value:o.kind==="video"?"ویدیو":"عکس"},...(g?.plan.camera?.aspectRatio?[{labelFa:"نسبت",value:g.plan.camera.aspectRatio==="original"?"اصلی":g.plan.camera.aspectRatio}]:[]),
+     ...(g?.plan.shot?.durationSeconds?[{labelFa:"مدت",value:fa(g.plan.shot.durationSeconds)+" ثانیه"}]:[]),...(g?.neurons?[{labelFa:"هزینه",value:fa(g.neurons)+" نورون"}]:[])]}}));
+  });
+  return byRecency([...files,...gens]);
+ }
+ function openViewerAt(id:string){const items=viewerItems(),index=items.findIndex(i=>i.id===id);if(index>=0)setViewer({items,index,title:active.current?.title});}
  function openViewer(a:LocalAttachment){
-  const items:ViewerItem[]=conversation.map(c=>({id:c.id,kind:c.kind,mime:c.mime,bytes:c.bytes,name:c.name,tag:c.tag,role:c.role,width:c.width,height:c.height,durationSeconds:c.durationSeconds,url:c.previewUrl,blob:blobFor(c.id)}));
-  const index=items.findIndex(i=>i.id===a.id);
-  if(index>=0)setViewer({items,index,title:active.current?.title});
+  // A repeated file opens as the one picture it is (the # list keeps the latest #).
+  const same=distinctFiles.find(c=>c.kind===a.kind&&c.sha256===a.sha256);openViewerAt(same?.id??a.id);
+ }
+ /**
+  * A generated image or video, full screen (from the chat or the preview), by its own job message: a video and its opening-frame draft share one tag
+  * (owner, 2026-11-08: tapping the video opened the draft photo), so the tag alone cannot say which output was tapped.
+  */
+ const openGenerationViewer=(messageId:string)=>openViewerAt("gen-"+messageId+"-0");
+ /** «ادیت» in the viewer: the viewer closes and the picture opens in the brush editor. */
+ function editFromViewer(item:ViewerItem){
+  setViewer(null);
+  if(item.id.startsWith("gen-"))return void editGeneration(item.tag);
+  const inTray=attachments.find(a=>a.id===item.id),sent=conversation.find(a=>a.id===item.id);
+  if(inTray)editAttachment(inTray,true);else if(sent)editAttachment(sent,false);
  }
  function releaseUrl(a:LocalAttachment){if(a.previewUrl){URL.revokeObjectURL(a.previewUrl);urls.current.delete(a.previewUrl);}}
+ function setReview(id:string,r:PhotoReview){reviewsRef.current={...reviewsRef.current,[id]:r};setReviews(reviewsRef.current);}
+ /**
+  * Checks one photo (right after it is added, or when a message needs it): a known verdict is reused, a running check is joined, a failed one is tried again.
+  * `force`: check again even when known (the server forgot it after a restart). A blocked photo says why and how to replace it, right away under the chat box.
+  */
+ function checkPhoto(a:LocalAttachment,force=false):Promise<PhotoReview>{
+  const known=reviewsRef.current[a.id];
+  if(!force&&known&&(known.state==="safe"||known.state==="blocked"))return Promise.resolve(known);
+  const running=reviewJobs.current.get(a.id);if(running&&!force)return running;
+  const blob=blobs.current.get(a.id);
+  if(!blob){const r:PhotoReview={state:"failed",reasonFa:REVIEW_FAILED_FA};setReview(a.id,r);return Promise.resolve(r);}
+  setReview(a.id,{state:"checking",progress:0});
+  // `job` is declared first: the progress callback can run before the check returns (the first tick is synchronous), and must not read it uninitialized.
+  let job:Promise<PhotoReview>|undefined=undefined;
+  job=(a.kind==="video"?reviewVideo:reviewPhoto)(blob,p=>{if(!job||reviewJobs.current.get(a.id)===job)setReview(a.id,{state:"checking",progress:p});}).then(r=>{
+   if(reviewJobs.current.get(a.id)!==job)return r;
+   reviewJobs.current.delete(a.id);setReview(a.id,r);
+   if(r.state==="blocked")setProblems(list=>[...list,{key:crypto.randomUUID(),name:displayTag(a.tag),message:r.reasonFa+(r.fixFa?" "+r.fixFa:"")}]);
+   return r;
+  });
+  reviewJobs.current.set(a.id,job);return job;
+ }
+ /** The photos Beautify was already offered for on upload (once each), and the chat box's files as they are now (read after the check returns). */
+ const beautifyOffered=useRef(new Set<string>()),tray=useRef(attachments);
+ useEffect(()=>{tray.current=attachments;});
+ /**
+  * The check of a just-added photo found it would look much better (owner, 2026-11-08): Whoush posts the «Beautify it» card at once, with what it saw. Once
+  * per photo, and only while the photo is still waiting in the chat box (once it is sent, the reply handles it).
+  */
+ function offerBeautifyOnUpload(a:LocalAttachment,offer:BeautifyOffer){
+  // Never annoying (owner, 2026-11-08): once per photo, and no more offers in a chat where two were turned down.
+  if(skips.current>=2||beautifyOffered.current.has(a.sha256)||!tray.current.some(x=>x.id===a.id))return;
+  beautifyOffered.current.add(a.sha256);
+  setMessages(m=>[...m,agentItem({role:"agent",text:BEAUTIFY_UPLOAD_FA,kind:"question",snapshot:{question:BEAUTIFY_UPLOAD_FA,beautify:offer}})]);
+ }
+ /** The id a photo's safe check got, sent with it so the server can find its own record. */
+ const reviewIdOf=(a:LocalAttachment)=>{const r=reviewsRef.current[a.id];return r?.state==="safe"?r.reviewId:undefined;};
  /** Verifies the picked files one by one; the good ones join the tray, each rejected one gets its own Persian reason. Returns how many were added. */
  async function addFiles(files:File[],upload?:Upload,reservedTag?:string):Promise<LocalAttachment[]>{
   if(!files.length||readingRef.current)return [];
@@ -327,7 +574,17 @@ export function Studio(){
    const name=file.name||"فایل",fail=(message:string)=>bad.push({key:crypto.randomUUID(),name,message});
    if(next.length>=MAX_ATTACHMENTS){fail(tooManyFa());continue;}
    try{
-    const read=await readAttachment(file),check=validateAttachmentSet([...next,read]);
+    const read=await readAttachment(file);
+    // No duplicates (owner, 2026-11-06): a file already in the chat box is not added twice; one sent earlier comes back with its own # (and its check).
+    const sameInTray=next.find(x=>x.kind===read.kind&&x.sha256===read.sha256);
+    if(sameInTray){if(read.previewUrl)URL.revokeObjectURL(read.previewUrl);fail("همین فایل الان توی پیامه: "+displayTag(sameInTray.tag));continue;}
+    const sameSent=reservedTag?undefined:[...messages].reverse().flatMap(m=>m.attachments??[]).find(x=>x.kind===read.kind&&x.sha256===read.sha256&&x.previewUrl);
+    if(sameSent){
+     if(read.previewUrl)URL.revokeObjectURL(read.previewUrl);
+     if(!blobs.current.has(sameSent.id))blobs.current.set(sameSent.id,file);
+     const again={...(upload?.role?withRole(sameSent,upload.role):sameSent),regionEdit:undefined};next.push(again);added.push(again);continue;
+    }
+    const check=validateAttachmentSet([...next,read]);
     if(!check.ok){if(read.previewUrl)URL.revokeObjectURL(read.previewUrl);fail(check.error);continue;}
     // A file added through a + menu entry must be of that entry's kind; the check runs before a tag is spent.
     const rejection=upload?uploadRejection(upload,read.kind):undefined;
@@ -344,8 +601,21 @@ export function Studio(){
    }catch(err){fail(err instanceof Error?err.message:ATTACHMENT_ERRORS_FA.unreadable);}
   }
   setAttachments(cur=>[...cur,...added]);setProblems(bad);
+  // Each photo is checked right away, so it is ready by the time the message goes.
+  if(reviewOn)for(const a of added)if((a.kind==="image"||(a.kind==="video"&&videoReviewOn))&&reviewsRef.current[a.id]?.state!=="safe")void checkPhoto(a).then(r=>{
+   // «Beautify it» on upload (owner, 2026-11-08): the check saw an everyday photo of a person that would look much better: Whoush offers it first.
+   if(a.kind==="image"&&r.state==="safe"&&r.beautify)offerBeautifyOnUpload(a,{...r.beautify,tag:a.tag});
+   // The role the check detected, shown on the card (owner, 2026-11-08), only for a photo with no role yet; the user can change it, and the message's
+   // words still decide (roleAuto).
+   const detected=a.kind==="image"&&r.state==="safe"?r.role:undefined;
+   if(detected&&roleAllowed("image",detected as AttachmentRole))setAttachments(list=>list.map(x=>x.id===a.id&&!x.role?{...withRole(x,detected as AttachmentRole),roleAuto:true}:x));
+  });
   setAnnounce((added.length?fa(added.length)+" فایل اضافه شد. ":"")+(bad.length?fa(bad.length)+" فایل رد شد.":""));
   readingRef.current=false;setReading(false);
+  // Every reference added gets its # badge inside the message (owner, 2026-11-08), unless it is there already. After the next render, when the chat box
+  // knows the new files (before that, a tag stays plain text).
+  const fresh=added.filter(x=>!parseMentions(draft).includes(x.tag)).map(x=>x.tag);
+  if(fresh.length)requestAnimationFrame(()=>requestAnimationFrame(()=>{for(const t of fresh)promptRef.current?.insertTag(t);}));
   return added;
  }
  /** Fills an upload card with one file (picked or dropped). The card stays in place and shows the file; a rejected file leaves it empty for another try. */
@@ -366,14 +636,138 @@ export function Studio(){
   if(s)setAnnounce("کارت "+s.titleFa+" حذف شد.");
   requestAnimationFrame(()=>promptRef.current?.focus());
  }
+ /** The marked copy of a photo, as its own checkable photo (same tag, its own id). */
+ const guideOf=(a:LocalAttachment):LocalAttachment|undefined=>a.regionEdit?{...a,id:a.regionEdit.guideId,regionEdit:undefined}:undefined;
+ /** Opens a photo of this chat (in the chat box or sent) in the full-screen editor; it is checked meanwhile, so it is ready when the edit goes. */
+ function editAttachment(a:LocalAttachment,fromTray:boolean,suggested?:readonly SuggestedEdit[]){
+  if(a.kind!=="image"||!a.previewUrl||!blobs.current.get(a.id)){setError("این عکس دیگه توی این مرورگر نیست؛ دوباره اضافه‌ش کن.");return;}
+  setEditing({a:{...a,regionEdit:undefined},fromTray,...(suggested?.length?{suggested}:{})});if(reviewOn)void checkPhoto(a);
+ }
+ /** Opens a generated image in the editor: it joins the chat as a new photo (#تصویر-n), checked like any photo. */
+ /**
+  * A generated image as a photo of this chat (#تصویر-n, `fromGeneration`), checked like any photo: one copy per generation, made once and reused (by «ادیت»
+  * and by follow-ups that continue it). `undefined` with the reason when there is no image yet or it cannot be read.
+  */
+ async function generationPhoto(tag:string):Promise<LocalAttachment|{errorFa:string}>{
+  const copy=genCopies.current.get(tag)??[...attachments,...[...messages].reverse().flatMap(m=>m.attachments??[])].find(a=>a.fromGeneration===tag&&a.previewUrl&&blobs.current.has(a.id));
+  if(copy&&blobs.current.has(copy.id)){if(reviewOn)void checkPhoto(copy);return copy;}
+  const snap=messages.find(m=>m.kind==="job"&&m.snapshot.tag===tag)?.snapshot as {outputs?:{kind:string;url:string}[]}|undefined;
+  const url=snap?.outputs?.find(o=>o.kind==="image"&&isOwnedOutputUrl(o.url,window.location.origin))?.url;
+  if(!url)return {errorFa:"تصویر این تولید هنوز آماده نیست."};
+  try{
+   const blob=await fetch(url).then(r=>{if(!r.ok)throw new Error();return r.blob();});
+   const read=await readAttachment(new File([blob],displayTag(tag).slice(1)+".jpg",{type:blob.type||"image/jpeg"}));
+   const newTag=lowestFreeTag([...tagsInUse(messages.flatMap(m=>m.attachments??[]),slots),...attachments.map(x=>x.tag),...[...genCopies.current.values()].map(x=>x.tag)],"image");
+   if(!newTag||!read.previewUrl)return {errorFa:ATTACHMENT_ERRORS_FA.tagsExhausted};
+   tagCounters.current=bumpTagCounters(tagCounters.current,newTag);
+   const a:LocalAttachment={...read,tag:newTag,fromGeneration:tag};urls.current.add(read.previewUrl);blobs.current.set(a.id,blob);genCopies.current.set(tag,a);setCarriedPhotos(p=>[...p,a]);
+   if(reviewOn)void checkPhoto(a);
+   return a;
+  }catch{return {errorFa:"تصویر این تولید باز نشد. دوباره امتحان کن."};}
+ }
+ async function editGeneration(tag:string,suggested?:readonly SuggestedEdit[]){
+  const a=await generationPhoto(tag);
+  if("errorFa" in a){setError(a.errorFa);return;}
+  setEditing({a:{...a,regionEdit:undefined},fromTray:false,...(suggested?.length?{suggested}:{})});
+ }
+ /** A photo or generation of this chat by its tag, for the edit card: its thumbnail, and opening it in the editor. */
+ function thumbFor(tag:string):string|undefined{
+  if(isGenerationTag(tag))return (messages.find(m=>m.kind==="job"&&m.snapshot.tag===tag)?.snapshot as {outputs?:{kind:string;url:string}[]}|undefined)?.outputs?.find(o=>o.kind==="image")?.url;
+  return [...attachments,...messages.flatMap(m=>m.attachments??[]),...carriedPhotos].find(a=>a.tag===tag)?.previewUrl;
+ }
+ async function openEditFor(tag:string,suggested?:readonly SuggestedEdit[]){
+  if(isGenerationTag(tag))return editGeneration(tag,suggested);
+  // A generation carried into a follow-up is a photo of this chat too (generationPhoto), kept apart from the sent files.
+  const inTray=attachments.find(a=>a.tag===tag),sent=[...[...messages].reverse().flatMap(m=>m.attachments??[]),...genCopies.current.values()].find(a=>a.tag===tag);
+  if(inTray)editAttachment(inTray,true,suggested);else if(sent)editAttachment(sent,false,suggested);
+ }
+ /** The editor is done: the marked copy is made and checked, and the edit goes straight to Whoush (as the answer, when Whoush asked for it). */
+ async function applyEdit(r:{masks:HTMLCanvasElement[];regions:Region[]}){
+  const e=editing;if(!e)return;setEditing(null);
+  await applyEditTo(e,r);
+ }
+ /**
+  * «بساز» on an edit card (owner, 2026-11-08): the areas Whoush marked go as they are, without opening the editor. The same photo, masks and message
+  * as confirming them in the editor.
+  */
+ async function generateSuggested(tag:string,suggested:readonly SuggestedEdit[]){
+  // Nothing marked (a whole-photo edit): «بساز» is the answer that goes ahead with the request as asked.
+  if(!suggested.length){answer(EDIT_AS_ASKED_FA);return;}
+  // The button shows it is working at once (the masks can take seconds on a phone) and cannot be pressed twice.
+  if(preparingEdit)return;setPreparingEdit(tag);
+  try{await generateSuggestedNow(tag,suggested);}finally{setPreparingEdit(null);}
+ }
+ async function generateSuggestedNow(tag:string,suggested:readonly SuggestedEdit[]){
+  let a:LocalAttachment|undefined,fromTray=false;
+  if(isGenerationTag(tag)){const g=await generationPhoto(tag);if("errorFa" in g){setError(g.errorFa);return;}a=g;}
+  else{a=attachments.find(x=>x.tag===tag);fromTray=Boolean(a);a??=[...[...messages].reverse().flatMap(m=>m.attachments??[]),...genCopies.current.values()].find(x=>x.tag===tag);}
+  if(!a||a.kind!=="image"||!a.previewUrl||!blobs.current.get(a.id)){setError("این عکس دیگه توی این مرورگر نیست؛ دوباره اضافه‌ش کن.");return;}
+  let r:{masks:HTMLCanvasElement[];regions:Region[]};
+  try{r=await suggestedMasks(a.previewUrl,suggested);}catch{setError("علامت‌ها ساخته نشد. «ادیت» رو بزن و خودت علامت بزن.");return;}
+  if(!r.regions.length)return;
+  await applyEditTo({a:{...a,regionEdit:undefined},fromTray},r);
+ }
+ /**
+  * «Beautify it» (owner, 2026-11-08, lib/beautify.ts): the photo goes to Whoush with the parts left on, as the answer to the question that offered it, and
+  * comes back as a proposal like any edit («بسازش» with its price).
+  */
+ async function beautifyPhoto(tag:string,parts:BeautifyPart[]){
+  if(beautifying||!parts.length)return;setBeautifying(tag);
+  try{
+   let a:LocalAttachment|undefined,fromTray=false;
+   if(isGenerationTag(tag)){const g=await generationPhoto(tag);if("errorFa" in g){setError(g.errorFa);return;}a=g;}
+   else{a=attachments.find(x=>x.tag===tag);fromTray=Boolean(a);a??=[...[...messages].reverse().flatMap(m=>m.attachments??[]),...genCopies.current.values()].find(x=>x.tag===tag);}
+   if(!a||a.kind!=="image"||!blobs.current.get(a.id)){setError("این عکس دیگه توی این مرورگر نیست؛ دوباره اضافه‌ش کن.");return;}
+   if(fromTray){setAttachments(l=>l.filter(x=>x.id!==a!.id));setSlots(l=>forgetAttachment(l,a!.id));}
+   const text=beautifyRequestFa(displayTag(a.tag),parts),asked=questionAwaitingAnswer();
+   await runTurn(text,[{...a,regionEdit:undefined,beautify:{parts:[...parts]}}],[],false,asked?answerBrief(asked.brief??asked.text,text):undefined);
+  }finally{setBeautifying(null);}
+ }
+ /**
+  * «لازم نیست» on the «زیباسازی» offer (owner, 2026-11-08): nothing is sent or charged. A card that only offered it goes away; under an edit card, only the
+  * offer goes and the edit card stays.
+  */
+ function skipBeautify(id:string){
+  skips.current++;
+  const m=messages.find(x=>x.id===id);if(!m||m.kind!=="question"||!m.snapshot.beautify)return;
+  const {beautify:_b,...rest}=m.snapshot,keep=Boolean(rest.editCards?.length||rest.editCard||rest.choices||rest.references);
+  if(keep){setMessages(list=>list.map(x=>x.id===id?{...m,snapshot:rest}:x));return;}
+  // The whole card folds away, then leaves the conversation (instantly with reduced motion).
+  setFolding(f=>new Set(f).add(id));
+  const gone=()=>{setMessages(list=>list.filter(x=>x.id!==id));setFolding(f=>{const n=new Set(f);n.delete(id);return n;});};
+  if(window.matchMedia("(prefers-reduced-motion: reduce)").matches)gone();else window.setTimeout(gone,300);
+ }
+ async function applyEditTo(e:{a:LocalAttachment;fromTray:boolean},{masks,regions}:{masks:HTMLCanvasElement[];regions:Region[]}){
+  const blob=blobs.current.get(e.a.id);if(!blob)return;
+  // The user sees the photo with its marks (`guide`); the model gets the region map (black, flat colour areas), never the painted photo, which it would copy.
+  let guide:Blob,map:Blob;try{[guide,map]=await Promise.all([renderGuide(blob,masks),renderRegionMap(masks)]);}catch{setError("علامت‌ها ذخیره نشد. دوباره امتحان کن.");return;}
+  const guideId=crypto.randomUUID(),guideUrl=URL.createObjectURL(guide);urls.current.add(guideUrl);blobs.current.set(guideId,map);
+  // The exact selection goes with it, so the result is locked to it (lib/region-restore.ts); an edit without one still gets the guessed restore.
+  const mask=await renderMask(masks).catch(()=>undefined);
+  const edited:LocalAttachment={...e.a,regionEdit:{regions,guideId,guideUrl,...(mask?{mask}:{})}};
+  if(reviewOn)void checkPhoto(guideOf(edited)!);
+  if(e.fromTray){setAttachments(l=>l.filter(x=>x.id!==e.a.id));setSlots(l=>forgetAttachment(l,e.a.id));}
+  const text=displayTag(edited.tag)+" رو ادیت کن — "+regions.map(r=>"ادیت "+fa(r.n)+" ("+REGION_COLOR_FA[r.color]+"): "+r.note).join("؛ ");
+  const asked=questionAwaitingAnswer();
+  void runTurn(text,[edited],[],false,asked?answerBrief(asked.brief??asked.text,text):undefined);
+ }
  function removeAttachment(id:string){
   const a=attachments.find(x=>x.id===id);if(a)releaseUrl(a);
+  if(a&&mainSubject===a.tag)setMainSubject(null);
   blobs.current.delete(id);
   setAttachments(list=>list.filter(x=>x.id!==id));setSlots(list=>forgetAttachment(list,id));
  }
  function patchAttachment(id:string,patch:AttachmentPatch){setAttachments(list=>list.map(x=>x.id!==id?x:patch.role===null?withoutRole(x):patch.role?withRole(x,patch.role):{...x,...(patch.speech?{speech:patch.speech}:{})}));}
  /** Puts the tag (`#تصویر-۱`) into the prompt as a badge at the caret (at the end when the prompt is not focused), with focus in the prompt after it. */
  function mentionTag(tag:string){promptRef.current?.insertTag(tag);}
+ /** The star: makes this the main subject (only one), or clears it. A # that is not in the message yet is dropped into the prompt, so it goes with it. */
+ function toggleMain(tag:string){
+  if(mainSubject===tag){setMainSubject(null);return;}
+  setMainSubject(tag);
+  // Its # goes inside the message (owner, 2026-11-08), unless it is there already.
+  const inText=tag.startsWith("#")?draft.includes(tag):parseMentions(draft).includes(tag);
+  if(!inText)mentionTag(tag);
+ }
  /**
   * A generation card's tag (#تولید-۱): puts it into the prompt as a dismissable badge, where the user writes the changes. The mention is what
   * sends the generation to the planner (at most MAX_GENERATION_REFS per message).
@@ -412,7 +806,7 @@ export function Studio(){
   el.scrollIntoView({block:"center",behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"});
   el.querySelector<HTMLElement>("button")?.focus({preventScroll:true});
  }
- /** A + menu entry adds an empty upload card (title and icon) inside the chat input and moves focus to it; «کاراکترهای من» opens the saved-character dialog. */
+ /** A + menu entry adds an empty upload card (title and icon) inside the chat input and moves focus to it; «کاراکتر» (saved characters) opens the saved-character dialog. */
  /** Adds an upload card to the chat input (with its tag reserved), or reports why it cannot; returns the card as added. */
  function createSlot(slot:UploadSlot):UploadSlot|undefined{
   const r=addSlot(slots,slot,attachments.length);
@@ -437,6 +831,8 @@ export function Studio(){
   if(slot)openSlotPicker(slot);
  }
  function pickInsert(item:InsertItem){
+  // «رفرنس اتوماتیک» (owner, 2026-11-08): the file picker at once; the photo lands in the chat box and Whoush detects its role.
+  if(item.action.type==="auto"){const el=fileInput.current;if(!el)return;pendingUpload.current=undefined;pendingSlot.current=undefined;el.accept=ATTACHMENT_ACCEPT;el.multiple=true;el.click();return;}
   const slot=slotFor(item,crypto.randomUUID());
   if(!slot){setCharactersOpen(true);return;}
   if(!createSlot(slot))return;
@@ -462,17 +858,26 @@ export function Studio(){
   newChat();
  }
  /** The user message Whoush's latest message asked about, when that message is a question still waiting for its answer. */
- function questionAwaitingAnswer(){
+ function questionAwaitingAnswer(typed=false){
   const lastMsg=messages[messages.length-1];
+  // An edit card is answered with its own buttons («اعمال کن», «ادیت»): a message typed after it is a new request (owner, 2026-11-08: a new edit
+  // request typed under a waiting card went on as its answer and never got its own edit card).
+  const snap=lastMsg?.kind==="question"?lastMsg.snapshot as {editCards?:unknown[];editCard?:unknown;beautify?:unknown}|undefined:undefined;
+  if(typed&&(snap?.editCards?.length||snap?.editCard||snap?.beautify))return undefined;
   return lastMsg?.kind==="question"?rerunSource(messages,lastMsg.id):undefined;
  }
+ /**
+  * A file added with a role from «+» can go alone (owner, 2026-11-08): the message is its tag, and the server's pipeline for that role is the brief
+  * (lib/role-briefs.ts). Nothing is written into the chat box for the user.
+  */
+ const roleFiles=attachments.filter(a=>Boolean(a.role));
  function send(e:FormEvent){
-  e.preventDefault();const text=draft.trim();if(!text)return;
-  answer(text);
+  e.preventDefault();const text=draft.trim()||roleFiles.map(a=>displayTag(a.tag)).join(" ");if(!text)return;
+  answer(text,true);
  }
  /** Sends `text`; an answer to Whoush's question goes with the original request (and its files), so the planner sees the whole brief and decides instead of asking again. */
- function answer(text:string){
-  const asked=questionAwaitingAnswer();
+ function answer(text:string,typed=false){
+  const asked=questionAwaitingAnswer(typed);
   void runTurn(text,asked?[...(asked.attachments??[]).filter(a=>!attachments.some(x=>x.id===a.id)),...attachments]:attachments,[],true,asked?answerBrief(asked.brief??asked.text,text):undefined);
  }
  /** «اجرای دوباره» under a message: sends that user message (or the one an agent message answered) again as a new turn, with its files and today's settings. */
@@ -485,13 +890,45 @@ export function Studio(){
   * chat it mentions (#تولید-۱). From the composer (`fromComposer`) the draft, cards and tray clear; a rerun leaves them alone. `brief` is what is sent when the
   * message answers Whoush's question (the original request plus the answer); the transcript keeps the answer as typed.
   */
+ /** The earlier files and generations `text` is about (lib/ref-resolver.ts), or undefined when that could not be read (the word rules then decide). */
+ async function readReferences(text:string):Promise<string[]|undefined>{
+  try{
+   const works=earlierWorks.map(w=>({tag:w.tag,kind:w.kind,ready:Boolean(w.done),summaryFa:(generationMap.get(w.tag)?.intentSummaryFa??"").slice(0,400)})).slice(0,20);
+   const files=uniqueById(messages.flatMap(m=>m.attachments??[])).filter(a=>isMediaKind(a.kind)).map(a=>({tag:a.tag,kind:a.kind})).slice(-30);
+   const r=await fetch("/api/agent/refs",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:text.slice(0,4000),history:historyFor(messages).map(t=>({role:t.role,text:t.text.slice(0,1500)})),works,files})});
+   const b=await r.json() as {tags?:string[];resolved?:boolean};
+   return b.resolved&&Array.isArray(b.tags)?b.tags.filter(t=>typeof t==="string"):undefined;
+  }catch{return undefined;}
+ }
  async function runTurn(text:string,files:LocalAttachment[],changes:string[],fromComposer:boolean,brief?:string,scene?:{stagingOverride:Staging;aspectOverride?:string}){
   if(!text||busy||reading||loadingProject)return;
   if(messages.length>=MAX_MESSAGES-4){setError(LIMIT_FA);return;}
   // This message's own files plus any earlier file it mentions as #تصویر-۱ or @image1 (metadata only, as before).
   const sentText=brief??text,mentioned=parseMentions(sentText),own=new Set(files.map(a=>a.id));
-  const outgoing=uniqueById([...messages.flatMap(m=>m.attachments??[]).filter(a=>mentioned.includes(a.tag)&&!own.has(a.id)),...files]);
-  const refs=referencedGenerations(changes,mentioned,generationSet),cardRefs=changes.filter(t=>generationSet.has(t));
+  // What the message is about, read from the whole chat (owner, 2026-11-08: lib/ref-resolver.ts): a message with no files, # or cards of its own in a
+  // chat with earlier work gets the files and generations it means, as if the user had typed their #. If it cannot be read, the word rules decide.
+  let readRefs:string[]|undefined;
+  if(!files.length&&!mentioned.length&&!changes.length&&(earlierWorks.length||messages.some(m=>m.attachments?.length)))readRefs=await readReferences(sentText);
+  // A change to a generation goes to that picture alone (its source photo as a second image would make the edit ambiguous); otherwise the files named.
+  if(readRefs&&!readRefs.some(t=>t.startsWith("generation")))for(const t of readRefs)if(!mentioned.includes(t))mentioned.push(t);
+  // Keeping the thread in the session (owner, 2026-11-07): a message with no files, tags or cards of its own that continues the work («روشن‌ترش کن»،
+  // «همین عکس رو…»، «ویدیو رو کوتاه‌تر کن») is about the latest generation (of the kind it names). It is linked like a card, and a generated image goes to
+  // the model as the photo itself (to change, or as a video's first frame), so the change is made to that picture, not to a new one (lib/follow-up.ts).
+  let carried:LocalAttachment|undefined,carriedTag:string|undefined;
+  if(!files.length&&(readRefs?readRefs.some(t=>t.startsWith("generation")):!mentioned.length)&&!changes.length){
+   carriedTag=readRefs?readRefs.find(t=>t.startsWith("generation")):continuedGeneration(sentText,earlierWorks);
+   if(carriedTag&&generationMap.get(carriedTag)?.plan.mediaKind==="image"){
+    const c=await generationPhoto(carriedTag);
+    // The role is set directly: «ادیت عکس» is a role the server takes (roleAllowed) though the menu does not offer it for a photo.
+    if(!("errorFa" in c)){const role:AttachmentRole=asStartFrame(sentText)?"frame":"edit_reference";carried=roleAllowed("image",role)?{...c,role}:c;}
+   }
+  }
+  const linked=carriedTag?[...changes,carriedTag]:changes;
+  const outgoing=uniqueById([...messages.flatMap(m=>m.attachments??[]).filter(a=>mentioned.includes(a.tag)&&!own.has(a.id)),...files,...(carried?[carried]:[])]);
+  // Photos sent earlier in this chat (details only, no bytes): Whoush reuses ones it asked for instead of asking again. The latest ten, at most.
+  // Earlier photos, and earlier videos where videos are checked (owner, 2026-11-08: a checked video stays usable in the next messages).
+  const priorPhotos=uniqueById(messages.flatMap(m=>m.attachments??[])).filter(a=>(a.kind==="image"||(a.kind==="video"&&videoReviewOn))&&!outgoing.some(o=>o.id===a.id)).slice(-MAX_ATTACHMENTS);
+  const refs=referencedGenerations(linked,mentioned,generationSet),cardRefs=linked.filter(t=>generationSet.has(t));
   const generations=refs.flatMap(t=>{const g=generationMap.get(t);return g?[toGenerationRef(g)]:[];});
   const fits=validateAttachmentSet(outgoing);
   if(!fits.ok){setError(fits.error);return;}
@@ -508,7 +945,8 @@ export function Studio(){
   }
   // The tray clears, but the files stay (with their object URLs) on the sent message; they are released on new chat, project switch or unmount.
   const sent=files,firstText=messages.find(m=>m.role==="user")?.text??text,characterId=current?.id??null;
-  if(fromComposer){setDraft("");setAttachments([]);setSlots([]);setProblems([]);}
+  const main=fromComposer?mainSubject:null;
+  if(fromComposer){setDraft("");setAttachments([]);setSlots([]);setProblems([]);setMainSubject(null);}
   setError("");setNotice("");setBusy(true);setProposal(null);setLiveId(null);setAnnounce("");
   const userMsg=item({role:"user",text,...(sent.length?{attachments:sent}:{}),...(cardRefs.length?{generationTags:cardRefs}:{}),...(brief?{brief}:{})});
   setMessages(m=>[...m,userMsg]);touch();
@@ -516,30 +954,84 @@ export function Studio(){
   const whoushReacts=(emoji?:ReactionEmoji)=>{if(emoji)react(userMsg.id,emoji,"whoush");};
   const characterRef=current?{id:current.id,name:current.name,angles:characterCoverage(current.references).uploaded,version:current.version}:undefined;
   try{
-   setThinking({stage:"reading",script:replyScriptFor(sentText)});
-   const r=await postAgentTurn(JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(toWireAttachment)}:{}),...(generations.length?{generations}:{})}),stage=>setThinking(t=>t&&{...t,stage}));
+   // The photos this turn sends must be checked first (lib/photo-review.ts). Usually they already are (checked right after upload); otherwise Whoush waits
+   // in the chat with their progress and then goes on by itself. Earlier photos that cannot be used are simply left out.
+   let prior=priorPhotos;
+   if(reviewOn){
+    // A painted photo's marked copy is checked like the photo itself.
+    const mine=outgoing.filter(a=>a.kind==="image"||(a.kind==="video"&&videoReviewOn)).flatMap(a=>{const g=guideOf(a);return g?[a,g]:[a];}),unsure=[...mine,...prior].filter(a=>reviewsRef.current[a.id]?.state!=="safe");
+    if(unsure.length){
+     setWaitingFor(unsure);
+     await Promise.all(unsure.map(a=>checkPhoto(a)));
+     setWaitingFor(null);
+     const bad=mine.filter(a=>reviewsRef.current[a.id]?.state!=="safe");
+     if(bad.length){
+      setMessages(m=>[...m,agentItem({role:"agent",text:reviewStopFa(bad.map(a=>({tagFa:displayTag(a.tag),review:reviewsRef.current[a.id]}))),kind:"text"})]);
+      adoptProject(firstText,characterId);return;
+     }
+     prior=prior.filter(a=>reviewsRef.current[a.id]?.state==="safe");
+    }
+   }
+   setThinking({stage:"reading",done:[],script:replyScriptFor(sentText),notes:{}});
+ // Keeping the thread (lib/follow-up.ts): the photos the latest plan was built on, with the roles that plan gave them; the server keeps them for a
+   // follow-up that continues the work.
+   let lastPlan:AgentProposal["plan"]|undefined;
+   for(const m of [...messages].reverse()){if((m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan){lastPlan=m.snapshot.plan;break;}}
+   const planRoles=new Map<string,string>((lastPlan?.references??[]).map(r=>[r.tag,r.role]));
+   const continueWith=outgoing.length?[]:prior.filter(a=>planRoles.has(a.tag)).map(a=>a.tag);
+   const withPlanRole=(a:LocalAttachment)=>{const r=planRoles.get(a.tag);return !a.role&&r&&roleAllowed(a.kind,r as AttachmentRole)?withRole(a,r as AttachmentRole):a;};
+   const body=()=>JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(uiLang==="fi"?{uiScript:"finglish"}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(a=>toWireAttachment(a,reviewIdOf(a),a.regionEdit?reviewIdOf(guideOf(a)!):undefined))}:{}),...(prior.length?{priorAttachments:prior.map(a=>toWireAttachment(withPlanRole(a),reviewIdOf(a)))}:{}),...(continueWith.length?{continueWith}:{}),...(main?{mainSubject:main}:{}),...(generations.length?{generations}:{})}),onStage=(stage:TurnStage)=>setThinking(t=>t&&(t.stage===stage?t:{...t,done:[...t.done,t.stage],stage})),
+    onNote=(n:TurnNote)=>setThinking(t=>{if(!t)return t;const had=t.notes[n.stage]??{story:[],facts:[]};return {...t,notes:{...t.notes,[n.stage]:{...had,[n.kind]:[...had[n.kind],...n.lines].slice(0,8)}}};});
+   type ErrorBody={beautify?:unknown;editCards?:unknown;error?:string;reason?:UnsupportedReason;unreviewed?:unknown;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"];references?:unknown;choices?:unknown};
+   const postTurn=async()=>{const res=await postAgentTurn(body(),onStage,onNote);return {r:res,errorBody:(res.ok?{}:await res.json().catch(()=>({}))) as ErrorBody};};
+   // The server no longer knows a check (it restarted): check those photos again, then send once more.
+   const recheck=async(first:Awaited<ReturnType<typeof postTurn>>)=>{
+    const unreviewed=Array.isArray(first.errorBody.unreviewed)?first.errorBody.unreviewed:[];
+    const again=reviewOn&&first.r.status===422&&first.errorBody.reason==="media_review"?uniqueById([...outgoing,...prior]).filter(a=>unreviewed.includes(a.tag)).flatMap(a=>{const g=guideOf(a);return g?[a,g]:[a];}):[];
+    if(!again.length)return first;
+    setThinking(null);setWaitingFor(again);
+    await Promise.all(again.map(a=>checkPhoto(a,true)));
+    setWaitingFor(null);
+    if(!again.every(a=>reviewsRef.current[a.id]?.state==="safe"))return first;
+    setThinking({stage:"reading",done:[],script:replyScriptFor(sentText),notes:{}});
+    return postTurn();
+   };
+   const {r,errorBody}=await recheck(await postTurn());
    if(!r.ok){
-    const errorBody=await r.json().catch(()=>({})) as {error?:string;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"];references?:unknown};
     if(r.status===422&&errorBody.error==="no_compatible_model"){
      const message=typeof errorBody.message==="string"?errorBody.message:"مدل سازگاری برای این درخواست پیدا نشد.";
-     setMessages(m=>[...m,agentItem({role:"agent",text:message,kind:"no_model",snapshot:{message,...(errorBody.plan?{plan:errorBody.plan}:{})}})]);setPreview("مدل سازگار پیدا نشد");
+     const reason=errorBody.reason&&UNSUPPORTED_REASONS.includes(errorBody.reason)?errorBody.reason:undefined;
+     setMessages(m=>[...m,agentItem({role:"agent",text:message,kind:"no_model",snapshot:{message,...(errorBody.plan?{plan:errorBody.plan}:{}),...(reason?{reason}:{})}})]);setPreview(noModelTitle(reason));
      adoptProject(firstText,characterId);
      return;
     }
     if(r.status===422&&errorBody.error==="needs_input"&&typeof errorBody.question==="string"){
-     const references=isReferenceRequest(errorBody.references)?errorBody.references:undefined;
-     setMessages(m=>[...m,agentItem({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"",kind:"question",snapshot:{question:errorBody.question!,...(references?{references}:{})}})]);whoushReacts(errorBody.reaction);
+     const references=isReferenceRequest(errorBody.references)?errorBody.references:undefined,choices=isQuestionChoices(errorBody.choices)?errorBody.choices:undefined;
+     const editCards=Array.isArray(errorBody.editCards)?errorBody.editCards.flatMap(c=>{const x=c as {tag?:unknown;suggested?:unknown};
+      // A carried generation's photo is shown and opened as that generation (#تولید-n): its own thumbnail, and it still opens after a reload.
+      return typeof x.tag==="string"?[{tag:carried&&carriedTag&&x.tag===carried.tag?carriedTag:x.tag,...(Array.isArray(x.suggested)?{suggested:(x.suggested as SuggestedEdit[]).slice(0,5)}:{})}]:[];}).slice(0,10):[];
+     // «Beautify it» offered for a photo: its tag (a carried generation's own), the parts the card starts with, and the under-18 limit.
+     const b=errorBody.beautify as {tag?:unknown}|undefined,offer=parseBeautifyOffer(b);
+     const beautify=offer&&typeof b?.tag==="string"?{...offer,tag:carried&&carriedTag&&b.tag===carried.tag?carriedTag:b.tag}:undefined;
+     setMessages(m=>[...m,agentItem({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"",kind:"question",snapshot:{question:errorBody.question!,...(references?{references}:{}),...(choices?{choices}:{}),...(editCards.length?{editCards}:{}),...(beautify?{beautify}:{})}})]);whoushReacts(errorBody.reaction);
      adoptProject(firstText,characterId);
      return;
     }
     if(r.status===422&&errorBody.error==="content_restricted"){
-     setMessages(m=>[...m,agentItem({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"این درخواست را نمی‌توانم انجام بدهم.",kind:"restricted"})]);
+     const choices=isQuestionChoices(errorBody.choices)?errorBody.choices:undefined;
+     setMessages(m=>[...m,agentItem({role:"agent",text:typeof errorBody.message==="string"?errorBody.message:"این درخواست را نمی‌توانم انجام بدهم.",kind:"restricted",...(choices?{snapshot:{choices}}:{})})]);
      adoptProject(firstText,characterId);
      return;
     }
     throw new Error(typeof errorBody.message==="string"?errorBody.message:"خطا در آماده‌سازی پیشنهاد");
    }
-   const data=await r.json() as AgentProposal&{message:string;gif?:GifSnapshot;reaction?:ReactionEmoji};
+   const data=await r.json() as AgentProposal&{kind?:"reply";message:string;gif?:GifSnapshot;reaction?:ReactionEmoji};
+   // A direct answer (a greeting, a question about Whoush): a plain message, no plan card, and the current proposal stays as it was.
+   if(data.kind==="reply"){
+    setMessages(m=>[...m,agentItem({role:"agent",text:typeof data.message==="string"?data.message:"",kind:"text"})]);whoushReacts(data.reaction);
+    adoptProject(firstText,characterId);
+    return;
+   }
    const picked=data.suggestions.find(s=>s.modelId===data.recommendedModelId)??data.suggestions[0];
    const tag=nextGenerationTag(generationTagsIn(messages));
    // A follow-up about one part of the scene (the camera angle, the light...): «بوم» opens on just that part. The previous scene is the generation the
@@ -547,17 +1039,22 @@ export function Studio(){
    const named=mentioned.find(t=>generationSet.has(t)),prevSnap=named?generationMap.get(named):[...messages].reverse().find(m=>m.kind==="proposal")?.snapshot as ProposalSnapshot|undefined;
    const focus=followUpFocus(normalizePersian(sentText),prevSnap?.plan.staging,data.plan.staging);
    const reply=agentItem({role:"agent",text:data.message,kind:"proposal",snapshot:{...(tag?{tag}:{}),...(focus?{focus}:{}),operation:data.operation,modelName:picked?.name??"",neurons:picked?.neurons??data.fixedNeurons,intentSummaryFa:data.plan.intentSummaryFa,plan:data.plan}});
-   setProposal(data);setLiveId(reply.id);setSelected(data.selectedModelId);setAspectChoice(null);setPreview("در انتظار تأیید تولید");setJob(null);
+   setProposal(data);setLiveId(reply.id);setSelected(data.selectedModelId);setAspectChoice(null);setSoundChoice(null);setExcludedRefs(new Set());setDraftedFor(null);setPreview("در انتظار تأیید تولید");setJob(null);
    // Like a friend: the reply, then (sometimes) a GIF as its own message.
    setMessages(m=>[...m,reply,...(data.gif?[agentItem({role:"agent",text:"",kind:"gif",snapshot:data.gif})]:[])]);whoushReacts(data.reaction);
    adoptProject(firstText,characterId);
   }catch(err){setError(err instanceof Error?err.message:"خطای ناشناخته");}
   finally{setBusy(false);setThinking(null);}
  }
- async function approve(){
+ /**
+  * Generates the live proposal. `draft` (video only): the cheap opening-frame still on its own private turn first; the proposal stays live so the user can
+  * then make the video, or change it in the chat. Without it, the final generation, which closes the proposal.
+  */
+ async function approve(draft=false){
   if(!proposal||busy)return;setBusy(true);setError("");
   try{
-   const turnId=proposal.turnId;
+   const d=draft?proposal.draft:undefined;if(draft&&!d)return;
+   const turnId=d?d.turnId:proposal.turnId;
    if(!turnId)throw new Error("پیشنهاد منقضی شده است؛ دوباره درخواستت را بفرست.");
    const post=(url:string,body:unknown)=>fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
    // The canvas is the source of truth: an arranged scene goes with the quote (the server applies it to this turn's private plan), and the frame's aspect
@@ -565,28 +1062,98 @@ export function Studio(){
    const live=messages.find(m=>m.id===liveId),edit=sceneEdit&&sceneEdit.id===liveId?sceneEdit:null;
    const planAspect=live?.kind==="proposal"?live.snapshot.plan.camera?.aspectRatio:undefined,wanted=aspectChoice??edit?.aspect??planAspect;
    // A ratio this model lacks snaps to the nearest one it offers (4:5 → 3:4), never to the model's square default.
-   const offered=proposal.suggestions.find(s=>s.modelId===selected)?.aspectRatios,aspect=offered?.length?nearestAspectRatio(wanted,offered)??wanted:wanted;
-   const quoteBody={modelId:selected,turnId,...(edit?{stagingOverride:edit.staging,...(edit.aspect!==planAspect?{aspectOverride:edit.aspect}:{})}:{})};
-   let q=await post("/api/generation/quote",{...quoteBody,...(aspect?{configuration:{aspectRatio:aspect}}:{})});
-   if(q.status===422&&aspect)q=await post("/api/generation/quote",quoteBody); // last resort if the ratio is still refused (invalid_configuration): the prompt still carries it
+   // A frame preview keeps the source video's shape (the server sends it); other drafts and the video use the plan's or the canvas's ratio.
+   const offered=d?undefined:proposal.suggestions.find(s=>s.modelId===selected)?.aspectRatios,aspect=d?.kind==="frames"?d.aspectRatio:offered?.length?nearestAspectRatio(wanted,offered)??wanted:wanted;
+   // A draft quotes the draft model on the draft's own turn (no canvas override: that belongs to the video turn).
+   // A frame preview (owner, 2026-11-08) is one image per frame, each on its own turn: every frame is quoted, started and shown as its own card, in order.
+   const targets=d?.kind==="frames"&&d.frames?.length?d.frames.map((f,i)=>({turnId:f.turnId,frame:i+1})):[{turnId,frame:undefined as number|undefined}];
+   for(const target of targets){
+   const quoteBody={modelId:d?d.modelId:selected,turnId:target.turnId,...(!d&&edit?{stagingOverride:edit.staging,...(edit.aspect!==planAspect?{aspectOverride:edit.aspect}:{})}:{}),
+    ...(excludedRefs.size?{excludeReferences:[...excludedRefs]}:{})};
+   // Sound goes with the quote only for a video model with checked sound (never for the draft still): the toggle, else what the brief said, else on.
+   // A video draft is always silent: it tests the picture and the motion, and needs no soundtrack check.
+   const audio=d?(d.kind==="video"?false:undefined):proposal.suggestions.find(s=>s.modelId===selected)?.audio?(soundChoice??proposal.soundWanted??true):undefined,withSound=audio!==undefined?{audio}:{};
+   let q=await post("/api/generation/quote",{...quoteBody,...(aspect||audio!==undefined?{configuration:{...(aspect?{aspectRatio:aspect}:{}),...withSound}}:{})});
+   if(q.status===422&&aspect)q=await post("/api/generation/quote",{...quoteBody,...(audio!==undefined?{configuration:withSound}:{})}); // last resort if the ratio is still refused (invalid_configuration): the prompt still carries it
    if(!q.ok){
     // A refusal that says why (a photo edit that changes the camera and the light together; a prop hiding the subject) is shown as is.
-    const why=await q.json().then((b:{error?:string;message?:string})=>b.error==="edit_scope_mixed"||b.error==="composition_occluded"?b.message:undefined).catch(()=>undefined);
+    const why=await q.json().then((b:{error?:string;message?:string})=>b.error==="edit_scope_mixed"||b.error==="composition_occluded"||b.error==="dev_cap_reached"||b.error==="price_pending"?b.message:undefined).catch(()=>undefined);
     throw new Error(why??(q.status===410?"پیشنهاد منقضی شده است؛ دوباره درخواستت را بفرست.":"مشکل در محاسبه هزینه"));
    }
    const quote=await q.json() as {token:string};
    const execution=await post("/api/generation/execute",{token:quote.token,approved:true,idempotencyKey:crypto.randomUUID()});
    if(!execution.ok)throw new Error("خطا در شروع تولید");
-   let current=await execution.json() as {id:string;state:string;messageFa:string;outputs?:JobView["outputs"];typicalMs?:number};
-   const done=["completed","completed_demo","failed","canceled","released"];
-   const genTag=liveId?(messages.find(m=>m.id===liveId)?.snapshot as ProposalSnapshot|undefined)?.tag:undefined,tagged=genTag?{tag:genTag}:{};
-   setPreview(current.messageFa);setJob({state:current.state,messageFa:current.messageFa,outputs:current.outputs,...(current.typicalMs?{typicalMs:current.typicalMs}:{}),...tagged});setPreviewOpen(true);
-   for(let i=0;i<10&&!done.includes(current.state);i++){
-    await new Promise(r=>setTimeout(r,1500));
-    const poll=await fetch("/api/generation/jobs/"+current.id,{cache:"no-store"});if(!poll.ok)break;
-    current=await poll.json();setPreview(current.messageFa);setJob({state:current.state,messageFa:current.messageFa,outputs:current.outputs,...(current.typicalMs?{typicalMs:current.typicalMs}:{}),...tagged});
+   const current=await execution.json() as {id:string;state:string;messageFa:string;outputs?:JobView["outputs"];typicalMs?:number;progressFacts?:JobView["progressFacts"]};
+   const genTag=liveId?(messages.find(m=>m.id===liveId)?.snapshot as ProposalSnapshot|undefined)?.tag:undefined;
+   // The job's message goes into the transcript now (with its id), and is updated in place as the job moves: a project saved or reopened mid-generation
+   // still knows which job to follow, and a finished one keeps its outputs.
+   // What was quoted goes with the job, so a failed one can be run again from its card (a new quote and a new approval, never the old charge).
+   const rerun:JobRerun={turnId:target.turnId,modelId:quoteBody.modelId,...(aspect?{aspectRatio:aspect}:{}),...withSound,...(!d&&edit?{stagingOverride:edit.staging,...(edit.aspect!==planAspect?{aspectOverride:edit.aspect}:{})}:{}),...(excludedRefs.size?{excludeReferences:[...excludedRefs]}:{})};
+   const snap:JobSnapshot={...jobSnapshot(current,genTag),...(d?{draft:{modelName:d.modelName,...(d.kind==="video"?{video:true as const}:{}),...(target.frame?{frame:target.frame,frames:targets.length}:{})}}:{}),rerun},msg=item({role:"agent",text:current.messageFa,kind:"job",snapshot:snap});
+   // On a phone the preview would cover the chat: the generation stays in the chat as its card, and «نمایش» opens the preview when wanted (owner, 2026-11-06).
+   setPreview(current.messageFa);setJob(snap);setPreviewOpen(previewFits());setGalleryFocus(galleryFocusOn(msg.id));
+   setMessages(m=>[...m,msg]);
+   if(d)setDraftedFor(liveId);else{setProposal(null);setLiveId(null);}
+   touch();
+   followJob(msg.id,snap);
    }
-   setMessages(m=>[...m,item({role:"agent",text:current.messageFa,kind:"job",snapshot:{state:current.state,messageFa:current.messageFa,...(genTag?{tag:genTag}:{})}})]);setProposal(null);setLiveId(null);touch();
+  }catch(err){setError(err instanceof Error?err.message:"خطای ناشناخته");}
+  finally{setBusy(false);}
+ }
+ /**
+  * Runs a failed (or stopped) generation again from its card (owner, 2026-11-07): the same plan, model and settings, with a NEW quote and a new approval
+  * (the tap on «دوباره بساز», which shows the price). The card keeps its place and tag and follows the new job. A plan the server no longer has (it
+  * restarted) cannot be quoted: the user is asked to send the request again.
+  */
+ /**
+  * «آره، اصلاحش کن» on Whoush's own review of a result (owner, 2026-11-08): the server derives a new turn from that job's with the review's fixes, quoted
+  * at the normal price and run at once as a new card under the original (the user asked for it with this button), so the two can be compared.
+  */
+ async function fixJob(messageId:string){
+  const m=messages.find(x=>x.id===messageId);
+  if(busy||!m||m.kind!=="job"||!m.snapshot.rerun||!m.snapshot.jobId)return;
+  const r=m.snapshot.rerun;setBusy(true);setFixing(messageId);setError("");
+  try{
+   const post=(url:string,body:unknown)=>fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+   const q=await post("/api/generation/quote",{modelId:r.modelId,turnId:r.turnId,reviewFixOf:m.snapshot.jobId,...(r.aspectRatio?{configuration:{aspectRatio:r.aspectRatio}}:{})});
+   if(!q.ok){const b=await q.json().catch(()=>({})) as {error?:string;message?:string};throw new Error(b.error==="unknown_turn"||q.status===410?RERUN_GONE_FA:b.message??"مشکل در محاسبه هزینه");}
+   const quote=await q.json() as {token:string;turnId:string};
+   const execution=await post("/api/generation/execute",{token:quote.token,approved:true,idempotencyKey:crypto.randomUUID()});
+   if(!execution.ok)throw new Error("خطا در شروع تولید");
+   const current=await execution.json() as {id:string;state:string;messageFa:string;outputs?:JobView["outputs"];typicalMs?:number;progressFacts?:JobView["progressFacts"]};
+   const tag=nextGenerationTag(generationTagsIn(messages)),snap:JobSnapshot={...jobSnapshot(current,tag),rerun:{...r,turnId:quote.turnId}};
+   const msg=item({role:"agent",text:current.messageFa,kind:"job",snapshot:snap});
+   setMessages(ms=>[...ms.map(x=>x.id===messageId&&x.kind==="job"?{...x,snapshot:{...x.snapshot,reviewDone:true as const}} as TranscriptItem:x),msg]);
+   setJob(snap);setPreview(current.messageFa);touch();followJob(msg.id,snap);
+  }catch(err){setError(err instanceof Error?err.message:"خطای ناشناخته");}
+  finally{setBusy(false);setFixing(null);}
+ }
+ /** «همین خوبه»: the review is settled; the result stays as it is. */
+ function keepResult(messageId:string){setMessages(ms=>ms.map(x=>x.id===messageId&&x.kind==="job"?{...x,snapshot:{...x.snapshot,reviewDone:true as const}} as TranscriptItem:x));touch();}
+ async function rerunJob(messageId:string,switchTo?:string){
+  const m=messages.find(x=>x.id===messageId);
+  if(busy||!m||m.kind!=="job"||!m.snapshot.rerun)return;
+  // On another model (owner, 2026-11-08: a model's own rules refused it): the same turn and settings; sound is left to the new model's default.
+  const r:JobRerun=switchTo?{...m.snapshot.rerun,modelId:switchTo,audio:undefined}:m.snapshot.rerun;setBusy(true);setError("");
+  try{
+   const post=(url:string,body:unknown)=>fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+   const quoteBody={modelId:r.modelId,turnId:r.turnId,...(r.stagingOverride?{stagingOverride:r.stagingOverride}:{}),...(r.aspectOverride?{aspectOverride:r.aspectOverride}:{}),...(r.excludeReferences?.length?{excludeReferences:r.excludeReferences}:{})};
+   const withSound=r.audio!==undefined?{audio:r.audio}:{};
+   let q=await post("/api/generation/quote",{...quoteBody,...(r.aspectRatio||r.audio!==undefined?{configuration:{...(r.aspectRatio?{aspectRatio:r.aspectRatio}:{}),...withSound}}:{})});
+   if(q.status===422&&r.aspectRatio)q=await post("/api/generation/quote",{...quoteBody,...(r.audio!==undefined?{configuration:withSound}:{})});
+   if(!q.ok){
+    const b=await q.json().catch(()=>({})) as {error?:string;message?:string};
+    throw new Error(b.error==="unknown_turn"||q.status===410?RERUN_GONE_FA:b.error==="dev_cap_reached"||b.error==="price_pending"?b.message??"مشکل در محاسبه هزینه":"مشکل در محاسبه هزینه");
+   }
+   const quote=await q.json() as {token:string};
+   const execution=await post("/api/generation/execute",{token:quote.token,approved:true,idempotencyKey:crypto.randomUUID()});
+   if(!execution.ok)throw new Error("خطا در شروع تولید");
+   const current=await execution.json() as {id:string;state:string;messageFa:string;outputs?:JobView["outputs"];typicalMs?:number;progressFacts?:JobView["progressFacts"]};
+   const snap:JobSnapshot={...jobSnapshot(current,m.snapshot.tag),...(m.snapshot.draft?{draft:m.snapshot.draft}:{}),rerun:r};
+   setMessages(ms=>ms.map(x=>x.id===messageId&&x.kind==="job"?{...x,text:current.messageFa,snapshot:snap} as TranscriptItem:x));
+   setPreview(current.messageFa);setJob(snap);setGalleryFocus(galleryFocusOn(messageId));
+   touch();
+   followJob(messageId,snap);
   }catch(err){setError(err instanceof Error?err.message:"خطای ناشناخته");}
   finally{setBusy(false);}
  }
@@ -598,51 +1165,61 @@ export function Studio(){
  }
  /** Whether there is a preview to show: a generation has started (or the opened project has one). */
  const hasPreview=job!==null;
+ /** Every generation of this chat for the preview gallery, oldest first. An older saved job without outputs borrows the live job's when it is that job. */
+ const galleryItems:GalleryItem[]=messages.flatMap(m=>m.kind!=="job"?[]:[{id:m.id,
+  job:{...m.snapshot,outputs:m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined)},
+  kind:m.snapshot.draft?(m.snapshot.draft.video?"video":"image"):m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind:undefined,
+  model:m.snapshot.draft?draftLabelFa(m.snapshot.draft):m.snapshot.tag?generationMap.get(m.snapshot.tag)?.modelName:undefined}]);
  const showPreview=hasPreview&&previewOpen;
  /** Opens the preview panel, on a given generation's job when a preview card asks (the latest job keeps its live outputs). */
- function openPreview(snapshot?:{state:string;messageFa:string;tag?:string}){
-  if(snapshot&&snapshot.messageFa!==job?.messageFa){setJob({state:snapshot.state,messageFa:snapshot.messageFa,...(snapshot.tag?{tag:snapshot.tag}:{})});setPreview(snapshot.messageFa);}
+ function openPreview(snapshot?:JobSnapshot,messageId?:string){
+  if(snapshot&&(snapshot.jobId?snapshot.jobId!==job?.jobId:snapshot.messageFa!==job?.messageFa)){setJob({...snapshot});setPreview(snapshot.messageFa);}
+  if(messageId)setGalleryFocus(galleryFocusOn(messageId));
   setPreviewOpen(true);
  }
  function minimizePreview(){setPreviewOpen(false);requestAnimationFrame(()=>promptRef.current?.focus());}
- return <RailShell current="studio" activeProjectId={projectId} onNewChat={newChat} onProjectDeleted={onProjectDeleted}>
-  {/* Desktop: the preview (centre) and the chat (end side) share the row; the preview grows in and out (flex-grow transition) and, while it is closed, the chat
-      takes the whole width. Mobile: one at a time; the preview covers the chat until minimized. */}
+ const topBars=Boolean(character||notice||storageNote||characterNote);
+ // «نمایش» / «بستن نمایش»: on a phone in the top bar beside the menu (owner, 2026-11-08), wider in the bar above the chat.
+ const previewToggle=(size:"sm"|"default")=><Button type="button" variant="outline" size={size} onClick={()=>showPreview?minimizePreview():openPreview()} aria-expanded={showPreview} aria-controls="whoush-preview" className="shrink-0">
+  <Icon icon={showPreview?ChevronLeft:Eye} aria-hidden="true"/>{showPreview?CLOSE_PREVIEW_FA:OPEN_PREVIEW_FA}</Button>;
+ return <RailShell current="studio" activeProjectId={projectId} onNewChat={newChat} onProjectDeleted={onProjectDeleted} mobileAction={hasPreview?previewToggle("sm"):undefined} floatingMobileHeader mobileHeaderHidden={compact}>
+  {/* Desktop: the chat (right after the side nav, at the start side) and the preview share the row; the preview grows in and out (flex-grow transition) and,
+      while it is closed, the chat takes the whole width. Mobile: one at a time; the preview covers the chat until minimized. */}
   <main id="main" className="flex min-h-0 flex-1 flex-col md:flex-row">
    <h1 className="sr-only">استودیوی هووش</h1>
-   {/* Centre: preview */}
-   <section aria-label="پیش‌نمایش" inert={!showPreview||undefined} aria-hidden={!showPreview||undefined}
-    className={(showPreview?"flex":"hidden")+" min-h-0 flex-1 flex-col md:flex md:min-w-0 md:basis-0 md:overflow-hidden md:transition-[flex-grow,opacity] md:duration-300 md:ease-out motion-reduce:transition-none "+(showPreview?"md:grow md:opacity-100":"md:grow-0 md:opacity-0")}>
+   {/* Preview: after the chat on desktop (md:order-last), first on mobile */}
+   <section id="whoush-preview" aria-label="پیش‌نمایش" inert={!showPreview||undefined} aria-hidden={!showPreview||undefined}
+    className={(showPreview?"flex":"hidden")+" surface-preview min-h-0 flex-1 flex-col max-md:pt-14 md:order-last md:flex md:min-w-0 md:basis-0 md:overflow-hidden md:transition-[flex-grow,opacity] md:duration-300 md:ease-out motion-reduce:transition-none "+(showPreview?"md:grow md:opacity-100":"md:grow-0 md:opacity-0")}>
     <Tabs value={activeTab} onValueChange={v=>setActiveTab(v as "generations"|"cuts")} className="min-h-0 flex-1 gap-0">
-     <div className="flex items-center justify-between gap-4 border-b border-line-tertiary px-4 py-2 lg:px-6">
+     {/* The header holds the tabs, only while «تدوین» exists (one tab needs no tab bar). Phones close the preview from the top bar's «بستن نمایش»
+         (owner, 2026-11-08: «بازگشت به چت» here is no longer needed). */}
+     {EDIT_TAB_ENABLED&&<div className="flex items-center gap-4 border-b border-line-tertiary px-4 py-2 lg:px-6">
       <TabsList><TabsTrigger value="generations">تولیدها</TabsTrigger><TabsTrigger value="cuts">تدوین</TabsTrigger></TabsList>
-      <div className="flex items-center gap-2">
-       <Badge variant="outline">نسخه نمایشی</Badge>
-       <Tooltip><TooltipTrigger render={<Button type="button" variant="ghost" size="icon" aria-label="کوچک کردن پیش‌نمایش" onClick={minimizePreview}/>}><Icon icon={Minimize2} aria-hidden="true"/></TooltipTrigger><TooltipContent side="bottom">کوچک کردن پیش‌نمایش</TooltipContent></Tooltip>
-      </div>
-     </div>
-     <ScrollArea className="min-h-0 flex-1">
-      <div className="flex flex-col gap-8 p-4 lg:p-6">
-       <TabsContent value="generations" className="flex flex-col gap-8">
-        {/* The generation box: live status, estimated progress and the generating gradient inside it; no separate step list. */}
-        {job
-         ?<GenerationPreview job={job} kind={job.tag?generationMap.get(job.tag)?.plan.mediaKind:undefined} model={job.tag?generationMap.get(job.tag)?.modelName:undefined} placeholder="خروجی تصویری واقعی هنوز فعال نیست"/>
-         :<div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-card border border-line-secondary bg-surface-subtle p-8 text-center md:aspect-video">
-          <Icon icon={Clapperboard} size={32} className="text-fg-secondary" aria-hidden="true"/>
-          <p className="type-body text-fg-primary">{preview}</p>
-         </div>}
-       </TabsContent>
-       <TabsContent value="cuts">
-        <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-card border border-line-secondary bg-surface-subtle p-8 text-center">
-         <p className="type-body text-fg-primary">بخش تدوین در مرحله بعد ساخته می‌شود.</p>
-        </div>
-       </TabsContent>
-      </div>
-     </ScrollArea>
+     </div>}
+     {/* «تولیدها»: every generation of the chat in one scroll with a thumbnail strip (its own two scroll areas, so the strip stays put). */}
+     <TabsContent value="generations" className="flex min-h-0 flex-1 flex-col">
+      {galleryItems.length>0
+       ?<GenerationGallery items={galleryItems} focus={galleryFocus} placeholder="خروجی تصویری واقعی هنوز فعال نیست" onEdit={busy?undefined:tag=>{setPreviewOpen(false);void editGeneration(tag);}} onView={openGenerationViewer}/>
+       :<div className="p-4 lg:p-6"><div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-card border border-line-secondary bg-surface-subtle p-8 text-center md:aspect-video">
+        <Icon icon={Clapperboard} size={32} className="text-fg-secondary" aria-hidden="true"/>
+        <p className="type-body text-fg-primary">{preview}</p>
+       </div></div>}
+     </TabsContent>
+     {EDIT_TAB_ENABLED&&<TabsContent value="cuts" className="min-h-0 flex-1">
+      <ScrollArea className="h-full">
+       <div className="p-4 lg:p-6"><div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-card border border-line-secondary bg-surface-subtle p-8 text-center">
+        <p className="type-body text-fg-primary">بخش تدوین در مرحله بعد ساخته می‌شود.</p>
+       </div></div>
+      </ScrollArea>
+     </TabsContent>}
     </Tabs>
    </section>
    {/* End side: agent panel */}
-   <section aria-label="دستیار هووش" className={(showPreview?"hidden md:flex":"flex")+" relative min-h-0 flex-1 flex-col border-line-tertiary md:min-w-0 md:basis-[22rem] md:transition-[flex-grow] md:duration-300 md:ease-out motion-reduce:transition-none lg:basis-[26rem] "+(showPreview?"md:grow-0 md:border-s":"md:grow")}
+   {/* Desktop, preview closed: the thumbnail strip stays at the far edge; picking one opens the preview on that generation. */}
+   {!showPreview&&galleryItems.length>0&&<div className="surface-preview hidden border-s border-line-tertiary px-2 py-4 md:order-last md:flex">
+    <GalleryThumbs items={galleryItems} current={galleryFocus?.id??galleryItems.at(-1)!.id} onPick={id=>{const m=messages.find(x=>x.id===id);if(m?.kind==="job")openPreview(m.snapshot,id);}}/>
+   </div>}
+   <section aria-label="دستیار هووش" className={(showPreview?"hidden md:flex":"flex")+" relative min-h-0 flex-1 flex-col border-line-tertiary md:min-w-0 md:basis-[22rem] md:transition-[flex-grow] md:duration-300 md:ease-out motion-reduce:transition-none lg:basis-[26rem] "+(showPreview?"md:grow-0 md:border-e":"md:grow")}
     onDragEnter={e=>{if(!hasFiles(e))return;e.preventDefault();dragDepth.current+=1;setDragging(true);}}
     onDragOver={e=>{if(hasFiles(e))e.preventDefault();}}
     onDragLeave={e=>{if(!hasFiles(e))return;dragDepth.current=Math.max(0,dragDepth.current-1);if(!dragDepth.current)setDragging(false);}}
@@ -651,16 +1228,15 @@ export function Studio(){
      <Icon icon={UploadIcon} size={32} aria-hidden="true"/>فایل‌ها را اینجا رها کن
     </div>}
     <div role="status" aria-live="polite" className="sr-only">{dragging?"فایل‌ها را اینجا رها کن":announce}</div>
-    <div className="border-b border-line-tertiary px-4 py-3">
-     <div className="mx-auto flex w-full max-w-3xl items-start justify-between gap-3">
-     <div className="min-w-0">
-      <h2 className="type-title text-fg-primary">دستیار هووش</h2>
-      <p className="type-body-sm text-fg-secondary">ساخت تصویر و ویدیو با گفت‌وگو</p>
+    {/* Phones: the top bar floats over the chat; a note shown above the chat starts below it. */}
+    {topBars&&<div aria-hidden="true" className="h-24 shrink-0 md:hidden"/>}
+    {/* The welcome line is the empty view (components/chat-empty.tsx), never a fixed header; the bar is only the preview toggle, once there is a preview. */}
+    {hasPreview&&<div className="hidden border-b border-line-tertiary px-4 py-2 md:block">
+     <div className="mx-auto flex w-full max-w-3xl items-center justify-end gap-3">
+     {/* A toggle that shows the preview («نمایش») or closes it («بستن نمایش»); on a phone it is in the top bar. */}
+     {previewToggle("default")}
      </div>
-     {/* Only while there is a preview and it is minimized: brings it back, then hides until the preview is minimized again. */}
-     {hasPreview&&!showPreview&&<Button type="button" variant="outline" onClick={()=>openPreview()} className="shrink-0"><Icon icon={PanelLeftOpen} aria-hidden="true"/>{OPEN_PREVIEW_FA}</Button>}
-     </div>
-    </div>
+    </div>}
     {notice&&<div className="border-b border-line-tertiary px-4 py-3"><Alert role="status"><Icon icon={Info} aria-hidden="true"/><AlertDescription>{notice}</AlertDescription></Alert></div>}
     {storageNote&&<div className="border-b border-line-tertiary px-4 py-3"><Alert role="status"><Icon icon={Info} aria-hidden="true"/><AlertDescription>{storageNote}</AlertDescription></Alert></div>}
     {characterNote&&<div className="border-b border-line-tertiary px-4 py-3"><Alert role="status"><Icon icon={Info} aria-hidden="true"/><AlertDescription>{characterNote}</AlertDescription></Alert></div>}
@@ -672,104 +1248,178 @@ export function Studio(){
      </div>
      <p className="type-caption text-fg-secondary">{fa(characterCoverage(character.references).count)} عکس مرجع · فقط در این مرورگر. مشخصات کاراکتر همراه درخواست برای برنامه‌ریزی ارسال می‌شود؛ خود عکس‌ها هنوز به سرویس تولید فرستاده نمی‌شوند.</p>
     </div>}
-    <ScrollArea className="min-h-0 flex-1">
-     <div aria-live="polite" aria-label="گفت‌وگو" role="log" className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4">
-      <div className="type-body-sm text-fg-primary"><span className="sr-only">هووش: </span>{opening}</div>
+    {/* Native scrolling (owner, 2026-11-08: laggy on the iPhone): momentum, and no script running on every frame under the glass bars. */}
+    <div onScroll={onChatScroll} className="scrollbar-right min-h-0 flex-1 overflow-y-auto overscroll-contain">
+     <div ref={logRef} aria-live="polite" aria-label="گفت‌وگو" role="log" style={{paddingBottom:composerH+56}} className={"mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4 p-4"+(topBars?"":" max-md:pt-24")}>
+      {!messages.length&&!loadingProject&&<ChatEmpty/>}
       {loadingProject&&<p role="status" className="type-body-sm text-fg-secondary">در حال باز کردن پروژه…</p>}
       {/* User messages: on the right (the start in RTL), in a filled grey bubble with no border, their files and «اصلاح» generations above it as the same cards
           they were in the chat input. Agent messages: full-width plain text, then the plan as part of the conversation (icons and diagrams), then the compact card
           that carries the actions (generate, change). Each message gets the hover action bar (copy, run again, time). */}
       {messages.map((m,i)=>{
-       const actions=<MessageActions text={m.text} at={m.at} now={now} onRerun={m.kind==="gif"?undefined:()=>rerun(m.id)} rerunDisabled={busy||reading||loadingProject} onReact={e=>react(m.id,e,"user")}/>;
+       const actions=<MessageActions edge={atStart||atEnd} text={m.text} at={m.at} now={now} onRerun={m.kind==="gif"?undefined:()=>rerun(m.id)} rerunDisabled={busy||reading||loadingProject} onReact={e=>react(m.id,e,"user")}/>;
        const reactions=<MessageReactions reactions={m.reactions} onToggle={e=>react(m.id,e,"user")}/>;
        if(m.role==="user")return <div key={m.id} className="group flex flex-col items-start gap-2">
         {((m.attachments?.length??0)>0||(m.generationTags?.length??0)>0)&&<ul aria-label="پیوست‌های این پیام" className="flex max-w-full flex-wrap gap-2">
          {(m.generationTags??[]).flatMap(t=>{const g=generationMap.get(t);return g?[<GenerationRefCard key={t} snapshot={g} onMention={()=>mentionTag(t)} onOpen={()=>showGeneration(t)}/>]:[];})}
-         {(m.attachments??[]).map(a=><SentAttachmentCard key={a.id} item={a} onPreview={()=>openViewer(a)} onMention={()=>mentionTag(a.tag)}/>)}
+         {(m.attachments??[]).map(a=><SentAttachmentCard key={a.id} item={a} onPreview={()=>openViewer(a)} onMention={()=>mentionTag(a.tag)} review={reviews[a.id]} onBrush={a.kind==="image"&&!busy?()=>editAttachment(a,false):undefined}/>)}
+        </ul>}
+        {/* A brush edit shows each region with its comment under the photo, like comments on it (memory: a reopened chat shows them in the plan). */}
+        {(m.attachments??[]).some(a=>a.regionEdit)&&<ul aria-label="ادیت‌ها" className="flex flex-col gap-1.5">
+         {(m.attachments??[]).flatMap(a=>a.regionEdit?a.regionEdit.regions.map(r=><li key={a.id+"-"+r.n} className="flex items-start gap-2 type-body-sm text-fg-primary"><RegionChip n={r.n} color={r.color}/><span className="min-w-0 break-words">{r.note}</span></li>):[])}
         </ul>}
         {m.kind==="gif"
          ?<div><span className="sr-only">شما: </span><ChatGif gif={m.snapshot}/></div>
-         :<div className="max-w-[85%] whitespace-pre-wrap break-words rounded-card bg-secondary px-4 py-3 type-body-sm text-fg-primary">
+         :<div className="whoush-widget max-w-[85%] whitespace-pre-wrap break-words rounded-card px-4 py-3 type-body-sm text-fg-primary">
           <span className="sr-only">شما: </span><MessageText text={m.text} attachments={byTag} onOpen={openViewer} generations={generationSet} onGeneration={showGeneration}/>
          </div>}
         {reactions}
         <div className="-mt-1">{actions}</div>
        </div>;
-       return <div key={m.id} className="group flex flex-col gap-3">
+       return <div key={m.id} className="whoush-fold" data-folding={folding.has(m.id)||undefined}><div className="group flex flex-col gap-3">
         {m.kind==="restricted"
          ?<div role="status" className="flex items-start gap-2 type-body-sm text-fg-primary">
           <Icon icon={Info} size={16} aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-fg-secondary"/>
-          <p className="min-w-0 whitespace-pre-wrap break-words"><span className="sr-only">هووش: </span><span className="type-label">این درخواست قابل انجام نیست.</span> {m.text}</p>
+          <div className="flex min-w-0 flex-col gap-2">
+           <p className="whitespace-pre-wrap break-words"><span className="sr-only">هووش: </span>{m.text}</p>
+           {/* Safe ideas, one tap each (lib/safe-alternatives.ts): each is sent as a new message. Only under the latest message. */}
+           {m.snapshot?.choices&&i===messages.length-1&&!busy&&<div role="group" aria-label="پیشنهادهای جایگزین" className="flex flex-wrap gap-2">
+            {m.snapshot.choices.map((c,k)=><Button key={k} type="button" size="sm" variant="secondary" onClick={()=>void runTurn(c.replyFa,[],[],false)}><Icon icon={Sparkles} aria-hidden="true"/>{c.labelFa}</Button>)}
+           </div>}
+          </div>
          </div>
          :m.kind==="gif"?<div><span className="sr-only">هووش: </span><ChatGif gif={m.snapshot}/></div>
          :m.kind!=="job"&&<p className="whitespace-pre-wrap break-words type-body-sm text-fg-primary">
-          <span className="sr-only">هووش: </span><TypeOut text={m.text} animate={fresh.has(m.id)}/>
+          <span className="sr-only">هووش: </span><span data-translate-exact=""><TypeOut text={m.text} animate={fresh.has(m.id)}/></span>
          </p>}
-        {m.kind==="job"&&<PreviewCard tag={m.snapshot.tag} state={m.snapshot.state} messageFa={m.snapshot.messageFa}
-         output={m.snapshot.messageFa===job?.messageFa?job?.outputs?.find(o=>isOwnedOutputUrl(o.url,window.location.origin)):undefined} video={m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false} onOpen={()=>openPreview(m.snapshot)}/>}
+        {m.kind==="job"&&<PreviewCard onFix={busy||!m.snapshot.rerun?undefined:()=>void fixJob(m.id)} onKeep={()=>keepResult(m.id)} fixing={fixing===m.id} aspect={m.snapshot.rerun?.aspectRatio} tag={m.snapshot.tag} state={m.snapshot.state} messageFa={m.snapshot.messageFa} job={m.snapshot} model={m.snapshot.draft?draftLabelFa(m.snapshot.draft):m.snapshot.tag?generationMap.get(m.snapshot.tag)?.modelName:undefined}
+         output={(m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined))?.find(o=>isOwnedOutputUrl(o.url,window.location.origin))} video={m.snapshot.draft?Boolean(m.snapshot.draft.video):(m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false)} onOpen={()=>openPreview(m.snapshot,m.id)}
+         onView={()=>openGenerationViewer(m.id)}
+         onRetry={m.snapshot.rerun&&!busy?()=>void rerunJob(m.id):undefined}
+         onSwitch={m.snapshot.rerun&&m.snapshot.alternative&&!busy?()=>void rerunJob(m.id,m.snapshot.alternative!.modelId):undefined} retryNeurons={m.snapshot.draft?undefined:m.snapshot.tag?generationMap.get(m.snapshot.tag)?.neurons:undefined}
+         onEdit={m.snapshot.tag&&!busy?()=>void editGeneration(m.snapshot.tag!):undefined}/>}
         {/* «بوم» is adjustable on every generation: on the live one it feeds «بساز» directly; on an older one its card offers a revision with that scene. */}
-        {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan&&<PlanStory plan={m.snapshot.plan} focus={m.kind==="proposal"?refineFocus(m.snapshot.focus,messages.slice(0,i).reverse().find(x=>x.role==="user")?.text):undefined}
+        {(()=>{
+         // A follow-up that changes the camera, the light or the frame (owner, 2026-11-08): one widget for that task, titled by what changed, with
+         // «بوم» on just those parts (the change already applied) and the generation's settings and «بسازش» at its bottom, to confirm.
+         const asked=messages.slice(0,i).reverse().find(x=>x.role==="user")?.text;
+         const focus=m.kind==="proposal"?refineFocus(m.snapshot.focus,asked):undefined;
+         // Only a request that names the camera, the light or the frame gets this widget, titled by what it named (a colour change is not one).
+         const named=focus?.length&&asked?sectionsFromWords(normalizePersian(asked)):[];
+         const live=m.kind==="proposal"&&Boolean(proposal&&m.id===liveId);
+         const changing=Boolean(m.kind==="proposal"&&focus?.length&&named.length&&m.snapshot.plan.staging&&!m.snapshot.plan.regionEdits?.length);
+         const card=m.kind!=="proposal"?null:live
+          ?<ProposalCard embedded={changing} proposal={proposal!} tag={m.snapshot.tag} adjusted={sceneEdit?.id===m.id} selected={selected} onSelect={setSelected}
+           drafted={draftedFor===m.id} onDraft={proposal!.draft?()=>void approve(true):undefined}
+           excludedReferences={excludedRefs} onToggleReference={id=>setExcludedRefs(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n;})}
+           aspect={aspectChoice??(sceneEdit?.id===m.id?sceneEdit.aspect:undefined)??m.snapshot.plan.camera?.aspectRatio} autoAspect={(sceneEdit?.id===m.id?sceneEdit.aspect:undefined)??m.snapshot.plan.camera?.aspectRatio} sound={soundChoice??proposal?.soundWanted??true} onSound={setSoundChoice} onAspect={setAspectChoice} busy={busy} onApprove={()=>void approve()} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>
+          :<PastProposalCard embedded={changing} snapshot={m.snapshot} adjusted={Boolean(pastEdits[m.id])} busy={busy||reading||loadingProject}
+           onBuildScene={pastEdits[m.id]&&m.snapshot.tag&&m.snapshot.plan.staging?()=>buildScene(m.id,m.snapshot.tag!,m.snapshot.plan.staging!,m.snapshot.plan.camera?.aspectRatio):undefined} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>;
+         const widget=changing&&focus&&m.kind==="proposal"?(editor:React.ReactNode)=><section data-change-widget="" aria-label={changeTitleFa(named)} className="whoush-widget flex w-full flex-col gap-4 overflow-hidden rounded-card p-4">
+          <WidgetHeader icon={changeIcon(named)} title={changeTitleFa(named)}>{m.snapshot.tag&&<TagBadge tag={m.snapshot.tag} onMention={()=>changeGeneration(m.snapshot.tag!)}/>}</WidgetHeader>
+          {editor}
+          {card}
+         </section>:undefined;
+         return <>
+        {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan&&<PlanStory plan={m.snapshot.plan} focus={focus} widget={widget}
          onStagingChange={m.kind==="proposal"?(s,aspect,changed)=>{
           if(proposal&&m.id===liveId)setSceneEdit(changed?{id:m.id,staging:s,aspect}:null);
           else setPastEdits(p=>{const n={...p};if(changed)n[m.id]={staging:s,aspect};else delete n[m.id];return n;});
          }:undefined}/>}
-        {m.kind==="proposal"&&(proposal&&m.id===liveId
-         ?<ProposalCard proposal={proposal} tag={m.snapshot.tag} adjusted={sceneEdit?.id===m.id} selected={selected} onSelect={setSelected}
-          aspect={aspectChoice??(sceneEdit?.id===m.id?sceneEdit.aspect:undefined)??m.snapshot.plan.camera?.aspectRatio} onAspect={setAspectChoice} busy={busy} onApprove={()=>void approve()} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>
-         :<PastProposalCard snapshot={m.snapshot} adjusted={Boolean(pastEdits[m.id])} busy={busy||reading||loadingProject}
-          onBuildScene={pastEdits[m.id]&&m.snapshot.tag&&m.snapshot.plan.staging?()=>buildScene(m.id,m.snapshot.tag!,m.snapshot.plan.staging!,m.snapshot.plan.camera?.aspectRatio):undefined} onMention={m.snapshot.tag?()=>changeGeneration(m.snapshot.tag!):undefined}/>)}
+        {!widget&&card}
+         </>;})()}
         {m.kind==="no_model"&&<NoModelCard result={m.snapshot}/>}
         {/* The question is always the last item of the agent's message; it waits for an answer until something is sent after it. */}
-        {m.kind==="question"&&<AgentQuestion question={m.snapshot.question} waiting={i===messages.length-1&&!busy} onAnswer={()=>promptRef.current?.focus()}
+        {m.kind==="question"&&<AgentQuestion question={m.snapshot.question} repeated={m.text.trim()===m.snapshot.question.trim()} waiting={i===messages.length-1&&!busy} onAnswer={()=>promptRef.current?.focus()}
+         choices={m.snapshot.choices} onChoose={reply=>answer(reply)}
+         editCards={(m.snapshot.editCards??(m.snapshot.editCard?[m.snapshot.editCard]:[])).map((c:{tag:string;suggested?:SuggestedEdit[]})=>({tag:c.tag,thumbUrl:thumbFor(c.tag),...(c.suggested?{suggested:c.suggested}:{})}))}
+         onEdit={(tag,suggested)=>void openEditFor(tag,suggested)} onGenerate={busy?undefined:(tag,suggested)=>void generateSuggested(tag,suggested)} preparing={preparingEdit}
+         beautify={m.snapshot.beautify?{...m.snapshot.beautify,thumbUrl:thumbFor(m.snapshot.beautify.tag)}:undefined} onBeautify={busy?undefined:(tag,parts)=>void beautifyPhoto(tag,parts)} beautifying={Boolean(beautifying)}
+         onSkipBeautify={()=>skipBeautify(m.id)}
          references={m.snapshot.references} uploaded={m.snapshot.references?Object.fromEntries(m.snapshot.references.angles.map(a=>[a.id,Boolean(slots.find(s=>s.id==="ref-"+m.id+"-"+a.id)?.attachmentId)])):undefined}
          onUpload={m.snapshot.references?a=>uploadForRequest(m.id,m.snapshot.references!,a):undefined}
-         onContinue={m.snapshot.references&&i===messages.length-1&&!busy?()=>answer(replyScriptFor(m.text)==="finglish"?"aksa ro gozashtam":"عکس‌ها رو گذاشتم"):undefined}/>}
+         onContinue={m.snapshot.references&&i===messages.length-1&&!busy?()=>answer(replyScriptFor(m.text)==="finglish"?"Aksa ro gozashtam":"عکس‌ها رو گذاشتم"):undefined}/>}
         {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan?.clarifyingQuestionFa&&<AgentQuestion question={m.snapshot.plan.clarifyingQuestionFa} waiting={i===messages.length-1&&!busy} onAnswer={()=>promptRef.current?.focus()}/>}
         {reactions}
         <div className="-mt-2">{actions}</div>
-       </div>;
+       </div></div>;
       })}
-      {thinking&&<ThinkingRow text={STAGE_TEXT[thinking.script][thinking.stage]}/>}
+      {editing&&editing.a.previewUrl&&<RegionEditor tag={editing.a.tag} photoUrl={editing.a.previewUrl} suggested={editing.suggested} onClose={()=>setEditing(null)} onDone={r=>void applyEdit(r)}/>}
+      {waitingFor&&<div role="status" aria-live="polite" className="whoush-widget flex w-full flex-col gap-4 rounded-card p-4">
+       <WidgetHeader icon={ScanSearch} title="بررسی فایل‌ها"/>
+       <span className="type-body-sm text-fg-primary">{WAITING_FA}</span>
+       <ul className="flex flex-wrap gap-2">{waitingFor.map(a=>{const r=reviews[a.id];return <li key={a.id} className="relative size-16 overflow-hidden rounded-control bg-surface-hover">
+        {/* eslint-disable-next-line @next/next/no-img-element -- a local blob: URL */}
+        {a.previewUrl&&<img src={a.previewUrl} alt={displayTag(a.tag)} className="size-full object-cover"/>}
+        {r?.state==="checking"?<span className="absolute inset-0 flex items-center justify-center bg-background/60"><ReviewRing progress={r.progress}/></span>:<PhotoReviewOverlay review={r}/>}
+       </li>;})}</ul>
+      </div>}
+      {thinking&&<TurnProgress current={STAGE_TEXT[thinking.script][thinking.stage]} live={[...(thinking.notes[thinking.stage]?.story??[]),...(thinking.notes[thinking.stage]?.facts??[])]}
+       done={thinking.done.map(d=>({text:STAGE_DONE_TEXT[thinking.script][d],details:thinking.notes[d]?.facts??[]}))} why={PLAN_FIRST_FA[thinking.script]}/>}
       <div ref={endRef}/>
      </div>
-    </ScrollArea>
+    </div>
+    {/* The chip tray and the composer float over the chat as glass (owner, 2026-11-08) and scroll together, so on a short screen the prompt and the
+        send button stay reachable; the chat scrolls under them (its bottom padding is their measured height). */}
+    {/* Swipes on its empty parts reach the chat under it (owner, 2026-11-08: scrolling locked); only the controls take touches. */}
+    <div ref={composerRef} onFocusCapture={()=>setCompact(false)} onPointerDown={()=>setCompact(false)} className="whoush-glass whoush-glass-bottom pointer-events-none absolute inset-x-0 bottom-0 z-20 flex max-h-[64dvh] min-h-0 flex-col [&_form]:pointer-events-auto [&_[role=alert]]:pointer-events-auto">
     {error&&<div className="mx-auto w-full max-w-3xl px-4 pb-2"><Alert variant="destructive" role="alert">
      <Icon icon={CircleAlert} aria-hidden="true"/>
      <AlertTitle>خطا</AlertTitle>
      <AlertDescription>{error}</AlertDescription>
     </Alert></div>}
-    {/* The chip tray and the composer scroll together under the chat, so on a short screen the prompt and the send button stay reachable. */}
-    <div className="flex max-h-[64dvh] min-h-0 shrink-0 flex-col overflow-y-auto border-t border-line-tertiary bg-surface-base">
-    <form ref={formRef} onSubmit={e=>void send(e)} className="mx-auto flex w-full max-w-3xl shrink-0 flex-col gap-3 bg-surface-base p-4">
+    <div className="scrollbar-right flex min-h-0 flex-col overflow-y-auto">
+    <form ref={formRef} onSubmit={e=>void send(e)} className="mx-auto flex w-full max-w-3xl shrink-0 flex-col gap-3 p-4">
      <AttachmentTray items={attachments} cards={cards.length} problems={problems} reading={reading} onDismiss={key=>setProblems(list=>list.filter(p=>p.key!==key))}/>
      <input ref={fileInput} type="file" multiple hidden accept={ATTACHMENT_ACCEPT} data-testid="attachment-input" onChange={e=>{const files=Array.from(e.target.files??[]),upload=pendingUpload.current,slot=pendingSlot.current;pendingUpload.current=undefined;pendingSlot.current=undefined;e.target.value="";e.target.multiple=true;const card=slot?slots.find(x=>x.id===slot):undefined;if(card)void fillSlot(card,files);else void addFiles(files,upload);}}/>
      <Label className="sr-only" id="whoush-prompt-label">توضیح تصویر یا ویدیو</Label>
-     <MentionTextarea id="whoush-prompt" handleRef={promptRef} value={draft} onValueChange={setDraft} options={mentionOptions} onPaste={onPaste} placeholder="چی می‌خوای بسازیم؟" labelledBy="whoush-prompt-label" describedBy="prompt-hint" maxLength={4000}
-      onSubmitShortcut={()=>{if(draft.trim()&&!busy&&!reading)formRef.current?.requestSubmit();}}
-      startPad="ps-32"
+     <MentionTextarea compact={compact} id="whoush-prompt" mainTag={mainSubject} mainLabel={SUBJECT_SHORT_FA} handleRef={promptRef} value={draft} onValueChange={setDraft} options={mentionOptions} onPaste={onPaste} placeholder="چی می‌خوای بسازیم؟" labelledBy="whoush-prompt-label" describedBy="prompt-hint" maxLength={4000}
+      onSubmitShortcut={()=>{if((draft.trim()||roleFiles.length)&&!busy&&!reading)formRef.current?.requestSubmit();}}
+      startPad={COMPOSER_EXTRAS_ENABLED?"sm:ps-40":"sm:ps-24"}
       startAction={<div className="flex items-center">
        <InsertMenu disabled={reading} onPick={pickInsert}/>
-       <EmojiPalette emojis={COMPOSER_EMOJIS} label="ایموجی" onPick={e=>promptRef.current?.insertText(e)}
-        trigger={<button type="button" aria-label="ایموجی" title="ایموجی" className={COMPOSER_TOOL}><Icon icon={Smile} aria-hidden="true"/></button>}/>
-       <GifPicker onPick={sendGif} trigger={<button type="button" aria-label="فرستادن گیف" title="گیف" className={COMPOSER_TOOL+" type-label"}>GIF</button>}/>
+       <TagPicker options={mentionOptions} onPick={mentionTag} main={mainSubject} onToggleMain={toggleMain}
+        trigger={<button type="button" aria-label={TAG_PICKER_LABEL_FA} title={TAG_PICKER_LABEL_FA} className={COMPOSER_TOOL}><Icon icon={Hash} aria-hidden="true"/></button>}/>
+       {COMPOSER_EXTRAS_ENABLED&&<>
+        <EmojiPalette emojis={COMPOSER_EMOJIS} label="ایموجی" onPick={e=>promptRef.current?.insertText(e)}
+         trigger={<button type="button" aria-label="ایموجی" title="ایموجی" className={COMPOSER_TOOL}><Icon icon={Smile} aria-hidden="true"/></button>}/>
+        <GifPicker onPick={sendGif} trigger={<button type="button" aria-label="فرستادن گیف" title="گیف" className={COMPOSER_TOOL+" type-label"}>GIF</button>}/>
+       </>}
       </div>}
-      top={cards.length>0?<ul aria-label="پیوست‌ها" className="flex items-stretch gap-2 overflow-x-auto pb-2 [scrollbar-width:thin]">
+      top={cards.length>0||draftRefs.length>0?<ul aria-label="پیوست‌ها" className="flex items-stretch gap-2 overflow-x-auto pb-2">
+       {draftRefs.map(r=><MentionRefCard key={"ref-"+r.tag} tag={r.tag} thumbUrl={r.thumbUrl} kind={r.kind} label={r.label} onRemove={()=>dropMention(r.tag)}
+        onPreview={r.file?()=>openViewer(r.file!):undefined}/>)}
        {cards.map(c=>c.type==="slot"
         ?<UploadSlotCard key={c.slot.id} slot={c.slot} disabled={reading} onUpload={()=>openSlotPicker(c.slot)} onDropFiles={f=>void fillSlot(c.slot,f)} onRemove={()=>dropSlot(c.slot.id)}/>
-        :<AttachmentCard key={c.attachment.id} item={c.attachment} onChange={patch=>patchAttachment(c.attachment.id,patch)} onRemove={()=>removeAttachment(c.attachment.id)} onPreview={()=>openViewer(c.attachment)} onMention={()=>mentionTag(c.attachment.tag)}/>)}
+        :<AttachmentCard key={c.attachment.id} item={c.attachment} review={reviews[c.attachment.id]} onRetryReview={()=>void checkPhoto(c.attachment,true)} onChange={patch=>patchAttachment(c.attachment.id,patch)} onRemove={()=>removeAttachment(c.attachment.id)} onPreview={()=>openViewer(c.attachment)} onMention={()=>mentionTag(c.attachment.tag)}
+         main={mainSubject===c.attachment.tag} onToggleMain={()=>toggleMain(c.attachment.tag)}/>)}
       </ul>:undefined}
-      endAction={<Button type="submit" size="icon" disabled={busy||reading||!draft.trim()} aria-busy={busy||undefined} aria-label={busy?"در حال ارسال…":"ارسال"}>
-       <Icon icon={busy?LoaderCircle:ArrowUp} aria-hidden="true" className={busy?"animate-spin motion-reduce:animate-none":undefined}/>
-      </Button>}/>
-     <p id="prompt-hint" className="flex items-start gap-1 type-caption text-fg-secondary"><Icon icon={Info} size={16} aria-hidden="true" className="mt-0.5 shrink-0"/>با # می‌تونی به پیوست‌ها اشاره کنی.</p>
-     <div className="flex flex-wrap items-start gap-2">
+      endPad={voice.enabled?"sm:pe-24":"sm:pe-14"}
+      // The blue button always sends. Beside it, a borderless mic opens voice mode when the server can transcribe (the transcript is sent like a typed message).
+      endAction={<div className="flex items-center gap-1">
+       {voice.enabled&&<button type="button" disabled={busy||reading||loadingProject} onClick={()=>setVoiceOpen(true)} aria-label="پیام صوتی" title="پیام صوتی"
+        className={COMPOSER_TOOL+" disabled:pointer-events-none disabled:opacity-50"}><Icon icon={Mic} aria-hidden="true"/></button>}
+       <Button type="submit" size="icon" className={SEND_TONE[mode]} disabled={busy||reading||(!draft.trim()&&!roleFiles.length)} aria-busy={busy||undefined} aria-label={busy?"در حال ارسال…":"ارسال"} title="ارسال">
+        <Icon icon={busy?LoaderCircle:ArrowUp} aria-hidden="true" className={busy?"animate-spin motion-reduce:animate-none":undefined}/>
+       </Button>
+      </div>}/>
+     <VoiceMode open={voiceOpen} maxSeconds={voice.maxSeconds} onClose={()=>setVoiceOpen(false)} onTranscript={text=>answer(text,true)}/>
+     {/* The main subject is the star on its card and its # inside the message (owner, 2026-11-08), never a chip outside the chat box. */}
+     {/* Read by screen readers only (owner, 2026-11-08: it took too much space under the chat box). */}
+     <p id="prompt-hint" className="sr-only">با # می‌تونی به پیوست‌ها اشاره کنی؛ با ستاره یکی رو {MAIN_SUBJECT_FA} کن (اختیاری).</p>
+     {/* Build mode and style always share one row (owner, 2026-11-08), on a phone and in Finglish: each may shrink and cut its label, never wrap. */}
+     {/* Folds away on a phone while the chat scrolls back (owner, 2026-11-08), sliding down; the chat box then sits lower, its text row only. */}
+     <div className={"grid transition-[grid-template-rows,opacity,translate] duration-300 ease-out motion-reduce:transition-none "+(compact?"max-md:pointer-events-none max-md:-mt-3 max-md:translate-y-4 max-md:grid-rows-[0fr] max-md:opacity-0":"grid-rows-[1fr]")} aria-hidden={compact||undefined}>
+     <div className="flex min-h-0 min-w-0 flex-nowrap items-start gap-2 overflow-hidden">
       <ModeControl value={mode} onChange={changeMode} notify={Boolean(proposal)}/>
       <StyleControl value={style} onChange={changeStyle}/>
      </div>
+     </div>
     </form>
     </div>
+    </div>
    </section>
-   <MediaViewer items={viewer?.items??[]} index={viewer?viewer.index:null} onIndexChange={i=>setViewer(v=>v&&{...v,index:i})} onClose={()=>setViewer(null)}
+   <MediaViewer items={viewer?.items??[]} index={viewer?viewer.index:null} onIndexChange={i=>setViewer(v=>v&&{...v,index:i})} onClose={()=>setViewer(null)} onEdit={busy?undefined:editFromViewer}
     projectTitleOf={()=>viewer?.title}
     restoreFocusTo={item=>document.querySelector<HTMLElement>('[data-viewer-open="'+CSS.escape(item.id)+'"]')}/>
    <CharacterDialog open={charactersOpen} onOpenChange={setCharactersOpen} characters={characters} loaded={charactersLoaded} selectedId={characterId} onPick={pickCharacter}/>

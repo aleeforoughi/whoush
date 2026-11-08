@@ -12,7 +12,8 @@ test("the generation card's settings come from the catalogue: each suggested mod
   assert.equal(s.resolution,m.resolution);assert.equal(s.durationSeconds,m.durationSeconds);assert.deepEqual(s.aspectRatios,[...m.capabilities.aspectRatios],"only what the model's own schema accepts");
  }
  const seedance=p.suggestions.filter(s=>familyOf(s.name)==="Seedance 2.5");
- if(seedance.length)assert.deepEqual(seedance.map(s=>s.durationSeconds).sort(),[10,5].sort(),"a family's durations are offered together");
+ if(seedance.length){assert.deepEqual([...new Set(seedance.map(s=>s.durationSeconds))].sort(),[10,5].sort(),"a family's durations are offered together");
+  assert.deepEqual([...new Set(seedance.map(s=>s.resolution))],["1080p","480p","720p"],"and its resolutions, 1080p first (owner, 2026-11-08)");}
  assert.equal(familyOf("Nano Banana Pro · 2K"),"Nano Banana Pro");
  assert.ok(!JSON.stringify(p.suggestions).toLowerCase().includes("higgsfield"),"no provider details reach the card");
 });

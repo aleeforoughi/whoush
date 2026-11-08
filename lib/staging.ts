@@ -762,6 +762,15 @@ export const zoomFactor=(s:Staging)=>Math.round(SHOT_BODY_FRACTION.full/scaleOf(
 /** The canvas's parts: the frame (crop, layout), the camera's angle (height, orbit, tilt, shot type), its distance (the zoom), the lens and aperture, the light. */
 export const CANVAS_SECTIONS=["frame","angle","distance","lens","light"] as const;
 export type CanvasSection=typeof CANVAS_SECTIONS[number];
+/**
+ * The title of the widget that confirms a change to these parts (owner, 2026-11-08: a camera, light or frame change gets its own widget with the change
+ * already applied): «تغییر نور», «تغییر زاویهٔ دوربین و نور», «تغییر کادر، لنز و نور».
+ */
+export function changeTitleFa(focus:readonly CanvasSection[]):string{
+ const short:Record<CanvasSection,string>={frame:"کادر",angle:"زاویهٔ دوربین",distance:"فاصلهٔ دوربین",lens:"لنز",light:"نور"};
+ const names=[...new Set(focus)].map(f=>short[f]);
+ return "تغییر "+(names.length<2?names[0]??"صحنه":names.slice(0,-1).join("، ")+" و "+names[names.length-1]);
+}
 export const CANVAS_SECTION_FA:Record<CanvasSection,string>={frame:"کادر و چیدمان",angle:"زاویهٔ دوربین",distance:"فاصلهٔ دوربین",lens:"لنز و دیافراگم",light:"نورپردازی"};
 /** An older saved focus: «camera» meant all of the camera's parts. */
 export const expandFocus=(f:readonly string[]):CanvasSection[]=>[...new Set(f.flatMap(x=>x==="camera"?["angle","distance","lens"] as CanvasSection[]:(CANVAS_SECTIONS as readonly string[]).includes(x)?[x as CanvasSection]:[]))];

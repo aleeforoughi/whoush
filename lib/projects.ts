@@ -1,10 +1,13 @@
 /** Chat history as projects and the assets page: the pure data model. Browser-local only (see lib/project-store.ts); safe in the browser and on the server. */
+import {isQuestionChoices,type QuestionChoice} from "./media-intent";
+import type {SuggestedEdit} from "./edit-card";
+import {BEAUTIFY_PARTS,type BeautifyPart} from "./beautify";
 import {findReferenceNeed,type ReferenceRequest} from "./reference-needs";
 import {ATTACHMENT_KIND_IDS,ATTACHMENT_ROLE_IDS,MAX_ATTACHMENTS,displayTag,isGenerationTag,nextGenerationTag,splitMentions,tagPrefix,type AttachmentKind,type AttachmentRole,type AttachmentSpeech,type LocalAttachment,type TagCounters} from "./attachments";
-import {GENERATION_STYLES,MAX_GENERATION_REFS,MAX_GENERATION_SUMMARY_CHARS,MAX_HISTORY_CHARS,MAX_HISTORY_TURNS,REACTION_EMOJIS,STYLE_LABEL_FA,type GenerationRef,type GenerationStyle,type HistoryTurn,type PublicCreativePlan,type ReactionEmoji} from "./creative-plan";
+import {GENERATION_STYLES,MAX_GENERATION_REFS,MAX_GENERATION_SUMMARY_CHARS,MAX_HISTORY_CHARS,MAX_HISTORY_TOTAL_CHARS,MAX_HISTORY_TURNS,REACTION_EMOJIS,STYLE_LABEL_FA,type GenerationRef,type GenerationStyle,type HistoryTurn,type PublicCreativePlan,type ReactionEmoji} from "./creative-plan";
 import {faPlain} from "./format";
 import {MODES} from "./mode";
-import type {AgentPreference} from "./types";
+import {UNSUPPORTED_REASONS,type AgentPreference,type UnsupportedReason} from "./types";
 
 export const PROJECT_VERSION=1;
 export const MAX_TITLE=80;
@@ -21,8 +24,27 @@ export type MessageKind="text"|"proposal"|"no_model"|"restricted"|"job"|"questio
 /** `tag` is the generation's tag in this chat (`generation1`, shown as #تولید-۱); proposals saved before tags existed get one when the project opens. */
 export type ProposalSnapshot={operation:"generate_image"|"generate_video";modelName:string;neurons:number;intentSummaryFa:string;plan:PublicCreativePlan;tag?:string;
  /** A follow-up about one or two parts of the scene: «بوم» opens on just those parts (lib/staging.ts, followUpFocus; «camera» in older saves). */focus?:string[]};
-export type NoModelSnapshot={message:string;plan?:PublicCreativePlan};
-export type JobSnapshot={state:string;messageFa:string;tag?:string};
+export type NoModelSnapshot={message:string;plan?:PublicCreativePlan;reason?:UnsupportedReason};
+/**
+ * A generation's status in the transcript. `jobId` lets a reopened project ask the server again (a job still running is followed to its end); `outputs` are
+ * Whoush-owned media paths only, so a finished job shows its result after a reload; `typicalMs` paces the progress estimate.
+ */
+export type JobSnapshot={state:string;messageFa:string;tag?:string;jobId?:string;outputs?:{kind:"image"|"video";url:string}[];typicalMs?:number;
+ /** While it works: the live progress lines and stage facts (lib/job-progress.ts liveStatusFa). */progressFa?:string[];progressFacts?:{references?:number;brushEdit?:boolean};
+ /** A video's cheap draft (made on `draftModel`), not the video itself: a 480p video (`video`), else the opening-frame still. */draft?:{modelName:string;video?:true;/** A frame preview's frame, «فریم ۲ از ۴». */frame?:number;frames?:number};
+ /** Why a finished video is silent (its soundtrack failed the check and was removed). */audioNoteFa?:string;
+ /** «زیباسازی»'s self-check of the result (lib/beauty-check.ts). */beauty?:{shareReady:boolean;samePerson:boolean;verdictFa:string};
+ /** What Whoush would still fix (lib/beauty-check.ts), and whether that was settled. */review?:{sayFa:string};reviewDone?:true;
+ /** The model's own content rules refused it (owner, 2026-11-08): the card offers the same request on `alternative`, a model with other rules. */refused?:true;
+ alternative?:{modelId:string;name:string;neurons:number};
+ /** What was quoted (owner, 2026-11-07: a failed generation can be run again): the same plan's turn, model and settings. A rerun asks for a NEW quote and a
+  *  new approval with these; nothing is charged again without them. */rerun?:JobRerun};
+export type JobRerun={turnId:string;modelId:string;aspectRatio?:string;audio?:boolean;stagingOverride?:unknown;aspectOverride?:string;excludeReferences?:string[]};
+const isJobRerun=(v:unknown)=>isObject(v)&&typeof v.turnId==="string"&&v.turnId.length<=64&&typeof v.modelId==="string"&&v.modelId.length<=128
+ &&(v.aspectRatio===undefined||(typeof v.aspectRatio==="string"&&v.aspectRatio.length<=16))&&(v.audio===undefined||typeof v.audio==="boolean")&&(v.aspectOverride===undefined||(typeof v.aspectOverride==="string"&&v.aspectOverride.length<=16))
+ &&(v.excludeReferences===undefined||(Array.isArray(v.excludeReferences)&&v.excludeReferences.length<=20&&v.excludeReferences.every(x=>typeof x==="string"&&x.length<=64)));
+const OWNED_MEDIA_PATH=/^\/api\/generation\/media\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const isJobOutputs=(v:unknown)=>Array.isArray(v)&&v.length<=4&&v.every(o=>isObject(o)&&(o.kind==="image"||o.kind==="video")&&typeof o.url==="string"&&OWNED_MEDIA_PATH.test(o.url));
 /**
  * `generationTags`: generations a user message referred to with a card (older projects), shown with it and sent again on a rerun. `brief`: what was actually sent
  * when the message answered Whoush's question (the original request plus the answer); a rerun sends it again.
@@ -33,9 +55,15 @@ export type Reaction={emoji:ReactionEmoji;by:"user"|"whoush"};
 /** A GIF sent in the chat (by the user or by Whoush): GIPHY's own media URLs, as the API returned them (never cached or rewritten). */
 export type GifSnapshot={id:string;url:string;stillUrl:string;width:number;height:number;title:string};
 /** Whoush's one critical question: no plan card or price until the user answers. */
-export type QuestionSnapshot={question:string;/** Photos Whoush asked for (one upload slot per angle). */references?:ReferenceRequest};
+export type QuestionSnapshot={question:string;/** Photos Whoush asked for (one upload slot per angle). */references?:ReferenceRequest;
+ /** One-tap answers («عکس»، «ویدیو»، «هر دو»). */choices?:QuestionChoice[];
+ /** The edit card: the photo or generation to open for «ادیت» (lib/edit-card.ts). */editCard?:{tag:string};
+ /** One card per picture to edit, maybe with the areas Whoush painted itself. */editCards?:{tag:string;suggested?:SuggestedEdit[]}[];
+ /** «Beautify it» offered for a photo (lib/beautify.ts). */beautify?:{tag:string;parts:BeautifyPart[];notes?:Partial<Record<BeautifyPart,string>>;minor?:true}};
 export type StoredMessage=MessageBase&(
- |{kind?:"text"|"restricted";snapshot?:undefined}
+ |{kind?:"text";snapshot?:undefined}
+ /** A refusal, with the safe ideas Whoush offered (one tap each). */
+ |{kind:"restricted";snapshot?:{choices?:QuestionChoice[]}}
  |{kind:"proposal";snapshot:ProposalSnapshot}
  |{kind:"no_model";snapshot:NoModelSnapshot}
  |{kind:"job";snapshot:JobSnapshot}
@@ -56,6 +84,13 @@ const ZWNJ="‌";
  * The title of a new project from its first message: mentions (`#تصویر-۱`) removed, whitespace collapsed, at most 40 characters plus «…».
  * A cut never lands inside a word joined by a ZWNJ (the whole word goes) or before a combining mark. Nothing left means «پروژهٔ بی‌نام».
  */
+/** «Beautify it» on a question (lib/beautify.ts): the photo's tag, the parts the card starts with, and whether the person looked under 18. */
+function isBeautifyOffer(v:unknown):boolean{
+ if(!isObject(v))return false;const o=v as Record<string,unknown>;
+ return typeof o.tag==="string"&&o.tag.length<=40&&Array.isArray(o.parts)&&o.parts.length>=1&&o.parts.length<=BEAUTIFY_PARTS.length
+  &&o.parts.every(p=>(BEAUTIFY_PARTS as readonly string[]).includes(p as string))&&(o.minor===undefined||o.minor===true)
+  &&(o.notes===undefined||(isObject(o.notes)&&Object.entries(o.notes).every(([k,n])=>(BEAUTIFY_PARTS as readonly string[]).includes(k)&&typeof n==="string"&&n.length<=120)));
+}
 export function autoTitle(firstUserText:string):string{
  const plain=splitMentions(firstUserText).map(p=>"text" in p?p.text:" ").join("").replace(/\s+/g," ").trim();
  if(!plain)return UNTITLED_FA;
@@ -102,6 +137,12 @@ const isCount=(v:unknown)=>typeof v==="number"&&Number.isInteger(v)&&v>=0&&v<=99
 const strings=(v:unknown,max=100)=>Array.isArray(v)&&v.length<=max&&v.every(x=>typeof x==="string"&&x.length<=1000);
 const bad=(what:string):never=>{throw new Error("پروژهٔ ذخیره‌شده نامعتبر است: "+what);};
 /** Only the plan fields PlanDetails reads; a damaged local record must not crash the transcript. */
+/** Areas Whoush painted on an edit card: up to five, each a comment and boxes inside the photo (0..1). */
+function isSuggested(v:unknown):boolean{
+ if(v===undefined)return true;
+ return Array.isArray(v)&&v.length<=5&&v.every(r=>isObject(r)&&typeof (r as {note?:unknown}).note==="string"&&Array.isArray((r as {boxes?:unknown}).boxes)
+  &&((r as {boxes:unknown[]}).boxes).length<=5&&((r as {boxes:unknown[]}).boxes).every(b=>Array.isArray(b)&&b.length===4&&b.every(n=>typeof n==="number"&&n>=0&&n<=1)));
+}
 function isPlan(p:unknown):p is PublicCreativePlan{
  if(!isObject(p))return false;
  const c=p.continuity;
@@ -120,19 +161,31 @@ function checkMessage(m:unknown,i:number){
  if(m.generationTags!==undefined&&!(Array.isArray(m.generationTags)&&m.generationTags.length<=MAX_GENERATION_REFS&&m.generationTags.every(x=>typeof x==="string"&&isGenerationTag(x))))bad("تولیدهای پیام");
  const s=m.snapshot;
  switch(m.kind){
-  case undefined:case "text":case "restricted":if(s!==undefined)bad("پیام ساده عکس لحظه‌ای ندارد");break;
+  case undefined:case "text":if(s!==undefined)bad("پیام ساده عکس لحظه‌ای ندارد");break;
+  case "restricted":if(s!==undefined&&!(isObject(s)&&(s.choices===undefined||isQuestionChoices(s.choices))))bad("پیشنهادهای جایگزین");break;
   case "proposal":
    if(!isObject(s)||(s.operation!=="generate_image"&&s.operation!=="generate_video")||typeof s.modelName!=="string"||!Number.isSafeInteger(s.neurons)||typeof s.intentSummaryFa!=="string"||!isPlan(s.plan)||(s.tag!==undefined&&!(typeof s.tag==="string"&&isGenerationTag(s.tag)))
     ||(s.focus!==undefined&&!(Array.isArray(s.focus)&&s.focus.length<=5&&s.focus.every(f=>["frame","angle","distance","lens","light","camera"].includes(f as string)))))bad("پیشنهاد");
    break;
-  case "no_model":if(!isObject(s)||typeof s.message!=="string"||(s.plan!==undefined&&!isPlan(s.plan)))bad("نبود مدل سازگار");break;
+  case "no_model":if(!isObject(s)||typeof s.message!=="string"||(s.plan!==undefined&&!isPlan(s.plan))||(s.reason!==undefined&&!UNSUPPORTED_REASONS.includes(s.reason as UnsupportedReason)))bad("نبود مدل سازگار");break;
   case "gif":if(!isObject(s)||typeof s.id!=="string"||typeof s.title!=="string"||!isGiphyMedia(s.url)||!isGiphyMedia(s.stillUrl)||!(Number(s.width)>0&&Number(s.height)>0))bad("گیف");break;
-  case "question":if(!isObject(s)||typeof s.question!=="string"||s.question.length<1||s.question.length>1000)bad("سؤال");
+  case "question":if(!isObject(s)||typeof s.question!=="string"||s.question.length<1||s.question.length>1000||(s.choices!==undefined&&!isQuestionChoices(s.choices))
+   ||(s.editCard!==undefined&&!(isObject(s.editCard)&&typeof (s.editCard as {tag?:unknown}).tag==="string"&&((s.editCard as {tag:string}).tag.length<=40)))
+   ||(s.editCards!==undefined&&!(Array.isArray(s.editCards)&&s.editCards.length<=10&&s.editCards.every(c=>isObject(c)&&typeof (c as {tag?:unknown}).tag==="string"&&(c as {tag:string}).tag.length<=40&&isSuggested((c as {suggested?:unknown}).suggested))))
+   ||(s.beautify!==undefined&&!isBeautifyOffer(s.beautify)))bad("سؤال");
    else if(s.references!==undefined){const r=s.references as Record<string,unknown>;
     if(!isObject(r)||typeof r.need!=="string"||!findReferenceNeed(r.need)||typeof r.titleFa!=="string"||typeof r.role!=="string"||!Array.isArray(r.angles)||r.angles.length>6
      ||!r.angles.every(a=>isObject(a)&&typeof (a as Record<string,unknown>).id==="string"&&typeof (a as Record<string,unknown>).titleFa==="string"))bad("سؤال");}
    break;
-  case "job":if(!isObject(s)||typeof s.state!=="string"||typeof s.messageFa!=="string"||(s.tag!==undefined&&!(typeof s.tag==="string"&&isGenerationTag(s.tag))))bad("وضعیت تولید");break;
+  case "job":if(!isObject(s)||typeof s.state!=="string"||typeof s.messageFa!=="string"||(s.tag!==undefined&&!(typeof s.tag==="string"&&isGenerationTag(s.tag)))
+   ||(s.jobId!==undefined&&!(typeof s.jobId==="string"&&/^[0-9a-f-]{36}$/.test(s.jobId)))||(s.outputs!==undefined&&!isJobOutputs(s.outputs))
+   ||(s.typicalMs!==undefined&&!(Number.isSafeInteger(s.typicalMs)&&(s.typicalMs as number)>0&&(s.typicalMs as number)<=3_600_000))
+   ||(s.rerun!==undefined&&!isJobRerun(s.rerun))||(s.audioNoteFa!==undefined&&!(typeof s.audioNoteFa==="string"&&s.audioNoteFa.length<=200))
+   ||(s.review!==undefined&&!(isObject(s.review)&&typeof s.review.sayFa==="string"&&s.review.sayFa.length<=200))||(s.reviewDone!==undefined&&s.reviewDone!==true)
+   ||(s.beauty!==undefined&&!(isObject(s.beauty)&&typeof s.beauty.shareReady==="boolean"&&typeof s.beauty.samePerson==="boolean"&&typeof s.beauty.verdictFa==="string"&&s.beauty.verdictFa.length<=160&&(s.beauty.fixFa===undefined||(typeof s.beauty.fixFa==="string"&&s.beauty.fixFa.length<=160))))||(s.refused!==undefined&&s.refused!==true)||(s.alternative!==undefined&&!(isObject(s.alternative)&&typeof s.alternative.modelId==="string"&&s.alternative.modelId.length<=128&&typeof s.alternative.name==="string"&&s.alternative.name.length<=80&&Number.isInteger(s.alternative.neurons)&&(s.alternative.neurons as number)>0))
+   ||(s.progressFa!==undefined&&!(Array.isArray(s.progressFa)&&s.progressFa.length<=8&&s.progressFa.every(l=>typeof l==="string"&&l.length<=120)))
+   ||(s.progressFacts!==undefined&&!(isObject(s.progressFacts)&&Object.entries(s.progressFacts).every(([k,v])=>k==="references"?Number.isSafeInteger(v)&&(v as number)>=0&&(v as number)<=20:k==="brushEdit"&&v===true)))
+   ||(s.draft!==undefined&&!(isObject(s.draft)&&typeof (s.draft as Record<string,unknown>).modelName==="string"&&((s.draft as Record<string,unknown>).modelName as string).length<=80&&[undefined,true].includes((s.draft as Record<string,unknown>).video as true|undefined)&&[(s.draft as Record<string,unknown>).frame,(s.draft as Record<string,unknown>).frames].every(n=>n===undefined||(Number.isInteger(n)&&(n as number)>=1&&(n as number)<=12)))))bad("وضعیت تولید");break;
   default:bad("نوع پیام");
  }
 }
@@ -167,18 +220,18 @@ export function cleanTitle(raw:string):string|undefined{
 /** A file of a project, kept in this browser. `name` is private and never leaves it. `blob` is absent when the browser had no room to store it. */
 export type StoredAsset={
  id:string;projectId:string;kind:AttachmentKind;role?:AttachmentRole;roleSource?:"user";tag:string;mime:string;bytes:number;sha256:string;
- width?:number;height?:number;durationSeconds?:number;name:string;createdAt:string;textExcerpt?:string;speech?:AttachmentSpeech;blob?:Blob;
+ width?:number;height?:number;durationSeconds?:number;name:string;createdAt:string;textExcerpt?:string;speech?:AttachmentSpeech;blob?:Blob;fromGeneration?:string;
 };
 export function attachmentToAsset(a:LocalAttachment,projectId:string,createdAt:string,blob?:Blob):StoredAsset{
  return {id:a.id,projectId,kind:a.kind,...(a.role?{role:a.role,roleSource:"user" as const}:{}),tag:a.tag,mime:a.mime,bytes:a.bytes,sha256:a.sha256,
   ...(a.width!==undefined?{width:a.width}:{}),...(a.height!==undefined?{height:a.height}:{}),...(a.durationSeconds!==undefined?{durationSeconds:a.durationSeconds}:{}),
-  name:a.name,createdAt,...(a.textExcerpt!==undefined?{textExcerpt:a.textExcerpt}:{}),...(a.speech?{speech:a.speech}:{}),...(blob?{blob}:{})};
+  name:a.name,createdAt,...(a.textExcerpt!==undefined?{textExcerpt:a.textExcerpt}:{}),...(a.speech?{speech:a.speech}:{}),...(a.fromGeneration?{fromGeneration:a.fromGeneration}:{}),...(blob?{blob}:{})};
 }
 /** The chat's attachment for a stored asset; pass an object URL made from its blob (the caller revokes it). */
 export function assetToAttachment(a:StoredAsset,previewUrl?:string):LocalAttachment{
  return {id:a.id,tag:a.tag,kind:a.kind,mime:a.mime,bytes:a.bytes,sha256:a.sha256,name:a.name,...(a.role?{role:a.role}:{}),
   ...(a.width!==undefined?{width:a.width}:{}),...(a.height!==undefined?{height:a.height}:{}),...(a.durationSeconds!==undefined?{durationSeconds:a.durationSeconds}:{}),
-  ...(a.textExcerpt!==undefined?{textExcerpt:a.textExcerpt}:{}),...(a.speech?{speech:a.speech}:{}),...(previewUrl?{previewUrl}:{})};
+  ...(a.textExcerpt!==undefined?{textExcerpt:a.textExcerpt}:{}),...(a.speech?{speech:a.speech}:{}),...(typeof a.fromGeneration==="string"?{fromGeneration:a.fromGeneration}:{}),...(previewUrl?{previewUrl}:{})};
 }
 /** The assets page's kind tabs; «فایل» is every document kind (pdf, json, md). */
 export const ASSET_FILTERS=[{id:"all",labelFa:"همه"},{id:"image",labelFa:"تصویر"},{id:"video",labelFa:"ویدیو"},{id:"audio",labelFa:"صدا"},{id:"file",labelFa:"فایل"}] as const;
@@ -272,17 +325,25 @@ export function groupReactions(list:readonly Reaction[]|undefined):{emoji:Reacti
  for(const r of list??[]){const g=m.get(r.emoji)??{emoji:r.emoji,user:false,whoush:false};g[r.by]=true;m.set(r.emoji,g);}
  return [...m.values()].sort((a,b)=>REACTION_EMOJIS.indexOf(a.emoji)-REACTION_EMOJIS.indexOf(b.emoji));
 }
+/** A draft card's label: a frame preview's «پیش‌نمایش فریم ۲ از ۴», else «پیش‌نویس · model». */
+export function draftLabelFa(d:{modelName:string;frame?:number;frames?:number}):string{
+ return d.frame?"پیش‌نمایش فریم "+faPlain(d.frame)+(d.frames?" از "+faPlain(d.frames):""):"پیش‌نویس · "+d.modelName;
+}
 type HistorySource={role:"user"|"agent";text:string;kind?:string;snapshot?:unknown;brief?:string};
 /**
- * The recent turns sent with a message so Whoush stays conversation aware: the last MAX_HISTORY_TURNS messages, each cut to MAX_HISTORY_CHARS. A proposal adds its
+ * The chat sent with a message so Whoush reads it again (owner, 2026-11-08): as many of the latest messages as fit MAX_HISTORY_TURNS and
+ * MAX_HISTORY_TOTAL_CHARS (newest first, so a long chat drops its oldest messages), each cut to MAX_HISTORY_CHARS. A proposal adds its
  * generation tag and intent, a question its question, a GIF reads as «[GIF: title]» and is flagged so Whoush does not send GIFs back to back.
  */
 export function historyFor(messages:readonly HistorySource[]):HistoryTurn[]{
- return messages.slice(-MAX_HISTORY_TURNS).map(m=>{
+ const turns=messages.map(m=>{
   let text=m.text;
   if(m.kind==="proposal"){const s=m.snapshot as ProposalSnapshot;text=[m.text,(s.tag?displayTag(s.tag)+": ":"")+s.intentSummaryFa].filter(Boolean).join("\n");}
   else if(m.kind==="question")text=[m.text,(m.snapshot as QuestionSnapshot).question].filter(Boolean).join("\n");
   else if(m.kind==="gif")text="[GIF: "+(m.snapshot as GifSnapshot).title+"]";
   return {role:m.role,text:text.slice(0,MAX_HISTORY_CHARS),...(m.kind==="gif"?{gif:true as const}:{})};
  }).filter(t=>t.text.trim().length>0);
+ const kept:HistoryTurn[]=[];let chars=0;
+ for(let i=turns.length-1;i>=0&&kept.length<MAX_HISTORY_TURNS;i--){chars+=turns[i].text.length;if(chars>MAX_HISTORY_TOTAL_CHARS)break;kept.unshift(turns[i]);}
+ return kept;
 }

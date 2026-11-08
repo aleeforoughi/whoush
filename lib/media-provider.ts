@@ -2,14 +2,18 @@ import "server-only";
 import {randomUUID} from "node:crypto";
 import {findMediaModel,type MediaConfiguration} from "./catalog";
 import {cancelHiggsfield,getHiggsfieldStatus,HiggsfieldHttpError,NotCancelableError,submitHiggsfieldVerifiedPath,type HiggsfieldStatus} from "./higgsfield";
-import {devGenerationGate,generationGate,type GenerationMode} from "./policy";
+import {devGenerationGate,generationGate,type GenerationMode,devGateOpenForClaimed} from "./policy";
 import type {MediaModel,MediaProviderId} from "./types";
 /** Provider outputs are provider-hosted URLs that expire (>= 7 days); mirroring to owned storage is NOT implemented (docs/LAUNCH_GATES.md gate 8). */
 export type ProviderOutput={kind:"image"|"video"|"audio";url:string;needsMirroring:true;mime?:string;width?:number;height?:number;durationSeconds?:number};
 export type ProviderState="queued"|"running"|"completed"|"completed_demo"|"failed"|"nsfw"|"canceled";
 /** `reportedModelId`: the model the provider says ran, only when it reports one (the documented Higgsfield status has no such field). */
 export type ProviderStatus={state:ProviderState;outputs:ProviderOutput[];expiresAt?:string;reportedModelId?:string};
-export type ProviderJob={modelId:string;prompt:string;configuration:MediaConfiguration;idempotencyKey:string};
+/** Appended to the prompt when research references go with it: what they are for, so the model takes details from them and not their composition. */
+/** Neutral, for both kinds of reference: researched photos of real subjects, and the user's own photos (whose order the prompt itself lists). */
+export const REFERENCE_PROMPT_NOTE=" Reference images are attached. Use each one only for what the prompt says it shows: a person's face and identity (keep it exact), an outfit, a place, an object, or authentic period details. Do not copy their composition, framing or any text in them.";
+/** `references`: inspected, Whoush-owned research reference images the user kept (docs/RESEARCH_PIPELINE.md), for models that take them inline. */
+export type ProviderJob={modelId:string;prompt:string;configuration:MediaConfiguration;idempotencyKey:string;references?:{bytes:Uint8Array;mime:string}[]};
 /**
  * `resendSafe(modelId)`: whether resending the same request after an unclear outcome is safe, because the provider honors an idempotency key (Higgsfield).
  * Absent means safe. Providers with no idempotency (Google, BytePlus, docs/evidence) answer false, and an unknown submission then waits for the owner.
@@ -18,8 +22,10 @@ export interface MediaProvider{submit(job:ProviderJob):Promise<{providerRequestI
 export {NotCancelableError};
 import {SubmissionUnknownError} from "./provider-errors";
 import {BytePlusMediaProvider} from "./providers/byteplus";
+import {isStoredMediaUrl,mirrorMedia} from "./media-store";
 import {GoogleMediaProvider} from "./providers/google";
 import {KlingMediaProvider} from "./providers/kling";
+import {audioCheckAvailable} from "./audio-check";
 export {SubmissionUnknownError};
 /** Deterministic, offline: queued -> running -> completed_demo over polls. It never returns media URLs. */
 export class MockMediaProvider implements MediaProvider{
@@ -42,7 +48,8 @@ export class MockMediaProvider implements MediaProvider{
  * Payloads only for models whose per-model input schema was read (docs/HIGGSFIELD_EVIDENCE.md). Every field is set explicitly so the billed
  * configuration is the SKU's, never a provider default. Anything else throws, including models that need hosted media inputs (Genjutsu).
  */
-export function buildHiggsfieldPayload(model:MediaModel,prompt:string,c:MediaConfiguration):Record<string,unknown>{
+/** `withAudio`: only when the soundtrack check can run (lib/audio-check.ts) and the SKU has sound at its approved price; otherwise silent. */
+export function buildHiggsfieldPayload(model:MediaModel,prompt:string,c:MediaConfiguration,withAudio=false):Record<string,unknown>{
  const aspect=c.aspectRatio?{aspect_ratio:c.aspectRatio}:{};
  if(model.verifiedApiPath==="/higgsfield-ai/soul/standard"){
   if(model.resolution!=="720p"&&model.resolution!=="1080p")throw new Error("Unsupported SKU resolution");
@@ -52,7 +59,7 @@ export function buildHiggsfieldPayload(model:MediaModel,prompt:string,c:MediaCon
   const duration=c.durationSeconds??model.durationSeconds;
   if(!duration||!(model.capabilities.durationsSeconds??[]).includes(duration))throw new Error("Unsupported SKU duration");
   if(!["480p","720p","1080p"].includes(model.resolution))throw new Error("Unsupported SKU resolution");
-  return {prompt,duration,resolution:model.resolution,generate_audio:false,...aspect}; // audio off: generated audio is not moderated yet
+  return {prompt,duration,resolution:model.resolution,generate_audio:withAudio&&model.capabilities.audio,...aspect}; // sound only when it will be checked before it is shown
  }
  throw new Error("No verified payload mapping for model");
 }
@@ -62,13 +69,23 @@ function mapOutputs(r:HiggsfieldStatus):ProviderOutput[]{
  for(const i of r.images??[])add("image",i);add("video",r.video);add("audio",r.audio);for(const a of r.audios??[])add("audio",a);
  return o;
 }
+/** Copies each image and video output into Whoush's store; a failed copy throws, so the status check is tried again rather than finishing without media. */
+export async function mirrorOutputs(outputs:ProviderOutput[]):Promise<ProviderOutput[]>{
+ const out:ProviderOutput[]=[];
+ for(const o of outputs){
+  if(o.kind==="audio"||isStoredMediaUrl(o.url)){out.push(o);continue;}
+  const m=await mirrorMedia(o.url,undefined,o.kind==="video"?"video/mp4":"image/png");
+  out.push({...o,url:m.url,mime:m.mime});
+ }
+ return out;
+}
 /** Only usable when generationGate(model).live, or devGenerationGate for owner-only dev testing; re-checked on every submit. */
 export class HiggsfieldMediaProvider implements MediaProvider{
  constructor(private readonly mode:"live"|"dev_live"="live"){}
  async submit(job:ProviderJob):Promise<{providerRequestId:string}>{
   const model=findMediaModel(job.modelId);
-  if(!model||!model.verifiedApiPath||!(this.mode==="live"?generationGate(model).live:devGenerationGate(model).live))throw new Error("Live generation blocked");
-  const payload=buildHiggsfieldPayload(model,job.prompt,job.configuration); // a mapping error happens before anything is sent: definite
+  if(!model||!model.verifiedApiPath||!(this.mode==="live"?generationGate(model).live:devGateOpenForClaimed(model)))throw new Error("Live generation blocked");
+  const payload=buildHiggsfieldPayload(model,job.prompt,job.configuration,model.capabilities.audio&&job.configuration.audio!==false&&await audioCheckAvailable()); // the card's sound toggle // a mapping error happens before anything is sent: definite
   let r:Awaited<ReturnType<typeof submitHiggsfieldVerifiedPath>>;
   try{r=await submitHiggsfieldVerifiedPath(model.verifiedApiPath,payload,job.idempotencyKey);}
   catch(e){
@@ -84,7 +101,9 @@ export class HiggsfieldMediaProvider implements MediaProvider{
   const r=await getHiggsfieldStatus(id);
   const m:Record<string,ProviderState>={queued:"queued",in_progress:"running",completed:"completed",failed:"failed",nsfw:"nsfw",canceled:"canceled"};
   const state=m[r.status];if(!state)throw new Error("Unknown provider status"); // never guess an undocumented status
-  return {state,outputs:state==="completed"?mapOutputs(r):[],expiresAt:r.expires_at??undefined};
+  // Finished images and videos are copied into Whoush's own store (as the direct providers do): the studio shows only Whoush-owned media (launch gate 8),
+  // and provider links can expire. Audio is not stored yet (it is never requested: generated audio is not moderated).
+  return {state,outputs:state==="completed"?await mirrorOutputs(mapOutputs(r)):[],expiresAt:r.expires_at??undefined};
  }
  async cancel(id:string):Promise<void>{await cancelHiggsfield(id);}
 }

@@ -1,3 +1,5 @@
+import {roleBrief} from "./role-briefs";
+import {iranGovFilterOn} from "./region-policy";
 import "server-only";
 import {createHash,randomUUID} from "node:crypto";
 import {buildProposal,NoCompatibleModelError} from "./agent";
@@ -6,35 +8,89 @@ import {CreativePlanSchema,CreativeTurnInputSchema,STYLE_VISUAL,toPublicPlan,typ
 import {llmGate,preparePrivateCreativeRequest} from "./llm";
 import {acquireProviderSlot,countAstraCall,defaultRouterState,estimateTurnCostUsd,loadRoutingConfig,markProviderCooldown,planRoute,profileTask,type RoutingAudit,type RoutingAttempt,type RoutingConfig,type RouterState} from "./llm-routing";
 import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./private-audit";
-import {displayTag,inferAttachmentRoles,isGenerationTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
+import {REGION_COLOR_FA,describeTagEn,displayTag,inferAttachmentRoles,isGenerationTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,splitMentions,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
 import {providerForModelId} from "./llm-routing";
 import {replyScriptFor} from "./finglish";
 import {clearSightByMovingProp,occlusionMessageFa,sceneVisibility} from "./scene-visibility";
 import {compileImagePrompt,SCENE_COMPILER_VERSION,FA_EDIT_SCOPE_MIXED,GENERIC_EDIT_RULE_EN,resolveOperation,sceneChangeGroups} from "./scene-compiler";
-import {applyStagingCues,applyTypedMappings,lensFor,describeStagingEn,describeStagingFa,sceneLeadEn,detectProps,detectSubject,expandMappings,mapReferences,tidyProps,typedMappings} from "./staging";
+import {propTags,applyStagingCues,applyTypedMappings,lensFor,describeStagingEn,describeStagingFa,sceneLeadEn,detectProps,detectSubject,expandMappings,mapReferences,tidyProps,typedMappings} from "./staging";
 import {findGif,type ChatGif} from "./giphy";
 import {describeFocus} from "./frame-css";
-import {detectMediaKind,suggestModel} from "./router";
+import {draftVideoModel,requestedMediaKind,suggestModel} from "./router";
+import {mainSubjectNote,mainSubjectRule,shownTag,typedMainSubject} from "./main-subject";
+import {MEDIA_KIND_CHOICES,MEDIA_KIND_QUESTION_FA,MEDIA_KIND_QUESTION_FINGLISH,type QuestionChoice} from "./media-intent";
 import {evaluatePlanTextSafety,evaluateTextSafety,normalizePersian,type SafetyCategory} from "./safety";
 import {SKILLS,SKILL_REGISTRY_VERSION} from "./skills";
-import {detectReferenceNeeds,type ReferenceRequest} from "./reference-needs";
-import type {GenerationProposal,MediaRequirements,SuggestedModel} from "./types";
+import {beautifySourceOf,rememberBeautifyTurn,rememberFixedTurn} from "./beauty-check";
+import {SEEDREAM_IMAGE_WATERMARK} from "./providers/byteplus";
+import {REFERENCE_NEEDS,detectReferenceNeeds,type ReferenceRequest} from "./reference-needs";
+import {DRIFT_MARKER_FA,DRIFT_MARKER_FINGLISH,DRIFT_SKIP,DRIFT_SKIP_FINGLISH,driftAngles,driftAskFa,driftAskFinglish,missingNeeds} from "./drift";
+import type {GenerationProposal,MediaRequirements,ProposalResearch,SuggestedModel,UnsupportedReason} from "./types";
+import {researchReferences,type ResearchReference,type ResearchResult,type TurnReference} from "./research";
+import {inspectReferences,locateEdit,type EditLocation} from "./reference-inspect";
+import {faPlain} from "./format";
+import {devLiveTest} from "./policy";
+import {continuesWork} from "./follow-up";
+import {BEAUTIFY_NAME,BEAUTIFY_OFFER_FA,BEAUTIFY_OFFER_FINGLISH,BEAUTIFY_PART_FA,BEAUTIFY_PARTS_MINOR,beautifyOffer,beautifyPrompt,wantsBeautify,type BeautifyOffer} from "./beautify";
+import {EDIT_CARDS_FA,EDIT_CARD_FA,EDIT_CARD_FINGLISH,EDIT_WHOLE_FA,EDIT_WHOLE_FINGLISH,SUGGESTED_FA,SUGGESTED_FINGLISH,editCheckSkip,mightEditPhoto,wantsEditCard,type SuggestedEdit} from "./edit-card";
+import {safeReview} from "./upload-review";
+import {cropForEdit,rememberRegionEdit,regionEditFor} from "./region-restore";
+import {MEDIA_ROUTE,readMedia,storeMedia} from "./media-store";
+import {framePrompt,frameTimes,sourceFrames,type SourceFrame} from "./frame-draft";
+import {POPULAR_ASPECT_RATIOS,nearestAspectRatio,nearestByValue} from "./aspect";
+import {reviewAvailable,reviewPlan,promptWithFixes,type PlanReviewer} from "./plan-review";
+import {findMediaModel} from "./catalog";
+import {triageAvailable,triageTurn,type TriageEffort,type TurnTriager,triageDeclines} from "./turn-triage";
+import {audioCheckAvailable} from "./audio-check";
+import {soundLineFa,soundWanted} from "./sound-intent";
+import type {ResearchPlan} from "./creative-plan";
 export type OrchestratorDeps={planner?:PrivatePlanner;audit?:PrivateAuditSink;now?:()=>Date;
+ /** Edit or reference, with the areas to change (a private vision check by default; tests pass a stub). */
+ locateEdit?:(text:string,img:{bytes:Uint8Array;mime:import("./media-store").StoredMime})=>Promise<EditLocation>;
  /** Progress for the chat's live status: called as each real stage of the turn starts (never invented, never with private details). */
  onStage?:(stage:TurnStage)=>void;
+ /** Detail lines for a stage (owner, 2026-11-07: alive, specific progress): `story` lines about what Whoush is working out for this brief, shown while the
+  *  stage runs; `facts` from the turn itself (the lens and frame chosen, what is researched, the model, the risks found). Every line passed the plan-text
+  *  safety check and the leak filter; none names a private model or provider. */
+ onNote?:(note:TurnNote)=>void;
  /** Finds a chat GIF for a mood (GIPHY by default; tests pass a stub). */
  findGif?:(mood:GifMood)=>Promise<ChatGif|undefined>;
+ /** Researches what the plan marked as needing research (open-licensed references, inspected). Tests pass a stub; the default searches and inspects. */
+ research?:(plan:ResearchPlan)=>Promise<ResearchResult>;
+ /** The pre-generation risk check (the cheapest private model by default; tests pass a stub). */
+ reviewPlan?:PlanReviewer;
  /** Test hook: the planner for one routed model. Defaults to the real Anthropic or OpenAI adapter. */
- plannerFor?:(modelId:string,provider:"anthropic"|"openai")=>PrivatePlanner;routing?:RoutingConfig;routerState?:RouterState};
-export {TURN_STAGES,type TurnStage} from "./orchestrator-stages";
-import type {TurnStage} from "./orchestrator-stages";
+ plannerFor?:(modelId:string,provider:"anthropic"|"openai")=>PrivatePlanner;routing?:RoutingConfig;routerState?:RouterState;
+ /** Turn triage (reply, ask or make) before planning: the cheapest private model by default when no test planner is given; tests pass a stub. */
+ triage?:TurnTriager;
+ /** Whether generated sound can be checked here (tests pass a stub). */audioCheckAvailable?:()=>Promise<boolean>;
+ /** The frame preview's source frames and their storage (lib/frame-draft.ts); tests pass stubs. */frames?:{read?:(mediaId:string)=>Promise<Uint8Array|undefined>;sample?:(video:Uint8Array,times:readonly number[])=>Promise<SourceFrame[]>;store?:(bytes:Uint8Array)=>Promise<{id:string}>};
+ /** Tests only: plan even with unchecked files (fixtures that exercise the planner's role invariants); the turn still stops before a price. */planUncheckedMedia?:boolean};
+export {TURN_STAGES,type TurnStage,type TurnNote} from "./orchestrator-stages";
+import type {TurnNote,TurnStage} from "./orchestrator-stages";
+export type {BeautifyOffer} from "./beautify";
+/**
+ * The photos the vision step judged to show someone under 18 (by checked media id): their Beautify keeps to light, colour and camera whatever the request
+ * says, so a changed request cannot add retouch, expression or pose. In memory, like the turn stores: a restart forgets it, and Whoush then goes by the
+ * parts sent (the card only ever sends the allowed ones).
+ */
+const minorPhotos=new Set<string>();
+function rememberMinorPhoto(mediaId:string){minorPhotos.add(mediaId);if(minorPhotos.size>2000)minorPhotos.delete(minorPhotos.values().next().value!);}
 export type OrchestratorResult=
+ /** A message that needs no picture or video (a greeting, thanks, a question about Whoush): a direct answer, with no plan, price or card. */
+ |{status:"reply";turnId:string;message:string;reaction?:ReactionEmoji}
  |{status:"planned";turnId:string;proposal:GenerationProposal;plan:PublicCreativePlan;gif?:ChatGif;reaction?:ReactionEmoji}
- |{status:"unsupported";turnId:string;plan:PublicCreativePlan;message:string;suggestedModel?:SuggestedModel}
- |{status:"restricted";decision:"block"|"review";category:SafetyCategory;message:string}
+ |{status:"unsupported";turnId:string;plan:PublicCreativePlan;message:string;suggestedModel?:SuggestedModel;
+  /** Why no proposal: the user's files are not yet inspected (a launch gate, not a missing model), no model fits, or a voice clone was asked. */reason:UnsupportedReason;
+  /** media_review: the photos the server does not know as checked (a restart forgets reviews); the studio checks them again and resends. */unreviewed?:string[]}
+ |{status:"restricted";decision:"block"|"review";category:SafetyCategory;message:string;
+  /** Safe ideas the user can take with one tap (lib/safe-alternatives.ts): Whoush never leaves a refusal as a dead end. */choices?:QuestionChoice[]}
  /** Whoush needs one critical answer before it can offer a generation: no plan card, no price, only the question. */
  |{status:"needs_input";turnId:string;message:string;question:string;reaction?:ReactionEmoji;
-  /** The photos Whoush needs to keep something only a photo can (lib/reference-needs.ts): the card shows an upload slot per angle. */references?:ReferenceRequest};
+  /** The photos Whoush needs to keep something only a photo can (lib/reference-needs.ts): the card shows an upload slot per angle. */references?:ReferenceRequest;
+  /** One-tap answers («عکس»، «ویدیو»، «هر دو»): each sends its reply as the user's answer. */choices?:QuestionChoice[];
+  /** The edit cards (lib/edit-card.ts): the photos or generations to open full screen for «ادیت», one card each, maybe with regions Whoush painted itself. */editCards?:{tag:string;suggested?:SuggestedEdit[]}[];
+  /** «Beautify it» offered for this photo (lib/beautify.ts), with the parts the card starts with; `minor` keeps them to light, colour and camera. */beautify?:BeautifyOffer};
 /**
  * Whoush's own lines when no planner reply is usable (deterministic planner, or a reply that failed a check): everyday spoken Persian, or Finglish for a Finglish
  * brief, in Whoush's voice. A question's setup carries no emoji (docs/CREATIVE_SKILLS.md, Whoush voice).
@@ -46,21 +102,78 @@ const VOICE={
   needsInput:["قبل از اینکه شروع کنم، یه چیز مهم رو باید بدونم.","یه سؤال کوچیک دارم تا دقیقاً همونی بشه که می‌خوای."]
  },
  finglish:{
-  planned:["Ine barnamash 🎬 Ye negah bendaz, age oki bood bezan berim!","Halle! Naghshash amadas ✨ Joziyato bebin, har jash ro khasti begu avazesh konim.","Eyval, ide-ye khubie 😎 Barnamaro chidam; harvaght amade budi besazimesh."],
-  revision:(tag:string)=>["Radife! Taghiraro ru "+tag+" emal kardam 👌 Baghiash hamun-tor ke bud mund.","Halle, "+tag+" ro ba taghirat-e to dobare chidam ✨ Ye negah bendaz."],
-  needsInput:["Ghabl az inke shoru konam, ye chiz-e mohem ro bayad bedunam.","Ye soal-e kuchik daram ta daghighan hamuni beshe ke mikhay."]
+  planned:["Ine barnamash 🎬 Ye negah bendaz, age oki bud bezan berim!","Halle! Naghshash amadas ✨ Joziyato bebin, har jash ro khasti begu avazesh konim.","Eyval, idehye khubieh 😎 Barnamaro chidam; harvaght amadeh budi besazimesh."],
+  revision:(tag:string)=>["Radife! Taghiraro ru "+tag+" emal kardam 👌 Baghiash hamuntor ke bud mund.","Halle, "+tag+" ro ba taghirate to dobareh chidam ✨ Ye negah bendaz."],
+  needsInput:["Ghabl az inke shoru konam, ye chize mohem ro bayad bedunam.","Ye soale kuchik daram ta daghighan hamuni besheh ke mikhay."]
  }
 } as const;
 const pickLine=(lines:readonly string[],seed:string)=>lines[[...seed].reduce((n,c)=>(n*31+c.charCodeAt(0))>>>0,7)%lines.length];
+/** The start of the «use the photos you sent earlier?» question; the next turn recognises its answer by it. */
+const REUSE_MARKER_FA="همون عکس‌هایی که قبلاً فرستادی",REUSE_MARKER_FINGLISH="Hamun aksai ke ghablan ferestadi";
 const FA_REFUSED="این درخواست در حال حاضر قابل پردازش نیست. لطفاً آن را با توضیح غیرحساس‌تر دوباره بنویس.";
 const FA_NO_REFS="پرامپت تولید با کاراکتر انتخاب‌شده آماده است، اما هنوز هیچ مدل تأییدشده‌ای عکس مرجع کاراکتر را نمی‌پذیرد؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 const FA_TEXT_BLOCKED="یکی از فایل‌های متنیِ پیوست‌شده مسدود شد. ";
-const FA_MEDIA_REVIEW="پرامپت آماده است، اما بررسی ایمنی فایل‌های تصویری، ویدیویی و صوتی هنوز فعال نیست؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
+/**
+ * Why files of this message cannot be used yet (owner, 2026-11-08: calm and general, never like a malfunction): photos and videos are used only once
+ * checked after upload; audio has no check yet. Names the files and gives the way forward.
+ */
+export function faMediaReview(tags:readonly string[],kinds:readonly string[]):string{
+ const audio=kinds.includes("audio");
+ return "از "+tags.join("، ")+" فعلاً استفاده نمی‌کنم: "+(audio?"فایل صوتی هنوز بررسی ایمنی نمی‌شه. ":"")+
+  (kinds.some(k=>k!=="audio")?"عکس و ویدیو رو فقط بعد از بررسی ایمنی که موقع آپلود انجام می‌شه به کار می‌برم؛ اگه بررسیش هنوز تموم نشده، چند لحظه صبر کن و دوباره بفرست. ":"")+
+  "یا بدون "+(tags.length>1?"این فایل‌ها":"این فایل")+" بگو چی بسازم.";
+}
+/**
+ * «زیباسازی» keeps the photo's quality (owner, 2026-11-08: no pixelation, pores and texture kept): the proposal recommends the cheapest offered model with
+ * a 2K or higher version when one is among its suggestions; the others stay in the menu with their prices. Unchanged when none is 2K or higher.
+ * A model that stamps a visible «AI-generated» mark on the photo is never preferred (a watermarked photo is not share-ready; live, 2026-11-08: Seedream).
+ */
+export function preferDetail(p:GenerationProposal):GenerationProposal{
+ const px=(r?:string)=>{const m=/^(\d+)K$/i.exec(r??"");return m?Number(m[1]):0;};
+ const marked=(id:string)=>{const m=findMediaModel(id);return Boolean(m&&m.provider==="byteplus"&&m.kind==="image"&&SEEDREAM_IMAGE_WATERMARK);};
+ const hi=p.suggestions.filter(s=>px(s.resolution)>=2&&!marked(s.modelId)).sort((a,b)=>a.neurons-b.neurons)[0];
+ return hi&&px(p.suggestions.find(s=>s.modelId===p.selectedModelId)?.resolution)<2?{...p,recommendedModelId:hi.modelId,selectedModelId:hi.modelId,fixedNeurons:hi.neurons}:p;
+}
+/**
+ * The proposal set to the version of its recommended model whose length covers a source video (owner, 2026-11-08): the shortest at least as long, else the
+ * longest; same resolution when that version exists. `seconds`: the length chosen, when the model has lengths to choose from.
+ */
+export function matchSourceLength(p:GenerationProposal,sourceSeconds:number):{proposal:GenerationProposal;seconds?:number}{
+ const fam=(n:string)=>n.split(" · ")[0].trim(),rec=p.suggestions.find(s=>s.modelId===p.selectedModelId)??p.suggestions[0];
+ if(!rec)return {proposal:p};
+ const family=p.suggestions.filter(s=>fam(s.name)===fam(rec.name)&&s.durationSeconds),lengths=[...new Set(family.map(s=>s.durationSeconds!))].sort((a,b)=>a-b);
+ if(!lengths.length)return {proposal:p};
+ const want=lengths.find(d=>d>=sourceSeconds-0.5)??lengths[lengths.length-1];
+ const pick=family.find(s=>s.durationSeconds===want&&s.resolution===rec.resolution)??family.find(s=>s.durationSeconds===want)!;
+ return {proposal:{...p,recommendedModelId:pick.modelId,selectedModelId:pick.modelId,fixedNeurons:pick.neurons},seconds:want};
+}
+/** The marker of the turn that set files aside for their checks (faMediaReview). */
+const SET_ASIDE_FA=" فعلاً استفاده نمی‌کنم";
+const DONE_QUESTION=/(تموم|تمام|چک شد|بررسی شد|آماده|اوکی شد|درست شد|حله|شد\s*[؟?]|\bdone\b|\bready\b|\bchecked\b|\bfinished\b|tamoom|amade)/i;
+export const RESUME_QUESTION_FA="دوباره بسازمش؟",RESUME_LABEL_FA="آره، بساز";
+/** When «تموم شد؟» follows a turn that set files aside, and every file the set-aside request named has now passed: what to say, and the request to send again. */
+export function resumeAfterReview(text:string,ownFiles:number,history:readonly {role:"user"|"agent";text:string}[],prior:readonly {tag:string;kind:string;reviewId?:string}[]):{message:string;request:string}|undefined{
+ if(ownFiles||text.length>60||!DONE_QUESTION.test(normalizePersian(text)))return undefined;
+ // The latest turn that set files aside, with only short messages from the user since («ایمنی شد؟», «تموم شد؟»), whatever Whoush answered them.
+ const i=history.findLastIndex(t=>t.role==="agent"&&t.text.includes(SET_ASIDE_FA));
+ if(i<1||history.slice(i+1).some(t=>t.role==="user"&&t.text.length>60))return undefined;
+ // The request is the user's messages just before it (a brief, then its #files): each kept once, a message already inside another one dropped.
+ let j=i;while(j>0&&history[j-1].role==="user")j--;
+ const run=[...new Set(history.slice(j,i).map(t=>t.text.trim()).filter(Boolean))];
+ const request=run.filter(t=>!run.some(o=>o!==t&&o.includes(t))).join(" ");
+ if(!request)return undefined;
+ const named=parseMentions(request).map(tag=>prior.find(p=>p.tag===tag)).filter((p):p is NonNullable<typeof p>=>Boolean(p)&&isMediaKind(p!.kind as never));
+ if(!named.length||named.some(isUnchecked))return undefined;
+ return {message:"آره، بررسی "+named.map(p=>displayTag(p.tag)).join("، ")+" تموم شده و "+(named.length>1?"همه‌شون قبول شدن.":"قبول شد."),request};
+}
+const FA_NO_PHOTO_MODEL="پرامپت آماده است، اما الان هیچ مدل فعالی این عکس‌ها رو به‌عنوان مرجع نمی‌گیره (مثلاً تعدادشون بیشتر از حد مدله)؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 const FA_VOICE_CLONE="کلون صدا در هووش پشتیبانی نمی‌شود؛ هووش فقط تصویر و ویدیو می‌سازد و تولید یا شبیه‌سازی صدا ممکن نیست.";
 const faMissingGenerations=(tags:readonly string[])=>tags.map(displayTag).join("، ")+(tags.length===1?" در این گفت‌وگو پیدا نشد؛ تگ را اصلاح کن یا از «اصلاح» روی کارت همان تولید استفاده کن.":" در این گفت‌وگو پیدا نشدند؛ تگ‌ها را اصلاح کن یا از «اصلاح» روی کارت همان تولید استفاده کن.");
 const faMissing=(tags:readonly string[])=>tags.length===1?"پیوست "+displayTag(tags[0])+" در این گفت‌وگو پیدا نشد؛ آن را دوباره اضافه کن یا تگ را اصلاح کن.":"پیوست‌های "+tags.map(displayTag).join("، ")+" در این گفت‌وگو پیدا نشدند؛ آن‌ها را دوباره اضافه کن یا تگ‌ها را اصلاح کن.";
 const faSuggestion=(m:SuggestedModel)=>" مدل مناسب این کار: "+m.name+"؛ پس از تأیید فعال می‌شود.";
 const FA_PDF_NOTE="محتوای فایل PDF هنوز خوانده نمی‌شود و در پرامپت اثری ندارد";
+/** Why no model can take a request (owner live test, 2026-11-08: a video to continue was told about lip sync): the capability it needs, said plainly. */
+const FA_NO_MODEL_FOR:Partial<Record<"videoContinuation"|"endImage"|"startImage"|"motionReference"|"videoReference",string>>={"videoContinuation": "پرامپت امتداد ویدیو آماده است، اما هنوز هیچ مدل فعالی ادامه دادن ویدیو را پشتیبانی نمی‌کند؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.", "endImage": "پرامپت آماده است، اما هنوز هیچ مدل فعالی ساختن ویدیویی که به یک فریم مشخص ختم شود را پشتیبانی نمی‌کند؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.", "startImage": "پرامپت آماده است، اما هنوز هیچ مدل فعالی ساختن ویدیو از یک عکس را پشتیبانی نمی‌کند؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.", "motionReference": "پرامپت آماده است، اما هنوز هیچ مدل فعالی الگوی حرکت از یک ویدیو را پشتیبانی نمی‌کند؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.", "videoReference": "پرامپت آماده است، اما هنوز هیچ مدل فعالی ادیت یک ویدیو را پشتیبانی نمی‌کند؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود."};
 const lipsMsg="پرامپت لیپ‌سینک آماده است، اما هنوز هیچ مدل تأییدشده‌ای هماهنگی لب را پشتیبانی نمی‌کند؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 // ---- deterministic planner (pure, no network): complete valid plan from the active skills ----
 // Every customer-visible line is Persian. `mediaPrompt` (private, provider-facing) is English, so each phrase that feeds both
@@ -114,9 +227,11 @@ function roleRule(kind:AttachmentKind,role:AttachmentRole,tag:string):{hard?:Pai
   case "start_frame":return {hard:P(at+": this image is the first frame of the video; its composition, subject and lighting are the starting point",fa+" فریم اول ویدیوست؛ ترکیب‌بندی، سوژه و نور همین عکس نقطهٔ شروع است")};
   case "end_frame":return {hard:P(at+": this image is the last frame of the video; the video ends on its composition, subject and lighting",fa+" فریم آخر ویدیوست؛ ویدیو با همین ترکیب‌بندی، سوژه و نور تمام می‌شود")};
   case "outfit":return {hard:P(at+": apply this outfit (design, color, fabric and cut) to the subject; do not copy the face or body of the model in the outfit photo","پوشاک "+fa+" (طرح، رنگ، جنس و برش) روی سوژه اعمال می‌شود؛ چهره و بدن مدلِ عکس مرجع کپی نمی‌شود"),
-   soft:P("Clothing stays modest and non-provocative, in line with the content policy","پوشش مطابق سیاست محتوای هووش، پوشیده و غیرتحریک‌آمیز")};
-  case "hairstyle":return {hard:P(at+": apply the hairstyle and, where present, the beard and moustache shape; the subject's face, skin tone and identity do not change","مدل مو و فرم ریش و سبیل "+fa+" (در صورت وجود) اعمال می‌شود؛ چهره، رنگ پوست و هویت سوژه تغییر نمی‌کند")};
+   ...(iranGovFilterOn()?{soft:P("Clothing stays modest and non-provocative, in line with the content policy","پوشش مطابق سیاست محتوای هووش، پوشیده و غیرتحریک‌آمیز")}:{})};
+  // «پیرایش و آرایش» (owner, 2026-11-08): hair, beard and makeup in one role; each applies only where the photo shows it.
+  case "hairstyle":return {hard:P(at+": apply the hairstyle and, where present, the beard and moustache shape and the makeup (its colours and intensity, natural skin texture); the subject's face, skin tone and identity do not change","مدل مو، فرم ریش و سبیل و آرایش "+fa+" (هر کدام که در عکس هست) اعمال می‌شود؛ چهره، رنگ پوست و هویت سوژه تغییر نمی‌کند")};
   case "makeup":return {hard:P(at+": apply this makeup (colors and intensity); keep natural skin texture, never plastic or over-smoothed skin","آرایش "+fa+" (رنگ‌ها و شدت) اعمال می‌شود؛ بافت طبیعی پوست حفظ می‌شود و پوست پلاستیکی یا صاف‌شده نمی‌شود")};
+  case "extend_back":return {hard:P(at+": make a new clip that leads into this video: it ends exactly on this video's first frame (subject, pose, light, camera and colour), so the two play as one","یه تکه‌ی تازه قبل از "+fa+" ساخته می‌شه که دقیقاً به فریم اولش ختم می‌شه (سوژه، ژست، نور، دوربین و رنگ)، تا پشت هم یکی دیده بشن")};
   case "continue":return {hard:P(at+": continue this video from its last frame; subject, light, camera movement and color stay continuous","امتداد "+fa+" از آخرین فریم؛ سوژه، نور، حرکت دوربین و رنگ پیوسته می‌مانند")};
   case "environment":return {lock:P(at+": keep the location, architecture, light direction and time of day of the reference",fa+": مکان، معماری، جهت نور و ساعت روز مطابق مرجع ثابت بماند")};
   case "object":return {hard:P(at+": keep the object's shape, material, color, proportions and logo placement as in the reference",fa+": شکل، جنس، رنگ، تناسب و جای لوگوی شیء مطابق مرجع حفظ شود")};
@@ -265,6 +380,16 @@ const FORBIDDEN=["claude","anthropic","openai","gpt","sonnet","opus","haiku","sy
 // Model-family words are only forbidden as standalone Latin tokens (so "solid" or "terrain" never trip it), and only when the user did not type them.
 const FAMILY_WORDS=["sol","astra","luna","terra"].map(w=>new RegExp("(?<![a-z0-9])"+w+"(?![a-z0-9])"));
 /** The same filter for a single customer-facing text (the chat reply). */
+/**
+ * Whether an attached media file is not known as checked: a photo (and a painted photo's marked copy) or a video (frames and soundtrack, lib/video-review.ts)
+ * with a safe review on the server is checked; every other media file (audio has no check yet) is not, and is never sent anywhere.
+ */
+const isUnchecked=(f:{kind:string;reviewId?:string;regionEdit?:{guideReviewId?:string}})=>isMediaKind(f.kind as never)&&!(
+ (f.kind==="image"&&safeReview(f.reviewId)&&(!f.regionEdit||safeReview(f.regionEdit.guideReviewId)))||(f.kind==="video"&&safeReview(f.reviewId)?.kind==="video"));
+/** Fill-ins the enforcer makes on every plan that lacks them: routine, never a sign the planner misread the brief. */
+const ROUTINE_CORRECTIONS=new Set(["camera_filled","shot_filled","continuity_filled","style_directives","role_directives","realism_mode"]);
+/** How many corrections mean a misread brief (the escalation test). */
+export const seriousCorrections=(c:readonly string[])=>c.filter(x=>!ROUTINE_CORRECTIONS.has(x)).length;
 const leakText=(text:string,userText:string)=>{const j=text.toLowerCase(),u=userText.toLowerCase();return FORBIDDEN.some(t=>j.includes(t)&&!u.includes(t))||FAMILY_WORDS.some(r=>r.test(j)&&!r.test(u));};
 const leaks=(pub:PublicCreativePlan,userText:string)=>{const j=JSON.stringify(pub).toLowerCase(),u=userText.toLowerCase();return FORBIDDEN.some(t=>j.includes(t)&&!u.includes(t))||FAMILY_WORDS.some(r=>r.test(j)&&!r.test(u));};
 // ---- private prompt store for the generation phase (bounded, server memory only) ----
@@ -276,6 +401,17 @@ type SceneContent={content:string;aspect:string;
  staging:Staging;sourceImage:boolean};
 const contents=()=>((globalThis as {__whoushPromptContent?:Map<string,SceneContent>}).__whoushPromptContent??=new Map());
 export const getPrivateMediaPrompt=(turnId:string):string|undefined=>store().get(turnId);
+/** The inspected research references of a turn (Whoush-owned copies), private to the server: quotes bind the ones the user kept. */
+/** A file tag's number (image3 → 3), for the order photos are attached in. */
+const tagOrder=(tag:string)=>Number(tag.replace(/\D/g,""))||0;
+const refStore=()=>((globalThis as {__whoushTurnRefs?:Map<string,TurnReference[]>}).__whoushTurnRefs??=new Map());
+export const getTurnReferences=(turnId:string):readonly TurnReference[]=>refStore().get(turnId)??[];
+/** The draft for a video: the cheapest image model that takes reference images (docs/RESEARCH_PIPELINE.md). */
+export const DRAFT_IMAGE_MODEL="nano-banana-2-1";
+const DRAFT_PREFIX="A single still photograph: the opening frame of this video shot, as it looks at its first moment. ";
+const DRAFT_SUFFIX=" Still image only: no motion blur, no text or captions.";
+/** Tests only: references for a quotable turn. */
+export function keepTurnReferencesForTests(turnId:string,refs:ResearchReference[]){refStore().set(turnId,refs);}
 /** The prompt-compiler version of a turn whose image prompt was compiled from a scene (lib/scene-compiler.ts); none for other prompts. */
 export const privatePromptCompilerVersion=(turnId:string):string|undefined=>contents().has(turnId)?SCENE_COMPILER_VERSION:undefined;
 /**
@@ -296,7 +432,7 @@ export function deriveTurnWithStaging(turnId:string,staging:Staging,aspect?:stri
   if(sceneVisibility(staging,asp).subject==="occluded")throw new SceneOccluded(occlusionMessageFa(staging,asp));
   const op=resolveOperation({sourceImage:kept.sourceImage,change:sceneChangeGroups(kept.staging,staging)});
   if("conflict" in op)throw new SceneEditConflict();
-  const c={...kept,aspect:aspect??kept.aspect},id=randomUUID();
+  const c={...kept,aspect:aspect??kept.aspect},id=randomUUID();copyReferences(turnId,id);
   // The new turn keeps the original scene as its reference, so a second change is checked against the photo's scene, not the first change.
   keepPrompt(id,compileImagePrompt({content:c.content,staging,aspect:c.aspect,operation:op.operation}).prompt,c);return id;
  }
@@ -305,15 +441,32 @@ export function deriveTurnWithStaging(turnId:string,staging:Staging,aspect?:stri
  // full scene follows at the end; the planner's own text sits between, cut to fit.
  const lead=sceneLeadEn(staging)+" ";
  const extra=" User-adjusted scene (overrides any earlier camera, framing or lighting direction): "+describeStagingEn(staging)+describeFocus(staging,undefined,aspect??"16:9").en+" "+lensFor(staging).en+(aspect?" Aspect ratio "+aspect+".":"");
- const id=randomUUID();keepPrompt(id,(lead+base.slice(0,Math.max(0,3000-extra.length-lead.length))+extra).slice(0,3000));
+ const id=randomUUID();copyReferences(turnId,id);keepPrompt(id,(lead+base.slice(0,Math.max(0,3000-extra.length-lead.length))+extra).slice(0,3000));
+ return id;
+}
+/**
+ * «آره، اصلاحش کن» (owner, 2026-11-08): a new private turn from a finished one, with the fixes Whoush's own review wrote (lib/beauty-check.ts; server-side
+ * text, never the browser's). The same prompt, references, selection lock and «زیباسازی» source; the fixes lead, so the model weighs them first. Its result
+ * is never offered another fix.
+ */
+export function deriveTurnWithFix(turnId:string,fixEn:string):string|undefined{
+ const base=store().get(turnId);if(base===undefined)return undefined;
+ const id=randomUUID();copyReferences(turnId,id);
+ const lock=regionEditFor(turnId);if(lock)rememberRegionEdit(id,lock);
+ const src=beautifySourceOf(turnId);if(src)rememberBeautifyTurn(id,src);
+ rememberFixedTurn(id);
+ const lead="FIX FROM REVIEW (the previous attempt fell short; fix exactly this, keep everything else): "+fixEn.slice(0,400)+"\n";
+ keepPrompt(id,(lead+base).slice(0,3500));
  return id;
 }
 /** Tests only: a quotable image-edit turn (no image-edit model is verified yet, so none can be planned as one). */
 export function keepEditTurnForTests(turnId:string,prompt:string,c:{content:string;aspect:string;staging:Staging}){keepPrompt(turnId,prompt,{...c,sourceImage:true});}
 function keepPrompt(turnId:string,prompt:string,content?:SceneContent){
- const m=store(),c=contents();m.set(turnId,prompt);if(content)c.set(turnId,content);
- while(m.size>MAX_PROMPTS){const k=m.keys().next().value as string;m.delete(k);c.delete(k);}
+ const m=store(),c=contents(),r=refStore();m.set(turnId,prompt);if(content)c.set(turnId,content);
+ while(m.size>MAX_PROMPTS){const k=m.keys().next().value as string;m.delete(k);c.delete(k);r.delete(k);}
 }
+/** A turn derived from another (an arranged scene) keeps the same research references. */
+function copyReferences(from:string,to:string){const r=refStore().get(from);if(r?.length)refStore().set(to,r);}
 // ---- attachments ----
 type Audio=NonNullable<ReturnType<typeof CreativeTurnInputSchema.parse>["audio"]>;
 /** One set of audio flags from the legacy `audio` field and from audio attachments; the first source that has speech decides language and accent. */
@@ -338,9 +491,10 @@ export function mediaRequirements(input:{characterRef?:{angles:readonly string[]
  const operation:MediaRequirements["operation"]=files.some(a=>a.kind==="audio"&&a.role==="lip_sync")?"lip_sync"
   :video("edit_reference")&&images.some(a=>a.role==="character"||a.role==="object")?"replace"
   :video("motion_reference")&&images.some(a=>a.role!=="graphic")?"motion_transfer":undefined;
- return {...(operation?{operation}:{}),referenceImages:refs||undefined,lipSync:lips||undefined,
+ return {...(operation?{operation}:{}),referenceImages:refs||undefined,
+  ...(input.characterRef?.angles.length||images.some(a=>a.role==="character")?{identityReference:true}:{}),...(input.characterRef?.angles.length?{savedCharacter:true}:{}),lipSync:lips||undefined,
   ...(video("motion_reference")?{motionReference:true}:{}),...(video("edit_reference")?{videoReference:true}:{}),
-  ...(files.some(a=>a.kind==="image"&&a.role==="start_frame")?{startImage:true}:{}),...(files.some(a=>a.kind==="image"&&a.role==="end_frame")?{endImage:true}:{}),...(video("continue")?{videoContinuation:true}:{})};
+  ...(files.some(a=>a.kind==="image"&&a.role==="start_frame")?{startImage:true}:{}),...(files.some(a=>a.kind==="image"&&a.role==="end_frame")?{endImage:true}:{}),...(video("continue")?{videoContinuation:true}:{}),...(video("extend_back")?{endImage:true}:{})};
 }
 // ---- orchestration ----
 export async function orchestrateCreativeTurn(rawInput:unknown,deps:OrchestratorDeps={}):Promise<OrchestratorResult>{
@@ -348,31 +502,174 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // Mappings typed in the brief («#زن:تصویر-۱»: this prop looks like that file) are kept aside; the planner reads them as «#زن (#تصویر-۱)», an ordinary mention.
  const typed=typedMappings(raw.text),parsed={...raw,text:expandMappings(raw.text)},audit=deps.audit??defaultAuditSink,now=deps.now??(()=>new Date());
  const stage=(x:TurnStage)=>{try{deps.onStage?.(x);}catch{ /* progress is best effort */ }};
+ // Role pipelines (owner, 2026-11-08, lib/role-briefs.ts): a file sent with the role chosen in «+» and no words of its own is planned from that role's
+ // ready brief, on the server (never written into the user's message); a role that needs words (an edit, a reference) asks its one question instead.
+ let roleAsk:string|undefined;
+ {
+  const words=splitMentions(parsed.text).flatMap(p=>"text" in p?[p.text]:[]).join("").replace(/[\s.,،!?؟:؛]+/g,"");
+  const roled=(parsed.attachments??[]).filter(a=>a.role&&isMediaKind(a.kind as never));
+  if(!words&&roled.length){
+   const fi=parsed.uiScript==="finglish";
+   const briefs=roled.flatMap(a=>{const b=roleBrief(a.kind as AttachmentKind,a.role!,fi?"@"+a.tag:displayTag(a.tag),fi?"fi":"fa");return b?[b]:[];});
+   const complete=briefs.filter(b=>b.complete);
+   if(complete.length)parsed.text=complete.map(b=>b.text).join(" ").slice(0,4000);
+   else roleAsk=briefs.find(b=>b.ask)?.ask;
+  }
+ }
+ // Detail lines are model or plan text: each passes the plan-text safety check and the leak filter, or is left out.
+ const note=(st:TurnStage,kind:TurnNote["kind"],lines:readonly (string|undefined|false)[])=>{
+  try{const ok=lines.filter((l):l is string=>typeof l==="string"&&l.trim().length>0).map(l=>l.replace(/\s+/g," ").trim().slice(0,140)).filter(l=>evaluatePlanTextSafety(l).decision==="allow"&&!leakText(l,raw.text));
+   if(ok.length)deps.onNote?.({stage:st,kind,lines:ok});}catch{ /* best effort */ }
+ };
  stage("reading");
- const safety=evaluateTextSafety(parsed.text);
- if(safety.decision!=="allow")return {status:"restricted",decision:safety.decision,category:safety.category,message:safety.message};
+ // A painted edit's note («ویرایش با قلم») is the user's words too: the same check, even when the message text does not repeat it.
+ const notes=(parsed.attachments??[]).flatMap(a=>a.regionEdit?a.regionEdit.regions.map(r=>r.note):[]);
+ const safety=[parsed.text,...notes].map(t=>evaluateTextSafety(t)).find(r=>r.decision!=="allow")??evaluateTextSafety(parsed.text);
+ if(safety.decision!=="allow")return {status:"restricted",decision:safety.decision,category:safety.category,message:safety.message,...(safety.choices?{choices:safety.choices}:{})};
  // A role is optional: media without one gets Whoush's best guess from the words of the brief (no media analysis), before skills resolve.
  // Inferred roles drive the same skills, constraints, kind override and requirements as chosen ones; `voice_clone` is never inferred.
- const given=parsed.attachments??[],roles=new Map(inferAttachmentRoles(parsed.text,given).map(r=>[r.tag,r]));
- const files0:Array<Omit<(typeof given)[number],"role">&{role?:AttachmentRole;roleSource?:RoleSource}>=given.map(f=>{const r=roles.get(f.tag);return r?{...f,role:r.role,roleSource:r.roleSource}:f;});
+ // Keeping the thread (lib/follow-up.ts): with no files of its own, a message that continues the latest work keeps the photos that work was built on.
+ const ownFiles=parsed.attachments??[],carryTags=!ownFiles.length&&parsed.continueWith?.length&&continuesWork(parsed.text,Boolean(parsed.generations?.length))?parsed.continueWith:[];
+ const carried=(parsed.priorAttachments??[]).filter(a=>carryTags.includes(a.tag));
+ const given=[...ownFiles,...carried],roles=new Map(inferAttachmentRoles(parsed.text,given).map(r=>[r.tag,r]));
+ // A painted photo is the photo to edit, whatever role it had.
+ const files0:Array<Omit<(typeof given)[number],"role">&{role?:AttachmentRole;roleSource?:RoleSource}>=given.map(f=>{if(f.regionEdit||f.beautify)return {...f,role:"edit_reference" as const,roleSource:"user" as RoleSource};const r=roles.get(f.tag);return r?{...f,role:r.role,roleSource:r.roleSource}:f;});
  // Something only a photo can keep (the user's tattoos, logo, product, face, outfit): its photos get the right role (a user's own choice stays), and without
  // any photo Whoush asks for exactly the ones it needs, once (an answer without photos goes ahead without them).
  const need=detectReferenceNeeds(normalizePersian(parsed.text))[0];
  // A general reference («عکس رفرنس») is resolved by the brief's words; for a detail like a tattoo it stays the general reference it already is.
  const fits=(f:{role?:AttachmentRole})=>Boolean(need)&&(f.role===need!.role||(need!.role==="reference"&&f.role==="general"));
- const needPhotos=need?files0.filter(f=>f.kind==="image"&&(fits(f)||!f.role||f.roleSource==="inferred")):[];
- // Asked only when the message brought no photo at all (a photo the user gave another role is theirs to decide).
- if(need&&!files0.some(f=>f.kind==="image")&&!parsed.answersQuestion){
-  const ask=replyScriptFor(parsed.text)==="finglish"?need.askFinglish:need.askFa;
-  return {status:"needs_input",turnId:randomUUID(),message:ask,question:need.askFa,references:{need:need.id,titleFa:need.titleFa,role:need.role,angles:need.angles.map(a=>({id:a.id,titleFa:a.titleFa}))}};
+ const finglish=replyScriptFor(parsed.text)==="finglish",askTurn=randomUUID();
+ if(roleAsk)return {status:"needs_input",turnId:askTurn,message:roleAsk,question:roleAsk};
+ // Which question this message answers: the last Whoush turn in the history carries the question's text.
+ const safeHistory=(parsed.history??[]).filter(t=>evaluateTextSafety(t.text).decision==="allow");
+ const lastAsked=[...safeHistory].reverse().find(t=>t.role==="agent")?.text??"";
+ const answered=(marker:string,fing:string)=>Boolean(parsed.answersQuestion)&&(lastAsked.includes(marker)||lastAsked.includes(fing));
+ // The edit card (owner, 2026-11-06): a local change with no place named («اینجاشو عوض کن», «با قلم مشخص کنم») gets the picture to mark, once.
+ if(!parsed.answersQuestion&&!files0.some(f=>f.regionEdit||f.beautify)&&wantsEditCard(parsed.text)){
+  // One card per picture to edit: the photos and generations the message names, else the photos it carries, else the one generation of this chat.
+  const mentioned=parseMentions(parsed.text),imgs=files0.filter(f=>f.kind==="image"),gens=(parsed.generations??[]).filter(g=>g.mediaKind==="image");
+  const named=[...imgs.filter(f=>mentioned.includes(f.tag)).map(f=>f.tag),...gens.filter(g=>mentioned.includes(g.tag)).map(g=>g.tag)];
+  const targets=named.length?named:imgs.length?imgs.map(f=>f.tag):gens.length===1?[gens[0].tag]:[];
+  if(targets.length)return {status:"needs_input",turnId:askTurn,message:finglish?EDIT_CARD_FINGLISH:targets.length>1?EDIT_CARDS_FA:EDIT_CARD_FA,question:targets.length>1?EDIT_CARDS_FA:EDIT_CARD_FA,editCards:targets.map(tag=>({tag}))};
  }
+ // Edit or reference (owner, 2026-11-06): a photo with a request that changes something in it is asked to the vision check. An edit gets its card with
+ // the areas already painted and commented, to confirm or change; a reference goes on to a new picture. A check that cannot run changes nothing here.
+ const checkedPhotos=files0.filter(f=>f.kind==="image"&&!f.regionEdit&&!f.beautify&&safeReview(f.reviewId));
+ if(devLiveTest().enabled&&files0.some(f=>f.kind==="image")){
+  // Why the edit widget was or was not considered (codes only, never the words or the photo).
+  const why=parsed.answersQuestion?"answers_question":files0.some(f=>f.regionEdit)?"already_marked":checkedPhotos.length!==1?"photos_checked_"+checkedPhotos.length:editCheckSkip(parsed.text);
+  console.info("[whoush dev-live] edit check",why??"asking");
+ }
+ if(!parsed.answersQuestion&&checkedPhotos.length===1&&!files0.some(f=>f.regionEdit||f.beautify)&&(mightEditPhoto(parsed.text)||wantsBeautify(parsed.text))){
+  const photo=checkedPhotos[0],stored=await readMedia(safeReview(photo.reviewId)!.mediaId).catch(()=>undefined);
+  const loc=stored?await (deps.locateEdit??locateEdit)(parsed.text,{bytes:new Uint8Array(stored.bytes),mime:stored.mime}).catch(()=>undefined):undefined;
+  const regions=loc?.mode==="edit"?loc.regions.filter(r=>r.noteFa.trim()&&r.box[2]>r.box[0]&&r.box[3]>r.box[1]):[];
+  // «Beautify it» (owner, 2026-11-08): offered as an option, only when the user is trying to look better in the photo (the vision step says so, or the
+  // words do and the photo is not just a reference). A person who looks under 18 gets light, colour and camera only.
+  // What the photo check saw (lib/upload-review.ts) decides the parts the card starts with and the note under each; either check judging the person
+  // under 18 limits it.
+  const found=safeReview(photo.reviewId)?.beautify,minor=Boolean(loc?.minor||found?.minor);
+  const beautify:BeautifyOffer|undefined=loc&&(loc.beautify||(wantsBeautify(parsed.text)&&loc.mode!=="reference"))?beautifyOffer(photo.tag,found?.issues??[],minor):undefined;
+  if(loc?.minor)rememberMinorPhoto(safeReview(photo.reviewId)!.mediaId);
+  if(devLiveTest().enabled)console.info("[whoush dev-live] edit check result",loc?loc.mode:"unavailable","regions",regions.length,"beautify",beautify?(beautify.minor?"minor":"yes"):"no");
+  const withBeautify=(m:string,mf:string)=>beautify?{message:(finglish?mf+" "+BEAUTIFY_OFFER_FINGLISH:m+" "+BEAUTIFY_OFFER_FA),beautify}:{message:finglish?mf:m};
+  if(regions.length&&regions.every(r=>evaluateTextSafety(r.noteFa).decision==="allow")){
+   const suggested:SuggestedEdit[]=regions.map(r=>({note:r.noteFa.trim().slice(0,300),boxes:[[r.box[0],r.box[1],r.box[2],r.box[3]]],...(r.part!=="none"?{part:r.part}:{}),...(r.grow?{grow:true as const}:{})}));
+   return {status:"needs_input",turnId:askTurn,...withBeautify(SUGGESTED_FA,SUGGESTED_FINGLISH),question:SUGGESTED_FA,editCards:[{tag:photo.tag,suggested}]};
+  }
+  // A request to look better with nothing specific to mark: the Beautify card alone.
+  if(beautify)return {status:"needs_input",turnId:askTurn,message:finglish?BEAUTIFY_OFFER_FINGLISH:BEAUTIFY_OFFER_FA,question:BEAUTIFY_OFFER_FA,beautify};
+  // An edit of the whole photo (a retouch, a colour grade) with no single place to mark (owner, 2026-11-08: an edit never goes without its widget):
+  // the card with the photo, «بساز» to go ahead as asked, «ادیت» to mark places first.
+  if(loc?.mode==="edit")return {status:"needs_input",turnId:askTurn,message:finglish?EDIT_WHOLE_FINGLISH:EDIT_WHOLE_FA,question:EDIT_WHOLE_FA,editCards:[{tag:photo.tag}]};
+ }
+ // Picking up a request that was set aside for its checks (owner, 2026-11-08: «تموم شد؟» was answered with an invented "still checking"): when Whoush's last
+ // turn set files aside, and the user now asks whether it is done while every file that request named has passed, Whoush says so and offers to make it, with
+ // one tap that sends the same request again (its #files come with it).
+ const resume=resumeAfterReview(parsed.text,ownFiles.length,safeHistory,parsed.priorAttachments??[]);
+ if(resume)return {status:"needs_input",turnId:askTurn,message:resume.message,question:RESUME_QUESTION_FA,choices:[{id:"resume1",labelFa:RESUME_LABEL_FA,replyFa:resume.request}]};
+ // Triage (owner, 2026-11-07, lib/turn-triage.ts): not every message needs a plan. A greeting or a question gets a direct answer; a request missing something
+ // that would change the result a lot (or that needs a link Whoush cannot open) gets one follow-up; the rest is planned, with effort to match the brief.
+ // An answer to Whoush's own question, an arranged scene and a brushed edit always go on to planning: they already say what to make.
+ let effort="standard" as TriageEffort;
+ const triager=deps.triage??(!deps.planner&&triageAvailable()?triageTurn:undefined);
+ // It runs in the background (owner, 2026-11-07: planning starts alongside it): a reply or a question wins over anything after it, so every later early
+ // return waits for it first (`early`), and the planner is cancelled when it answers.
+ const triageP:Promise<OrchestratorResult|undefined>=triager&&!parsed.answersQuestion&&!parsed.stagingOverride&&parsed.task!=="character"&&!files0.some(f=>f.regionEdit)?(async()=>{
+  // Each file in the chat with the real state of its check, so «تموم شد؟» is answered from facts, never guessed from the chat.
+  const seenTags=new Set<string>(),triageFiles=[...files0,...(parsed.priorAttachments??[])].filter(f=>isMediaKind(f.kind as never)&&!seenTags.has(f.tag)&&seenTags.add(f.tag)).map(f=>({tagFa:displayTag(f.tag),checked:!isUnchecked(f)}));
+  const t0=await triager({text:parsed.text,history:safeHistory,generations:parsed.generations?.length??0,script:finglish?"finglish":"fa",files:triageFiles}).catch(()=>null);
+  // A triage that declines is ignored (lib/turn-triage.ts triageDeclines): the turn is planned and the real checks decide.
+  const declined=t0&&t0.mode!=="make"&&triageDeclines(t0.mode==="reply"?t0.replyFa:t0.leadFa+" "+t0.questionFa);
+  if(declined&&devLiveTest().enabled)console.info("[whoush dev-live] triage declined; ignored, planning instead");
+  const t=declined?null:t0;
+  // Its texts are model output: the same plan-text safety check and leak filter as the planner's reply, else the turn goes on to planning.
+  const ok=(x:string)=>evaluatePlanTextSafety(x).decision==="allow"&&!leakText(x,parsed.text)&&!(finglish&&/[\u0600-\u06ff]/.test(x.replace(/[#@][^\s]+/g," ")));
+  if(t?.mode==="reply"&&ok(t.replyFa))return {status:"reply",turnId:askTurn,message:t.replyFa,...(t.react?{reaction:t.react}:{})} as OrchestratorResult;
+  if(t?.mode==="ask"&&ok(t.leadFa+" "+t.questionFa)&&t.choices.every(c=>ok(c.labelFa+" "+c.replyFa)))
+   return {status:"needs_input",turnId:askTurn,message:t.leadFa||t.questionFa,question:t.questionFa,...(t.choices.length?{choices:t.choices.map((c,i)=>({id:"triage"+(i+1),labelFa:c.labelFa,replyFa:c.replyFa}))}:{}),...(t.react?{reaction:t.react}:{})} as OrchestratorResult;
+  if(t?.mode==="make"){effort=t.effort;note("planning","story",t.storyFa);}
+  return undefined;
+ })():Promise.resolve(undefined);
+ const early=async(r:OrchestratorResult):Promise<OrchestratorResult>=>(await triageP)??r;
+ // Photo or video (owner, 2026-11-06): what this message says wins; then a file that only a video can use; then the generation it changes; then what the
+ // user said earlier in this chat. When nothing says, Whoush asks once, before any planning (an answer that still says nothing gets a photo).
+ const said=requestedMediaKind(parsed.text);
+ const earlier=[...safeHistory].reverse().filter(t=>t.role==="user").map(t=>requestedMediaKind(t.text)).find(Boolean);
+ const videoFile=files0.some(f=>f.kind==="video"||(f.kind==="audio"&&f.role==="lip_sync")||(f.kind==="image"&&(f.role==="start_frame"||f.role==="end_frame")));
+ // «Beautify it» is always a photo of the photo it was offered on.
+ const chosen=files0.some(f=>f.beautify)?"image":videoFile?"video":said??(parsed.generations?.length?parsed.generations[0].mediaKind:earlier);
+ // Asked only of a brief on its own: a message with files or #tags works with something already in the chat (and a missing #file gets its own question).
+ if(!chosen&&!parsed.answersQuestion&&parsed.task!=="character"&&!files0.length&&!parseMentions(parsed.text).length&&!parsed.stagingOverride){
+  return early({status:"needs_input",turnId:askTurn,message:pickLine(VOICE[finglish?"finglish":"fa"].needsInput,askTurn),question:finglish?MEDIA_KIND_QUESTION_FINGLISH:MEDIA_KIND_QUESTION_FA,choices:MEDIA_KIND_CHOICES.map(c=>({...c}))});
+ }
+ const kind:"image"|"video"=chosen==="both"||chosen==="video"?"video":"image",wantsBoth=chosen==="both";
+ // Photos for the thing to keep may already be in this chat (sent with an earlier message): Whoush uses them instead of asking again. Ones that were given
+ // for it (their role fits) are used as they are; other earlier photos are offered with one question («همون عکس‌ها؟»). A saved character covers a face.
+ const priorImages=(parsed.priorAttachments??[]).filter(p=>p.kind==="image"&&!(parsed.attachments??[]).some(f=>f.tag===p.tag));
+ const reuseAsked=answered(REUSE_MARKER_FA,REUSE_MARKER_FINGLISH),reuseYes=reuseAsked&&/(همونا|همون عکس|آره|اره|بله|اوکی|hamuna|hamoona|are|bale|yes|ok)/.test(normalizePersian(parsed.text).split(" ").slice(-12).join(" "));
+ let reused:typeof priorImages=[];
+ if(need&&!files0.some(f=>f.kind==="image")&&!(need.id==="face"&&parsed.characterRef)){
+  const fitting=priorImages.filter(fits);
+  if(fitting.length)reused=fitting;
+  else if(priorImages.length&&reuseYes)reused=priorImages;
+  else if(priorImages.length&&!parsed.answersQuestion){
+   const tags=priorImages.slice(0,6).map(f=>displayTag(f.tag)).join("، ");
+   return early({status:"needs_input",turnId:askTurn,message:finglish?need.askFinglish:need.askFa,
+    question:(finglish?REUSE_MARKER_FINGLISH+" ("+tags+") baraye "+need.titleFa+" estefade konam? Age na, aks-e taze befrest.":REUSE_MARKER_FA+" ("+tags+") رو برای "+need.titleFa+" استفاده کنم؟ اگه نه، عکس تازه بفرست."),
+    choices:[{id:"reuse",labelFa:finglish?"Are, hamuna":"آره، همونا",replyFa:finglish?"Are, hamuna ro estefade kon":"آره، همونا رو استفاده کن"}],
+    references:{need:need.id,titleFa:need.titleFa,role:need.role,angles:need.angles.map(a=>({id:a.id,titleFa:a.titleFa}))}});
+  }
+  // Asked only when the message brought no photo at all and none is in the chat (a photo the user gave another role is theirs to decide); an answer to
+  // the photo-or-video question still gets this one question.
+  else if(!priorImages.length&&(!parsed.answersQuestion||answered(MEDIA_KIND_QUESTION_FA,MEDIA_KIND_QUESTION_FINGLISH))){
+   return early({status:"needs_input",turnId:askTurn,message:finglish?need.askFinglish:need.askFa,question:need.askFa,references:{need:need.id,titleFa:need.titleFa,role:need.role,angles:need.angles.map(a=>({id:a.id,titleFa:a.titleFa}))}});
+  }
+ }
+ const withReused:typeof files0=[...files0,...reused.map(f=>({...f,...(f.role?{roleSource:"user" as RoleSource}:{})}))];
+ const needPhotos=need?withReused.filter(f=>f.kind==="image"&&(fits(f)||!f.role||f.roleSource==="inferred")):[];
  const needTags=new Set(needPhotos.map(f=>f.tag));
- const files=files0.map(f=>needTags.has(f.tag)&&need&&!fits(f)?{...f,role:need.role==="reference"?"general":need.role,roleSource:"inferred" as RoleSource}:f);
+ const files=withReused.map(f=>needTags.has(f.tag)&&need&&!fits(f)?{...f,role:need.role==="reference"?"general":need.role,roleSource:"inferred" as RoleSource}:f);
+ // Drift awareness (owner, 2026-11-08, lib/drift.ts): a request that needs something of the person their photos do not show (another angle of the
+ // face, the whole body, the teeth, open eyes) asks for that photo once, says why, and can be skipped («همین‌طوری بساز»: Whoush's best guess).
+ // Brush edits and Beautify keep to what is visible by themselves.
+ if(!answered(DRIFT_MARKER_FA,DRIFT_MARKER_FINGLISH)&&!files.some(f=>f.regionEdit||f.beautify)){
+  const people=files.filter(f=>f.kind==="image"&&safeReview(f.reviewId)?.coverage),coverages=people.map(f=>safeReview(f.reviewId)!.coverage!);
+  const saved=(parsed.characterRef?.angles??[]).map(a=>a.startsWith("three_quarter")?"three_quarter":a.startsWith("profile")?"profile":a);
+  const gap=missingNeeds(parsed.text,coverages,saved,people.length>0&&people.every(f=>f.role==="edit_reference"))[0];
+  if(gap){
+   const n=REFERENCE_NEEDS.find(x=>x.id===gap.id)!,ask=finglish?driftAskFinglish(gap):driftAskFa(gap);
+   if(devLiveTest().enabled)console.info("[whoush dev-live] drift check asks",gap.id+("angle" in gap?":"+gap.angle:""));
+   return early({status:"needs_input",turnId:askTurn,message:ask,question:ask,choices:[{...(finglish?DRIFT_SKIP_FINGLISH:DRIFT_SKIP)}],
+    references:{need:n.id,titleFa:n.titleFa,role:n.role,angles:driftAngles(gap)}});
+  }
+ }
  // Text attachments are user text: they get the same preflight before any planner sees them.
  for(const f of files){
   if(!f.textExcerpt)continue;
   const r=evaluateTextSafety(f.textExcerpt);
-  if(r.decision!=="allow")return {status:"restricted",decision:r.decision,category:r.category,message:FA_TEXT_BLOCKED+r.message};
+  if(r.decision!=="allow")return {status:"restricted",decision:r.decision,category:r.category,message:FA_TEXT_BLOCKED+r.message,...(r.choices?{choices:r.choices}:{})};
  }
  // Summaries of earlier generations come from the browser: user data like excerpts, with the same preflight.
  const generations=parsed.generations??[];
@@ -381,15 +678,22 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  const script=replyScriptFor(parsed.text);
  for(const g of generations){
   const r=evaluateTextSafety(g.summaryFa);
-  if(r.decision!=="allow")return {status:"restricted",decision:r.decision,category:r.category,message:FA_TEXT_BLOCKED+r.message};
+  if(r.decision!=="allow")return {status:"restricted",decision:r.decision,category:r.category,message:FA_TEXT_BLOCKED+r.message,...(r.choices?{choices:r.choices}:{})};
  }
  // Planners see attachments only through `req.attachments` (kinds and excerpts as data); the audio flags are merged into `input.audio`.
  // An edit_reference (image or video) makes the turn an edit, which brings photo_editor or video_editor.
  const task=parsed.task!=="character"&&files.some(f=>f.role==="edit_reference")?"edit":parsed.task;
- const input={...parsed,task,visualStyle:parsed.style?STYLE_VISUAL[parsed.style]:parsed.visualStyle,audio:deriveAudio({...parsed,attachments:files}),attachments:undefined,generations:undefined,history:undefined,stagingOverride:undefined,aspectOverride:undefined};
+ // «سوژه اصلی» (lib/main-subject.ts): marked with the star, or written in the brief. A file or generation is known now (the planner is told to compose around
+ // it); a scene prop only once the plan has its scene. Anything else is ignored: the choice is optional and never blocks the turn.
+ const mainWanted=parsed.mainSubject??typedMainSubject(parsed.text);
+ let mainTag=mainWanted&&[...files.map(f=>f.tag),...(parsed.generations??[]).map(g=>g.tag)].includes(mainWanted)?mainWanted:undefined;
+ // A brush edit's regions travel with the public plan, so the chat shows them (and a reopened chat still does).
+ const regionEdits=files0.filter(f=>f.regionEdit).map(f=>({tag:f.tag,regions:f.regionEdit!.regions.map(r=>({n:r.n,color:r.color,note:r.note}))}));
+ const withMain=(p:PublicCreativePlan):PublicCreativePlan=>({...p,...(mainTag?{mainSubject:mainTag}:{}),...(regionEdits.length?{regionEdits}:{})});
+ const input={...parsed,text:mainTag?(parsed.text+mainSubjectNote(mainTag)).slice(0,4000):parsed.text,task,visualStyle:parsed.style?STYLE_VISUAL[parsed.style]:parsed.visualStyle,audio:deriveAudio({...parsed,attachments:files}),attachments:undefined,priorAttachments:undefined,generations:undefined,history:undefined,stagingOverride:undefined,aspectOverride:undefined};
  // A video attachment (every media attachment carries a role), a lip_sync audio or a start_frame or end_frame image makes the output a video even when the text sounds like
  // an image request. Such a turn always has media, so it stops at the media-review check below and never reaches `buildProposal`, which re-detects from the text.
- const kind=files.some(f=>f.kind==="video"||(f.kind==="audio"&&f.role==="lip_sync")||(f.kind==="image"&&(f.role==="start_frame"||f.role==="end_frame")))?"video":generations.length&&detectMediaKind(input.text)!=="video"?generations[0].mediaKind:detectMediaKind(input.text),a=input.audio,ref=input.characterRef;
+ const a=input.audio,ref=input.characterRef;
  const refs:PublicReference[]=files.flatMap(f=>isMediaKind(f.kind)&&f.role?[{tag:f.tag,kind:f.kind,role:f.role,roleSource:f.roleSource??"user",labelFa:roleLabelFa(f.role,f.kind)}]:[]);
  const have=new Set([...files.map(f=>f.tag),...generations.map(g=>g.tag)]),mentionedMissing=parseMentions(input.text).filter(t=>!have.has(t)),byTag=tagMap(files),genTags=new Set(generations.map(g=>g.tag));
  const missing=mentionedMissing.filter(t=>!isGenerationTag(t)),missingGenerations=mentionedMissing.filter(isGenerationTag);
@@ -400,7 +704,9 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  let label:PrivateAuditRecord["planner"]=deps.planner&&deps.planner!==deterministicPlanner?"live":"deterministic",fallbackReason:string|undefined;
  let result:PlannerResult|undefined,fin:{e?:{plan:CreativePlan;corrections:string[]};reason?:string}={reason:"planner_error"};
  const finalize=(raw:unknown)=>{
-  const v=CreativePlanSchema.safeParse(raw);if(!v.success)return {reason:"invalid_output"};
+  const v=CreativePlanSchema.safeParse(raw);
+  // Owner dev testing only: which fields made a plan invalid (paths and error codes, never content), so a planner that fails can be fixed.
+  if(!v.success){if(devLiveTest().enabled)console.info("[whoush dev-live] planner output invalid at",v.error.issues.slice(0,6).map(i=>i.path.join(".")+":"+i.code).join(", "));return {reason:"invalid_output"};}
   const e=enforce(v.data,req);return leaks(toPublicPlan(e.plan),input.text)?{reason:"leak_filtered"}:{e};
  };
  // One attempt: call a planner, then validate, enforce invariants and leak-filter its output. `refused` is reported, never retried here.
@@ -416,8 +722,11 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   return {outcome:f.e?"ok":(f.reason as Outcome),result:r,fin:f};
  };
  const refusedResult=():OrchestratorResult=>({status:"restricted",decision:"review",category:"none",message:FA_REFUSED});
- stage("planning");
  let routing:RoutingAudit|undefined;
+ // Planning (the planner and its escalation ladder). It may run alongside the triage (owner, 2026-11-07: ~5 s saved per planned turn); a triage reply or
+ // question cancels it. It returns a result only when it ends the turn itself (a refusal).
+ const runPlanning=async(signal:AbortSignal):Promise<OrchestratorResult|undefined>=>{
+ stage("planning");
  if(deps.planner){
   const o=await attempt(deps.planner);
   if(o.outcome==="refused"){rec({planner:label,fallbackReason:"planner_refused"});return refusedResult();}
@@ -429,14 +738,16 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   else{
    // Task-based routing: profile the task, take the band's ladder (minus unavailable rungs), try rungs in order within the attempt budget.
    // A refusal is a safety signal: it ends the turn as restricted and never moves to another model, unless the owner lists `refused` in `escalateOn`.
-   const cfg=deps.routing??loadRoutingConfig(),state=deps.routerState??defaultRouterState(),prof=profileTask(input,kind,prep.activeSkillIds,req.attachments);
+   const cfg=deps.routing??loadRoutingConfig(),state=deps.routerState??defaultRouterState(),prof0=profileTask(input,kind,prep.activeSkillIds,req.attachments);
+   // The triage's effort moves the score: a light brief plans on the quick band, a deep one a band higher (owner, 2026-11-07: effort follows the input).
+   const prof=effort==="light"?{...prof0,score:Math.min(prof0.score,20),signals:[...prof0.signals,"triage:light"]}:effort==="deep"?{...prof0,score:Math.min(100,prof0.score+25),signals:[...prof0.signals,"triage:deep:+25"]}:prof0;
    const chars=req.systemInstructions.length+req.userText.length+(req.attachments??[]).reduce((n,x)=>n+(x.textExcerpt?.length??0),0)+(req.generations??[]).reduce((n,g)=>n+g.summaryFa.length,0)+(req.history??[]).reduce((n,t)=>n+t.text.length,0);
    const route=planRoute(prof,{cfg,now:now(),state,inputChars:chars});
    routing={...prof,band:route.band,ladder:route.ladder,skipped:route.skipped,attempts:[],chosenModelId:null};
    if(!route.ladder.length)fallbackReason=route.skipped.some(x=>x.why==="cooldown")?"provider cooldown":route.skipped.some(x=>x.why==="no_key")?"api key not configured":"no route available";
    let best:{o:Awaited<ReturnType<typeof attempt>>;modelId:string}|undefined,last:Outcome="planner_error",made=0;
    // `made` counts real calls against the attempt budget. A rung whose provider stays busy (all in-flight slots taken past maxQueueWaitMs) is skipped without a call.
-   for(let i=0;i<route.ladder.length&&made<cfg.escalation.maxAttemptsPerTurn;i++){
+   for(let i=0;i<route.ladder.length&&made<cfg.escalation.maxAttemptsPerTurn&&!signal.aborted;i++){
     const modelId=route.ladder[i],provider=providerForModelId(modelId)!;
     const release=await acquireProviderSlot(provider,cfg,state);
     if(!release){routing.skipped.push({modelId,why:"provider_busy"});continue;}
@@ -445,18 +756,23 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
     try{
      req.privateRoute={provider,modelId};
      if(modelId===cfg.astra.modelId)countAstraCall(now(),state);
-     const adapter=deps.plannerFor?.(modelId,provider)??(provider==="openai"?async(r:PlannerRequest)=>(await import("./llm-openai")).planWithOpenAI(r,modelId):async(r:PlannerRequest)=>(await import("./llm-anthropic")).planWithAnthropic(r,modelId));
+     const adapter=deps.plannerFor?.(modelId,provider)??(provider==="openai"?async(r:PlannerRequest)=>(await import("./llm-openai")).planWithOpenAI(r,modelId,signal):async(r:PlannerRequest)=>(await import("./llm-anthropic")).planWithAnthropic(r,modelId,signal));
      t0=Date.now();o=await attempt(adapter);
     }finally{release();}
+    if(signal.aborted)break; // cancelled: the triage answered instead (no cooldown, no escalation)
     const usage=o.result?.usage,u=usage as {input_tokens?:number;output_tokens?:number}|undefined;
     routing.attempts.push({modelId,provider,outcome:o.outcome,latencyMs:Date.now()-t0,...(usage?{usage}:{}),estCostUsd:u&&typeof u.input_tokens==="number"&&cfg.prices[modelId]?(u.input_tokens*cfg.prices[modelId][0]+(u.output_tokens??0)*cfg.prices[modelId][1])/1e6:null,...(o.limit?{limit:o.limit}:{}),...(o.retryAfterMs!==undefined?{retryAfterMs:o.retryAfterMs}:{})} as RoutingAttempt);
     last=o.outcome;
+    // Owner dev testing only: why a rung ended (outcome, corrections count, latency), never content, so a turn that escalates can be traced.
+    if(devLiveTest().enabled)console.info("[whoush dev-live] rung",modelId,o.outcome,"corrections",o.fin?.e?.corrections.join("|")||"-","ms",Date.now()-t0,"fallback",o.fin?.reason??"-");
     if(o.outcome==="planner_unavailable")markProviderCooldown(provider,now(),cfg,state,{limit:o.limit,retryAfterMs:o.retryAfterMs});
     if(o.outcome==="refused"&&!cfg.escalation.escalateOn.includes("refused")){rec({planner:"live",fallbackReason:"planner_refused",routing});return refusedResult();}
     const more=i+1<route.ladder.length&&made<cfg.escalation.maxAttemptsPerTurn;
     if(o.outcome==="ok"){
      best=o.fin?.e?{o,modelId}:best;
-     if(more&&(o.fin!.e!.corrections.length>=cfg.escalation.escalateOnCorrectionsAtLeast))continue;
+     // Only corrections that mean the planner misread the brief count (owner, 2026-11-07: no second paid plan for routine fill-ins): a missing camera, shot
+     // or continuity block and the style or role directives are filled here anyway, so they never send the turn to a second model.
+     if(more&&seriousCorrections(o.fin!.e!.corrections)>=cfg.escalation.escalateOnCorrectionsAtLeast)continue;
      break;
     }
     if(!(more&&(cfg.escalation.escalateOn as string[]).includes(o.outcome)))break;
@@ -465,6 +781,22 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
    else if(route.ladder.length){fallbackReason=!made?"provider busy":last==="refused"?"planner_refused":last;}
   }
  }
+ return undefined;
+ };
+ // Started at once only when the message already reads as a request to make something (it names a photo or video, brings files or #tags, or continues
+ // earlier work), so a greeting never pays for a cancelled plan. The routing then uses the brief's own score: a light or deep effort from the triage
+ // only moves the band when planning starts after it.
+ // A file that cannot be used (unchecked, blocked, forgotten after a restart, or audio, which has no check yet) is known before planning: the turn says so
+ // at once with Whoush's own plan (owner, 2026-11-08: no 40-second paid plan that ends in a refusal), and the paid planner never runs.
+ const mediaUnchecked=files.some(isUnchecked)&&!deps.planUncheckedMedia;
+ if(mediaUnchecked)fallbackReason="media_review_unavailable";
+ const cancel=new AbortController();
+ const likelyMake=Boolean(said||videoFile||files0.length||parsed.generations?.length||parseMentions(parsed.text).length);
+ const planP=likelyMake&&!mediaUnchecked?runPlanning(cancel.signal):undefined;
+ const triaged=await triageP;
+ if(triaged){cancel.abort();if(planP)await planP.catch(()=>undefined);return triaged;}
+ const ended=mediaUnchecked?undefined:await (planP??runPlanning(cancel.signal));
+ if(ended)return ended;
  if(!fin.e){
   if(!fallbackReason)fallbackReason=fin.reason;
   label="deterministic";fin=finalize(deterministicPlanner(req).plan);
@@ -496,6 +828,15 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   if(!plan.hardConstraints.includes(fa))plan.hardConstraints=[...plan.hardConstraints,fa];
   plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
  }
+ // The main subject leads: the first hard rule, and the provider prompt builds the frame around it.
+ const mainProp=!mainTag&&mainWanted&&plan.staging?.props?propTags(plan.staging.props).indexOf(mainWanted):-1;
+ if(mainProp!==undefined&&mainProp>=0&&plan.staging?.props)mainTag=mainWanted;
+ if(mainTag){
+  const r=mainSubjectRule(mainTag,plan.mediaKind),prop=mainProp!==undefined&&mainProp>=0?plan.staging!.props![mainProp]:undefined;
+  const en=prop?r.en.replace(" "+shownTag(mainTag)+"."," the "+prop.kind+" in the scene ("+prop.label+")."):r.en;
+  if(!plan.hardConstraints.includes(r.fa))plan.hardConstraints=[r.fa,...plan.hardConstraints];
+  plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;
+ }
  if(parsed.aspectOverride&&plan.camera&&plan.camera.aspectRatio!==parsed.aspectOverride){
   plan.camera={...plan.camera,aspectRatio:parsed.aspectOverride};
   if(plan.mediaKind!=="image"){const en=" Aspect ratio "+parsed.aspectOverride+".";plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-en.length))+en;}
@@ -514,7 +855,8 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  plan.mediaPrompt=rewriteMentions(plan.mediaPrompt,byTag,genTags).slice(0,3000);
  // An image prompt is compiled once from the final scene: the planner's text without its own camera and light words, then the canvas (lib/scene-compiler.ts).
  let content:SceneContent|undefined;
- if(plan.mediaKind==="image"&&plan.staging){
+ // A brush edit has no scene to compile: its prompt is only the edit and the locks (a camera or light description would invite a re-shoot).
+ if(plan.mediaKind==="image"&&plan.staging&&!files.some(f=>f.regionEdit)){
   const aspect=plan.camera?.aspectRatio??"16:9";
   // A hidden subject: the user's own arrangement is refused with the fix; a scene Whoush arranged moves its prop out of the way (the camera stays as asked).
   if(sceneVisibility(plan.staging,aspect).subject==="occluded"){
@@ -528,6 +870,9 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
   const operation="conflict" in op?"content_edit":op.operation;
   content={content:plan.mediaPrompt,aspect,staging:plan.staging,sourceImage};plan.mediaPrompt=compileImagePrompt({content:plan.mediaPrompt,staging:plan.staging,aspect,operation}).prompt;
  }
+ // What the plan decided, said as facts while the turn goes on: the goal, the lens and the frame.
+ const cam=plan.camera,lensFa=cam?.focalLengthMm?"لنز "+faPlain(cam.focalLengthMm)+" میلی‌متری"+(cam.aperture?"، دیافراگم "+cam.aperture:""):undefined;
+ note("planning","facts",[plan.intentSummaryFa,[lensFa,cam?.aspectRatio?"کادر "+cam.aspectRatio:undefined].filter(Boolean).join("، ")]);
  stage("checking");
  // plan inspection: LLM output never bypasses the safety layer
  for(const t of [plan.mediaPrompt,...plan.hardConstraints]){
@@ -563,28 +908,229 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // Voice cloning is never offered: Whoush only makes images and videos, and generating or imitating a voice is out of scope.
  if(files.some(f=>f.role==="voice_clone")){
   rec({planner:label,fallbackReason:"voice_clone_unsupported",corrections:corrections.length?corrections:undefined});
-  return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs,undefined,input.style),message:FA_VOICE_CLONE};
+  return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,undefined,input.style)),message:FA_VOICE_CLONE,reason:"voice_clone"};
  }
- // TODO(docs/MODERATION_POLICY.md step 4, "Reference inspection"): plug a real multimodal inspector in here. Until one exists, any image, video or
- // audio attachment fails closed: the plan is returned, but no proposal or price, so uninspected media can never reach provider handoff (step 6).
- if(files.some(f=>isMediaKind(f.kind))){
+ // docs/MODERATION_POLICY.md step 4, "Reference inspection": every photo was checked right after upload (POST /api/media/review, lib/upload-review.ts). Only
+ // the server's own record counts, by the review id the photo carries; a photo it does not know as safe (unchecked, blocked, forgotten after a restart) and
+ // every video or audio file (no inspector yet) fail closed: the plan is returned with no proposal or price, so unchecked media never reaches a provider.
+ const unchecked=files.filter(isUnchecked);
+ if(unchecked.length){
   rec({planner:label,fallbackReason:"media_review_unavailable",corrections:corrections.length?corrections:undefined});
-  const suggestedModel=suggestModel(requirements,kind);
-  return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs,suggestedModel,input.style),message:FA_MEDIA_REVIEW+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{})};
+  const suggestedModel=suggestModel(requirements,kind),photos=unchecked.filter(f=>f.kind==="image").map(f=>f.tag);
+  return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,suggestedModel,input.style)),message:faMediaReview(unchecked.map(f=>displayTag(f.tag)),unchecked.map(f=>f.kind))+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{}),reason:"media_review",
+   ...(photos.length===unchecked.length?{unreviewed:photos}:{})};
  }
+ // The checked photos go to the model as reference images, in tag order; the prompt names each by its tag («[reference image 1 · character]»), and the
+ // order note says which attached image is which.
+ // A painted photo («ویرایش با قلم») is followed by its marked copy: the same photo with the area to change in translucent red, a guide only.
+ // One picture is sent once (owner, 2026-11-06: no duplicates): two #s with the same checked bytes are one reference, and the order note names both.
+ const sortedPhotos=files.filter(f=>f.kind==="image").sort((a,b)=>tagOrder(a.tag)-tagOrder(b.tag));
+ const shaOf=(f:(typeof sortedPhotos)[number])=>safeReview(f.reviewId)?.sha256??f.tag;
+ const photos=sortedPhotos.filter((f,i)=>f.regionEdit||sortedPhotos.findIndex(g=>!g.regionEdit&&shaOf(g)===shaOf(f))===i);
+ const alsoNamed=(f:(typeof sortedPhotos)[number])=>sortedPhotos.filter(g=>g!==f&&!photos.includes(g)&&shaOf(g)===shaOf(f)).map(g=>describeTagEn(g));
+ const asRef=(id:string|undefined,f:(typeof photos)[number],guide=false):TurnReference=>{const r=safeReview(id)!;const t=displayTag(f.tag)+(guide?" (ناحیه)":"");
+  return {id:r.mediaId,url:MEDIA_ROUTE+r.mediaId,subjectFa:t,title:t,license:"user",creator:"",sourceUrl:"",source:"upload" as const,mime:r.mime};};
+ const uploads:TurnReference[]=photos.flatMap(f=>f.regionEdit?[asRef(f.reviewId,f),asRef(f.regionEdit.guideReviewId,f,true)]:[asRef(f.reviewId,f)]);
+ const painted=photos.filter(f=>f.regionEdit);
+ let editCrop:import("./region-restore").Crop|undefined;
+ // An edit keeps the photo's own shape (owner, 2026-11-08: a retouch came back stretched): the planner's «source» or any other ratio becomes the photo's,
+ // as the nearest standard ratio, so the model is asked for that shape (a ratio it lacks then snaps to its nearest one as usual).
+ const editPhoto=painted[0]??photos.find(f=>f.role==="edit_reference");
+ if(editPhoto?.width&&editPhoto.height&&plan.camera){
+  const own=nearestAspectRatio(editPhoto.width+":"+editPhoto.height,POPULAR_ASPECT_RATIOS)??nearestByValue(editPhoto.width/editPhoto.height);
+  if(own)plan.camera={...plan.camera,aspectRatio:own};
+ }
+ if(painted.length){
+  // Change only the painted area, as the note says; everything else is locked. The rule leads the plan, the sentence leads the edit in the prompt.
+  for(const f of painted){
+   const tagFa=displayTag(f.tag),list=f.regionEdit!.regions.map(r=>"#ادیت-"+faPlain(r.n)+" ("+REGION_COLOR_FA[r.color]+"): «"+r.note+"»").join("؛ ");
+   plan.hardConstraints=["فقط ناحیه‌های رنگ‌شدهٔ "+tagFa+" تغییر می‌کنند — "+list+" — و بقیهٔ عکس دقیقاً همان می‌ماند: چهره، بافت پوست (منافذ و جزئیات، بدون صاف‌شدن)، بدن، ژست، کادر، نور، تنظیمات رنگ (وایت‌بالانس، نوردهی، کنتراست، اشباع و گریدینگ) و پس‌زمینه",...plan.hardConstraints.filter(c=>!c.startsWith("فقط ناحیه‌های رنگ‌شدهٔ "+tagFa))];
+  }
+  // Semantic region referencing (owner, 2026-11-08): each region is named by what it is when the editor knows («Region 01 (red, the lips)»), marks WHAT to
+  // edit (the whole element, naturally), and the map is a locator only. Task, regions, preserve, quality, output, in that order. The selection lock
+  // (lib/region-restore.ts) then keeps every pixel outside the regions exactly as it was.
+  const lead=painted.map(f=>{
+   const regions=f.regionEdit!.regions.map(r=>"Region "+String(r.n).padStart(2,"0")+" ("+r.color+(r.target?", the "+r.target:"")+(r.grow?", with room to grow":"")+"): "+r.note).join("\n"),
+    grows=f.regionEdit!.regions.some(r=>r.grow);
+   return ["TASK: LOCALIZED PHOTO EDIT (inpainting) of "+describeTagEn(f)+".",
+    "SELECTION: its region map is a separate black image where each region is a flat coloured shape at the same place as in the photo. A region identifies WHAT to edit: recognise the element it covers and edit that whole element naturally (its real shape, material, edges, contact shadows and light), staying within the region."+(grows?" A region \"with room to grow\" also covers space around the element for its new size or shape: the element may fill as much of it as the instruction needs and ends naturally inside it (its tips and edges within the region, never cut off by the region's edge), and any part it does not fill keeps the photo's own surroundings (skin, hair, background, clothes) continuing naturally.":"")+" The map is a locator only: never draw its colours, shapes or black, and never tint the photo with them.",
+    "CHANGE: carry out each region's instruction fully, as a clearly visible change at the strength it asks for (subtle only when it asks for subtle).",
+    "REGIONS:\n"+regions,
+    "PRESERVE: do not regenerate the photo; everything outside the regions is copied from the source unchanged, same framing and size. "+GENERIC_EDIT_RULE_EN+".",
+    "QUALITY: inside each region keep the person's own skin tone and colours except what its instruction changes, and match the surrounding texture, grain, sharpness and light so the change looks photographed, with no seams or pasted-on edges.",
+    "OUTPUT: the same photo with the requested edits naturally integrated, nothing else changed."].join("\n");
+  }).join("\n\n");
+  // The provider prompt is the edit and the locks only (owner, 2026-11-06: change only that part, nothing else): no planner scene, camera, light or
+  // style lines, which would read as a re-shoot of the whole photo.
+  plan.mediaPrompt=lead.slice(0,3000);content=undefined;
+ }
+ // «Beautify it» (owner, 2026-11-08, lib/beautify.ts): the photo becomes an editorial portrait of the same person. The brief is fixed and structured (identity
+ // locked, each chosen part a professional instruction, every other part kept), like a brush edit's; the planner's scene and camera lines are not used.
+ const beautified=painted.length?undefined:photos.find(f=>f.beautify);
+ if(beautified&&kind==="image"){
+  const rv=safeReview(beautified.reviewId)!,minor=minorPhotos.has(rv.mediaId)||Boolean(rv.beautify?.minor),parts=beautified.beautify!.parts.filter(p=>!minor||BEAUTIFY_PARTS_MINOR.includes(p));
+  plan.hardConstraints=["«"+BEAUTIFY_NAME+"» روی "+displayTag(beautified.tag)+": همان شخص، کاملاً قابل‌شناسایی (چهره، فرم صورت و بدن، رنگ پوست و چشم، خال‌ها و سن)؛ فقط "+parts.map(p=>BEAUTIFY_PART_FA[p]).join("، ")+" بهتر می‌شود",...plan.hardConstraints.filter(c=>!c.startsWith("«"+BEAUTIFY_NAME+"»"))];
+  // What the photo check saw in this photo goes with each part (the server's own record: the browser sends only the parts).
+  plan.mediaPrompt=beautifyPrompt(describeTagEn(beautified),parts,rv.beautify?.issues??[],minor).slice(0,3000);content=undefined;
+ }
+ // Crop and stitch (owner, 2026-11-08): one painted photo with an exact selection that is small enough gets close-ups of the photo and its region map,
+ // at a standard ratio, so the model spends its resolution on the selection; the result goes back in its place before the lock (lib/region-restore.ts).
+ if(devLiveTest().enabled&&painted.length)console.info("[whoush dev-live] edit close-up check: painted",painted.length,"mask",Boolean(painted[0].regionEdit!.mask),"kind",kind);
+ if(painted.length===1&&painted[0].regionEdit!.mask&&kind==="image"){
+  const f=painted[0],srcId=safeReview(f.reviewId)!.mediaId,guideId=safeReview(f.regionEdit!.guideReviewId)!.mediaId;
+  const c=await cropForEdit(srcId,guideId,Buffer.from(f.regionEdit!.mask!,"base64"),POPULAR_ASPECT_RATIOS);
+  const i=uploads.findIndex(u=>u.id===srcId);
+  if(c&&i>=0&&uploads[i+1]?.id===guideId){
+   uploads[i]={...uploads[i],id:c.photo.id,url:c.photo.url,mime:"image/jpeg"};uploads[i+1]={...uploads[i+1],id:c.map.id,url:c.map.url,mime:"image/jpeg"};
+   if(plan.camera)plan.camera={...plan.camera,aspectRatio:c.ratio};
+   plan.mediaPrompt=plan.mediaPrompt.replace("TASK: LOCALIZED PHOTO EDIT (inpainting) of "+describeTagEn(f)+".","TASK: LOCALIZED PHOTO EDIT (inpainting) of a close-up crop of "+describeTagEn(f)+": edit the close-up as it is, same framing.");
+   editCrop=c.crop;
+   if(devLiveTest().enabled)console.info("[whoush dev-live] edit close-up",c.crop.w+"x"+c.crop.h,"ratio",c.ratio);
+  }
+ }
+ if(uploads.length){
+  const order=" Attached reference images, in this order: "+photos.flatMap(f=>{const also=alsoNamed(f),names=describeTagEn(f)+(also.length?" (also named "+also.join(", ")+")":"");return f.regionEdit?[names,"its region map: black, with each area to change as a flat coloured shape (a guide only, never drawn)"]:[names];}).map((d,i)=>(i+1)+" = "+d).join("; ")+".";
+  plan.mediaPrompt=plan.mediaPrompt.slice(0,Math.max(0,3000-order.length))+order;
+  if(content)content={...content,content:(content.content.slice(0,Math.max(0,3000-order.length))+order)};
+ }
+ // A video model takes no photos (Seedance refuses real faces): the photos serve the video's opening-frame draft, which an image model makes from them.
+ const modelReq:MediaRequirements=kind==="video"&&uploads.length?{...requirements,referenceImages:undefined,identityReference:undefined}:{...requirements,...(uploads.length?{referenceImages:Math.max(requirements.referenceImages??0,uploads.length)}:{})};
+ // Research (docs/RESEARCH_PIPELINE.md): what has a real identity or needs research gets open-licensed references, each inspected by a vision model before
+ // use. The research text is planner output, so it passes the same plan-text safety check first. A failure leaves a note, never a broken turn.
+ let research:ResearchResult|undefined;
+ // Only when the user gave no reference of their own (owner, 2026-11-06): an attached image or a saved character means their references lead, not the web.
+ const userGaveReferences=Boolean(ref)||files.some(f=>f.kind==="image");
+ if(plan.research?.subjects.length&&!userGaveReferences){
+  for(const t of plan.research.subjects.flatMap(x=>[x.labelFa,...x.factsFa,...x.queries])){
+   const r=evaluatePlanTextSafety(t);
+   if(r.decision!=="allow"){rec({planner:label,fallbackReason:"plan_restricted",corrections,usage:result?.usage});return {status:"restricted",decision:r.decision,category:r.category,message:r.message};}
+  }
+  stage("researching");
+  note("researching","facts",plan.research.subjects.slice(0,3).map(x=>"دنبال مرجع برای «"+x.labelFa+"»"));
+  research=await (deps.research??(rp=>researchReferences(rp,{inspect:inspectReferences})))(plan.research)
+   .catch(()=>({subjects:plan.research!.subjects.map(x=>({labelFa:x.labelFa,factsFa:[...x.factsFa],found:0,kept:0})),references:[],notesFa:["جست‌وجوی مرجع این بار انجام نشد؛ جزئیات تحقیق فقط در نوشتن صحنه به کار رفت."]}));
+ }
+ const refCount=research?.references.length??0;
+ if(research)note("researching","facts",[refCount?faPlain(refCount)+" مرجع بررسی‌شده نگه داشتم":"مرجع مناسبی پیدا نشد؛ از دانسته‌ها می‌سازم"]);
  stage("pricing");
  let proposal:GenerationProposal;
- try{proposal=buildProposal(input.text,input.preference,requirements);}
+ // With references, an image is offered on models that take them as images; when none fits, the usual models are offered and the references only shaped the plan.
+ let usedAsImages=false;
+ try{
+  if(refCount&&kind==="image"){
+   try{proposal=buildProposal(input.text,input.preference,{...modelReq,referenceImages:Math.max(requirements.referenceImages??0,refCount)},kind);usedAsImages=true;}
+   catch(e){if(!(e instanceof NoCompatibleModelError))throw e;proposal=buildProposal(input.text,input.preference,modelReq,kind);}
+  }else proposal=buildProposal(input.text,input.preference,modelReq,kind);
+ }
  catch(e){
   if(!(e instanceof NoCompatibleModelError))throw e;
   rec({planner:label,fallbackReason:"no_compatible_model",corrections:corrections.length?corrections:undefined});
-  const suggestedModel=suggestModel(requirements,kind),base=ref?FA_NO_REFS:lipsMsg;
-  return {status:"unsupported",turnId,plan:toPublicPlan(plan,refs,suggestedModel,input.style),message:base+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{})};
+  const suggestedModel=suggestModel(modelReq,kind),needFa=(["videoContinuation","endImage","startImage","motionReference","videoReference"] as const).find(k=>modelReq[k]),
+   base=ref?FA_NO_REFS:needFa&&!modelReq.lipSync?FA_NO_MODEL_FOR[needFa]!:uploads.length&&!modelReq.lipSync?FA_NO_PHOTO_MODEL:lipsMsg;
+  return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,suggestedModel,input.style)),message:base+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{}),reason:"no_model"};
+ }
+ if(beautified&&kind==="image")proposal=preferDetail(proposal);
+ // Length from the source video (owner, 2026-11-08: an edit or a replacement in a video lasts as long as that video): the recommended model's version
+ // that covers it, at the same resolution. A video to continue is not a source of length.
+ const source=kind==="video"?files.find(f=>f.kind==="video"&&f.role!=="continue"&&f.role!=="extend_back"&&f.durationSeconds):undefined;
+ let lengthNote="";
+ if(source?.durationSeconds){const m=matchSourceLength(proposal,source.durationSeconds);proposal=m.proposal;if(m.seconds){
+  const src=Math.round(source.durationSeconds),same=Math.abs(m.seconds-source.durationSeconds)<=0.5,tag=displayTag(source.tag);
+  lengthNote=script==="finglish"?(same?"\nTule video ba "+tag+" yekieh: "+m.seconds+" sanieh.":"\n"+tag+" "+src+" sanieh ast; noskheh "+m.seconds+" saniehi ro gozashtam ke kamel ja besheh.")
+   :(same?"\nمدت ویدیو با "+tag+" یکیه: "+faPlain(m.seconds)+" ثانیه.":"\n"+tag+" "+faPlain(src)+" ثانیه‌ست؛ نسخهٔ "+faPlain(m.seconds)+" ثانیه‌ای رو گذاشتم که کامل جا بشه.");}}
+ {const m=findMediaModel(proposal.selectedModelId);if(m)note("pricing","facts",["مدل پیشنهادی: "+m.name]);}
+ // Pre-generation risk check: the cheapest model stress-tests the plan for the chosen model before any generation is paid for. Fixes go into the prompt (and
+ // into the scene text, so a canvas change keeps them); each risk shown passes the same safety and leak checks as the planner's own text.
+ const chosenModel=findMediaModel(proposal.selectedModelId),reviewer=deps.reviewPlan??(reviewAvailable()?reviewPlan:undefined);
+ let review:{severity:"high"|"medium"|"low";issueFa:string;fixEn:string}[]|null=null;
+ // The pre-generation review would add scene-level fixes; a brush edit has no scene, so it is skipped there.
+ // A light brief (triage) skips it: one subject, nothing to stress-test that is worth the wait.
+ if(chosenModel&&reviewer&&!painted.length&&!beautified&&effort!=="light"){
+  stage("reviewing");
+  review=await reviewer({brief:input.text,kind,mediaPrompt:plan.mediaPrompt,hardConstraints:plan.hardConstraints,
+   researchFactsFa:research?.subjects.flatMap(x=>x.factsFa)??[],aspect:content?.aspect??plan.camera?.aspectRatio,
+   model:{name:chosenModel.name,kind:chosenModel.kind,resolution:chosenModel.resolution,durationSeconds:chosenModel.durationSeconds,takesReferences:usedAsImages,referenceCount:usedAsImages?refCount:0}}).catch(()=>null);
+  if(review)review=review.filter(x=>evaluatePlanTextSafety(x.issueFa).decision==="allow"&&evaluatePlanTextSafety(x.fixEn).decision==="allow"&&!leakText(x.issueFa,input.text)&&!leakText(x.fixEn,input.text));
+  if(review)note("reviewing","facts",review.length?review.slice(0,3).map(x=>x.issueFa):["ریسک جدی‌ای پیدا نشد"]);
+  if(review?.length){plan.mediaPrompt=promptWithFixes(plan.mediaPrompt,review);if(content)content={...content,content:promptWithFixes(content.content,review)};}
  }
  keepPrompt(turnId,plan.mediaPrompt,content);
+ if(uploads.length&&kind==="image")refStore().set(turnId,uploads);
+ // A brush edit: after generation, everything outside the edited areas is restored from the source photo exactly (lib/region-restore.ts).
+ const firstPainted=painted[0];
+ // «زیباسازی»: its result is checked against the goal when it is done (lib/beauty-check.ts: share-ready, beautiful, still them).
+ if(beautified&&kind==="image")rememberBeautifyTurn(turnId,safeReview(beautified.reviewId)!.mediaId);
+ if(firstPainted&&kind==="image")rememberRegionEdit(turnId,{sourceId:safeReview(firstPainted.reviewId)!.mediaId,guideId:safeReview(firstPainted.regionEdit!.guideReviewId)!.mediaId,
+  ...(firstPainted.regionEdit!.mask?{mask:Buffer.from(firstPainted.regionEdit!.mask,"base64")}:{}),...(editCrop?{crop:editCrop}:{})});
+ if(research){
+  if(usedAsImages&&refCount)refStore().set(turnId,research.references);
+  const notes=[...research.notesFa,...(refCount&&!usedAsImages?[kind==="video"?"برای ویدیو، مرجع‌ها فعلاً در نوشتن صحنه به کار رفتن، نه به‌عنوان تصویر.":"مدل‌های پیشنهادی مرجع تصویری نمی‌گیرن؛ مرجع‌ها در نوشتن صحنه به کار رفتن."]:[])];
+  const report:ProposalResearch={subjects:research.subjects.map(x=>({labelFa:x.labelFa,factsFa:x.factsFa,kept:x.kept})),
+   references:research.references.map(({mime:_m,...r})=>r),notesFa:notes,usedAsImages:usedAsImages&&refCount>0};
+  proposal={...proposal,research:report};
+ }
+ if(review)proposal={...proposal,review:{risks:review.map(x=>({severity:x.severity,issueFa:x.issueFa}))}};
+ // Video drafts first (owner, 2026-11-08): a short, silent 480p video on the cheapest model that can run, from the same prompt, to test the motion and the
+ // scene before the real price. Where none can run, a still of the opening frame on the cheapest image model (taking the references when it can).
+ // Both are quoted against their own private turn.
+ // With a source video (an edit or a replacement in the user's own clip), the draft is the frame preview instead (owner, 2026-11-08): the clip's frames
+ // (first, middle, last, one every 3 s), each edited by the cheap image model with the user's photos. A preview of the edit: the card says the video
+ // models read only the prompt. Anything that fails leaves the usual draft.
+ const frameModel=findMediaModel(DRAFT_IMAGE_MODEL),sourceVideo=kind==="video"?files.find(f=>f.kind==="video"&&f.role!=="continue"&&f.role!=="extend_back"&&f.durationSeconds&&safeReview(f.reviewId)?.kind==="video"):undefined;
+ if(sourceVideo&&frameModel&&!frameModel.pricePending&&frameModel.neurons){
+  try{
+   const fd=deps.frames??{},mediaId=safeReview(sourceVideo.reviewId)!.mediaId;
+   const video=await (fd.read??(async(id:string)=>(await readMedia(id))?.bytes))(mediaId);
+   if(!video)throw new Error("source_missing");
+   const shots=await (fd.sample??sourceFrames)(video,frameTimes(sourceVideo.durationSeconds!));
+   const cap=frameModel.capabilities.referenceImages.supported?frameModel.capabilities.referenceImages.max??1:1,photosFor=uploads.slice(0,Math.max(0,cap-1));
+   const frames=await Promise.all(shots.map(async(s,i)=>{
+    const stored=await (fd.store??(b=>storeMedia(b,"image/jpeg")))(s.bytes),label=displayTag(sourceVideo.tag)+" · فریم "+faPlain(i+1);
+    const turn=randomUUID();
+    keepPrompt(turn,framePrompt(plan.mediaPrompt,i+1,photosFor.length,s.atSeconds));
+    refStore().set(turn,[...photosFor,{id:stored.id,url:MEDIA_ROUTE+stored.id,subjectFa:label,title:label,license:"user",creator:"",sourceUrl:"",source:"upload" as const,mime:"image/jpeg"}]);
+    return {turnId:turn,atSeconds:s.atSeconds};
+   }));
+   // Each frame keeps the source video's shape: its ratio, or the nearest the image model offers.
+   const ratio=(w:number,h:number)=>{const g=(a:number,b:number):number=>b?g(b,a%b):a,k=g(w,h);return w/k<100&&h/k<100?w/k+":"+h/k:w>=h?"16:9":"9:16";};
+   const shape=sourceVideo.width&&sourceVideo.height?nearestAspectRatio(ratio(sourceVideo.width,sourceVideo.height),frameModel.capabilities.aspectRatios):undefined;
+   if(frames.length)proposal={...proposal,draft:{turnId:frames[0].turnId,modelId:frameModel.id,modelName:frameModel.name,neurons:frames.length*frameModel.neurons,kind:"frames",frames,...(shape?{aspectRatio:shape}:{})}};
+  }catch(e){if(devLiveTest().enabled)console.info("[whoush dev-live] frame preview skipped:",e instanceof Error?e.message:"error");}
+ }
+ const videoDraft=kind==="video"&&!proposal.draft?draftVideoModel(plan.camera?.aspectRatio):undefined;
+ if(proposal.draft){/* the frame preview */}
+ else if(videoDraft&&videoDraft.id!==proposal.selectedModelId&&videoDraft.neurons<proposal.fixedNeurons){
+  const draftTurn=randomUUID();
+  keepPrompt(draftTurn,plan.mediaPrompt);
+  proposal={...proposal,draft:{turnId:draftTurn,modelId:videoDraft.id,modelName:videoDraft.name,neurons:videoDraft.neurons,kind:"video"}};
+ }else if(kind==="video"){
+  const draftModel=findMediaModel(DRAFT_IMAGE_MODEL);
+  if(draftModel&&!draftModel.pricePending&&draftModel.neurons){
+   const draftTurn=randomUUID();
+   keepPrompt(draftTurn,(DRAFT_PREFIX+plan.mediaPrompt).slice(0,3000-DRAFT_SUFFIX.length)+DRAFT_SUFFIX);
+   // The research references (inspected) go with the draft: the image model takes them even when the video model cannot.
+   const refs=[...uploads,...(research?.references??[])];if(refs.length)refStore().set(draftTurn,refs);
+   proposal={...proposal,draft:{turnId:draftTurn,modelId:draftModel.id,modelName:draftModel.name,neurons:draftModel.neurons}};
+   // The references now serve the draft: the report says so, and the user can still remove any before drafting.
+   if(refs.length&&proposal.research)proposal={...proposal,research:{...proposal.research,usedAsImages:true,
+    notesFa:[...proposal.research.notesFa.filter(n=>!n.startsWith("برای ویدیو")),"مرجع‌ها توی پیش‌نویس (عکس فریم اول) به کار می‌رن؛ خود ویدیو فعلاً از همین پرامپت بررسی‌شده ساخته می‌شه."]}};
+  }
+ }
  rec({planner:label,fallbackReason,corrections:corrections.length?corrections:undefined,usage:label==="live"?result?.usage:undefined});
  // The proposal speaks in Whoush's voice; a rejected explicit model request keeps its factual note after the reply.
- proposal={...proposal,message:replyText("planned")+(proposal.explicitRejected?"\n"+proposal.message:"")};
+ // «هر دو»: the video's opening-frame draft is the photo, then the video from it.
+ const photoNote=uploads.length&&kind==="video"&&proposal.draft&&!proposal.draft.kind?(script==="finglish"?"\nAksato tu pishnevis (frame aval) estefadeh mikonam; khode video felan az ruye prompt sakhteh misheh.":"\nعکس‌هات توی پیش‌نویس (فریم اول) به کار می‌رن؛ خود ویدیو فعلاً از روی پرامپت ساخته می‌شه."):"";
+ const bothNote=wantsBoth&&proposal.draft&&!proposal.draft.kind?(script==="finglish"?"\nHar do ro misazam: aval aks (frame aval), baad video.":"\nهر دو رو می‌سازم: اول عکس (فریم اول)، بعد ویدیو از روی همون."):"";
+ // Sound (owner, 2026-11-08): a video model with checked sound gets the card's toggle, and Whoush asks (or confirms what the brief said). Without the
+ // check here no model is offered sound: the toggle is hidden and the video stays silent.
+ let soundNote="";
+ if(kind==="video"){
+  const ready=proposal.suggestions.some(s=>s.audio)&&await (deps.audioCheckAvailable??audioCheckAvailable)();
+  if(!ready)proposal={...proposal,suggestions:proposal.suggestions.map(({audio:_a,...s})=>s)};
+  else{const w=soundWanted(parsed.text);proposal={...proposal,...(w!==undefined?{soundWanted:w}:{})};
+   if(proposal.suggestions.find(s=>s.modelId===proposal.selectedModelId)?.audio)soundNote="\n"+soundLineFa(w,script);}
+ }
+ proposal={...proposal,message:replyText("planned")+lengthNote+soundNote+bothNote+photoNote+(proposal.explicitRejected?"\n"+proposal.message:"")};
  const gif=gifMood?await (deps.findGif??findGif)(gifMood).catch(()=>undefined):undefined;
- return {status:"planned",turnId,proposal,plan:toPublicPlan(plan,refs,undefined,input.style),...(gif?{gif}:{}),...(reaction?{reaction}:{})};
+ return {status:"planned",turnId,proposal,plan:withMain(toPublicPlan(plan,refs,undefined,input.style)),...(gif?{gif}:{}),...(reaction?{reaction}:{})};
 }

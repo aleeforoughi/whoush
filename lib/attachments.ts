@@ -2,7 +2,7 @@
 import {faPlain} from "./format";
 import {normalizePersian} from "./safety";
 export type AttachmentKind="image"|"video"|"audio"|"pdf"|"json"|"md";
-export type AttachmentRole="reference"|"frame"|"character"|"start_frame"|"end_frame"|"environment"|"object"|"outfit"|"hairstyle"|"makeup"|"graphic"|"edit_reference"|"motion_reference"|"continue"|"lip_sync"|"music"|"voice_clone"|"general";
+export type AttachmentRole="reference"|"frame"|"character"|"start_frame"|"end_frame"|"environment"|"object"|"outfit"|"hairstyle"|"makeup"|"graphic"|"edit_reference"|"motion_reference"|"continue"|"extend_back"|"lip_sync"|"music"|"voice_clone"|"general";
 export type AttachmentSpeech={hasSpeech:boolean;language:"fa"|"other"|"unknown";accent:"tehrani"|"original"|"unspecified"};
 const MB=1024*1024;
 export const ATTACHMENT_KINDS={
@@ -32,26 +32,26 @@ type RoleDef={id:AttachmentRole;labelFa:string;hintFa:string;en:string};
  */
 export const ATTACHMENT_ROLES={
  image:[
-  {id:"reference",labelFa:"عکس رفرنس",hintFa:"ظاهر، سبک یا محتوا؛ هووش از متنت می‌فهمه",en:"image reference"},
-  {id:"character",labelFa:"کاراکتر",hintFa:"چهره و هویت ثابت می‌مونه",en:"character"},
-  {id:"hairstyle",labelFa:"پیرایش",hintFa:"مدل مو و فرم ریش",en:"hairstyle and beard reference"},
-  {id:"outfit",labelFa:"پوشاک",hintFa:"لباس، کفش و استایل پوشش روی سوژه",en:"outfit reference"},
-  {id:"environment",labelFa:"محیط",hintFa:"فضا، پس‌زمینه و نور",en:"environment"},
-  {id:"object",labelFa:"اشیا",hintFa:"شیء، محصول یا اکسسوری دقیق می‌مونه",en:"object"},
-  {id:"graphic",labelFa:"گرافیک",hintFa:"لوگو، متن یا طرح بدون تغییر",en:"graphic"},
-  {id:"frame",labelFa:"فریم",hintFa:"فریم اول یا آخر ویدیو؛ از متنت مشخص می‌شه",en:"video frame"}
+  {id:"reference",labelFa:"عکس رفرنس",hintFa:"عکسی که کار ازش الهام بگیره؛ توی پیامت بگو چیش مهمه",en:"image reference"},
+  {id:"character",labelFa:"شخص",hintFa:"عکس یه آدم؛ چهره‌ش توی کار دقیقاً همین می‌مونه",en:"character"},
+  {id:"hairstyle",labelFa:"پیرایش و آرایش",hintFa:"عکس مدل مو، ریش یا آرایشی که می‌خوای روی سوژه بیاد",en:"hairstyle, beard and makeup reference"},
+  {id:"outfit",labelFa:"پوشاک",hintFa:"عکس لباس یا کفشی که می‌خوای سوژه بپوشه",en:"outfit reference"},
+  {id:"environment",labelFa:"محیط",hintFa:"عکس جایی که می‌خوای صحنه اونجا باشه",en:"environment"},
+  {id:"object",labelFa:"اشیا و محصول",hintFa:"عکس محصول یا وسیله‌ای که باید دقیقاً همین‌طور دیده بشه",en:"object"},
+  {id:"graphic",labelFa:"گرافیک",hintFa:"لوگو یا طرحی که باید بدون تغییر روی کار بیاد",en:"graphic"},
+  {id:"frame",labelFa:"فریم",hintFa:"عکسی که ویدیو باهاش شروع یا تموم می‌شه",en:"video frame"}
  ],
  video:[
-  {id:"reference",labelFa:"فیلم رفرنس",hintFa:"ادیت، امتداد یا حال‌وهوای همین ویدیو؛ از متنت مشخص می‌شه",en:"video reference"},
-  {id:"motion_reference",labelFa:"الگوی حرکت",hintFa:"حرکت و ریتم این ویدیو با ظاهر جدید",en:"motion reference"}
+  {id:"reference",labelFa:"ویدیو رفرنس",hintFa:"ویدیویی که کار ازش الهام بگیره؛ توی پیامت بگو چیش مهمه",en:"video reference"},
+  {id:"motion_reference",labelFa:"الگوی حرکت",hintFa:"ویدیویی که حرکت‌هاش روی سوژه‌ی تو پیاده می‌شه",en:"motion reference"}
  ],
  audio:[
-  {id:"lip_sync",labelFa:"الگوی گفتار",hintFa:"لب‌ها با این صدا هم‌زمان می‌شن",en:"lip sync"},
-  {id:"music",labelFa:"موزیک",hintFa:"ریتم کات‌ها با موزیک",en:"music reference"}
+  {id:"lip_sync",labelFa:"الگوی گفتار",hintFa:"صدای حرف زدن؛ لب‌های سوژه با همین صدا تکون می‌خوره",en:"lip sync"},
+  {id:"music",labelFa:"موزیک",hintFa:"آهنگی که ویدیو با ریتمش کات می‌خوره",en:"music reference"}
  ]
 } as const satisfies Record<"image"|"video"|"audio",readonly RoleDef[]>;
 /** The «فایل» group of the + menu: documents carry no role. */
-export const FILE_MENU_FA={labelFa:"فایل",hintFa:"PDF، JSON یا Markdown برای زمینه"} as const;
+export const FILE_MENU_FA={labelFa:"فایل",hintFa:"متن یا سند (PDF، JSON یا Markdown) برای توضیح بیشتر"} as const;
 /** Roles the wire accepts but the UI never offers. `voice_clone` needs `consent: true` and always ends in an `unsupported` result (`voice_clone_unsupported`). */
 const WIRE_ONLY_ROLES={audio:[{id:"voice_clone",labelFa:"کلون صدا",hintFa:"",en:"voice reference"}]} as const satisfies Partial<Record<"image"|"video"|"audio",readonly RoleDef[]>>;
 /**
@@ -62,15 +62,17 @@ const RESOLVED_ROLES={
  image:[
   {id:"start_frame",labelFa:"فریم اول",hintFa:"همین عکس متحرک می‌شه",en:"start frame"},
   {id:"end_frame",labelFa:"فریم آخر",hintFa:"ویدیو به همین عکس ختم می‌شه",en:"end frame"},
-  {id:"edit_reference",labelFa:"ادیت عکس",hintFa:"فقط همون بخشی که می‌گی عوض می‌شه",en:"edit reference"},
+  {id:"edit_reference",labelFa:"ادیت عکس",hintFa:"همین عکس رو بفرست؛ فقط چیزی که می‌گی عوض می‌شه",en:"edit reference"},
   {id:"makeup",labelFa:"آرایش",hintFa:"آرایش صورت با همین رنگ‌ها",en:"makeup reference"}
  ],
  video:[
-  {id:"edit_reference",labelFa:"ادیت ویدیو",hintFa:"همین ویدیو با تغییری که می‌خوای",en:"edit reference"},
-  {id:"continue",labelFa:"امتداد ویدیو",hintFa:"از آخر همین ویدیو امتداد پیدا می‌کنه",en:"video to continue"}
+  {id:"edit_reference",labelFa:"ادیت ویدیو",hintFa:"همین ویدیو رو بفرست؛ فقط چیزی که می‌گی عوض می‌شه",en:"edit reference"},
+  // Forward and backward (owner, 2026-11-08): continue after the last frame, or a new clip that ends on the first frame.
+  {id:"continue",labelFa:"امتداد ویدیو به جلو",hintFa:"ویدیو از آخرین فریمش ادامه پیدا می‌کنه",en:"video to continue"},
+  {id:"extend_back",labelFa:"امتداد ویدیو از عقب",hintFa:"یه تکه‌ی تازه قبل از شروع همین ویدیو ساخته می‌شه",en:"video to extend backward"}
  ]
 } as const satisfies Partial<Record<"image"|"video"|"audio",readonly RoleDef[]>>;
-export const ATTACHMENT_ROLE_IDS=["reference","frame","character","start_frame","end_frame","environment","object","outfit","hairstyle","makeup","graphic","edit_reference","motion_reference","continue","lip_sync","music","voice_clone"] as const satisfies readonly AttachmentRole[];
+export const ATTACHMENT_ROLE_IDS=["reference","frame","character","start_frame","end_frame","environment","object","outfit","hairstyle","makeup","graphic","edit_reference","motion_reference","continue","extend_back","lip_sync","music","voice_clone"] as const satisfies readonly AttachmentRole[];
 /** The roles a kind may carry and the UI offers (never `general`, never `voice_clone`); empty for files. */
 export const rolesFor=(kind:AttachmentKind):readonly RoleDef[]=>isMediaKind(kind)?ATTACHMENT_ROLES[kind as "image"|"video"|"audio"]:[];
 const wireRolesFor=(kind:AttachmentKind):readonly RoleDef[]=>kind==="audio"?[...ATTACHMENT_ROLES.audio,...WIRE_ONLY_ROLES.audio]:kind==="image"||kind==="video"?[...rolesFor(kind),...RESOLVED_ROLES[kind]]:[];
@@ -130,13 +132,30 @@ export function nextGenerationTag(used:Iterable<string>):string|undefined{
 }
 const WORD_FA:Record<MentionPrefix,string>={...TAG_WORD_FA,generation:GENERATION_WORD_FA};
 /** Every spelling accepted in a mention, as normalized by `normalizeMention`: Persian words (ویدئو too) and the legacy English prefixes. */
-const MENTION_WORDS:Record<string,MentionPrefix>={"تصویر":"image","ویدیو":"video","ویدئو":"video","صدا":"audio","فایل":"file","تولید":"generation",image:"image",video:"video",audio:"audio",file:"file",generation:"generation"};
+const MENTION_WORDS:Record<string,MentionPrefix>={"تصویر":"image","ویدیو":"video","ویدئو":"video","صدا":"audio","فایل":"file","تولید":"generation",image:"image",video:"video",audio:"audio",file:"file",generation:"generation",
+ // Finglish (owner, 2026-11-08: «#tasvir-1»): typed and shown in the Finglish interface.
+ tasvir:"image",seda:"audio",tolid:"generation"};
+/** The Finglish word of each tag kind: `image1` is «#tasvir-1». */
+export const TAG_WORD_FI:Record<MentionPrefix,string>={image:"tasvir",video:"video",audio:"seda",file:"file",generation:"tolid"};
+/**
+ * The script tags are shown in: Persian (default) or Finglish (lib/ui-lang.ts). Set once in the browser by the language provider; the server always
+ * writes Persian tags (Whoush's replies are in the user's own script, and the Finglish page converts tags as it shows them).
+ */
+let tagScript:"fa"|"fi"="fa";
+export const setTagScript=(s:"fa"|"fi")=>{tagScript=s;};
 const faNumber=(n:number|string)=>String(n).replace(/\d/g,d=>String.fromCharCode(0x06f0+Number(d)));
 /** The user-facing form of an internal tag: the Persian word, an ASCII hyphen and Persian digits. `image1` is `#تصویر-۱`, `file12` is `#فایل-۱۲`. */
-export function displayTag(tag:string):string{
+export function displayTag(tag:string):string{return displayTagIn(tag,tagScript);}
+/** A tag in a given script (Persian «#تصویر-۱» or Finglish «#tasvir-1»). */
+export function displayTagIn(tag:string,script:"fa"|"fi"):string{
  if(isPropTag(tag))return tag;
  const m=/^(image|video|audio|file|generation)(\d+)$/.exec(tag);
- return m?"#"+WORD_FA[m[1] as MentionPrefix]+"-"+faNumber(m[2]):"#"+tag;
+ if(!m)return "#"+tag;
+ return script==="fi"?"#"+TAG_WORD_FI[m[1] as MentionPrefix]+"-"+m[2]:"#"+WORD_FA[m[1] as MentionPrefix]+"-"+faNumber(m[2]);
+}
+/** Persian tags in a text in their Finglish form («#تصویر-۱» is «#tasvir-1»), for the Finglish page. */
+export function finglishTags(text:string):string{
+ return text.replace(mentionRe(),(raw,word:string,num:string)=>{const p=MENTION_WORDS[normalizeMention(word)],n=normalizeMention(num);return p&&/^[1-9]\d?$/.test(n)?raw[0]+TAG_WORD_FI[p]+"-"+n:raw;});
 }
 /** Case and script tolerant form of a typed token: Arabic ي/ى become ی, ك becomes ک, Arabic-Indic and Persian digits become ASCII, the dashes U+2010, U+2011, U+2013 and U+2212 become `-`, ZWNJ and tatweel vanish. */
 const normalizeMention=(s:string)=>s.replace(/[\u200c\u0640]/g,"").replace(/[\u064a\u0649]/g,"\u06cc").replace(/\u0643/g,"\u06a9").replace(/[\u2010\u2011\u2013\u2212]/g,"-")
@@ -203,6 +222,7 @@ export function describeTagEn(a:{tag:string;kind:AttachmentKind;role?:Attachment
  if(a.kind==="image"&&a.role==="start_frame")return "[start frame image "+n+"]";
  if(a.kind==="image"&&a.role==="end_frame")return "[end frame image "+n+"]";
  if(a.kind==="video"&&a.role==="continue")return "[video to continue "+n+"]";
+ if(a.kind==="video"&&a.role==="extend_back")return "[video to extend backward "+n+"]";
  if(a.kind==="image"&&(a.role==="outfit"||a.role==="hairstyle"||a.role==="makeup"))return "["+en+" image "+n+"]";
  if(a.kind==="image")return "[reference image "+n+(en?" · "+en:"")+"]";
  if(a.kind==="video")return "["+(en??"reference")+" video "+n+"]";
@@ -264,7 +284,9 @@ const wordsRe=(l:readonly string[])=>new RegExp("(?<![\\p{L}\\p{N}])(?:"+l.map(w
 /** First match wins, in this order. Keywords are matched as whole words on the normalized text. */
 const INFER_RULES={
  image:[
-  ["edit_reference",wordsRe(["ویرایش","ادیت","حذف کن","پاک کن","جایگزین","عوض کن","تغییر بده","رتوش","edit","remove","replace","retouch"])],
+  // Retouch, makeup and beautify requests on a photo edit that photo in place (owner, 2026-11-06: influencers' everyday edits).
+  ["edit_reference",wordsRe(["ویرایش","ادیت","حذف کن","پاک کن","جایگزین","عوض کن","تغییر بده","رتوش","روتوش","روتوشش","روتوش کن","زیباتر کن","زیباترش کن","خوشگل تر کن","خوشگلترش کن","خوشگلم کن",
+   "آرایش کن","آرایشش کن","آرایشم کن","میکاپ کن","میکاپش کن","لاغرتر کن","لاغرترم کن","صاف کن","صافش کن","پولیش کن","edit","remove","replace","retouch","touch up","beautify","polish","slim"])],
   ["end_frame",wordsRe(["فریم آخر","آخر ویدیو","تهش","پایان ویدیو","ختم بشه به","ختم بشه","ختم شود","ختم شه","تموم بشه","برسه","برسد","تمام بشه","end frame","last frame","ending"])],
   ["start_frame",wordsRe(["شروع کن","شروع کن از","شروع از","شروع بشه","start from","starts from","متحرکش کن","زنده‌اش کن","جون بده","انیمیت","متحرک کن","تبدیل به ویدیو","animate","bring to life","make it move"])],
   ["outfit",wordsRe(["لباس","مانتو","کت","شلوار","پیراهن","دامن","کفش","پوشش","ست لباس","استایل لباس","outfit","dress","clothes","wardrobe"])],
@@ -309,14 +331,16 @@ function mentionContext(text:string,tag:string):string|undefined{
  * A role the user chose is kept (`roleSource: "user"`). Otherwise the context is the clause around the attachment's mention (any accepted spelling),
  * or the whole text when it is not mentioned, and the first matching keyword group decides; no match is `general`. `voice_clone` is never inferred.
  */
-export function inferAttachmentRoles(text:string,attachments:readonly {tag:string;kind:AttachmentKind;role?:AttachmentRole}[]):InferredRole[]{
+export function inferAttachmentRoles(text:string,attachments:readonly {tag:string;kind:AttachmentKind;role?:AttachmentRole;roleAuto?:true}[]):InferredRole[]{
  const whole=normalizePersian(withoutMentions(text));
  const wordsFor=(tag:string)=>{const ctx=mentionContext(text,tag);return {words:ctx===undefined?whole:normalizePersian(ctx),mentioned:ctx!==undefined};};
  const frames=attachments.filter(a=>a.kind==="image"&&a.role==="frame");
  const framed=resolveFrames(frames.map(f=>({tag:f.tag,...wordsFor(f.tag)})),frames.length);
  return attachments.flatMap((a):InferredRole[]=>{
   if(!isMediaKind(a.kind))return [];
-  if(a.role==="frame"&&a.kind==="image")return [{tag:a.tag,role:framed.get(a.tag)??"start_frame",roleSource:"user"}];
+  // A role the photo check detected (`roleAuto`): the words of the brief decide when they name a role; otherwise the detected one.
+ if(a.role&&a.roleAuto){const {words}=wordsFor(a.tag),hit=INFER_RULES[a.kind as "image"|"video"|"audio"]?.find(([,re])=>re.test(words));return [{tag:a.tag,role:hit?hit[0]:a.role,roleSource:"inferred"}];}
+ if(a.role==="frame"&&a.kind==="image")return [{tag:a.tag,role:framed.get(a.tag)??"start_frame",roleSource:"user"}];
   if(a.role==="reference")return [{tag:a.tag,role:resolveReference(a.kind,wordsFor(a.tag).words),roleSource:"user"}];
   if(a.role)return [{tag:a.tag,role:a.role,roleSource:"user"}];
   const {words}=wordsFor(a.tag);
@@ -460,25 +484,38 @@ export function validateAttachmentSet(list:readonly {bytes:number}[]):{ok:true}|
 /** What the browser knows about one attached file. `name`, `previewUrl` and the File itself never leave the browser. A media `role` is optional: without one the server infers it. */
 export type LocalAttachment={
  id:string;tag:string;kind:AttachmentKind;mime:string;bytes:number;sha256:string;name:string;role?:AttachmentRole;
+ /** The role came from the photo check, not the user (owner, 2026-11-08: «رفرنس اتوماتیک» shows the role it detected): the message's words still win. */roleAuto?:true;
  width?:number;height?:number;durationSeconds?:number;textExcerpt?:string;speech?:AttachmentSpeech;previewUrl?:string;
+ /** «ویرایش با قلم» (lib/region-edit.ts): each painted region (number, colour, what to change) and the marked copy (its blob kept by the studio under `guideId`). Memory only. */
+ /** «Beautify it» with these parts (lib/beautify.ts). */beautify?:{parts:import("./beautify").BeautifyPart[]};
+ regionEdit?:{regions:{n:number;color:RegionColorName;note:string;target?:import("./region-targets").RegionTarget;grow?:true}[];guideId:string;guideUrl:string;/** The exact selection, a base64 PNG (white = selected). */mask?:string};
+ /** The generation this photo is a copy of (opened for «ادیت»): one copy per generation, and the # list shows the generation once. */
+ fromGeneration?:string;
 };
 /** Goes back to "Whoush picks automatically": no role, and no speech details that belonged to one. */
 export function withoutRole(a:LocalAttachment):LocalAttachment{
  const next={...a};
- delete next.role;delete next.speech;
+ delete next.role;delete next.speech;delete next.roleAuto;
  return next;
 }
 /** Sets the role and drops what belongs to another role: speech details ride only with `lip_sync`. A role the UI does not offer for the kind is ignored. */
 export function withRole(a:LocalAttachment,role:AttachmentRole):LocalAttachment{
- if(!rolesFor(a.kind).some(r=>r.id===role))return a;
+ // Any role the kind may carry, not only the menu's (owner, 2026-11-08: «ادیت عکس» chosen in the + menu showed «اتوماتیک» once sent, because it is a
+ // resolved role outside the role menu's list); the voice clone, which needs consent, never this way.
+ if(!roleAllowed(a.kind,role)||role==="voice_clone")return a;
  const next:LocalAttachment={...a,role};
- delete next.speech;
+ delete next.speech;delete next.roleAuto;
  if(role==="lip_sync")next.speech=a.role==="lip_sync"&&a.speech?a.speech:{hasSpeech:true,language:"unknown",accent:"unspecified"};
  return next;
 }
 /** The request payload: metadata and text excerpts only. No bytes, no file name, no object URL. Speech details travel only with the `lip_sync` role. */
-export function toWireAttachment(a:LocalAttachment){
- return {id:a.id,tag:a.tag,kind:a.kind,mime:a.mime,bytes:a.bytes,sha256:a.sha256,...(a.role?{role:a.role}:{}),
+/** The attachment as the agent receives it (details only, never the bytes); `reviewId`: the server's safety check of a photo, when it was found safe. */
+/** The five region colours of «ویرایش با قلم», by the English name the prompt uses (lib/region-edit.ts draws them). */
+export const REGION_COLOR_NAMES=["red","blue","green","yellow","magenta"] as const;
+export type RegionColorName=(typeof REGION_COLOR_NAMES)[number];
+export const REGION_COLOR_FA:Record<RegionColorName,string>={red:"قرمز",blue:"آبی",green:"سبز",yellow:"زرد",magenta:"بنفش"};
+export function toWireAttachment(a:LocalAttachment,reviewId?:string,guideReviewId?:string){
+ return {...(reviewId&&(a.kind==="image"||a.kind==="video")?{reviewId}:{}),...(a.regionEdit&&guideReviewId&&a.kind==="image"?{regionEdit:{guideReviewId,regions:a.regionEdit.regions.map(r=>({n:r.n,color:r.color,note:r.note,...(r.target?{target:r.target}:{}),...(r.grow?{grow:true as const}:{})})),...(a.regionEdit.mask?{mask:a.regionEdit.mask}:{})}}:{}),...(a.beautify&&a.kind==="image"&&!a.regionEdit?{beautify:{parts:[...a.beautify.parts]}}:{}),id:a.id,tag:a.tag,kind:a.kind,mime:a.mime,bytes:a.bytes,sha256:a.sha256,...(a.role?{role:a.role,...(a.roleAuto?{roleAuto:true as const}:{})}:{}),
   ...(a.width!==undefined?{width:a.width}:{}),...(a.height!==undefined?{height:a.height}:{}),
   ...(a.durationSeconds!==undefined?{durationSeconds:a.durationSeconds}:{}),
   ...(a.textExcerpt!==undefined?{textExcerpt:a.textExcerpt}:{}),...(a.speech&&a.role==="lip_sync"?{speech:a.speech}:{})};

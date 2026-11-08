@@ -64,7 +64,7 @@ Slugs cited below are relative to `S = https://ai.byteplus.com/ark/region:ap-sou
   - 5.0 Pro and Flash: `1K`, `1.5K`, `2K`, or `WxH` within [921,600, 4,624,220] pixels; default `2K`
   - 5.0 Lite and 4.5: `2K` and up
 - `response_format`: `url` or `b64_json`
-- `watermark`: **default true**, a visible "AI-generated" mark in the lower right
+- `watermark`: **default true**, a visible "AI-generated" mark in the lower right. Whoush sends `false` (owner's decision, 2026-11-08; docs/PROVIDERS.md).
 - `output_format`: `png` or `jpeg` (5.0 models)
 - `optimize_prompt_options.mode`: `standard` or `fast`
 - `sequential_image_generation` (5.0 Lite, 4.5 and 4.0 only)

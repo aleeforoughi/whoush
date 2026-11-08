@@ -1,10 +1,10 @@
 "use client";
 import {useId,useMemo,useRef,useState,type KeyboardEvent} from "react";
-import {Brush,Clapperboard,FastForward,FileText,Film,Flag,Frame,Images,Mountain,Move,Music,Package,PencilLine,Play,Plus,Scissors,Search,Shapes,Shirt,Sparkles,UserRound,Users,AudioLines,type LucideIcon} from "lucide-react";
+import {Brush,Clapperboard,FastForward,FileText,Film,Flag,Frame,Images,Mountain,Move,Music,Package,PencilLine,Play,Plus,Scissors,Search,Shapes,Shirt,Sparkles,UserRound,Users,AudioLines,type LucideIcon,Rewind} from "lucide-react";
 import {Button,Icon,Input,Popover,PopoverContent,PopoverTrigger,ScrollArea} from "@aleeforoughi/feather-react";
 import {filterInsertMenu,visibleInsertMenu,type InsertIconKey,type InsertItem} from "@/lib/insert-menu";
 
-export const INSERT_ICONS:Record<InsertIconKey,LucideIcon>={auto:Sparkles,reference_image:Images,reference_video:Film,frame:Frame,character:UserRound,characters:Users,start_frame:Play,end_frame:Flag,environment:Mountain,object:Package,outfit:Shirt,hairstyle:Scissors,makeup:Brush,graphic:Shapes,edit_image:PencilLine,motion:Move,edit_video:Clapperboard,continue:FastForward,speech:AudioLines,music:Music,document:FileText};
+export const INSERT_ICONS:Record<InsertIconKey,LucideIcon>={auto:Sparkles,reference_image:Images,reference_video:Film,frame:Frame,character:UserRound,characters:Users,start_frame:Play,end_frame:Flag,environment:Mountain,object:Package,outfit:Shirt,hairstyle:Scissors,makeup:Brush,graphic:Shapes,edit_image:PencilLine,motion:Move,edit_video:Clapperboard,continue:FastForward,continue_back:Rewind,speech:AudioLines,music:Music,document:FileText};
 export const SEARCH_PLACEHOLDER_FA="جستجو…";
 export const NO_RESULTS_FA="گزینه‌ای پیدا نشد";
 
@@ -12,7 +12,7 @@ export const NO_RESULTS_FA="گزینه‌ای پیدا نشد";
  * The «+» insert menu: a popover anchored to the button, opening upwards, with a search field on top that filters as you type (`filterInsertMenu`: title, hint or
  * group label, Persian letter variants folded) and the entries grouped by kind below (`visibleInsertMenu`: «پرکاربردترین» is hidden for now, the automatic upload
  * entry sits alone at the top). Built as an ARIA combobox: focus stays in the search field, ArrowUp/ArrowDown move the active option (announced through
- * aria-activedescendant), Enter picks it, Escape closes and returns focus to «+». Each upload entry adds an upload card inside the chat input; «کاراکترهای من» opens
+ * aria-activedescendant), Enter picks it, Escape closes and returns focus to «+». Each upload entry adds an upload card inside the chat input; «کاراکتر» (saved characters) opens
  * the saved-character dialog. After a pick, focus is left to that card or dialog instead of returning to «+».
  */
 export function InsertMenu({disabled,onPick}:{disabled?:boolean;onPick:(item:InsertItem)=>void}){
@@ -42,7 +42,7 @@ export function InsertMenu({disabled,onPick}:{disabled?:boolean;onPick:(item:Ins
    </div>
    <ScrollArea className="[&>[data-slot=scroll-area-viewport]]:max-h-[min(55dvh,var(--available-height))]">
     <div id={listId} role="listbox" aria-label="گزینه‌ها" className="p-1">
-     {sections.map(s=>{
+     {sections.map((s,si)=>{
       const head=uid+"-g-"+s.id;
       const opts=s.items.map(i=>{n++;const idx=n,on=idx===current;
        return <div key={i.id} id={optionId(idx)} role="option" aria-selected={on} onClick={()=>choose(i)} onMouseMove={()=>{if(active!==idx)setActive(idx);}}
@@ -53,12 +53,16 @@ export function InsertMenu({disabled,onPick}:{disabled?:boolean;onPick:(item:Ins
          <span className="type-caption text-fg-secondary">{i.hintFa}</span>
         </span>
        </div>;});
-      return s.labelFa
+      // Groups are set apart by a line (owner, 2026-11-08); a heading only when the section asks for one («پرکاربردترین» mode).
+      return s.heading&&s.labelFa
        ?<div key={s.id} role="group" aria-labelledby={head} className="pt-1">
         <div id={head} className="px-3 pb-1 pt-2 type-caption text-fg-secondary">{s.labelFa}</div>
         {opts}
        </div>
-       :<div key={s.id} role="group" aria-label={s.items[0]?.titleFa}>{opts}</div>;
+       :<div key={s.id} role="group" aria-label={s.labelFa??s.items[0]?.titleFa}>
+        {si>0&&<div role="separator" aria-hidden="true" className="mx-3 my-1 h-px bg-line-tertiary"/>}
+        {opts}
+       </div>;
      })}
     </div>
     {!flat.length&&<p role="status" className="px-4 py-6 text-center type-caption text-fg-secondary">{NO_RESULTS_FA}</p>}

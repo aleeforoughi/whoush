@@ -48,6 +48,13 @@
    later in the cascade. Feather has no token for a licensed custom font yet (aleeforoughi/feather#1). */
 :root:root,
 :root:root.dark {
-  --brand-font-body: "IRANSans", "Inter Variable", Tahoma, sans-serif;
-  --brand-font-display: "IRANSans", "Inter Variable", Tahoma, sans-serif;
+  /* Persian interface: IRANSans first, so digits and every word stay IRANSans (owner, 2026-11-08: "numbers need to be IRANSans, consistent"). */
+  --brand-font-body: "IRANSans", var(--font-figtree), "Inter Variable", Tahoma, sans-serif;
+  --brand-font-display: "IRANSans", var(--font-figtree), "Inter Variable", Tahoma, sans-serif;
+}
+
+/* Finglish interface (lib/ui-lang.ts): Figtree first for its Latin text; Persian, where any is left, falls through to IRANSans. */
+html[lang="fa-Latn"] {
+  --brand-font-body: var(--font-figtree), "IRANSans", "Inter Variable", Tahoma, sans-serif;
+  --brand-font-display: var(--font-figtree), "IRANSans", "Inter Variable", Tahoma, sans-serif;
 }

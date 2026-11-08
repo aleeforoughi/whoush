@@ -1,4 +1,5 @@
 "use client";
+import {VideoThumb} from "@/components/video-poster";
 import {useEffect,useMemo,useState} from "react";
 import Link from "next/link";
 import {useRouter,useSearchParams} from "next/navigation";
@@ -30,7 +31,7 @@ function MediaFill({asset,url}:{asset:StoredAsset;url?:string}){
  // eslint-disable-next-line @next/next/no-img-element -- a local blob: URL; next/image cannot optimize it
  if(asset.kind==="image")return <img src={url} alt="" className="size-full object-cover"/>;
  if(asset.kind==="video")return <span className="relative block size-full bg-surface-subtle">
-  <video src={url+"#t=0.1"} preload="metadata" muted playsInline aria-hidden="true" tabIndex={-1} className="size-full object-cover"/>
+  <VideoThumb url={url} className="size-full object-cover"/>
   <span className="absolute inset-0 flex items-center justify-center">
    <span className="flex size-16 items-center justify-center rounded-card bg-background/70 text-fg-primary"><Icon icon={Play} size={32} aria-hidden="true"/></span>
   </span>
@@ -67,7 +68,7 @@ function AssetCard({asset,url,projectTitle,onOpen}:{asset:StoredAsset;url?:strin
  </Card></li>;
 }
 
-/** «دارایی‌ها»: every file uploaded in a project, from this browser's storage. Generated outputs will join once real generation is enabled. */
+/** «گالری»: every file uploaded in a project, from this browser's storage. Generated outputs will join once real generation is enabled. */
 export function AssetsGallery(){
  const router=useRouter();
  const params=useSearchParams();
@@ -112,10 +113,10 @@ export function AssetsGallery(){
  const viewerItems:ViewerItem[]=shown.map(a=>({id:a.id,kind:a.kind,mime:a.mime,bytes:a.bytes,name:a.name,tag:a.tag,role:a.role,width:a.width,height:a.height,durationSeconds:a.durationSeconds,projectId:a.projectId,url:urls.get(a.id),blob:a.blob}));
  const openIndex=openId===null?-1:shown.findIndex(a=>a.id===openId);
  return <RailShell current="assets" onNewChat={()=>router.push("/studio")}>
-  <main id="main" className="min-h-0 flex-1 overflow-y-auto">
+  <main id="main" className="scrollbar-right min-h-0 flex-1 overflow-y-auto">
    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 lg:p-6">
     <div className="flex flex-col gap-1">
-     <h1 className="font-heading type-headline text-fg-primary">دارایی‌ها</h1>
+     <h1 className="font-heading type-headline text-fg-primary">گالری</h1>
      <p className="type-body-sm text-fg-secondary">فایل‌هایی که در استودیو آپلود کرده‌ای، به تفکیک پروژه. {LOCAL_ONLY_FA}.</p>
     </div>
     <Card size="sm"><CardContent className="flex items-start gap-2">

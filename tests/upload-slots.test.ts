@@ -6,7 +6,7 @@ import {SLOTS_FULL_FA,SLOT_CATEGORY_FA,addSlot,composerCards,fillSlotWith,forget
 
 const item=(id:string)=>INSERT_MENU.flatMap(g=>g.items).find(i=>i.id===id)!;
 
-test("each upload entry of the + menu gives a card with its Persian title, icon and upload; «کاراکترهای من» gives none",()=>{
+test("each upload entry of the + menu gives a card with its Persian title, icon and upload; the saved characters («کاراکتر») give none",()=>{
  assert.deepEqual(slotFor(item("image:character"),"s1"),{id:"s1",titleFa:item("image:character").titleFa,icon:"character",upload:{kind:"image",role:"character"}});
  assert.deepEqual(slotFor(item("popular:audio:lip_sync"),"s2")?.upload,{kind:"audio",role:"lip_sync"},"a popular shortcut behaves like its entry");
  assert.deepEqual(slotFor(item("file"),"s3")?.upload,{kind:"file"});

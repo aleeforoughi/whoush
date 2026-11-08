@@ -1,15 +1,21 @@
 import { MEDIA_CATALOG } from "./catalog";
 import { hasApprovedPrice, isPriced, type AgentPreference, type MediaKind, type MediaModel, type MediaRequirements, type PricedMediaModel, type ReasoningTier, type SuggestedModel } from "./types";
 import {needsHostedMedia} from "./policy";
-const videoWords=["video","animate","animation","motion","clip","ویدیو","فیلم","متحرک","انیمیشن","حرکت"];
-const imageWords=["image","photo","picture","portrait","عکس","تصویر","پوستر"];
+import {mediaIntent,type MediaIntent} from "./media-intent";
+import {offerable,realGenerationOn,runnableNow} from "./model-availability";
 const norm=(s:string)=>s.toLocaleLowerCase("en-US").trim();
-export function detectMediaKind(prompt:string):MediaKind {
+/** What the prompt asks to make (lib/media-intent.ts), else the kind of a model it names («با کلینگ»), else undefined: nothing says. */
+export function requestedMediaKind(prompt:string):MediaIntent|undefined {
+ const said=mediaIntent(prompt);
+ if(said) return said;
  const p=norm(prompt);
- if(videoWords.some(x=>p.includes(x))) return "video";
- if(imageWords.some(x=>p.includes(x))) return "image";
  for(const m of MEDIA_CATALOG){if(m.aliases.some(a=>p.includes(norm(a)))) return m.kind;}
- return "image";
+ return undefined;
+}
+/** The kind to make: «both» is made as a video (its opening frame is the photo), and nothing said is a photo. The orchestrator asks instead of guessing. */
+export function detectMediaKind(prompt:string):MediaKind {
+ const k=requestedMediaKind(prompt);
+ return k==="both"?"video":k??"image";
 }
 export function explicitMediaModel(prompt:string,kind:MediaKind):MediaModel|undefined {
  const p=norm(prompt);
@@ -21,6 +27,9 @@ export function modelIneligibility(m:MediaModel,r:MediaRequirements={},opts:{ass
  const c=m.capabilities,max=c.referenceImages.max;
  if(!m.operations.includes(r.operation??"generate")) return "این مدل این نوع کار را پشتیبانی نمی‌کند.";
  // `max: null` = supported with an unknown count: it cannot satisfy a hard requirement, but a suggestion ("coming soon") may assume it.
+ // The user's own photos (a person) need a model documented to keep identity from them: Nano Banana 2 and 2.1 take up to 4 people (docs/evidence/GOOGLE.md).
+ // Seedance rejects real faces (docs/evidence/BYTEPLUS.md finding 5); Seedream documents no person references, so it is not offered for them.
+ if((r.savedCharacter||(r.identityReference&&!c.identityReferences))&&m.provider!=="higgsfield") return "این مدل هنوز چهره یا ظاهر را از عکس‌های خودت نگه نمی‌دارد.";
  if(r.referenceImages&&(!c.referenceImages.supported||(max===null?!opts.assumeUnknownMax:r.referenceImages>max))) return "این مدل از تصویر مرجع به این تعداد پشتیبانی نمی‌کند.";
  if(r.aspectRatio&&!c.aspectRatios.includes(r.aspectRatio)) return "این مدل نسبت تصویر درخواستی را پشتیبانی نمی‌کند.";
  if(r.durationSeconds!==undefined&&!(c.durationsSeconds??[]).includes(r.durationSeconds)) return "این مدل مدت‌زمان درخواستی را پشتیبانی نمی‌کند.";
@@ -35,9 +44,10 @@ export function modelIneligibility(m:MediaModel,r:MediaRequirements={},opts:{ass
 /** A model can be proposed and quoted only with an approved Neuron SKU and for plain generation. Operation models (lip sync, replace, motion transfer) are suggestions only. */
 const proposable=(m:MediaModel):m is PricedMediaModel=>isPriced(m)&&m.operations.includes("generate");
 const FA_NOT_ACTIVE="این مدل هنوز در هووش فعال نشده است.";
-export function recommendMediaModels(prompt:string, preference:AgentPreference="quality", requirements?:MediaRequirements){
- const kind=detectMediaKind(prompt);
- const candidates=MEDIA_CATALOG.filter(proposable).filter(x=>x.kind===kind&&!(requirements&&modelIneligibility(x,requirements)));
+/** `kind`: the kind the orchestrator decided (it wins over the prompt's words, which a follow-up may not repeat). */
+export function recommendMediaModels(prompt:string, preference:AgentPreference="quality", requirements?:MediaRequirements, kind:MediaKind=detectMediaKind(prompt)){
+ // While real generation is on, only models that can run now (lib/model-availability.ts): a card never offers one that would fail or fall back to a demo.
+ const candidates=offerable(MEDIA_CATALOG.filter(proposable).filter(x=>x.kind===kind&&!(requirements&&modelIneligibility(x,requirements))));
  const named=explicitMediaModel(prompt,kind);
  const reasonFa=named&&!proposable(named)?FA_NOT_ACTIVE:named&&requirements?modelIneligibility(named,requirements):undefined;
  const explicitRejected=named&&reasonFa?{id:named.id,reasonFa}:undefined;
@@ -49,7 +59,18 @@ export function recommendMediaModels(prompt:string, preference:AgentPreference="
   return Number(b.tags.includes("quality"))-Number(a.tags.includes("quality"));
  });
  // A rejected explicit model is never selected; offer 1-3 compatible alternatives instead.
- return {kind,explicit:explicit?.id,explicitRejected,ranked,alternatives:explicitRejected?ranked.slice(0,3):[]};
+ // Three different models, not three versions of one (owner, 2026-11-08: Seedance 2.5 now has 480p and 720p versions too): each family's best version.
+ const families=ranked.filter((m,i)=>ranked.findIndex(x=>x.name.split(" · ")[0].trim()===m.name.split(" · ")[0].trim())===i);
+ return {kind,explicit:explicit?.id,explicitRejected,ranked,alternatives:explicitRejected?families.slice(0,3):[]};
+}
+/**
+ * The draft of a video (owner, 2026-11-08: "the cheapest option to test, a cheap 480p video, not an image"): the cheapest 480p video model that can run now
+ * and offers the plan's aspect ratio (when one is given). Undefined when none can; the draft is then the opening-frame still.
+ */
+export function draftVideoModel(aspect?:string):PricedMediaModel|undefined{
+ // Only a model that can really run while generation is on (offerable() falls back to every model when none can, for the demo card; a draft must not).
+ return MEDIA_CATALOG.filter(proposable).filter(m=>m.kind==="video"&&m.resolution==="480p"&&m.capabilities.verified&&(!realGenerationOn()||runnableNow(m))&&(!aspect||(m.capabilities.aspectRatios as readonly string[]).includes(aspect)))
+  .sort((a,b)=>a.neurons-b.neurons)[0];
 }
 // Mirrors the fail-closed media review in lib/orchestrator.ts: no inspector for image, video or audio exists yet (docs/MODERATION_POLICY.md step 4).
 const MEDIA_REVIEW_ACTIVE=false;
@@ -86,3 +107,17 @@ export function reasoningTier(prompt:string,hasReferences:boolean):ReasoningTier
  return "fast";
 }
 // Never serialize reasoningTier or underlying provider/model identifiers to consumer responses.
+
+/**
+ * Another model for a request a model's own content rules refused (owner, 2026-11-08: "sometimes changing the AI model helps to get what the user needs"):
+ * the same kind of media from a DIFFERENT provider (its rules differ), that can run now, takes the request's reference photos, keeps a video's length,
+ * and is closest in price. Undefined when there is none.
+ */
+export function alternativeModel(modelId:string,references=0,refusedBy:readonly string[]=[]):PricedMediaModel|undefined{
+ const cur=MEDIA_CATALOG.find(m=>m.id===modelId);if(!cur)return undefined;
+ const fits=(m:PricedMediaModel)=>m.kind===cur.kind&&m.provider!==cur.provider&&m.capabilities.verified&&(!realGenerationOn()||runnableNow(m))
+  &&(!references||(m.capabilities.referenceImages.supported&&(m.capabilities.referenceImages.max??Infinity)>=references))
+  &&(cur.kind!=="video"||!cur.durationSeconds||m.durationSeconds===cur.durationSeconds)&&!refusedBy.includes(m.provider); // never back to a provider that refused it
+ const price=isPriced(cur)?cur.neurons:0;
+ return MEDIA_CATALOG.filter(proposable).filter(fits).sort((a,b)=>Math.abs(a.neurons-price)-Math.abs(b.neurons-price)||a.neurons-b.neurons)[0];
+}

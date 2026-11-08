@@ -28,7 +28,8 @@ test("explicit politics and named political figures block in two scripts",()=>{
  ]){
   const result=evaluateTextSafety(p);
   assert.equal(result.decision,"block",p);
-  assert.equal(result.category,"politics",p);
+  assert.ok(result.category==="politics"||result.category==="iran_politics",p);
+  assert.ok(result.message&&result.choices?.length,"a kind message with safe ideas: "+p);
   assert.throws(()=>createDemoProposal(p),ContentPolicyError);
  }
 });
@@ -47,7 +48,8 @@ test("nudity, revealing clothing and sexualized posing block",()=>{
  }
 });
 test("ambiguous political usage and sensitive slang route to review, not generation",()=>{
- for(const p of ["لباس پهلوی","از روحانی داخل عکس بگیر","متن فحاشی برای پوستر"]){
+ // «لباس پهلوی» is pre-revolution royal imagery: refused outright since the owner's rules of 2026-11-06 (tests/content-rules.test.ts).
+ for(const p of ["از روحانی داخل عکس بگیر","متن فحاشی برای پوستر"]){
   const result=evaluateTextSafety(p);
   assert.equal(result.decision,"review",p);
   assert.throws(()=>assertSafeText(p),ContentPolicyError);
@@ -86,7 +88,7 @@ test("unrelated skills not loaded for plain product photo",()=>{
  assert.equal(ids.includes("audiographer"),false);
 });
 test("core skill registry is complete",()=>{
- assert.equal(Object.keys(SKILLS).length,25);
+ assert.equal(Object.keys(SKILLS).length,39);
  for(const [id,skill] of Object.entries(SKILLS)){
   assert.ok(skill.title&&skill.objective&&skill.checks.length,id);
  }
@@ -103,4 +105,11 @@ test("plan text: negated generic categories are compliance, named figures and ex
   assert.notEqual(evaluatePlanTextSafety(t).decision,"allow",t);
  // User input keeps the strict check: the exemption is for planner output only.
  assert.equal(evaluateTextSafety("no political banners").decision,"block");
+});
+
+test("historical figures (owner decision 2026-11-06): a pre-1900 ruler in a historical scene is allowed; Iranian modern figures and political use stay blocked (foreign figures are allowed since the owner's rules of the same day)",()=>{
+ for(const t of ["یه ویدیو ۳ ثانیه ای می خوام از لحظه ورود کوروش کبیر به بابل","Cyrus the Great entering Babylon, Achaemenid era","پرتره داریوش بزرگ در تخت جمشید","فردوسی در حال نوشتن شاهنامه"])
+  assert.notEqual(evaluateTextSafety(t).decision,"block",t);
+ for(const t of ["کوروش کبیر با شعار سیاسی","Cyrus the Great at a political protest","پوستر انتخابات با کوروش","محمدرضا شاه در کاخ"])
+  assert.equal(evaluateTextSafety(t).decision,"block",t);
 });

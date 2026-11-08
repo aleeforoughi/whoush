@@ -1,7 +1,10 @@
 import type { MediaModel } from "./types";
 import {hasProviderCredentials} from "./provider-credentials";
-/** Models that take user media (a source video, reference images, audio) need public provider-fetchable URLs; Whoush has no hosted media yet (docs/LAUNCH_GATES.md). */
-export const needsHostedMedia=(m:MediaModel)=>m.operations.some(o=>o!=="generate")||m.capabilities.referenceImages.supported;
+/**
+ * Models whose media inputs (a source video, reference images, audio) the provider fetches from public URLs: Higgsfield. Whoush has no public hosted media
+ * yet (docs/LAUNCH_GATES.md). Google and BytePlus take reference images inline in the request (docs/evidence/GOOGLE.md, BYTEPLUS.md), so they need none.
+ */
+export const needsHostedMedia=(m:MediaModel)=>m.provider==="higgsfield"&&(m.operations.some(o=>o!=="generate")||m.capabilities.referenceImages.supported);
 export interface LaunchPolicy { liveGeneration:boolean; reason:string; }
 export function providerPolicy():LaunchPolicy {
  const authorized=process.env.PROVIDER_END_USER_AUTHORIZED==="true" && process.env.PROVIDER_RESELLER_AUTHORIZED==="true";
@@ -41,6 +44,13 @@ const devSubmits=()=>((globalThis as {__whoushDevSubmits?:{n:number}}).__whoushD
 export const devSubmitCount=()=>devSubmits().n;
 /** Takes one slot of the per-process cap; false when the cap is reached or dev testing is off. */
 export function claimDevSubmit():boolean{const d=devLiveTest(),s=devSubmits();if(!d.enabled||s.n>=d.maxSubmits)return false;s.n++;return true;}
+/** Gives a claimed submission back when it definitely never reached the provider (nothing was created, so it used none of the cap). */
+export function releaseDevSubmit():void{const s=devSubmits();if(s.n>0)s.n--;}
+/**
+ * The dev gate for a job that has already claimed its submission (owner live test, 2026-11-08: the 20th of 20 allowed submissions was refused because
+ * the provider checked the cap again after the claim had counted it): every other blocker still applies.
+ */
+export const devGateOpenForClaimed=(model:MediaModel):boolean=>devGenerationGate(model).blockers.every(b=>b==="dev_cap_reached");
 /** The dev_live gate: dev testing on, credentials present, a verified model path, and cap headroom. */
 export function devGenerationGate(model?:MediaModel):{live:boolean;blockers:string[]}{
  const d=devLiveTest(),b:string[]=[];
