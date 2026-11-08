@@ -905,10 +905,11 @@ export function Studio(){
   * (the tap on «دوباره بساز», which shows the price). The card keeps its place and tag and follows the new job. A plan the server no longer has (it
   * restarted) cannot be quoted: the user is asked to send the request again.
   */
- async function rerunJob(messageId:string){
+ async function rerunJob(messageId:string,switchTo?:string){
   const m=messages.find(x=>x.id===messageId);
   if(busy||!m||m.kind!=="job"||!m.snapshot.rerun)return;
-  const r=m.snapshot.rerun;setBusy(true);setError("");
+  // On another model (owner, 2026-11-08: a model's own rules refused it): the same turn and settings; sound is left to the new model's default.
+  const r:JobRerun=switchTo?{...m.snapshot.rerun,modelId:switchTo,audio:undefined}:m.snapshot.rerun;setBusy(true);setError("");
   try{
    const post=(url:string,body:unknown)=>fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
    const quoteBody={modelId:r.modelId,turnId:r.turnId,...(r.stagingOverride?{stagingOverride:r.stagingOverride}:{}),...(r.aspectOverride?{aspectOverride:r.aspectOverride}:{}),...(r.excludeReferences?.length?{excludeReferences:r.excludeReferences}:{})};
@@ -1066,7 +1067,8 @@ export function Studio(){
         {m.kind==="job"&&<PreviewCard tag={m.snapshot.tag} state={m.snapshot.state} messageFa={m.snapshot.messageFa} job={m.snapshot} model={m.snapshot.draft?draftLabelFa(m.snapshot.draft):m.snapshot.tag?generationMap.get(m.snapshot.tag)?.modelName:undefined}
          output={(m.snapshot.outputs??(m.snapshot.messageFa===job?.messageFa?job?.outputs:undefined))?.find(o=>isOwnedOutputUrl(o.url,window.location.origin))} video={m.snapshot.draft?Boolean(m.snapshot.draft.video):(m.snapshot.tag?generationMap.get(m.snapshot.tag)?.plan.mediaKind==="video":false)} onOpen={()=>openPreview(m.snapshot,m.id)}
          onView={()=>openGenerationViewer(m.id)}
-         onRetry={m.snapshot.rerun&&!busy?()=>void rerunJob(m.id):undefined} retryNeurons={m.snapshot.draft?undefined:m.snapshot.tag?generationMap.get(m.snapshot.tag)?.neurons:undefined}
+         onRetry={m.snapshot.rerun&&!busy?()=>void rerunJob(m.id):undefined}
+         onSwitch={m.snapshot.rerun&&m.snapshot.alternative&&!busy?()=>void rerunJob(m.id,m.snapshot.alternative!.modelId):undefined} retryNeurons={m.snapshot.draft?undefined:m.snapshot.tag?generationMap.get(m.snapshot.tag)?.neurons:undefined}
          onEdit={m.snapshot.tag&&!busy?()=>void editGeneration(m.snapshot.tag!):undefined}/>}
         {/* «بوم» is adjustable on every generation: on the live one it feeds «بساز» directly; on an older one its card offers a revision with that scene. */}
         {(m.kind==="proposal"||m.kind==="no_model")&&m.snapshot.plan&&<PlanStory plan={m.snapshot.plan} focus={m.kind==="proposal"?refineFocus(m.snapshot.focus,messages.slice(0,i).reverse().find(x=>x.role==="user")?.text):undefined}

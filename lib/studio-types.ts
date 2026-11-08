@@ -10,6 +10,8 @@ export type NoModelResult={message:string;plan?:PublicCreativePlan;reason?:Unsup
 export type JobView={state:string;messageFa:string;outputs?:{kind:"image"|"video";url:string}[];
  /** The server's job id, so the preview and the transcript follow the same job. */
  jobId?:string;
+ /** Refused by the model's own content rules, and another model to try (owner, 2026-11-08). */
+ refused?:true;alternative?:{modelId:string;name:string;neurons:number};
  /** The model's measured typical duration, when known: paces the progress estimate. */
  typicalMs?:number;
  /** While it works: the lines written for this job, and the facts the stage lines state (lib/job-progress.ts liveStatusFa). */

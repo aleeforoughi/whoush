@@ -1,6 +1,6 @@
 "use client";
 import {SAVE_AGAIN_FA,useSaveFromUrl} from "@/components/share-actions";
-import {Brush,Clapperboard,Download,Image as ImageIcon,Maximize2,RotateCcw,TriangleAlert,VolumeX} from "lucide-react";
+import {Brush,Clapperboard,Download,Image as ImageIcon,Maximize2,RotateCcw,Shuffle,TriangleAlert,VolumeX} from "lucide-react";
 import {Badge,Button,Icon} from "@aleeforoughi/feather-react";
 import {displayTag} from "@/lib/attachments";
 import {jobStateFa} from "@/lib/projects";
@@ -20,12 +20,13 @@ export type PreviewOutput={kind:"image"|"video";url:string};
  * or a video with its own player controls, or the kind's icon while there is no output yet. Under it, «پیش‌نمایش #تولید-۱», the job state and the message, as a
  * button that opens the preview panel on this generation. Shown for every generation with a preview, so the panel can always be brought back from the chat.
  */
-export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,onEdit,onView,onRetry,retryNeurons}:{tag?:string;state:string;messageFa:string;
+export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,onEdit,onView,onRetry,onSwitch,retryNeurons}:{tag?:string;state:string;messageFa:string;
  /** The job, for its live status line while it works (the same line as the preview panel). */job?:JobView;model?:string;
  output?:PreviewOutput;video?:boolean;onOpen:()=>void;
  /** Full screen (the viewer): a tap on the image, or the corner button on a video. */onView?:()=>void;
  /** «ویرایش با قلم» on a finished image. */onEdit?:()=>void;
- /** «دوباره بساز» on a generation that stopped without an output (owner, 2026-11-07), with its price when known. */onRetry?:()=>void;retryNeurons?:number}){
+ /** «دوباره بساز» on a generation that stopped without an output (owner, 2026-11-07), with its price when known. */onRetry?:()=>void;retryNeurons?:number;
+ /** A refused generation on the other model the server suggests (`job.alternative`). */onSwitch?:()=>void}){
  const label=OPEN_PREVIEW_FA+(tag?" "+displayTag(tag):"");
  // «دانلود» (owner, 2026-11-08): on a phone, the share sheet with «Save Image» / «Save Video»; elsewhere a download (components/share-actions.tsx).
  const saveOutput=useSaveFromUrl(output?.url??"",{name:"output",mime:output?.kind==="video"?"video/mp4":"image/png",kind:output?.kind==="video"?"video":"image",tag:tag??"generation1"});
@@ -53,7 +54,9 @@ export function PreviewCard({tag,state,messageFa,job,model,output,video,onOpen,o
    </button></span>}
   {failed&&<div className="flex flex-wrap items-center justify-between gap-2 px-1">
    <span role="alert" className="type-caption text-destructive">{messageFa}</span>
-   {onRetry&&<Button type="button" size="sm" variant="destructive" onClick={onRetry}><Icon icon={RotateCcw} aria-hidden="true"/>دوباره بساز{retryNeurons?<span className="type-caption opacity-80">{fa(retryNeurons)} نورون</span>:null}</Button>}
+   {/* Refused by the model's own rules (owner, 2026-11-08): the same request on a model with other rules comes first. */}
+   {onSwitch&&job?.alternative&&<Button type="button" size="sm" variant="destructive" onClick={onSwitch}><Icon icon={Shuffle} aria-hidden="true"/>با {job.alternative.name} بساز<span className="type-caption opacity-80">{fa(job.alternative.neurons)} نورون</span></Button>}
+   {onRetry&&<Button type="button" size="sm" variant={onSwitch&&job?.alternative?"outline":"destructive"} onClick={onRetry}><Icon icon={RotateCcw} aria-hidden="true"/>دوباره بساز{retryNeurons?<span className="type-caption opacity-80">{fa(retryNeurons)} نورون</span>:null}</Button>}
   </div>}
   {/* A silent video says why (its soundtrack failed the check and was removed): calm, never an error. */}
   {output?.kind==="video"&&job?.audioNoteFa&&<p className="flex items-center gap-1.5 px-1 type-caption text-fg-secondary"><Icon icon={VolumeX} size={16} aria-hidden="true" className="size-3.5 shrink-0"/>{job.audioNoteFa}</p>}

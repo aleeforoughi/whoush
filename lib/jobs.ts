@@ -1,3 +1,4 @@
+import {alternativeModel} from "./router";
 import {regionEditFor,restoreTurnOutputs} from "./region-restore";
 import {narrateProgress,type ProgressNarrator} from "./progress-narration";
 import "server-only";
@@ -234,11 +235,16 @@ async function checkOutputsAudio(outputs:ProviderOutput[],deps?:AudioCheckDeps&{
  return {outputs:out,audio};
 }
 const DEV_COMPLETED_FA="تست توسعه: خروجی واقعی ساخته شد و هیچ نورونی کسر نشد. خروجی باید بازبینی شود.";
+/** For a refused job: another model whose rules may allow it (lib/router.ts alternativeModel), public fields only. */
+function refusedAlternative(j:Job):{alternative?:{modelId:string;name:string;neurons:number}}{
+ const m=alternativeModel(j.modelId,j.references?.length??0);
+ return m?{alternative:{modelId:m.id,name:m.name.split(" · ")[0].trim(),neurons:m.neurons}}:{};
+}
 export function toPublicJob(j:Job){
  const typical=findMediaModel(j.modelId)?.typicalSeconds;
  // While it works: the lines written for this job and the facts the fixed stage lines use (how many photos it keeps; a brush edit keeps the rest as is).
  const active=!isTerminal(j.state),refs=j.references?.length??0,brush=active&&Boolean(regionEditFor(j.turnId));
  return {id:j.id,state:j.state,mode:j.mode,modelId:j.modelId,neurons:j.neurons,chargedNeurons:j.chargedNeurons,...(typical?{typicalMs:typical*1000}:{}),
   ...(active&&j.progressFa?.length?{progressFa:[...j.progressFa]}:{}),...(active&&(refs||brush)?{progressFacts:{references:brush?Math.max(0,refs-1):refs,...(brush?{brushEdit:true}:{})}}:{}),
-  outputs:j.state==="completed"?j.outputs.map(o=>({kind:o.kind,url:o.url})):[],qa:j.qa,...(j.state==="completed"&&j.audio?{audio:j.audio.audio,...(j.audio.audio==="removed"?{audioNoteFa:AUDIO_REMOVED_FA[j.audio.reason]}:{})}:{}),messageFa:j.mode==="dev_live"&&j.state==="completed"?DEV_COMPLETED_FA:j.state==="failed"&&j.failure==="provider_refused"?REFUSED_FA:MSG[j.state]};
+  outputs:j.state==="completed"?j.outputs.map(o=>({kind:o.kind,url:o.url})):[],qa:j.qa,...(j.state==="failed"&&j.failure==="provider_refused"?{refused:true,...refusedAlternative(j)}:{}),...(j.state==="completed"&&j.audio?{audio:j.audio.audio,...(j.audio.audio==="removed"?{audioNoteFa:AUDIO_REMOVED_FA[j.audio.reason]}:{})}:{}),messageFa:j.mode==="dev_live"&&j.state==="completed"?DEV_COMPLETED_FA:j.state==="failed"&&j.failure==="provider_refused"?REFUSED_FA:MSG[j.state]};
 }

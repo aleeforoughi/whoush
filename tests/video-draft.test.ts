@@ -46,3 +46,17 @@ test("owner (2026-11-08): with a source video the draft is the frame preview: fi
   assert.match(getPrivateMediaPrompt(f.turnId)!,new RegExp("frame "+(i+1)+" of a video"));
  }
 });
+
+test("owner (2026-11-08): a request a model's own rules refused is offered on a model from another provider: same kind, its photos, a video's length",async()=>{
+ const {alternativeModel}=await import("../lib/router");
+ const {findMediaModel}=await import("../lib/catalog");
+ for(const id of ["nano-banana-2","seedance-2-5-10s","kling-3-0-720p-5s"]){
+  const cur=findMediaModel(id)!,alt=alternativeModel(id);
+  assert.ok(alt,"an alternative for "+id);
+  assert.equal(alt!.kind,cur.kind);assert.notEqual(alt!.provider,cur.provider,"other rules: another provider");
+  if(cur.kind==="video")assert.equal(alt!.durationSeconds,cur.durationSeconds,"the same length");
+ }
+ const withPhotos=alternativeModel("nano-banana-2",3);
+ assert.ok(withPhotos&&withPhotos.capabilities.referenceImages.supported,"the photos go with it");
+ assert.equal(alternativeModel("unknown-model"),undefined);
+});
