@@ -2,7 +2,7 @@
 import {faPlain} from "./format";
 import {normalizePersian} from "./safety";
 export type AttachmentKind="image"|"video"|"audio"|"pdf"|"json"|"md";
-export type AttachmentRole="reference"|"frame"|"character"|"start_frame"|"end_frame"|"environment"|"object"|"outfit"|"hairstyle"|"makeup"|"graphic"|"edit_reference"|"motion_reference"|"continue"|"lip_sync"|"music"|"voice_clone"|"general";
+export type AttachmentRole="reference"|"frame"|"character"|"start_frame"|"end_frame"|"environment"|"object"|"outfit"|"hairstyle"|"makeup"|"graphic"|"edit_reference"|"motion_reference"|"continue"|"extend_back"|"lip_sync"|"music"|"voice_clone"|"general";
 export type AttachmentSpeech={hasSpeech:boolean;language:"fa"|"other"|"unknown";accent:"tehrani"|"original"|"unspecified"};
 const MB=1024*1024;
 export const ATTACHMENT_KINDS={
@@ -32,26 +32,26 @@ type RoleDef={id:AttachmentRole;labelFa:string;hintFa:string;en:string};
  */
 export const ATTACHMENT_ROLES={
  image:[
-  {id:"reference",labelFa:"عکس رفرنس",hintFa:"ظاهر، سبک یا محتوا؛ هووش از متنت می‌فهمه",en:"image reference"},
-  {id:"character",labelFa:"شخص",hintFa:"چهره و هویت ثابت می‌مونه",en:"character"},
-  {id:"hairstyle",labelFa:"پیرایش",hintFa:"مدل مو و فرم ریش",en:"hairstyle and beard reference"},
-  {id:"outfit",labelFa:"پوشاک",hintFa:"لباس، کفش و استایل پوشش روی سوژه",en:"outfit reference"},
-  {id:"environment",labelFa:"محیط",hintFa:"فضا، پس‌زمینه و نور",en:"environment"},
-  {id:"object",labelFa:"اشیا",hintFa:"شیء، محصول یا اکسسوری دقیق می‌مونه",en:"object"},
-  {id:"graphic",labelFa:"گرافیک",hintFa:"لوگو، متن یا طرح بدون تغییر",en:"graphic"},
-  {id:"frame",labelFa:"فریم",hintFa:"فریم اول یا آخر ویدیو؛ از متنت مشخص می‌شه",en:"video frame"}
+  {id:"reference",labelFa:"عکس رفرنس",hintFa:"عکسی که کار ازش الهام بگیره؛ توی پیامت بگو چیش مهمه",en:"image reference"},
+  {id:"character",labelFa:"شخص",hintFa:"عکس یه آدم؛ چهره‌ش توی کار دقیقاً همین می‌مونه",en:"character"},
+  {id:"hairstyle",labelFa:"پیرایش و آرایش",hintFa:"عکس مدل مو، ریش یا آرایشی که می‌خوای روی سوژه بیاد",en:"hairstyle, beard and makeup reference"},
+  {id:"outfit",labelFa:"پوشاک",hintFa:"عکس لباس یا کفشی که می‌خوای سوژه بپوشه",en:"outfit reference"},
+  {id:"environment",labelFa:"محیط",hintFa:"عکس جایی که می‌خوای صحنه اونجا باشه",en:"environment"},
+  {id:"object",labelFa:"اشیا و محصول",hintFa:"عکس محصول یا وسیله‌ای که باید دقیقاً همین‌طور دیده بشه",en:"object"},
+  {id:"graphic",labelFa:"گرافیک",hintFa:"لوگو یا طرحی که باید بدون تغییر روی کار بیاد",en:"graphic"},
+  {id:"frame",labelFa:"فریم",hintFa:"عکسی که ویدیو باهاش شروع یا تموم می‌شه",en:"video frame"}
  ],
  video:[
-  {id:"reference",labelFa:"فیلم رفرنس",hintFa:"ادیت، امتداد یا حال‌وهوای همین ویدیو؛ از متنت مشخص می‌شه",en:"video reference"},
-  {id:"motion_reference",labelFa:"الگوی حرکت",hintFa:"حرکت و ریتم این ویدیو با ظاهر جدید",en:"motion reference"}
+  {id:"reference",labelFa:"ویدیو رفرنس",hintFa:"ویدیویی که کار ازش الهام بگیره؛ توی پیامت بگو چیش مهمه",en:"video reference"},
+  {id:"motion_reference",labelFa:"الگوی حرکت",hintFa:"ویدیویی که حرکت‌هاش روی سوژه‌ی تو پیاده می‌شه",en:"motion reference"}
  ],
  audio:[
-  {id:"lip_sync",labelFa:"الگوی گفتار",hintFa:"لب‌ها با این صدا هم‌زمان می‌شن",en:"lip sync"},
-  {id:"music",labelFa:"موزیک",hintFa:"ریتم کات‌ها با موزیک",en:"music reference"}
+  {id:"lip_sync",labelFa:"الگوی گفتار",hintFa:"صدای حرف زدن؛ لب‌های سوژه با همین صدا تکون می‌خوره",en:"lip sync"},
+  {id:"music",labelFa:"موزیک",hintFa:"آهنگی که ویدیو با ریتمش کات می‌خوره",en:"music reference"}
  ]
 } as const satisfies Record<"image"|"video"|"audio",readonly RoleDef[]>;
 /** The «فایل» group of the + menu: documents carry no role. */
-export const FILE_MENU_FA={labelFa:"فایل",hintFa:"PDF، JSON یا Markdown برای زمینه"} as const;
+export const FILE_MENU_FA={labelFa:"فایل",hintFa:"متن یا سند (PDF، JSON یا Markdown) برای توضیح بیشتر"} as const;
 /** Roles the wire accepts but the UI never offers. `voice_clone` needs `consent: true` and always ends in an `unsupported` result (`voice_clone_unsupported`). */
 const WIRE_ONLY_ROLES={audio:[{id:"voice_clone",labelFa:"کلون صدا",hintFa:"",en:"voice reference"}]} as const satisfies Partial<Record<"image"|"video"|"audio",readonly RoleDef[]>>;
 /**
@@ -62,15 +62,17 @@ const RESOLVED_ROLES={
  image:[
   {id:"start_frame",labelFa:"فریم اول",hintFa:"همین عکس متحرک می‌شه",en:"start frame"},
   {id:"end_frame",labelFa:"فریم آخر",hintFa:"ویدیو به همین عکس ختم می‌شه",en:"end frame"},
-  {id:"edit_reference",labelFa:"ادیت عکس",hintFa:"فقط همون بخشی که می‌گی عوض می‌شه",en:"edit reference"},
+  {id:"edit_reference",labelFa:"ادیت عکس",hintFa:"همین عکس رو بفرست؛ فقط چیزی که می‌گی عوض می‌شه",en:"edit reference"},
   {id:"makeup",labelFa:"آرایش",hintFa:"آرایش صورت با همین رنگ‌ها",en:"makeup reference"}
  ],
  video:[
-  {id:"edit_reference",labelFa:"ادیت ویدیو",hintFa:"همین ویدیو با تغییری که می‌خوای",en:"edit reference"},
-  {id:"continue",labelFa:"امتداد ویدیو",hintFa:"از آخر همین ویدیو امتداد پیدا می‌کنه",en:"video to continue"}
+  {id:"edit_reference",labelFa:"ادیت ویدیو",hintFa:"همین ویدیو رو بفرست؛ فقط چیزی که می‌گی عوض می‌شه",en:"edit reference"},
+  // Forward and backward (owner, 2026-11-08): continue after the last frame, or a new clip that ends on the first frame.
+  {id:"continue",labelFa:"امتداد ویدیو به جلو",hintFa:"ویدیو از آخرین فریمش ادامه پیدا می‌کنه",en:"video to continue"},
+  {id:"extend_back",labelFa:"امتداد ویدیو از عقب",hintFa:"یه تکه‌ی تازه قبل از شروع همین ویدیو ساخته می‌شه",en:"video to extend backward"}
  ]
 } as const satisfies Partial<Record<"image"|"video"|"audio",readonly RoleDef[]>>;
-export const ATTACHMENT_ROLE_IDS=["reference","frame","character","start_frame","end_frame","environment","object","outfit","hairstyle","makeup","graphic","edit_reference","motion_reference","continue","lip_sync","music","voice_clone"] as const satisfies readonly AttachmentRole[];
+export const ATTACHMENT_ROLE_IDS=["reference","frame","character","start_frame","end_frame","environment","object","outfit","hairstyle","makeup","graphic","edit_reference","motion_reference","continue","extend_back","lip_sync","music","voice_clone"] as const satisfies readonly AttachmentRole[];
 /** The roles a kind may carry and the UI offers (never `general`, never `voice_clone`); empty for files. */
 export const rolesFor=(kind:AttachmentKind):readonly RoleDef[]=>isMediaKind(kind)?ATTACHMENT_ROLES[kind as "image"|"video"|"audio"]:[];
 const wireRolesFor=(kind:AttachmentKind):readonly RoleDef[]=>kind==="audio"?[...ATTACHMENT_ROLES.audio,...WIRE_ONLY_ROLES.audio]:kind==="image"||kind==="video"?[...rolesFor(kind),...RESOLVED_ROLES[kind]]:[];
@@ -203,6 +205,7 @@ export function describeTagEn(a:{tag:string;kind:AttachmentKind;role?:Attachment
  if(a.kind==="image"&&a.role==="start_frame")return "[start frame image "+n+"]";
  if(a.kind==="image"&&a.role==="end_frame")return "[end frame image "+n+"]";
  if(a.kind==="video"&&a.role==="continue")return "[video to continue "+n+"]";
+ if(a.kind==="video"&&a.role==="extend_back")return "[video to extend backward "+n+"]";
  if(a.kind==="image"&&(a.role==="outfit"||a.role==="hairstyle"||a.role==="makeup"))return "["+en+" image "+n+"]";
  if(a.kind==="image")return "[reference image "+n+(en?" · "+en:"")+"]";
  if(a.kind==="video")return "["+(en??"reference")+" video "+n+"]";

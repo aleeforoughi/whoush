@@ -815,14 +815,14 @@ test("curated roles: continue makes a video that continues from the last frame",
  const r=unsupported(await orchestrateCreativeTurn({text:LAKE,attachments:[att("video",{role:"continue"})]}));
  assert.equal(r.plan.mediaKind,"video");
  assert.ok(r.plan.hardConstraints.includes("امتداد #ویدیو-۱ از آخرین فریم؛ سوژه، نور، حرکت دوربین و رنگ پیوسته می‌مانند"),JSON.stringify(r.plan.hardConstraints));
- assert.ok(skillsOf().includes("anti_teleport")&&skillsOf().includes("continuity"));assert.equal(r.plan.references[0].labelFa,"امتداد ویدیو");
+ assert.ok(skillsOf().includes("anti_teleport")&&skillsOf().includes("continuity"));assert.equal(r.plan.references[0].labelFa,"امتداد ویدیو به جلو");
  assert.equal(r.suggestedModel,undefined);
  assert.deepEqual(mediaRequirements({attachments:[{kind:"video",role:"continue"}]},false),{referenceImages:undefined,lipSync:undefined,videoContinuation:true});
 });
 test("curated roles: outfit, hairstyle and makeup add their constraints, count as reference images and get no model suggestion",async()=>{
  const want:Array<[string,string,string,string[]]>=[
   ["outfit","پوشاک","پوشاک #تصویر-۱ (طرح، رنگ، جنس و برش) روی سوژه اعمال می‌شود؛ چهره و بدن مدلِ عکس مرجع کپی نمی‌شود",["پوشش مطابق سیاست محتوای هووش، پوشیده و غیرتحریک‌آمیز"]],
-  ["hairstyle","پیرایش","مدل مو و فرم ریش و سبیل #تصویر-۱ (در صورت وجود) اعمال می‌شود؛ چهره، رنگ پوست و هویت سوژه تغییر نمی‌کند",[]],
+  ["hairstyle","پیرایش و آرایش","مدل مو، فرم ریش و سبیل و آرایش #تصویر-۱ (هر کدام که در عکس هست) اعمال می‌شود؛ چهره، رنگ پوست و هویت سوژه تغییر نمی‌کند",[]],
   ["makeup","آرایش","آرایش #تصویر-۱ (رنگ‌ها و شدت) اعمال می‌شود؛ بافت طبیعی پوست حفظ می‌شود و پوست پلاستیکی یا صاف‌شده نمی‌شود",[]]
  ];
  for(const [role,label,hard,soft] of want){
@@ -833,7 +833,7 @@ test("curated roles: outfit, hairstyle and makeup add their constraints, count a
   assert.ok(skillsOf().includes("anti_drift")&&skillsOf().includes("continuity"));
   assert.equal(mediaRequirements({attachments:[{kind:"image",role}]},false).referenceImages,1);
  }
- for(const [role,en] of [["outfit","[outfit reference image 1]"],["hairstyle","[hairstyle and beard reference image 1]"],["makeup","[makeup reference image 1]"]])assert.equal(describeTagEn({tag:"image1",kind:"image",role:role as never}),en);
+ for(const [role,en] of [["outfit","[outfit reference image 1]"],["hairstyle","[hairstyle, beard and makeup reference image 1]"],["makeup","[makeup reference image 1]"]])assert.equal(describeTagEn({tag:"image1",kind:"image",role:role as never}),en);
 });
 test("curated roles: the provider-facing prompt describes the new references in English",async()=>{
  let seen="";

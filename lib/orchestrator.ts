@@ -201,8 +201,10 @@ function roleRule(kind:AttachmentKind,role:AttachmentRole,tag:string):{hard?:Pai
   case "end_frame":return {hard:P(at+": this image is the last frame of the video; the video ends on its composition, subject and lighting",fa+" فریم آخر ویدیوست؛ ویدیو با همین ترکیب‌بندی، سوژه و نور تمام می‌شود")};
   case "outfit":return {hard:P(at+": apply this outfit (design, color, fabric and cut) to the subject; do not copy the face or body of the model in the outfit photo","پوشاک "+fa+" (طرح، رنگ، جنس و برش) روی سوژه اعمال می‌شود؛ چهره و بدن مدلِ عکس مرجع کپی نمی‌شود"),
    ...(iranGovFilterOn()?{soft:P("Clothing stays modest and non-provocative, in line with the content policy","پوشش مطابق سیاست محتوای هووش، پوشیده و غیرتحریک‌آمیز")}:{})};
-  case "hairstyle":return {hard:P(at+": apply the hairstyle and, where present, the beard and moustache shape; the subject's face, skin tone and identity do not change","مدل مو و فرم ریش و سبیل "+fa+" (در صورت وجود) اعمال می‌شود؛ چهره، رنگ پوست و هویت سوژه تغییر نمی‌کند")};
+  // «پیرایش و آرایش» (owner, 2026-11-08): hair, beard and makeup in one role; each applies only where the photo shows it.
+  case "hairstyle":return {hard:P(at+": apply the hairstyle and, where present, the beard and moustache shape and the makeup (its colours and intensity, natural skin texture); the subject's face, skin tone and identity do not change","مدل مو، فرم ریش و سبیل و آرایش "+fa+" (هر کدام که در عکس هست) اعمال می‌شود؛ چهره، رنگ پوست و هویت سوژه تغییر نمی‌کند")};
   case "makeup":return {hard:P(at+": apply this makeup (colors and intensity); keep natural skin texture, never plastic or over-smoothed skin","آرایش "+fa+" (رنگ‌ها و شدت) اعمال می‌شود؛ بافت طبیعی پوست حفظ می‌شود و پوست پلاستیکی یا صاف‌شده نمی‌شود")};
+  case "extend_back":return {hard:P(at+": make a new clip that leads into this video: it ends exactly on this video's first frame (subject, pose, light, camera and colour), so the two play as one","یه تکه‌ی تازه قبل از "+fa+" ساخته می‌شه که دقیقاً به فریم اولش ختم می‌شه (سوژه، ژست، نور، دوربین و رنگ)، تا پشت هم یکی دیده بشن")};
   case "continue":return {hard:P(at+": continue this video from its last frame; subject, light, camera movement and color stay continuous","امتداد "+fa+" از آخرین فریم؛ سوژه، نور، حرکت دوربین و رنگ پیوسته می‌مانند")};
   case "environment":return {lock:P(at+": keep the location, architecture, light direction and time of day of the reference",fa+": مکان، معماری، جهت نور و ساعت روز مطابق مرجع ثابت بماند")};
   case "object":return {hard:P(at+": keep the object's shape, material, color, proportions and logo placement as in the reference",fa+": شکل، جنس، رنگ، تناسب و جای لوگوی شیء مطابق مرجع حفظ شود")};
@@ -450,7 +452,7 @@ export function mediaRequirements(input:{characterRef?:{angles:readonly string[]
  return {...(operation?{operation}:{}),referenceImages:refs||undefined,
   ...(input.characterRef?.angles.length||images.some(a=>a.role==="character")?{identityReference:true}:{}),...(input.characterRef?.angles.length?{savedCharacter:true}:{}),lipSync:lips||undefined,
   ...(video("motion_reference")?{motionReference:true}:{}),...(video("edit_reference")?{videoReference:true}:{}),
-  ...(files.some(a=>a.kind==="image"&&a.role==="start_frame")?{startImage:true}:{}),...(files.some(a=>a.kind==="image"&&a.role==="end_frame")?{endImage:true}:{}),...(video("continue")?{videoContinuation:true}:{})};
+  ...(files.some(a=>a.kind==="image"&&a.role==="start_frame")?{startImage:true}:{}),...(files.some(a=>a.kind==="image"&&a.role==="end_frame")?{endImage:true}:{}),...(video("continue")?{videoContinuation:true}:{}),...(video("extend_back")?{endImage:true}:{})};
 }
 // ---- orchestration ----
 export async function orchestrateCreativeTurn(rawInput:unknown,deps:OrchestratorDeps={}):Promise<OrchestratorResult>{
@@ -888,7 +890,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  }
  // Length from the source video (owner, 2026-11-08: an edit or a replacement in a video lasts as long as that video): the recommended model's version
  // that covers it, at the same resolution. A video to continue is not a source of length.
- const source=kind==="video"?files.find(f=>f.kind==="video"&&f.role!=="continue"&&f.durationSeconds):undefined;
+ const source=kind==="video"?files.find(f=>f.kind==="video"&&f.role!=="continue"&&f.role!=="extend_back"&&f.durationSeconds):undefined;
  let lengthNote="";
  if(source?.durationSeconds){const m=matchSourceLength(proposal,source.durationSeconds);proposal=m.proposal;if(m.seconds){
   const src=Math.round(source.durationSeconds),same=Math.abs(m.seconds-source.durationSeconds)<=0.5,tag=displayTag(source.tag);
@@ -929,7 +931,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // With a source video (an edit or a replacement in the user's own clip), the draft is the frame preview instead (owner, 2026-11-08): the clip's frames
  // (first, middle, last, one every 3 s), each edited by the cheap image model with the user's photos. A preview of the edit: the card says the video
  // models read only the prompt. Anything that fails leaves the usual draft.
- const frameModel=findMediaModel(DRAFT_IMAGE_MODEL),sourceVideo=kind==="video"?files.find(f=>f.kind==="video"&&f.role!=="continue"&&f.durationSeconds&&safeReview(f.reviewId)?.kind==="video"):undefined;
+ const frameModel=findMediaModel(DRAFT_IMAGE_MODEL),sourceVideo=kind==="video"?files.find(f=>f.kind==="video"&&f.role!=="continue"&&f.role!=="extend_back"&&f.durationSeconds&&safeReview(f.reviewId)?.kind==="video"):undefined;
  if(sourceVideo&&frameModel&&!frameModel.pricePending&&frameModel.neurons){
   try{
    const fd=deps.frames??{},mediaId=safeReview(sourceVideo.reviewId)!.mediaId;
