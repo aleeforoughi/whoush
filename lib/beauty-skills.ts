@@ -41,7 +41,7 @@ export const BEAUTY_SKILLS={
   checks:[
    "Know the formats: beauty close-up, flat lay, get-ready-with-me, skincare routine, editorial, lookbook, outfit of the day, product hero shot.",
    "Light for beauty: soft key, clamshell or butterfly light, ring light catchlights, clean background, true-to-life skin colour.",
-   "Within Whoush's dress rules: elegant and modest-friendly options, hijab and scarf fashion done beautifully; never revealing or sensual styling.",
+   "Style what the user asks for, with taste: any look, from modest and hijab fashion to swimwear and evening glamour; never nudity or explicit sexual content.",
    "Product claims stay honest: show the product as it is, no invented results or misleading before-and-after."
   ]
  },

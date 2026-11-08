@@ -1,3 +1,4 @@
+import {iranGovFilterOn} from "./region-policy";
 import {containsFinglish,normalizeFinglish} from "./finglish";
 import {SAFE_ALTERNATIVES,type RestrictedTopic} from "./safe-alternatives";
 import type {QuestionChoice} from "./media-intent";
@@ -134,27 +135,41 @@ function refused(decision:SafetyDecision,category:SafetyCategory,topic:Restricte
  }
  return {decision,category,message:a.messageFa,...(choices.length?{choices}:{})};
 }
+/** The dress rules of the Iran Gov Filter (lib/region-policy.ts): swimwear, underwear and see-through clothing. Off, they are ordinary fashion words. */
+const DRESS_RULES=["lingerie","bikini","see through clothing","transparent clothing","لباس زیر","سوتین","بیکینی","مایو دو تکه","لباس بدن نما","لباس شفاف"];
+const DRESS_RULES_FINGLISH=["lebas zir","lebase zir","sutian","sootian","mayo do tekke","lebas badan nama","lebase badan nama","lebas shafaf"];
+/**
+ * Outside Iran (owner, 2026-11-08: "give as much freedom as you can"), with the Iran Gov Filter off: a clothed adult may be styled or posed "sexy" or
+ * "seductive", and blood, fights, weapons and corpses are ordinary horror, action and war; only extreme gore stays (the baseline). Profanity is not reviewed.
+ */
+const STYLING_WORDS=["sexy pose","seductive","سکسی","ژست سکسی","ژست اغواگر","تحریک آمیز"],STYLING_FINGLISH=["seksi","sexi","tahrik amiz"];
+const EXTREME_GORE=["graphic gore","gore","dismemberment","severed head","beheading","decapitation","torture","war crime","تکه تکه کردن بدن","سر بریده","سر بریدن","مثله کردن","شکنجه"];
+const EXTREME_GORE_FINGLISH=["sar boride","sar borideh","mosle kardan","tike tike kardan badan","tekke tekke kardan badan","shekanje"];
 export function evaluateTextSafety(raw:string):SafetyResult {
- const text=normalizePersian(raw),fin=normalizeFinglish(raw);
+ const text=normalizePersian(raw),fin=normalizeFinglish(raw),iran=iranGovFilterOn();
  // Finglish (Persian in Latin letters) goes through the same categories, in the same order, after spelling variants are folded.
  const f=(k:keyof typeof FINGLISH)=>FINGLISH[k].some(t=>containsFinglish(fin,t));
  if(matches(text,MINOR_SEXUALIZATION)||f("minors"))return refused("block","sexualization_of_minors","minor");
- if(matches(without(text,VIOLENCE_OK),GRAPHIC_VIOLENCE)||f("violence"))return refused("block","graphic_violence","violence");
+ if(matches(without(text,VIOLENCE_OK),iran?GRAPHIC_VIOLENCE:EXTREME_GORE)||(iran?f("violence"):EXTREME_GORE_FINGLISH.some(t=>containsFinglish(fin,t))))return refused("block","graphic_violence","violence");
  if(matches(text,RELIGIOUS_HOSTILITY)||f("religion"))return refused("block","religious_hostility","religion");
- if(matches(text,IRAN_POLITICS)||matches(text,POLITICAL_FIGURES)||f("iran")||f("figures"))return refused("block","iran_politics","iran_politics");
+ // Political figures, Iran's political topics, royal symbols and politics in general are the Iran Gov Filter. Off, real people are trust-first (owner,
+ // 2026-11-08): users accept at sign-up that they have consent for anyone they use; nudity and sexual content stay refused for everyone.
+ if(iran&&(matches(text,POLITICAL_FIGURES)||f("figures")))return refused("block","iran_politics","iran_politics");
+ if(iran&&(matches(text,IRAN_POLITICS)||f("iran")))return refused("block","iran_politics","iran_politics");
  const royalText=without(matches(text,ANCIENT_HISTORY)?without(text,GENERIC_ROYAL_TITLES):text,ROYAL_HISTORY_OK);
- if(matches(royalText,IRAN_ROYAL)||FINGLISH.royal.some(t=>containsFinglish(normalizeFinglish(royalText),t)))return refused("block","iran_royal","iran_royal");
- if(matches(text,POLITICAL_TERMS)||f("political"))return refused("block","politics","iran_politics");
+ if(iran&&(matches(royalText,IRAN_ROYAL)||FINGLISH.royal.some(t=>containsFinglish(normalizeFinglish(royalText),t))))return refused("block","iran_royal","iran_royal");
+ if(iran&&(matches(text,POLITICAL_TERMS)||f("political")))return refused("block","politics","iran_politics");
  const drinkText=without(text.replace(DRINK_COLOUR," ok "),FASHION_COLOURS);
- if(matches(drinkText,ALCOHOL)||FINGLISH.alcohol.some(t=>containsFinglish(normalizeFinglish(drinkText),t)))return refused("block","alcohol","alcohol",text);
- if(matches(text,DRUGS)||f("drugs"))return refused("block","drugs","drugs");
- if(matches(text,REGULATED_CONTENT)||f("regulated"))return refused("block","regulated_content","drugs");
+ if(iran&&(matches(drinkText,ALCOHOL)||FINGLISH.alcohol.some(t=>containsFinglish(normalizeFinglish(drinkText),t))))return refused("block","alcohol","alcohol",text);
+ if(iran&&(matches(text,DRUGS)||f("drugs")))return refused("block","drugs","drugs");
+ if(iran&&(matches(text,REGULATED_CONTENT)||f("regulated")))return refused("block","regulated_content","drugs");
  // Nude cosmetic color words are not necessarily nudity.
  const contextual=without(text.replace(NUDE_BEAUTY," ok "),["nude lipstick","nude makeup","nude color","naked eye","to the naked eye","رنگ نود","رژ نود","آرایش نود"]);
- if(matches(contextual,SEXUALIZED)||FINGLISH.sexual.some(t=>containsFinglish(normalizeFinglish(contextual),t)))return refused("block","sexualized_content","sexual");
- if(matches(text,AMBIGUOUS_REGULATED)||f("ambiguousRegulated"))return refused("review","regulated_content","drugs");
- if(matches(text,AMBIGUOUS_POLITICAL)||f("ambiguousPolitical"))return refused("review","ambiguous_politics","iran_politics");
- if(matches(text,SENSITIVE_LANGUAGE)||f("sensitive"))return refused("review","sensitive_language","language");
+ const sexual=iran?SEXUALIZED:SEXUALIZED.filter(t=>!DRESS_RULES.includes(t)&&!STYLING_WORDS.includes(t)),sexualFin=iran?FINGLISH.sexual:FINGLISH.sexual.filter(t=>!DRESS_RULES_FINGLISH.includes(t)&&!STYLING_FINGLISH.includes(t));
+ if(matches(contextual,sexual)||sexualFin.some(t=>containsFinglish(normalizeFinglish(contextual),t)))return refused("block","sexualized_content","sexual");
+ if(iran&&(matches(text,AMBIGUOUS_REGULATED)||f("ambiguousRegulated")))return refused("review","regulated_content","drugs");
+ if(iran&&(matches(text,AMBIGUOUS_POLITICAL)||f("ambiguousPolitical")))return refused("review","ambiguous_politics","iran_politics");
+ if(iran&&(matches(text,SENSITIVE_LANGUAGE)||f("sensitive")))return refused("review","sensitive_language","language");
  return {decision:"allow",category:"none",message:""};
 }
 /**

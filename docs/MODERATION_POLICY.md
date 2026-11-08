@@ -4,6 +4,15 @@
 ## Goal and intended audience
 Persian-speaking users, Iranian influencers, modern/traditional cultural creators, local businesses and everyday content makers. Allow genuine nonpolitical Iranian landscapes, culture, cities, weddings, apparel, beauty, portraits, sports, advertising and accessible creative expression.
 
+## Iran Gov Filter (owner decision, 2026-11-08)
+Whoush launches first outside Iran. The rules below that exist for Iran's regulations now sit behind a server-only flag, `WHOUSH_IRAN_GOV_FILTER` (`lib/region-policy.ts`): `on` applies them; unset (the default) leaves them off. Users never see the flag.
+
+- **OFF (default, outside Iran): user first, trust first, as much freedom as possible.** Allowed: politics and protests, real celebrities and political figures (users accept in the sign-up terms that they have consent for anyone they use and own what they make), royal symbols, alcohol, drugs, smoking and gambling as subjects, swimwear and lingerie, sexy styling of clothed adults, film-style blood and violence, swearing. The reply step and the planner are told not to refuse, moralise or swap a named person for a stand-in.
+- **ON (inside Iran):** every rule in the sections below, unchanged.
+- **Baseline in both modes:** no nudity or explicit sexual content of anyone, real people included; nothing sexual involving minors; no extreme gore (beheading, dismemberment, torture); no insults to a religion or hate against a group. Uploads and generated soundtracks are still checked against the baseline, fail closed.
+- **Media providers' own policies:** Whoush does not disguise prompts to get past a provider's moderation (that breaks the provider's terms and risks the accounts). It writes clear, professional prompts that fit each provider's published policy, and when a provider refuses, it tells the user and offers the closest version that provider allows.
+- Tests: `tests/region-policy.test.ts` (off and on); the rest of the suite runs with the filter on (`tests/setup-region.ts`).
+
 ## Owner content rules (2026-11-06)
 The same rules apply to chat text (`lib/safety.ts`) and to every uploaded photo (`lib/reference-inspect.ts`, checked right after upload). Code: `lib/safe-alternatives.ts`, tests: `tests/content-rules.test.ts`, `tests/upload-review.test.ts`.
 
