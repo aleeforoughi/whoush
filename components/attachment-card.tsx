@@ -89,10 +89,11 @@ export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention,mai
     <Icon icon={Brush} size={16} aria-hidden="true"/></button>}
    {onToggleMain&&<MainSubjectStar tag={a.tag} on={Boolean(main)} onToggle={onToggleMain} className={onBrush&&a.kind==="image"?"":"ms-auto"}/>}
   </span>
-  {/* A role the user chose is fixed: the card shows it, and changing it means removing the card and adding another. A file with no role keeps the optional menu. */}
-  {media&&a.role&&<CardRoleRow icon={roleIconKey(a.kind,a.role)} label={roleLabelFa(a.role,a.kind)} remove={remove}/>}
-  {media&&!a.role&&<span className={CARD_FOOT}>
-   <Select value={AUTO_ROLE} onValueChange={v=>onChange({role:v===AUTO_ROLE?null:v as AttachmentRole})} items={roles}>
+  {/* A role the user chose is fixed: the card shows it, and changing it means removing the card and adding another. A file with no role, or with a role
+      Whoush detected (owner, 2026-11-08: «if Whoush got it wrong, the user changes it»), keeps the menu, the detected role selected. */}
+  {media&&a.role&&!a.roleAuto&&<CardRoleRow icon={roleIconKey(a.kind,a.role)} label={roleLabelFa(a.role,a.kind)} remove={remove}/>}
+  {media&&(!a.role||a.roleAuto)&&<span className={CARD_FOOT}>
+   <Select value={a.role??AUTO_ROLE} onValueChange={v=>onChange({role:v===AUTO_ROLE?null:v as AttachmentRole})} items={roles}>
     <SelectTrigger size="sm" aria-label={"نقش "+displayTag(a.tag)} className="min-w-0 flex-1"><SelectValue/></SelectTrigger>
     <SelectContent>{roles.map(r=><SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}</SelectContent>
    </Select>
