@@ -1,3 +1,4 @@
+import {roleBrief} from "./role-briefs";
 import {iranGovFilterOn} from "./region-policy";
 import "server-only";
 import {createHash,randomUUID} from "node:crypto";
@@ -7,7 +8,7 @@ import {CreativePlanSchema,CreativeTurnInputSchema,STYLE_VISUAL,toPublicPlan,typ
 import {llmGate,preparePrivateCreativeRequest} from "./llm";
 import {acquireProviderSlot,countAstraCall,defaultRouterState,estimateTurnCostUsd,loadRoutingConfig,markProviderCooldown,planRoute,profileTask,type RoutingAudit,type RoutingAttempt,type RoutingConfig,type RouterState} from "./llm-routing";
 import {defaultAuditSink,type PrivateAuditRecord,type PrivateAuditSink} from "./private-audit";
-import {REGION_COLOR_FA,describeTagEn,displayTag,inferAttachmentRoles,isGenerationTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
+import {REGION_COLOR_FA,describeTagEn,displayTag,inferAttachmentRoles,isGenerationTag,isMediaKind,parseMentions,rewriteMentions,roleLabelFa,splitMentions,type AttachmentKind,type AttachmentRole,type RoleSource} from "./attachments";
 import {providerForModelId} from "./llm-routing";
 import {replyScriptFor} from "./finglish";
 import {clearSightByMovingProp,occlusionMessageFa,sceneVisibility} from "./scene-visibility";
@@ -147,6 +148,8 @@ const faMissingGenerations=(tags:readonly string[])=>tags.map(displayTag).join("
 const faMissing=(tags:readonly string[])=>tags.length===1?"پیوست "+displayTag(tags[0])+" در این گفت‌وگو پیدا نشد؛ آن را دوباره اضافه کن یا تگ را اصلاح کن.":"پیوست‌های "+tags.map(displayTag).join("، ")+" در این گفت‌وگو پیدا نشدند؛ آن‌ها را دوباره اضافه کن یا تگ‌ها را اصلاح کن.";
 const faSuggestion=(m:SuggestedModel)=>" مدل مناسب این کار: "+m.name+"؛ پس از تأیید فعال می‌شود.";
 const FA_PDF_NOTE="محتوای فایل PDF هنوز خوانده نمی‌شود و در پرامپت اثری ندارد";
+/** Why no model can take a request (owner live test, 2026-11-08: a video to continue was told about lip sync): the capability it needs, said plainly. */
+const FA_NO_MODEL_FOR:Partial<Record<"videoContinuation"|"endImage"|"startImage"|"motionReference"|"videoReference",string>>={"videoContinuation": "پرامپت امتداد ویدیو آماده است، اما هنوز هیچ مدل فعالی ادامه دادن ویدیو را پشتیبانی نمی‌کند؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.", "endImage": "پرامپت آماده است، اما هنوز هیچ مدل فعالی ساختن ویدیویی که به یک فریم مشخص ختم شود را پشتیبانی نمی‌کند؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.", "startImage": "پرامپت آماده است، اما هنوز هیچ مدل فعالی ساختن ویدیو از یک عکس را پشتیبانی نمی‌کند؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.", "motionReference": "پرامپت آماده است، اما هنوز هیچ مدل فعالی الگوی حرکت از یک ویدیو را پشتیبانی نمی‌کند؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.", "videoReference": "پرامپت آماده است، اما هنوز هیچ مدل فعالی ادیت یک ویدیو را پشتیبانی نمی‌کند؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود."};
 const lipsMsg="پرامپت لیپ‌سینک آماده است، اما هنوز هیچ مدل تأییدشده‌ای هماهنگی لب را پشتیبانی نمی‌کند؛ برای همین فعلاً پیشنهاد تولید و هزینه نمایش داده نمی‌شود.";
 // ---- deterministic planner (pure, no network): complete valid plan from the active skills ----
 // Every customer-visible line is Persian. `mediaPrompt` (private, provider-facing) is English, so each phrase that feeds both
@@ -460,6 +463,20 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // Mappings typed in the brief («#زن:تصویر-۱»: this prop looks like that file) are kept aside; the planner reads them as «#زن (#تصویر-۱)», an ordinary mention.
  const typed=typedMappings(raw.text),parsed={...raw,text:expandMappings(raw.text)},audit=deps.audit??defaultAuditSink,now=deps.now??(()=>new Date());
  const stage=(x:TurnStage)=>{try{deps.onStage?.(x);}catch{ /* progress is best effort */ }};
+ // Role pipelines (owner, 2026-11-08, lib/role-briefs.ts): a file sent with the role chosen in «+» and no words of its own is planned from that role's
+ // ready brief, on the server (never written into the user's message); a role that needs words (an edit, a reference) asks its one question instead.
+ let roleAsk:string|undefined;
+ {
+  const words=splitMentions(parsed.text).flatMap(p=>"text" in p?[p.text]:[]).join("").replace(/[\s.,،!?؟:؛]+/g,"");
+  const roled=(parsed.attachments??[]).filter(a=>a.role&&isMediaKind(a.kind as never));
+  if(!words&&roled.length){
+   const fi=parsed.uiScript==="finglish";
+   const briefs=roled.flatMap(a=>{const b=roleBrief(a.kind as AttachmentKind,a.role!,fi?"@"+a.tag:displayTag(a.tag),fi?"fi":"fa");return b?[b]:[];});
+   const complete=briefs.filter(b=>b.complete);
+   if(complete.length)parsed.text=complete.map(b=>b.text).join(" ").slice(0,4000);
+   else roleAsk=briefs.find(b=>b.ask)?.ask;
+  }
+ }
  // Detail lines are model or plan text: each passes the plan-text safety check and the leak filter, or is left out.
  const note=(st:TurnStage,kind:TurnNote["kind"],lines:readonly (string|undefined|false)[])=>{
   try{const ok=lines.filter((l):l is string=>typeof l==="string"&&l.trim().length>0).map(l=>l.replace(/\s+/g," ").trim().slice(0,140)).filter(l=>evaluatePlanTextSafety(l).decision==="allow"&&!leakText(l,raw.text));
@@ -484,6 +501,7 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  // A general reference («عکس رفرنس») is resolved by the brief's words; for a detail like a tattoo it stays the general reference it already is.
  const fits=(f:{role?:AttachmentRole})=>Boolean(need)&&(f.role===need!.role||(need!.role==="reference"&&f.role==="general"));
  const finglish=replyScriptFor(parsed.text)==="finglish",askTurn=randomUUID();
+ if(roleAsk)return {status:"needs_input",turnId:askTurn,message:roleAsk,question:roleAsk};
  // Which question this message answers: the last Whoush turn in the history carries the question's text.
  const safeHistory=(parsed.history??[]).filter(t=>evaluateTextSafety(t.text).decision==="allow");
  const lastAsked=[...safeHistory].reverse().find(t=>t.role==="agent")?.text??"";
@@ -885,7 +903,8 @@ export async function orchestrateCreativeTurn(rawInput:unknown,deps:Orchestrator
  catch(e){
   if(!(e instanceof NoCompatibleModelError))throw e;
   rec({planner:label,fallbackReason:"no_compatible_model",corrections:corrections.length?corrections:undefined});
-  const suggestedModel=suggestModel(modelReq,kind),base=ref?FA_NO_REFS:uploads.length&&!modelReq.lipSync?FA_NO_PHOTO_MODEL:lipsMsg;
+  const suggestedModel=suggestModel(modelReq,kind),needFa=(["videoContinuation","endImage","startImage","motionReference","videoReference"] as const).find(k=>modelReq[k]),
+   base=ref?FA_NO_REFS:needFa&&!modelReq.lipSync?FA_NO_MODEL_FOR[needFa]!:uploads.length&&!modelReq.lipSync?FA_NO_PHOTO_MODEL:lipsMsg;
   return {status:"unsupported",turnId,plan:withMain(toPublicPlan(plan,refs,suggestedModel,input.style)),message:base+(suggestedModel?faSuggestion(suggestedModel):""),...(suggestedModel?{suggestedModel}:{}),reason:"no_model"};
  }
  // Length from the source video (owner, 2026-11-08: an edit or a replacement in a video lasts as long as that video): the recommended model's version

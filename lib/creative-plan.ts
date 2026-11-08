@@ -93,6 +93,8 @@ export const CreativeTurnInputSchema=z.object({
  continueWith:z.array(z.string().regex(TAG_PATTERN)).max(MAX_ATTACHMENTS).optional(),
  /** The message answers Whoush's question: the brief is the original request plus the answer, and Whoush decides instead of asking again. */
  answersQuestion:z.boolean().optional(),
+ /** The interface language (lib/ui-lang.ts): the script of a role pipeline's brief when the message is only a tag. */
+ uiScript:z.enum(["fa","finglish"]).optional(),
  history:z.array(HistoryTurnSchema).max(MAX_HISTORY_TURNS).refine(h=>h.reduce((n,t)=>n+t.text.length,0)<=MAX_HISTORY_TOTAL_CHARS,"history too long").optional(),
  /** The scene the user arranged in the interactive diagrams (camera, framing, lights). Applied to the plan exactly; the media prompt and constraints follow it. */
  stagingOverride:z.lazy(()=>StagingSchema.extend({subject:z.enum(SUBJECTS)})).optional(),

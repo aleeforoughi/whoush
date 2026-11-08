@@ -1,5 +1,4 @@
 "use client";
-import {roleBrief} from "@/lib/role-briefs";
 import {useUiLang} from "@/components/ui-language";
 import {useEffect,useRef,useState,type ClipboardEvent,type DragEvent,type FormEvent} from "react";
 import Link from "next/link";
@@ -91,8 +90,6 @@ export function Studio(){
  const projectParam=useSearchParams().get("project");
  const [messages,setMessages]=useState<TranscriptItem[]>([]);
  const [draft,setDraft]=useState("");
- /** The ready prompt last put in the message box (lib/role-briefs.ts): a second file adds its own; anything the user typed is never replaced. */
- const lastBrief=useRef("");
  const uiLang=useUiLang();
  const [proposal,setProposal]=useState<AgentProposal|null>(null);
  /** The message that carries the live (approvable) proposal; every other proposal in the transcript is a read-only record. */
@@ -509,12 +506,6 @@ export function Studio(){
   if(reviewOn)for(const a of added)if((a.kind==="image"||(a.kind==="video"&&videoReviewOn))&&reviewsRef.current[a.id]?.state!=="safe")void checkPhoto(a);
   setAnnounce((added.length?fa(added.length)+" فایل اضافه شد. ":"")+(bad.length?fa(bad.length)+" فایل رد شد.":""));
   readingRef.current=false;setReading(false);
-  // A ready prompt for the role picked in «+» (owner, 2026-11-08, lib/role-briefs.ts): an empty message box (or one holding only the last ready prompt)
-  // gets it, naming the file, so the user can send it as it is or change it.
-  if(upload?.role)for(const a of added){
-   const b=roleBrief(a.kind,upload.role,uiLang==="fi"?"@"+a.tag:displayTag(a.tag),uiLang);if(!b)continue;
-   setDraft(d=>{const t=d.trim();if(t&&t!==lastBrief.current.trim())return d;const next=(t?t+" ":"")+b.text;lastBrief.current=next;return next;});
-  }
   return added;
  }
  /** Fills an upload card with one file (picked or dropped). The card stays in place and shows the file; a rejected file leaves it empty for another try. */
@@ -701,8 +692,13 @@ export function Studio(){
   const lastMsg=messages[messages.length-1];
   return lastMsg?.kind==="question"?rerunSource(messages,lastMsg.id):undefined;
  }
+ /**
+  * A file added with a role from «+» can go alone (owner, 2026-11-08): the message is its tag, and the server's pipeline for that role is the brief
+  * (lib/role-briefs.ts). Nothing is written into the chat box for the user.
+  */
+ const roleFiles=attachments.filter(a=>Boolean(a.role));
  function send(e:FormEvent){
-  e.preventDefault();const text=draft.trim();if(!text)return;
+  e.preventDefault();const text=draft.trim()||roleFiles.map(a=>displayTag(a.tag)).join(" ");if(!text)return;
   answer(text);
  }
  /** Sends `text`; an answer to Whoush's question goes with the original request (and its files), so the planner sees the whole brief and decides instead of asking again. */
@@ -794,7 +790,7 @@ export function Studio(){
    const planRoles=new Map<string,string>((lastPlan?.references??[]).map(r=>[r.tag,r.role]));
    const continueWith=outgoing.length?[]:prior.filter(a=>planRoles.has(a.tag)).map(a=>a.tag);
    const withPlanRole=(a:LocalAttachment)=>{const r=planRoles.get(a.tag);return !a.role&&r&&roleAllowed(a.kind,r as AttachmentRole)?withRole(a,r as AttachmentRole):a;};
-   const body=()=>JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(a=>toWireAttachment(a,reviewIdOf(a),a.regionEdit?reviewIdOf(guideOf(a)!):undefined))}:{}),...(prior.length?{priorAttachments:prior.map(a=>toWireAttachment(withPlanRole(a),reviewIdOf(a)))}:{}),...(continueWith.length?{continueWith}:{}),...(main?{mainSubject:main}:{}),...(generations.length?{generations}:{})}),onStage=(stage:TurnStage)=>setThinking(t=>t&&(t.stage===stage?t:{...t,done:[...t.done,t.stage],stage})),
+   const body=()=>JSON.stringify({text:sentText,...(brief?{answersQuestion:true}:{}),...(uiLang==="fi"?{uiScript:"finglish"}:{}),...(messages.length?{history:historyFor(messages)}:{}),...(scene?{stagingOverride:scene.stagingOverride,...(scene.aspectOverride?{aspectOverride:scene.aspectOverride}:{})}:{}),preference:mode,...(style?{style}:{}),...(characterRef&&characterRef.angles.length>0?{characterRef}:{}),...(outgoing.length?{attachments:outgoing.map(a=>toWireAttachment(a,reviewIdOf(a),a.regionEdit?reviewIdOf(guideOf(a)!):undefined))}:{}),...(prior.length?{priorAttachments:prior.map(a=>toWireAttachment(withPlanRole(a),reviewIdOf(a)))}:{}),...(continueWith.length?{continueWith}:{}),...(main?{mainSubject:main}:{}),...(generations.length?{generations}:{})}),onStage=(stage:TurnStage)=>setThinking(t=>t&&(t.stage===stage?t:{...t,done:[...t.done,t.stage],stage})),
     onNote=(n:TurnNote)=>setThinking(t=>{if(!t)return t;const had=t.notes[n.stage]??{story:[],facts:[]};return {...t,notes:{...t.notes,[n.stage]:{...had,[n.kind]:[...had[n.kind],...n.lines].slice(0,8)}}};});
    type ErrorBody={editCards?:unknown;error?:string;reason?:UnsupportedReason;unreviewed?:unknown;message?:string;question?:string;reaction?:ReactionEmoji;plan?:AgentProposal["plan"];references?:unknown;choices?:unknown};
    const postTurn=async()=>{const res=await postAgentTurn(body(),onStage,onNote);return {r:res,errorBody:(res.ok?{}:await res.json().catch(()=>({}))) as ErrorBody};};
@@ -1134,7 +1130,7 @@ export function Studio(){
      <input ref={fileInput} type="file" multiple hidden accept={ATTACHMENT_ACCEPT} data-testid="attachment-input" onChange={e=>{const files=Array.from(e.target.files??[]),upload=pendingUpload.current,slot=pendingSlot.current;pendingUpload.current=undefined;pendingSlot.current=undefined;e.target.value="";e.target.multiple=true;const card=slot?slots.find(x=>x.id===slot):undefined;if(card)void fillSlot(card,files);else void addFiles(files,upload);}}/>
      <Label className="sr-only" id="whoush-prompt-label">توضیح تصویر یا ویدیو</Label>
      <MentionTextarea id="whoush-prompt" handleRef={promptRef} value={draft} onValueChange={setDraft} options={mentionOptions} onPaste={onPaste} placeholder="چی می‌خوای بسازیم؟" labelledBy="whoush-prompt-label" describedBy="prompt-hint" maxLength={4000}
-      onSubmitShortcut={()=>{if(draft.trim()&&!busy&&!reading)formRef.current?.requestSubmit();}}
+      onSubmitShortcut={()=>{if((draft.trim()||roleFiles.length)&&!busy&&!reading)formRef.current?.requestSubmit();}}
       startPad={COMPOSER_EXTRAS_ENABLED?"sm:ps-40":"sm:ps-24"}
       startAction={<div className="flex items-center">
        <InsertMenu disabled={reading} onPick={pickInsert}/>
@@ -1159,7 +1155,7 @@ export function Studio(){
       endAction={<div className="flex items-center gap-1">
        {voice.enabled&&<button type="button" disabled={busy||reading||loadingProject} onClick={()=>setVoiceOpen(true)} aria-label="پیام صوتی" title="پیام صوتی"
         className={COMPOSER_TOOL+" disabled:pointer-events-none disabled:opacity-50"}><Icon icon={Mic} aria-hidden="true"/></button>}
-       <Button type="submit" size="icon" className={SEND_TONE[mode]} disabled={busy||reading||!draft.trim()} aria-busy={busy||undefined} aria-label={busy?"در حال ارسال…":"ارسال"} title="ارسال">
+       <Button type="submit" size="icon" className={SEND_TONE[mode]} disabled={busy||reading||(!draft.trim()&&!roleFiles.length)} aria-busy={busy||undefined} aria-label={busy?"در حال ارسال…":"ارسال"} title="ارسال">
         <Icon icon={busy?LoaderCircle:ArrowUp} aria-hidden="true" className={busy?"animate-spin motion-reduce:animate-none":undefined}/>
        </Button>
       </div>}/>

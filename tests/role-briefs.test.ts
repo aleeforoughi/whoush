@@ -20,3 +20,20 @@ test("«امتداد ویدیو به جلو» is a complete prompt (Whoush alrea
  const back=roleBrief("video","extend_back","#ویدیو-۱")!;assert.equal(back.complete,true);assert.match(back.text,/فریم اولش/);
  const edit=roleBrief("image","edit_reference","#تصویر-۱")!;assert.equal(edit.complete,false);assert.match(edit.text,/: $/,"ends where the user writes the change");
 });
+
+test("owner (2026-11-08): a file sent with its «+» role and no words is planned from the role's pipeline on the server; an edit asks what to change",async()=>{
+ const {orchestrateCreativeTurn,deterministicPlanner}=await import("../lib/orchestrator");
+ const att=(tag:string,kind:"video"|"image",role:string)=>({id:crypto.randomUUID(),tag,kind,mime:kind==="video"?"video/mp4":"image/jpeg",width:64,height:64,...(kind==="video"?{durationSeconds:5}:{}),bytes:2048,sha256:"f".repeat(64),role});
+ let seen="";
+ const planner=(r:Parameters<typeof deterministicPlanner>[0])=>{seen=r.userText;return deterministicPlanner(r);};
+ await orchestrateCreativeTurn({text:"#ویدیو-۱",attachments:[att("video1","video","continue")]},{planner,planUncheckedMedia:true});
+ assert.match(seen,/به جلو ادامه بده/,"the role's brief is the request");
+ const ask=await orchestrateCreativeTurn({text:"#تصویر-۱",attachments:[att("image1","image","edit_reference")]},{planner:deterministicPlanner});
+ assert.equal(ask.status,"needs_input");assert.match((ask as {question?:string}).question??"",/چی عوض بشه/);
+ const fin=await orchestrateCreativeTurn({text:"@image1",uiScript:"finglish",attachments:[att("image1","image","edit_reference")]},{planner:deterministicPlanner});
+ assert.match((fin as {question?:string}).question??"",/chi avaz besheh/,"in the interface's script");
+});
+test("the chat box is never filled with a ready prompt (owner, 2026-11-08: it confuses the user)",async()=>{
+ const fs=await import("node:fs");
+ assert.doesNotMatch(fs.readFileSync("components/studio.tsx","utf8"),/roleBrief\(/);
+});
