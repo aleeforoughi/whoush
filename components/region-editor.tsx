@@ -1,11 +1,12 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
-import {Check,Hand,Pencil,Redo2,Trash2,Undo2,X} from "lucide-react";
+import {Check,Hand,LoaderCircle,Pencil,Redo2,Trash2,Undo2,WandSparkles,X} from "lucide-react";
 import {Button,Icon} from "@aleeforoughi/feather-react";
 import {BRUSH_DONE_FA,BRUSH_EDIT_FA,BRUSH_HINT_FA,BRUSH_MISSING_NOTE_FA,BRUSH_NOTE_PLACEHOLDER_FA,BRUSH_SIZES,MAX_NOTE,MAX_REGIONS,NEON_SHADOW,REGION_COLORS,
  maskHasPaint,regionTagFa,type Region} from "@/lib/region-edit";
 import {displayTag} from "@/lib/attachments";
 import {paintSuggested} from "@/lib/suggested-masks";
+import {maskAt,maskInBox,paintMask,prepare} from "@/lib/segment";
 
 /** A region: its colour slot (0..4, one layer each), its number (#ادیت-n), its comment, whether the comment was submitted (✓), and where its pin sits. */
 type Draft={slot:number;n:number;note:string;done:boolean;pin:{x:number;y:number}};
@@ -15,6 +16,10 @@ export type SuggestedRegion={note:string;boxes:readonly (readonly [number,number
 const MIN_S=1,MAX_S=8;
 export const COMMENT_ADDED_FA="کامنت ثبت شد";
 export const SUBMIT_COMMENT_FA="ثبت کامنت";
+/** The wand's cursor, as in photo editors: a wand whose tip is a sparkle, white with a dark outline (readable on any photo); the sparkle is the hotspot. */
+const WAND_CURSOR="url(\"data:image/svg+xml,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><g stroke-linecap="round"><path d="M7 1.5v3.2M7 9.3v3.2M1.5 7h3.2M9.3 7h3.2M3.1 3.1l2 2M8.9 8.9l2 2M10.9 3.1l-2 2M3.1 10.9l2-2" stroke="#111" stroke-width="3"/><path d="M7 1.5v3.2M7 9.3v3.2M1.5 7h3.2M9.3 7h3.2M3.1 3.1l2 2M8.9 8.9l2 2M10.9 3.1l-2 2M3.1 10.9l2-2" stroke="#fff" stroke-width="1.3"/><path d="M12.5 12.5l16 16" stroke="#111" stroke-width="5"/><path d="M12.5 12.5l16 16" stroke="#fff" stroke-width="2.6"/><path d="M12.5 12.5l3.2 3.2" stroke="#111" stroke-width="2.6"/></g></svg>')+"\") 7 7, crosshair";
+export const WAND_FA="انتخاب خودکار",WAND_HINT_FA="روی هر چیزی بزن تا دقیق انتخاب بشه؛ برای اضافه کردن، روی بقیه هم بزن.",WAND_LOADING_FA="انتخاب خودکار داره آماده می‌شه…",
+ WAND_BUSY_FA="دارم انتخابش می‌کنم…",WAND_FAILED_FA="انتخاب خودکار روی این دستگاه کار نکرد؛ با قلم روش بکش.";
 
 /**
  * The full-screen photo editor for «ادیت» (lib/region-edit.ts), mobile first (owner, 2026-11-06):
@@ -31,6 +36,13 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
  const [open,setOpen]=useState<number|null>(null);
  const [size,setSize]=useState(2);
  const [hand,setHand]=useState(false);
+ // The magic wand (owner, 2026-11-08): a tap selects the object under it on the device (lib/segment.ts); more taps add to the same area.
+ // The wand is the tool the editor opens with (owner, 2026-11-08); the photo starts encoding as soon as it opens.
+ const [wand,setWand]=useState(true);
+ const [wandState,setWandState]=useState<"idle"|"loading"|"ready"|"failed">("loading");
+ const [wandBusy,setWandBusy]=useState(false);
+ const tap=useRef<{x:number;y:number}|null>(null);
+ const seg=useRef<Promise<string|null>|null>(null);
  const [view,setView]=useState<View>({s:1,x:0,y:0});
  const [natural,setNatural]=useState<{w:number;h:number}|null>(null);
  const [missing,setMissing]=useState(false);
@@ -68,7 +80,47 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
   regionsRef.current=made;
   // Seeding is a one-time sync with the canvases (an outside resource), so its state is set here once.
   setRegions(made);
+  // Then each area becomes the exact object in its box (owner, 2026-11-08: no oval spilling over the photo), unless the user has touched it already.
+  void (async()=>{
+   const key=await ensureSeg(false);if(!key)return;
+   for(const [slot,sg] of suggested.slice(0,MAX_REGIONS).entries()){
+    const masks=[];
+    for(const [x0,y0,x1,y1] of sg.boxes){try{masks.push(await maskInBox(key,[x0*natural.w,y0*natural.h,x1*natural.w,y1*natural.h]));}catch{masks.length=0;break;}}
+    const layer=layers.current[slot],ctx=layer?.getContext("2d");
+    if(!masks.length||!layer||!ctx||history.current.some(h=>h.slot===slot))continue;
+    ctx.clearRect(0,0,layer.width,layer.height);for(const m of masks)paintMask(ctx,m,REGION_COLORS[slot].css);
+   }
+  })();
  },[natural,suggested]);
+ // eslint-disable-next-line react-hooks/exhaustive-deps -- encode once per photo; ensureSeg keeps its own promise
+ useEffect(()=>{void ensureSeg(false);},[photoUrl]);
+ /** The photo encoded for the wand, once (null when the device cannot run it: the brush still works). */
+ function ensureSeg(show:boolean):Promise<string|null>{
+  if(show&&wandState==="idle")setWandState("loading");
+  seg.current??=(async()=>{
+   try{const blob=await (await fetch(photoUrl)).blob();await prepare(photoUrl,blob);setWandState("ready");return photoUrl;}
+   catch(e){if(process.env.NODE_ENV!=="production")console.warn("[whoush] wand unavailable:",e instanceof Error?e.message:e);setWandState("failed");return null;}
+  })();
+  return seg.current;
+ }
+ /** A wand tap: the object under it joins the open area (a new area when none is open), as one step to undo. */
+ async function wandTap(cx:number,cy:number){
+  const key=await ensureSeg(true);if(!key)return;
+  const list=regionsRef.current,current=openRef.current;
+  let slot:number,created=false;
+  if(current!==null&&list.some(r=>r.slot===current))slot=current;
+  else if(list.length<MAX_REGIONS){slot=[0,1,2,3,4].find(s=>!list.some(r=>r.slot===s))!;created=true;}
+  else slot=list[list.length-1].slot;
+  const m=layers.current[slot],ctx=m?.getContext("2d");if(!m||!ctx)return;
+  const p=toPhoto(cx,cy,slot);if(p.x<0||p.y<0||p.x>m.width||p.y>m.height)return;
+  setWandBusy(true);
+  let mask;try{mask=await maskAt(key,[[p.x,p.y]]);}catch{setWandBusy(false);setWandState("failed");return;}
+  setWandBusy(false);
+  history.current.push({slot,data:ctx.getImageData(0,0,m.width,m.height),created});if(history.current.length>30)history.current.shift();redoStack.current=[];bump();
+  paintMask(ctx,mask,REGION_COLORS[slot].css);
+  if(created){const n=Math.max(0,...regionsRef.current.map(r=>r.n))+1,next=[...regionsRef.current,{slot,n,note:"",done:false,pin:{x:p.x/m.width,y:p.y/m.height}}];regionsRef.current=next;setRegions(next);}
+  openRef.current=slot;setOpen(slot);
+ }
 
  function toPhoto(cx:number,cy:number,slot:number){const m=layers.current[slot]!,r=m.getBoundingClientRect();return {x:(cx-r.left)*m.width/r.width,y:(cy-r.top)*m.height/r.height,k:m.width/r.width};}
  function paint(slot:number,from:{x:number;y:number},to:{x:number;y:number},k:number){
@@ -101,8 +153,8 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
   try{e.currentTarget.setPointerCapture(e.pointerId);}catch{/* no capture */}
   pointers.current.set(e.pointerId,{x:e.clientX,y:e.clientY});
   const pts=[...pointers.current.values()];
-  if(pts.length===2){cancelStroke();pan.current=null;pinch.current={d:dist(pts[0],pts[1]),mx:(pts[0].x+pts[1].x)/2,my:(pts[0].y+pts[1].y)/2,view:viewRef.current};return;}
-  if(pts.length===1){if(hand||e.button===1)pan.current={x:e.clientX,y:e.clientY,view:viewRef.current};else startStroke(e.clientX,e.clientY);}
+  if(pts.length===2){tap.current=null;cancelStroke();pan.current=null;pinch.current={d:dist(pts[0],pts[1]),mx:(pts[0].x+pts[1].x)/2,my:(pts[0].y+pts[1].y)/2,view:viewRef.current};return;}
+  if(pts.length===1){if(hand||e.button===1)pan.current={x:e.clientX,y:e.clientY,view:viewRef.current};else if(wand)tap.current={x:e.clientX,y:e.clientY};else startStroke(e.clientX,e.clientY);}
  }
  function move(e:React.PointerEvent<HTMLDivElement>){
   const box=stage.current?.getBoundingClientRect();if(box)setCursor(pointers.current.size>1?null:{x:e.clientX-box.left,y:e.clientY-box.top});
@@ -112,13 +164,14 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
    const p=pinch.current,d=dist(pts[0],pts[1]),mx=(pts[0].x+pts[1].x)/2,my=(pts[0].y+pts[1].y)/2;
    setView({s:Math.min(MAX_S,Math.max(MIN_S,p.view.s*d/p.d)),x:p.view.x+(mx-p.mx),y:p.view.y+(my-p.my)});return;
   }
+  if(tap.current&&Math.hypot(e.clientX-tap.current.x,e.clientY-tap.current.y)>10)tap.current=null;
   if(pan.current){const p=pan.current;setView({...p.view,x:p.view.x+e.clientX-p.x,y:p.view.y+e.clientY-p.y});return;}
   const s=stroke.current;if(s){const p=toPhoto(e.clientX,e.clientY,s.slot);paint(s.slot,s.last,p,p.k);s.last=p;}
  }
  function up(e:React.PointerEvent<HTMLDivElement>){
   pointers.current.delete(e.pointerId);
   if(pointers.current.size<2)pinch.current=null;
-  if(!pointers.current.size){pan.current=null;stroke.current=null;setPainting(null);}
+  if(!pointers.current.size){pan.current=null;stroke.current=null;setPainting(null);const t=tap.current;tap.current=null;if(t&&wand&&!wandBusy)void wandTap(t.x,t.y);}
  }
  function wheel(e:React.WheelEvent<HTMLDivElement>){
   const v=viewRef.current,s=Math.min(MAX_S,Math.max(MIN_S,v.s*(e.deltaY<0?1.15:1/1.15)));setView(s===1?{s:1,x:0,y:0}:{...v,s});
@@ -165,7 +218,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
    <Button type="button" size="sm" onClick={finish} disabled={!regions.length}><Icon icon={Check} aria-hidden="true"/>{BRUSH_DONE_FA}</Button>
   </div>
   {/* The stage: the photo fixed full screen, every region's layer and pin, zoomed and moved by gestures; the tools and the comment card lie over it. */}
-  <div ref={stage} className="relative min-h-0 flex-1 overflow-hidden select-none" style={{cursor:hand?"grab":"none"}}
+  <div ref={stage} className="relative min-h-0 flex-1 overflow-hidden select-none" style={{cursor:hand?"grab":wand?(wandBusy?"progress":WAND_CURSOR):"none"}}
    onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onWheel={wheel} onPointerLeave={()=>setCursor(null)}>
    <div className="absolute inset-0 flex items-center justify-center p-2">
     <div className="relative" style={{transform:`translate(${view.x}px,${view.y}px) scale(${view.s})`,transformOrigin:"center"}}>
@@ -184,17 +237,23 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
      </span>)}
     </div>
    </div>
-   {cursor&&!hand&&<span aria-hidden="true" className="pointer-events-none absolute block aspect-square rounded-full"
+   {cursor&&!hand&&!wand&&<span aria-hidden="true" className="pointer-events-none absolute block aspect-square rounded-full"
     style={{left:cursor.x,top:cursor.y,width:BRUSH_SIZES[size].px,height:BRUSH_SIZES[size].px,transform:"translate(-50%,-50%)",background:brushColor,opacity:.6,boxShadow:NEON_SHADOW}}/>}
+   {wand&&(wandState!=="ready"||wandBusy)&&<p role="status" aria-live="polite" className="pointer-events-none absolute inset-x-0 top-3 mx-auto w-fit max-w-[80%] rounded-control bg-background/85 px-3 py-1.5 text-center type-caption text-fg-primary shadow-lg">
+    {wandState==="failed"?WAND_FAILED_FA:wandState==="ready"?(wandBusy?WAND_BUSY_FA:WAND_HINT_FA):WAND_LOADING_FA}</p>}
    {view.s>1&&<button type="button" onPointerDown={e=>e.stopPropagation()} onClick={()=>setView({s:1,x:0,y:0})} className="absolute start-2 top-2 rounded-full bg-background/80 px-3 py-1 type-caption text-fg-primary motion-hover hover:bg-surface-pressed">اندازهٔ اصلی</button>}
    {/* Tools: a vertical card on the photo's left (the end side in RTL), 8px corners; padding keeps the selected ring whole. */}
    <div role="toolbar" aria-orientation="vertical" aria-label="ابزار قلم" onPointerDown={e=>e.stopPropagation()} onPointerMove={()=>setCursor(null)}
     className="absolute end-4 top-1/2 flex -translate-y-1/2 flex-col items-center gap-1.5 rounded-[8px] border border-white/15 bg-background/75 p-2 shadow-lg backdrop-blur-md md:end-6" style={{cursor:"default"}}>
-    {BRUSH_SIZES.map((b,i)=><button key={b.id} type="button" onClick={()=>{setSize(i);setHand(false);}} aria-pressed={size===i&&!hand} aria-label={"قلم "+b.labelFa} title={"قلم "+b.labelFa}
-     className={"flex size-10 shrink-0 items-center justify-center rounded-[8px] motion-hover hover:bg-white/10 "+(size===i&&!hand?"bg-white/15 ring-2 ring-primary":"")}>
+    <button type="button" onClick={()=>{const on=!wand;setWand(on);if(on){setHand(false);void ensureSeg(true);}}} aria-pressed={wand} aria-label={WAND_FA} title={WAND_FA}
+     className={"flex size-10 items-center justify-center rounded-[8px] text-fg-primary motion-hover hover:bg-white/10 "+(wand?"bg-white/15 ring-2 ring-primary":"")}>
+     <Icon icon={wand&&(wandBusy||wandState==="loading")?LoaderCircle:WandSparkles} aria-hidden="true" className={wand&&(wandBusy||wandState==="loading")?"animate-spin motion-reduce:animate-none":undefined}/></button>
+    <span className="my-0.5 h-px w-6 bg-white/25" aria-hidden="true"/>
+    {BRUSH_SIZES.map((b,i)=><button key={b.id} type="button" onClick={()=>{setSize(i);setHand(false);setWand(false);}} aria-pressed={size===i&&!hand&&!wand} aria-label={"قلم "+b.labelFa} title={"قلم "+b.labelFa}
+     className={"flex size-10 shrink-0 items-center justify-center rounded-[8px] motion-hover hover:bg-white/10 "+(size===i&&!hand&&!wand?"bg-white/15 ring-2 ring-primary":"")}>
      <span className="block aspect-square shrink-0 grow-0 rounded-full" style={{width:Math.round(Math.min(26,4+b.px*.35)),height:Math.round(Math.min(26,4+b.px*.35)),minWidth:Math.round(Math.min(26,4+b.px*.35)),background:brushColor}}/></button>)}
     <span className="my-0.5 h-px w-6 bg-white/25" aria-hidden="true"/>
-    <button type="button" onClick={()=>setHand(h=>!h)} aria-pressed={hand} aria-label="جابه‌جایی عکس" title="جابه‌جایی عکس"
+    <button type="button" onClick={()=>{setHand(h=>!h);setWand(false);}} aria-pressed={hand} aria-label="جابه‌جایی عکس" title="جابه‌جایی عکس"
      className={"flex size-10 items-center justify-center rounded-[8px] text-fg-primary motion-hover hover:bg-white/10 "+(hand?"bg-white/15 ring-2 ring-primary":"")}><Icon icon={Hand} aria-hidden="true"/></button>
     <button type="button" onClick={undo} disabled={!steps.u} aria-label="برگرد" title="برگرد" className="flex size-10 items-center justify-center rounded-[8px] text-fg-primary motion-hover hover:bg-white/10 disabled:opacity-40"><Icon icon={Undo2} aria-hidden="true"/></button>
     <button type="button" onClick={redo} disabled={!steps.r} aria-label="دوباره انجام بده" title="دوباره انجام بده" className="flex size-10 items-center justify-center rounded-[8px] text-fg-primary motion-hover hover:bg-white/10 disabled:opacity-40"><Icon icon={Redo2} aria-hidden="true"/></button>
@@ -215,7 +274,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
         className="flex items-center gap-1 rounded-[4px] bg-background/90 px-2 py-1 type-caption text-fg-primary shadow-md motion-hover hover:bg-surface-pressed" aria-label={regionTagFa(r.n)+": "+r.note+" — باز کردن"}>
         <span className="size-2.5 rounded-full" style={{background:REGION_COLORS[r.slot].css}} aria-hidden="true"/><bdi>{regionTagFa(r.n)}</bdi>
         <span className="text-fg-secondary">{r.done?COMMENT_ADDED_FA:"بدون کامنت"}</span><Icon icon={Pencil} size={16} aria-hidden="true" className="size-3 text-fg-secondary"/></button></li>)}</ul>
-      :<p className="rounded-[8px] bg-background/85 px-3 py-2 text-center type-caption text-fg-secondary">{BRUSH_HINT_FA}</p>}
+      :<p className="rounded-[8px] bg-background/85 px-3 py-2 text-center type-caption text-fg-secondary">{wand&&wandState!=="failed"?WAND_HINT_FA:BRUSH_HINT_FA}</p>}
     {missing&&regions.some(r=>!r.note.trim())&&<p role="alert" className="rounded-[8px] bg-background/90 px-3 py-1.5 type-caption text-error">{BRUSH_MISSING_NOTE_FA}</p>}
    </div>
   </div>

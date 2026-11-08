@@ -27,3 +27,6 @@ scripts/models-3d/reports/*/wire-*.png
 
 # A second dev server's build folder (next.config.ts WHOUSH_DIST_DIR)
 /.next-*/
+
+# On-device segmentation model (npm run models; Apache-2.0, docs/evidence/SEGMENTATION.md)
+/public/models/
