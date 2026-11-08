@@ -12,6 +12,7 @@ import {displayTag} from "@/lib/attachments";
 import {TagBadge} from "@/components/attachment-chip";
 import {EDIT_CARD_GENERATE_FA,EDIT_CARD_OPEN_FA,EDIT_PREPARING_FA,type SuggestedEdit} from "@/lib/edit-card";
 import {WIDGET_BUTTON,WidgetActions,WidgetHeader} from "@/components/widget";
+import {AreaOverlay} from "@/components/area-overlay";
 import {NEON_SHADOW,REGION_COLORS,regionTagFa} from "@/lib/region-edit";
 import {fa,faText,faAuto} from "@/lib/format";
 import type {QuestionChoice} from "@/lib/media-intent";
@@ -232,8 +233,7 @@ export function AgentQuestion({question,repeated,preparing,waiting,onAnswer,refe
      // eslint-disable-next-line @next/next/no-img-element -- a local or owned image
      ?<img src={c.thumbUrl} alt="" className="block h-auto w-full"/>
      :<span className="flex aspect-video items-center justify-center text-fg-secondary"><Icon icon={ImageIcon} size={24} aria-hidden="true"/></span>}
-    {c.thumbUrl&&c.suggested?.map((sg,i)=>sg.boxes.map((b,k)=><span key={i+"-"+k} aria-hidden="true" className="absolute rounded-[50%]"
-     style={{left:b[0]*100+"%",top:b[1]*100+"%",width:(b[2]-b[0])*100+"%",height:(b[3]-b[1])*100+"%",background:REGION_COLORS[i%REGION_COLORS.length].css,opacity:.5}}/>))}
+    {c.thumbUrl&&c.suggested?.length?<AreaOverlay photoUrl={c.thumbUrl} areas={c.suggested}/>:null}
    </span>
    {c.suggested&&c.suggested.length>0&&<ul className="flex flex-col gap-1.5">{c.suggested.map((sg,i)=><li key={i} className="flex items-start gap-2 type-body-sm text-fg-primary">
     <RegionChip n={i+1} color={REGION_COLORS[i%REGION_COLORS.length].name}/><span className="min-w-0 break-words">{sg.note}</span></li>)}</ul>}

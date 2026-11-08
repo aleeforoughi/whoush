@@ -5,7 +5,7 @@ import {Button,Icon} from "@aleeforoughi/feather-react";
 import {BRUSH_DONE_FA,BRUSH_EDIT_FA,BRUSH_HINT_FA,BRUSH_MISSING_NOTE_FA,BRUSH_NOTE_PLACEHOLDER_FA,BRUSH_SIZES,MAX_NOTE,MAX_REGIONS,NEON_SHADOW,REGION_COLORS,
  maskHasPaint,regionTagFa,type Region} from "@/lib/region-edit";
 import {displayTag} from "@/lib/attachments";
-import {paintSuggested} from "@/lib/suggested-masks";
+import {exactAreas,paintSuggested} from "@/lib/suggested-masks";
 import {maskAt,maskInBox,paintMask,prepare} from "@/lib/segment";
 import {maskTop,refineMask} from "@/lib/mask-refine";
 import {analyzeFaces,facePartAt,type FaceAnalysis} from "@/lib/face-parts";
@@ -88,18 +88,13 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
   regionsRef.current=made;
   // Seeding is a one-time sync with the canvases (an outside resource), so its state is set here once.
   setRegions(made);
-  // Then each area becomes the exact object in its box (owner, 2026-11-08: no oval spilling over the photo), unless the user has touched it already.
-  void (async()=>{
-   const key=await ensureSeg(false);if(!key)return;
-   for(const [slot,sg] of suggested.slice(0,MAX_REGIONS).entries()){
-    const masks=[];
-    for(const [x0,y0,x1,y1] of sg.boxes){try{masks.push(await maskInBox(key,[x0*natural.w,y0*natural.h,x1*natural.w,y1*natural.h]));}catch{masks.length=0;break;}}
-    const layer=layers.current[slot],ctx=layer?.getContext("2d");
-    if(!masks.length||!layer||!ctx||history.current.some(h=>h.slot===slot))continue;
-    ctx.clearRect(0,0,layer.width,layer.height);for(const m of masks)paintMask(ctx,m,REGION_COLORS[slot].css);
-   }
-  })();
- },[natural,suggested]);
+  // Then each area becomes its exact area (a face part, or the object in its box; lib/suggested-masks.ts), unless the user has touched it already.
+  void exactAreas(photoUrl,suggested).then(masks=>masks.forEach((m,slot)=>{
+   const layer=layers.current[slot],ctx=layer?.getContext("2d");
+   if(!m||!layer||!ctx||history.current.some(h=>h.slot===slot))return;
+   ctx.clearRect(0,0,layer.width,layer.height);paintMask(ctx,m,REGION_COLORS[slot].css);
+  })).catch(()=>{});
+ },[natural,suggested,photoUrl]);
  // eslint-disable-next-line react-hooks/exhaustive-deps -- encode once per photo; ensureSeg keeps its own promise
  useEffect(()=>{void ensureSeg(false);},[photoUrl]);
  /** The photo encoded for the wand, once (null when the device cannot run it: the brush still works). */

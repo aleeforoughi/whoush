@@ -133,3 +133,30 @@ export function facePartAt(a:FaceAnalysis,x:number,y:number):{part:FacePart;mask
  }
  return null;
 }
+
+/**
+ * Every face part of the photo's faces, each with its mask and its bounding box (0..1): for matching the areas Whoush marked itself (a box per area) to
+ * the exact part they mean (lib/suggested-masks.ts): the skin of a face, the lips, the eyes (each and both), the eyebrows (each and both), the nose,
+ * the hair, the neck.
+ */
+export function facePartMasks(a:FaceAnalysis):{part:FacePart|"eyes"|"brows";mask:Mask;box:[number,number,number,number]}[]{
+ const {w,h,cls,faces}=a,out:{part:FacePart|"eyes"|"brows";mask:Mask;box:[number,number,number,number]}[]=[];
+ const add=(part:FacePart|"eyes"|"brows",plane:Uint8Array)=>{
+  let x0=w,y0=h,x1=-1,y1=-1;for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(plane[y*w+x]){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;}
+  if(x1>=0)out.push({part,mask:{w,h,score:1,plane},box:[x0/w,y0/h,(x1+1)/w,(y1+1)/h]});
+ };
+ const ovals=rasterize(w,h,faces.map(f=>f.oval));
+ for(const f of faces){
+  const lips=rasterize(w,h,[f.lipsOuter]),hole=rasterize(w,h,[f.lipsInner]);for(let i=0;i<lips.length;i++)if(hole[i])lips[i]=0;
+  add("lips",lips);add("left_eye",rasterize(w,h,[f.leftEye]));add("right_eye",rasterize(w,h,[f.rightEye]));add("eyes",rasterize(w,h,[f.leftEye,f.rightEye]));
+  add("left_brow",rasterize(w,h,[f.leftBrow]));add("right_brow",rasterize(w,h,[f.rightBrow]));add("brows",rasterize(w,h,[f.leftBrow,f.rightBrow]));
+  add("nose",rasterize(w,h,[f.nose]));
+ }
+ if(faces.length){
+  const features=rasterize(w,h,faces.flatMap(f=>[f.lipsOuter,f.leftEye,f.rightEye,f.leftBrow,f.rightBrow]));
+  const skin=new Uint8Array(w*h);for(let i=0;i<skin.length;i++)skin[i]=ovals[i]&&cls[i]!==HAIR&&!features[i]?1:0;add("skin",skin);
+ }
+ const hair=new Uint8Array(w*h);for(let i=0;i<hair.length;i++)hair[i]=cls[i]===HAIR?1:0;add("hair",hair);
+ const body=new Uint8Array(w*h);for(let i=0;i<body.length;i++)body[i]=cls[i]===BODY?1:0;add("neck",body);
+ return out;
+}

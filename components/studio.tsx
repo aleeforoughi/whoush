@@ -1,4 +1,5 @@
 "use client";
+import {prepare} from "@/lib/segment";
 import {EDIT_AS_ASKED_FA} from "@/lib/edit-card";
 import {TagBadge} from "@/components/attachment-chip";
 import {changeTitleFa,type CanvasSection} from "@/lib/staging";
@@ -227,6 +228,19 @@ export function Studio(){
  const reviewJobs=useRef(new Map<string,Promise<PhotoReview>>());
  const [waitingFor,setWaitingFor]=useState<LocalAttachment[]|null>(null);
  // «ویرایش با قلم» (lib/region-edit.ts): the photo open in the full-screen editor, and whether it came from the chat box.
+ // Warm-up (owner, 2026-11-08: «بساز» seemed dead on the phone while the masks were prepared): when the latest message is an edit card with marked areas
+ // on an uploaded photo, the on-device model loads and reads that photo in the background, so «بساز» is near instant. Generated pictures are not warmed:
+ // that would add a new #تصویر to the chat the user did not ask for.
+ useEffect(()=>{
+  const last=messages[messages.length-1];
+  if(last?.kind!=="question")return;
+  const snap=last.snapshot as {editCards?:{tag:string;suggested?:unknown[]}[]};
+  for(const c of snap.editCards??[]){
+   if(!c.suggested?.length||isGenerationTag(c.tag))continue;
+   const url=messages.flatMap(m=>m.attachments??[]).find(a=>a.tag===c.tag)?.previewUrl;
+   if(url)void fetch(url).then(r=>r.blob()).then(b=>prepare(url,b)).catch(()=>{});
+  }
+ },[messages]);
  /** «بساز» on an edit card is preparing its masks: the card's tag (its button shows it is working). */
  const [preparingEdit,setPreparingEdit]=useState<string|null>(null);
  const [editing,setEditing]=useState<{a:LocalAttachment;fromTray:boolean;suggested?:readonly SuggestedEdit[]}|null>(null);
