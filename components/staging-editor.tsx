@@ -708,7 +708,7 @@ function Backdrop({env,W,H,horizon,bf,slide,wallY,gradient}:{env:NonNullable<Sta
 /** A switch: the switch itself first (on the right, as Persian reads), its label after it, the row aligned to the right. */
 function Toggle({label,on,onChange}:{label:string;on:boolean;onChange:(on:boolean)=>void}){
  return <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={()=>onChange(!on)}
-  className="flex min-h-9 items-center gap-2 rounded-control px-1 type-label text-fg-primary outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+  className="flex min-h-9 items-center gap-2 rounded-control px-1 type-label text-fg-primary outline-none motion-hover hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
   <span dir="ltr" className={"relative inline-block h-5 w-9 shrink-0 rounded-full transition-colors motion-reduce:transition-none "+(on?"bg-primary":"bg-surface-hover")}><span className={"absolute top-0.5 size-4 rounded-full transition-[inset-inline-start] motion-reduce:transition-none "+(on?"start-4.5 bg-primary-foreground":"start-0.5 bg-fg-secondary")}/></span>
   <span>{label}</span>
  </button>;
@@ -953,7 +953,7 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   {tag&&(FRAME_MOVES_PROPS||(sel!=null&&base[sel]))&&<div dir={lang==="fi"?"ltr":"rtl"} className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
    style={{right:((W+2-tag.x)/(W+4)*100)+"%",top:((tag.y+2)/(H+4)*100)+"%"}}>
    {FRAME_MOVES_PROPS&&onLock&&<button type="button" aria-pressed={locked} aria-label={(locked?"باز کردن قفل انتخاب ":"قفل کردن انتخاب ")+tag.text} onClick={()=>onLock(!locked)}
-    className={"pointer-events-auto relative flex size-6 items-center justify-center rounded-[4px] before:absolute before:-inset-2.5 before:content-[''] pointer-coarse:size-7 border border-primary motion-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring "+(locked?"bg-primary text-primary-foreground":"bg-transparent text-primary")}>
+    className={"pointer-events-auto relative flex size-6 items-center justify-center rounded-[4px] before:absolute before:-inset-2.5 before:content-[''] pointer-coarse:size-7 border border-primary motion-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring "+(locked?"bg-primary text-primary-foreground hover:bg-primary/80":"bg-transparent text-primary hover:bg-primary/15")}>
     <Icon icon={locked?Lock:LockOpen} size={16} aria-hidden="true" className={"size-3.5! "+(locked?"[&_rect]:fill-current":"")}/></button>}
    <bdi className="whitespace-nowrap text-xs font-medium leading-none text-primary pointer-coarse:text-[13px]">{tag.text}</bdi>
   </div>}
@@ -968,12 +968,12 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   {FRAME_MOVES_PROPS&&((sel!=null&&base[sel])||centerSel)&&onBack&&<div className="absolute top-3 start-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1.5">
    {/* Each badge hugs its text in full (never cut); when two do not fit side by side, the second wraps under the first. */}
    <button type="button" onClick={onBack} aria-label={"تنظیم "+(centerSel?"مرکز":propTags(base)[sel!])+"، برگشت به تنظیمات کادر"}
-   className="flex h-7 w-max shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-primary ps-2.5 pe-1.5 text-xs font-medium text-primary-foreground shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:h-8">
+   className="flex h-7 w-max shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-primary ps-2.5 pe-1.5 text-xs font-medium text-primary-foreground shadow-1 outline-none motion-hover hover:bg-primary/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:h-8">
    <span>تنظیم {centerSel?"مرکز":<bdi>{propTags(base)[sel!]}</bdi>}</span><Icon icon={X} size={16} aria-hidden="true" className="size-3.5! shrink-0"/>
    </button>
    {/* With the centre point selected: back to Whoush's default centre (on the dominant subject, Whoush's framing); white badge, blue text. */}
    {centerSel&&<button type="button" onClick={()=>onFocus?.(null)} aria-label="بازگشت به مرکز سوژه"
-    className="flex h-7 w-max shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-white ps-2 pe-2.5 text-xs font-medium text-primary shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60 pointer-coarse:h-8">
+    className="flex h-7 w-max shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-white ps-2 pe-2.5 text-xs font-medium text-primary shadow-1 outline-none motion-hover not-disabled:hover:bg-white/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60 pointer-coarse:h-8">
     <Icon icon={Undo2} size={16} aria-hidden="true" className="size-3.5! shrink-0"/>بازگشت به مرکز سوژه</button>}
   </div>}
  </div>;
@@ -986,12 +986,12 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   {FRAME_MOVES_PROPS&&((sel!=null&&base[sel])||centerSel)&&onBack&&<div className="absolute top-3 start-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1.5">
    {/* Each badge hugs its text in full (never cut); when two do not fit side by side, the second wraps under the first. */}
    <button type="button" onClick={onBack} aria-label={"تنظیم "+(centerSel?"مرکز":propTags(base)[sel!])+"، برگشت به تنظیمات کادر"}
-   className="flex h-7 w-max shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-primary ps-2.5 pe-1.5 text-xs font-medium text-primary-foreground shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:h-8">
+   className="flex h-7 w-max shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-primary ps-2.5 pe-1.5 text-xs font-medium text-primary-foreground shadow-1 outline-none motion-hover hover:bg-primary/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:h-8">
    <span>تنظیم {centerSel?"مرکز":<bdi>{propTags(base)[sel!]}</bdi>}</span><Icon icon={X} size={16} aria-hidden="true" className="size-3.5! shrink-0"/>
    </button>
    {/* With the centre point selected: back to Whoush's default centre (on the dominant subject, Whoush's framing); white badge, blue text. */}
    {centerSel&&<button type="button" onClick={()=>onFocus?.(null)} aria-label="بازگشت به مرکز سوژه"
-    className="flex h-7 w-max shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-white ps-2 pe-2.5 text-xs font-medium text-primary shadow-1 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60 pointer-coarse:h-8">
+    className="flex h-7 w-max shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-white ps-2 pe-2.5 text-xs font-medium text-primary shadow-1 outline-none motion-hover not-disabled:hover:bg-white/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60 pointer-coarse:h-8">
     <Icon icon={Undo2} size={16} aria-hidden="true" className="size-3.5! shrink-0"/>بازگشت به مرکز سوژه</button>}
   </div>}
   {/* Tag text, then (on its right) the lock in a small button: outline when unlocked, filled blue with a white lock when locked. On touch screens the
@@ -999,7 +999,7 @@ function FrameView({staging,anchor,aspect,editable,onFraming,sel,onSelect,onProp
   {tag&&(FRAME_MOVES_PROPS||(sel!=null&&base[sel]))&&<div dir={lang==="fi"?"ltr":"rtl"} className={"pointer-events-none absolute flex items-center gap-1.5 "+(tag.above?"-translate-y-full pb-0.5":"pt-0.5")}
    style={{right:((W+2-tag.x)/(W+4)*100)+"%",top:((tag.y+2)/(H+4)*100)+"%"}}>
    {FRAME_MOVES_PROPS&&onLock&&<button type="button" aria-pressed={locked} aria-label={(locked?"باز کردن قفل انتخاب ":"قفل کردن انتخاب ")+tag.text} onClick={()=>onLock(!locked)}
-    className={"pointer-events-auto relative flex size-6 items-center justify-center rounded-[4px] before:absolute before:-inset-2.5 before:content-[''] pointer-coarse:size-7 border border-primary motion-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring "+(locked?"bg-primary text-primary-foreground":"bg-transparent text-primary")}>
+    className={"pointer-events-auto relative flex size-6 items-center justify-center rounded-[4px] before:absolute before:-inset-2.5 before:content-[''] pointer-coarse:size-7 border border-primary motion-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring "+(locked?"bg-primary text-primary-foreground hover:bg-primary/80":"bg-transparent text-primary hover:bg-primary/15")}>
     <Icon icon={locked?Lock:LockOpen} size={16} aria-hidden="true" className={"size-3.5! "+(locked?"[&_rect]:fill-current":"")}/></button>}
    <bdi className="whitespace-nowrap text-xs font-medium leading-none text-primary pointer-coarse:text-[13px]">{tag.text}</bdi>
   </div>}
@@ -1205,7 +1205,7 @@ function LightInspector({light:l,tag,canRemove,onChange,onRemove,onAdd}:{light:S
   <div className="flex flex-wrap items-center gap-1" role="radiogroup" aria-label="رنگ نور">
    <Chip role="radio" on={!l.colorHex} onClick={()=>onChange({colorHex:undefined})}>بدون رنگ</Chip>
    {GEL_COLORS.map(c=><button key={c} type="button" role="radio" aria-checked={l.colorHex===c} aria-label={"رنگ "+c} onClick={()=>onChange({colorHex:c})}
-    className={"size-7 rounded-control border-2 "+(l.colorHex===c?"border-fg-primary":"border-transparent")} style={{background:c}}/>)}
+    className={"size-7 rounded-control border-2 "+(l.colorHex===c?"border-fg-primary":"border-transparent hover:border-fg-secondary")+" motion-hover"} style={{background:c}}/>)}
   </div>
   {LIGHTS_EDITABLE&&<div className="flex flex-wrap gap-2">
    {onAdd&&<Button type="button" variant="outline" size="sm" onClick={onAdd}><Icon icon={Plus} aria-hidden="true"/>نور جدید</Button>}

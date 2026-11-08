@@ -178,7 +178,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
      {/* Pins: each region's tag where it was first painted (✓ once its comment is in), the same size on screen at any zoom; tap to open, ✕ to delete. */}
      {regions.map(r=><span key={r.slot} onPointerDown={e=>e.stopPropagation()} className={"absolute flex items-center rounded-[4px] "+(open===r.slot?"ring-2 ring-white":"")}
       style={{left:r.pin.x*100+"%",top:r.pin.y*100+"%",background:REGION_COLORS[r.slot].css,color:REGION_COLORS[r.slot].ink,boxShadow:NEON_SHADOW,transform:`translate(-50%,-115%) scale(${1/view.s})`,transformOrigin:"bottom center"}}>
-      <button type="button" onClick={()=>reopen(r.slot)} aria-label={regionTagFa(r.n)+(r.note?": "+r.note:"")} className="hit-area flex items-center gap-0.5 py-0.5 ps-2 pe-1 type-caption font-medium">
+      <button type="button" onClick={()=>reopen(r.slot)} aria-label={regionTagFa(r.n)+(r.note?": "+r.note:"")} className="hit-area flex items-center gap-0.5 rounded-[4px] py-0.5 ps-2 pe-1 type-caption font-medium hover:bg-black/20">
        {r.done&&<Icon icon={Check} size={16} aria-hidden="true" className="size-3"/>}<bdi>{regionTagFa(r.n)}</bdi></button>
       <button type="button" onClick={()=>removeRegion(r.slot)} aria-label={"حذف "+regionTagFa(r.n)} className="hit-area flex size-5 items-center justify-center rounded-[4px] hover:bg-black/20">
        <Icon icon={X} size={16} aria-hidden="true" className="size-3"/></button>
@@ -187,7 +187,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
    </div>
    {cursor&&!hand&&<span aria-hidden="true" className="pointer-events-none absolute block aspect-square rounded-full"
     style={{left:cursor.x,top:cursor.y,width:BRUSH_SIZES[size].px,height:BRUSH_SIZES[size].px,transform:"translate(-50%,-50%)",background:brushColor,opacity:.6,boxShadow:NEON_SHADOW}}/>}
-   {view.s>1&&<button type="button" onPointerDown={e=>e.stopPropagation()} onClick={()=>setView({s:1,x:0,y:0})} className="absolute start-2 top-2 rounded-full bg-background/80 px-3 py-1 type-caption text-fg-primary">اندازهٔ اصلی</button>}
+   {view.s>1&&<button type="button" onPointerDown={e=>e.stopPropagation()} onClick={()=>setView({s:1,x:0,y:0})} className="absolute start-2 top-2 rounded-full bg-background/80 px-3 py-1 type-caption text-fg-primary motion-hover hover:bg-surface-pressed">اندازهٔ اصلی</button>}
    {/* Tools: a vertical card on the photo's left (the end side in RTL), 8px corners; padding keeps the selected ring whole. */}
    <div role="toolbar" aria-orientation="vertical" aria-label="ابزار قلم" onPointerDown={e=>e.stopPropagation()} onPointerMove={()=>setCursor(null)}
     className="absolute end-4 top-1/2 flex -translate-y-1/2 flex-col items-center gap-1.5 rounded-[8px] border border-white/15 bg-background/75 p-2 shadow-lg backdrop-blur-md md:end-6" style={{cursor:"default"}}>
@@ -213,7 +213,7 @@ export function RegionEditor({tag,photoUrl,onClose,onDone,suggested}:{tag:string
      </div>
      :regions.length
       ?<ul className="flex max-w-full flex-wrap justify-center gap-1.5">{regions.map(r=><li key={r.slot}><button type="button" onClick={()=>reopen(r.slot)}
-        className="flex items-center gap-1 rounded-[4px] bg-background/90 px-2 py-1 type-caption text-fg-primary shadow-md" aria-label={regionTagFa(r.n)+": "+r.note+" — باز کردن"}>
+        className="flex items-center gap-1 rounded-[4px] bg-background/90 px-2 py-1 type-caption text-fg-primary shadow-md motion-hover hover:bg-surface-pressed" aria-label={regionTagFa(r.n)+": "+r.note+" — باز کردن"}>
         <span className="size-2.5 rounded-full" style={{background:REGION_COLORS[r.slot].css}} aria-hidden="true"/><bdi>{regionTagFa(r.n)}</bdi>
         <span className="text-fg-secondary">{r.done?COMMENT_ADDED_FA:"بدون کامنت"}</span><Icon icon={Pencil} size={16} aria-hidden="true" className="size-3 text-fg-secondary"/></button></li>)}</ul>
       :<p className="rounded-[8px] bg-background/85 px-3 py-2 text-center type-caption text-fg-secondary">{BRUSH_HINT_FA}</p>}

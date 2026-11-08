@@ -31,7 +31,7 @@ export function RailContent({labels,current,activeProjectId,onNewChat,onProjectD
  return <div className="flex h-full min-h-0 flex-col gap-4 p-2 lg:p-4">
   {labels==="responsive"&&<>
    <BrandMark className="hidden lg:inline-flex"/>
-   <Link href="/" aria-label="هووش، صفحه اصلی" className="flex min-h-control items-center justify-center rounded-control font-heading type-title text-fg-primary lg:hidden"><bdi dir="ltr">w</bdi></Link>
+   <Link href="/" aria-label="هووش، صفحه اصلی" className="flex min-h-control items-center justify-center rounded-control font-heading type-title text-fg-primary motion-hover hover:opacity-80 lg:hidden"><bdi dir="ltr">w</bdi></Link>
   </>}
   {labels==="always"&&<BrandMark/>}
   <Button onClick={()=>{onNewChat();onNavigate?.();}} className="w-full justify-start" aria-label="گفت‌وگوی جدید">

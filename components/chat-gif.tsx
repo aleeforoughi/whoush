@@ -20,7 +20,7 @@ export function ChatGif({gif}:{gif:GifSnapshot}){
    {/* eslint-disable-next-line @next/next/no-img-element -- GIPHY media must load from GIPHY's own URL */}
    <img src={play?gif.url:gif.stillUrl} alt={gif.title||"GIF"} loading="lazy" referrerPolicy="no-referrer" className="size-full object-cover"/>
    {!play&&<button type="button" onClick={()=>setPlay(true)} aria-label={"پخش گیف"+(gif.title?" "+gif.title:"")}
-    className="absolute inset-0 flex items-center justify-center bg-background/30 text-fg-primary focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring">
+    className="absolute inset-0 flex items-center justify-center bg-background/30 text-fg-primary motion-hover hover:bg-background/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring">
     <span className="flex size-10 items-center justify-center rounded-control bg-background/70"><Icon icon={Play} size={20} aria-hidden="true"/></span>
    </button>}
   </div>

@@ -12,7 +12,7 @@ const SOURCE_FA={wikimedia:"ویکی‌مدیا",openverse:"اوپن‌ورس"} 
 function Fold({title,icon,summary,defaultOpen,children}:{title:string;icon:LucideIcon;summary:string;defaultOpen:boolean;children:ReactNode}){
  const [open,setOpen]=useState(defaultOpen);
  return <section aria-label={title} className="flex flex-col gap-2.5 rounded-card border border-line-secondary bg-surface-subtle p-3">
-  <button type="button" onClick={()=>setOpen(o=>!o)} aria-expanded={open} className="flex w-full items-center gap-2 rounded-control text-start motion-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+  <button type="button" onClick={()=>setOpen(o=>!o)} aria-expanded={open} className="flex w-full items-center gap-2 rounded-control text-start motion-hover hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
    <Icon icon={icon} size={16} aria-hidden="true" className="size-4 shrink-0 text-primary"/>
    <span className="type-label text-fg-primary">{title}</span>
    <span className="min-w-0 flex-1 truncate type-caption text-fg-secondary">· {summary}</span>
@@ -47,7 +47,7 @@ export function ResearchReport({research,excluded,onToggle}:{research:ProposalRe
      const off=excluded?.has(r.id)??false,attribution=r.title+" · "+r.creator+" · "+r.license+" · "+SOURCE_FA[r.source];
      return <li key={r.id} className={"relative w-20 shrink-0 motion-state "+(off?"opacity-40":"")}>
       <a href={r.sourceUrl} target="_blank" rel="noopener noreferrer" title={attribution} aria-label={"منبع: "+attribution}
-       className="block overflow-hidden rounded-control border border-line-secondary bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+       className="block overflow-hidden motion-hover hover:opacity-90 rounded-control border border-line-secondary bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
        {/* eslint-disable-next-line @next/next/no-img-element -- a Whoush-owned copy of an open-licensed reference */}
        <img src={r.url} alt="" loading="lazy" className="block aspect-square w-full object-cover"/>
       </a>

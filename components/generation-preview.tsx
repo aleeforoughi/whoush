@@ -71,7 +71,7 @@ export function GenerationPreview({job,kind="image",model,placeholder,onEdit,onV
       ?<video src={shown.url+"#t=0.1"} controls playsInline preload="metadata" aria-label={"ویدیوی "+(job.tag?displayTag(job.tag):"ساخته‌شده")} className="block h-auto max-h-[min(75dvh,56rem)] w-full rounded-control bg-background object-contain"/>
       :<span className="group relative block w-fit max-w-full"><ImageActionStack label={job.tag?displayTag(job.tag):""} onEdit={onEdit} url={shown.url} file={{name:"output",mime:"image/png",kind:"image",tag:job.tag??"generation1"}}/>
        {onView
-        ?<button type="button" onClick={onView} aria-label={"نمایش تمام‌صفحه "+(job.tag?displayTag(job.tag):"")} className="block cursor-zoom-in">{picture}</button>
+        ?<button type="button" onClick={onView} aria-label={"نمایش تمام‌صفحه "+(job.tag?displayTag(job.tag):"")} className="block rounded-control motion-hover hover:opacity-90">{picture}</button>
         :picture}<ImageActionStack under label={job.tag?displayTag(job.tag):""} onEdit={onEdit} url={shown.url} file={{name:"output",mime:"image/png",kind:"image",tag:job.tag??"generation1"}}/></span>)
      :<>
       <Icon icon={kind==="video"?Clapperboard:ImageIcon} size={32} aria-hidden="true" className={active?"text-primary":"text-fg-secondary"}/>
