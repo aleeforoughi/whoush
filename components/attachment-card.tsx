@@ -77,7 +77,7 @@ export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention,mai
  const lip=a.role==="lip_sync"?a.speech:undefined;
  const set=(patch:Partial<AttachmentSpeech>)=>a.speech&&onChange({speech:{...a.speech,...patch}});
  const remove={label:"حذف "+a.name,onClick:onRemove};
- return <li id={"attachment-"+a.id} className={CARD_FRAME+" border-line-primary bg-surface-subtle"}>
+ return <li id={"attachment-"+a.id} className={CARD_FRAME+" whoush-widget"}>
   <CardMedia item={a} onPreview={onPreview} review={review} onRetryReview={onRetryReview}/>
   <span className={CARD_META} title={a.name+" · "+faBytes(a.bytes)}>
    <TagBadge tag={a.tag} onMention={onMention}/>
@@ -118,7 +118,7 @@ export function AttachmentCard({item:a,onChange,onRemove,onPreview,onMention,mai
 export function SentAttachmentCard({item:a,onPreview,onMention,review,onBrush}:{item:LocalAttachment;onPreview:()=>void;onMention:()=>void;review?:PhotoReview;onBrush?:()=>void}){
  const media=isMediaKind(a.kind),lip=a.role==="lip_sync"?a.speech:undefined;
  const label=(list:readonly {value:string;label:string}[],v:string)=>list.find(x=>x.value===v)?.label??v;
- return <li className={CARD_FRAME+" border-line-primary bg-surface-subtle"}>
+ return <li className={CARD_FRAME+" whoush-widget"}>
   <span className="group relative block">{onBrush&&a.kind==="image"&&<EditImageButton label={displayTag(a.tag)} onClick={onBrush}/>}<CardMedia item={a} onPreview={onPreview} review={review}/></span>
   <span className={CARD_META} title={a.name+" · "+faBytes(a.bytes)}>
    <TagBadge tag={a.tag} onMention={onMention}/>

@@ -1145,7 +1145,7 @@ export function Studio(){
         </ul>}
         {m.kind==="gif"
          ?<div><span className="sr-only">شما: </span><ChatGif gif={m.snapshot}/></div>
-         :<div className="max-w-[85%] whitespace-pre-wrap break-words rounded-card bg-secondary px-4 py-3 type-body-sm text-fg-primary">
+         :<div className="whoush-widget max-w-[85%] whitespace-pre-wrap break-words rounded-card px-4 py-3 type-body-sm text-fg-primary">
           <span className="sr-only">شما: </span><MessageText text={m.text} attachments={byTag} onOpen={openViewer} generations={generationSet} onGeneration={showGeneration}/>
          </div>}
         {reactions}
