@@ -1,4 +1,5 @@
 "use client";
+import {useUiLang} from "@/components/ui-language";
 import {TagThumb,type TagThumbKind} from "@/components/tag-thumb";
 import {useEffect,useId,useImperativeHandle,useLayoutEffect,useRef,useState,type ClipboardEvent,type KeyboardEvent,type ReactNode,type RefObject} from "react";
 import {Badge,Card} from "@aleeforoughi/feather-react";
@@ -184,7 +185,7 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
   const v=show(r.value,r.caret);
   onValueChange(v);
  }
- const empty=value==="";
+ const empty=value==="",uiLang=useUiLang();
  // On a phone (owner, 2026-11-08) the text has the whole width on its own row and the buttons sit in a toolbar row under it; wider, they sit beside it.
  // The pads are written out by the callers with their `sm:` prefix, so Tailwind finds them.
  const pads=(compact?"max-sm:pb-control ":"max-sm:pb-12 ")+"transition-[padding] duration-300 ease-out motion-reduce:transition-none "+(startAction?startPad+" ":"")+(endAction?endPad:"");
@@ -196,8 +197,10 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
   {top&&<div className="px-2 pt-2">{top}</div>}
   <div className="relative">
    {empty&&placeholder&&<span aria-hidden="true" className={"pointer-events-none absolute inset-y-0 start-0 truncate px-control py-control type-body text-fg-tertiary "+pads}>{placeholder}</span>}
-   {/* The direction follows what is typed (owner, 2026-11-08): Persian runs right to left and Finglish left to right, whatever the interface language. */}
-   <div ref={el} id={id} dir="auto" contentEditable="plaintext-only" suppressContentEditableWarning spellCheck={false} tabIndex={0}
+   {/* The direction follows what is typed (owner, 2026-11-08): Persian runs right to left and Finglish left to right, whatever the interface language.
+       Empty, it follows the page (Safari starts an empty `auto` field left to right: the cursor sat on the left in the Persian interface). `lang` tells
+       keyboards that offer it, spellcheck and screen readers the field is Persian (or Finglish); iOS lets no page switch the keyboard itself. */}
+   <div ref={el} id={id} dir={empty?undefined:"auto"} lang={uiLang==="fi"?"fa-Latn":"fa"} contentEditable="plaintext-only" suppressContentEditableWarning spellCheck={false} tabIndex={0}
     role="combobox" aria-labelledby={labelledBy} aria-describedby={describedBy}
     aria-autocomplete="list" aria-haspopup="listbox" aria-controls={listId} aria-expanded={open} aria-activedescendant={open?optionId(current):undefined}
     className={"block max-h-40 min-h-13 overflow-y-auto whitespace-pre-wrap break-words px-control py-control type-body text-fg-primary outline-hidden "+pads}
