@@ -2,7 +2,7 @@ import "server-only";
 import {randomUUID} from "node:crypto";
 import {findMediaModel,type MediaConfiguration} from "./catalog";
 import {cancelHiggsfield,getHiggsfieldStatus,HiggsfieldHttpError,NotCancelableError,submitHiggsfieldVerifiedPath,type HiggsfieldStatus} from "./higgsfield";
-import {devGenerationGate,generationGate,type GenerationMode} from "./policy";
+import {devGenerationGate,generationGate,type GenerationMode,devGateOpenForClaimed} from "./policy";
 import type {MediaModel,MediaProviderId} from "./types";
 /** Provider outputs are provider-hosted URLs that expire (>= 7 days); mirroring to owned storage is NOT implemented (docs/LAUNCH_GATES.md gate 8). */
 export type ProviderOutput={kind:"image"|"video"|"audio";url:string;needsMirroring:true;mime?:string;width?:number;height?:number;durationSeconds?:number};
@@ -84,7 +84,7 @@ export class HiggsfieldMediaProvider implements MediaProvider{
  constructor(private readonly mode:"live"|"dev_live"="live"){}
  async submit(job:ProviderJob):Promise<{providerRequestId:string}>{
   const model=findMediaModel(job.modelId);
-  if(!model||!model.verifiedApiPath||!(this.mode==="live"?generationGate(model).live:devGenerationGate(model).live))throw new Error("Live generation blocked");
+  if(!model||!model.verifiedApiPath||!(this.mode==="live"?generationGate(model).live:devGateOpenForClaimed(model)))throw new Error("Live generation blocked");
   const payload=buildHiggsfieldPayload(model,job.prompt,job.configuration,model.capabilities.audio&&job.configuration.audio!==false&&await audioCheckAvailable()); // the card's sound toggle // a mapping error happens before anything is sent: definite
   let r:Awaited<ReturnType<typeof submitHiggsfieldVerifiedPath>>;
   try{r=await submitHiggsfieldVerifiedPath(model.verifiedApiPath,payload,job.idempotencyKey);}

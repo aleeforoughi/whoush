@@ -78,3 +78,18 @@ test("owner (2026-11-08): an alternative never goes back to a provider that alre
  assert.ok(!second||(second.provider!=="google"&&second.provider!==first.provider),"skips both: "+second?.id);
  assert.equal(findMediaModel(first.id)!.kind,"image");
 });
+
+test("owner live test (2026-11-08): the last allowed dev submission goes through; a submission that never left gives its slot back",async()=>{
+ const {claimDevSubmit,releaseDevSubmit,devGateOpenForClaimed,devGenerationGate}=await import("../lib/policy");
+ const {findMediaModel}=await import("../lib/catalog");
+ const env={...process.env};
+ Object.assign(process.env,{WHOUSH_DEV_LIVE_TEST:"true",NODE_ENV:"development",WHOUSH_DEV_LIVE_MAX_SUBMITS:"2",HIGGSFIELD_API_KEY:"test-key"});
+ const g=globalThis as {__whoushDevSubmits?:{n:number}};const before=g.__whoushDevSubmits?.n;g.__whoushDevSubmits={n:1};
+ try{
+  const m=findMediaModel("seedance-2-5-480p-5s")!;
+  assert.equal(claimDevSubmit(),true,"the 2nd of 2 is allowed");
+  assert.equal(devGenerationGate(m).blockers.includes("dev_cap_reached"),true,"the cap is now full for new quotes");
+  assert.equal(devGateOpenForClaimed(m),true,"but the claimed job itself may go");
+  releaseDevSubmit();assert.equal(g.__whoushDevSubmits!.n,1,"a submission that never left is given back");
+ }finally{for(const k of Object.keys(process.env))if(!(k in env))delete process.env[k];Object.assign(process.env,env);if(before===undefined)delete g.__whoushDevSubmits;else g.__whoushDevSubmits={n:before};}
+});

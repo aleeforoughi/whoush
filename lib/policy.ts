@@ -44,6 +44,13 @@ const devSubmits=()=>((globalThis as {__whoushDevSubmits?:{n:number}}).__whoushD
 export const devSubmitCount=()=>devSubmits().n;
 /** Takes one slot of the per-process cap; false when the cap is reached or dev testing is off. */
 export function claimDevSubmit():boolean{const d=devLiveTest(),s=devSubmits();if(!d.enabled||s.n>=d.maxSubmits)return false;s.n++;return true;}
+/** Gives a claimed submission back when it definitely never reached the provider (nothing was created, so it used none of the cap). */
+export function releaseDevSubmit():void{const s=devSubmits();if(s.n>0)s.n--;}
+/**
+ * The dev gate for a job that has already claimed its submission (owner live test, 2026-11-08: the 20th of 20 allowed submissions was refused because
+ * the provider checked the cap again after the claim had counted it): every other blocker still applies.
+ */
+export const devGateOpenForClaimed=(model:MediaModel):boolean=>devGenerationGate(model).blockers.every(b=>b==="dev_cap_reached");
 /** The dev_live gate: dev testing on, credentials present, a verified model path, and cap headroom. */
 export function devGenerationGate(model?:MediaModel):{live:boolean;blockers:string[]}{
  const d=devLiveTest(),b:string[]=[];

@@ -11,7 +11,7 @@ import {getPrivateMediaPrompt,getTurnReferences,privatePromptCompilerVersion} fr
 import {isStoredMediaUrl,MEDIA_ROUTE,readMedia,storeMedia} from "./media-store";
 import {AUDIO_REMOVED_FA,checkVideoAudio,hasFfmpeg,type AudioCheckDeps,type AudioVerdict} from "./audio-check";
 import {evaluateOutputQA,type OutputQA} from "./output-qa";
-import {claimDevSubmit,devGenerationGate,generationGate,type GenerationMode} from "./policy";
+import {claimDevSubmit,devGenerationGate,generationGate,releaseDevSubmit,type GenerationMode} from "./policy";
 import {verifyQuote,verifyQuoteSignature,QuoteError,type CharacterRefDigest} from "./quotes";
 import {evaluatePlanTextSafety} from "./safety";
 /**
@@ -95,7 +95,7 @@ export async function executeApprovedQuote(i:{token:string;approved:boolean;idem
  const provider=deps.provider??providerForMode(job.mode);
  try{
   if(job.mode==="live"&&!generationGate(model).live)throw new Error("gate closed");
-  if(job.mode==="dev_live"&&!(devGenerationGate(model).live&&claimDevSubmit()))throw new Error("dev gate closed or cap reached");
+  if(job.mode==="dev_live"&&!(devGenerationGate(model).live&&claimDevSubmit()))throw Object.assign(new Error("dev gate closed or cap reached"),{unclaimed:true});
   const references=await loadReferences(job);
   const r=await provider.submit({modelId:job.modelId,prompt,configuration:job.configuration,idempotencyKey:job.id,...(references.length?{references}:{})});
   job.providerRequestId=r.providerRequestId;transition(job,"submitted",deps.now?.()??new Date());
@@ -106,7 +106,8 @@ export async function executeApprovedQuote(i:{token:string;approved:boolean;idem
   const at=deps.now?.()??new Date();
   // The provider may have it: keep the reservation and reconcile with the same key (pollJob). Only a definite failure releases.
   if(e instanceof SubmissionUnknownError){job.unknownSubmission={prompt,attempts:1,lastAttemptAt:at.toISOString(),reason:e.reason};transition(job,"submission_unknown",at);}
-  else{if(isContentRefusal(e))noteRefusal(job);ledger.release(job.id);transition(job,"released",at);} // a refused submit: told as a refusal
+  // A definite failure created nothing: in a dev test its claimed submission is given back (a refused claim never took one).
+  else{if(job.mode==="dev_live"&&!(e as {unclaimed?:boolean}).unclaimed)releaseDevSubmit();if(isContentRefusal(e))noteRefusal(job);ledger.release(job.id);transition(job,"released",at);} // a refused submit: told as a refusal
  }
  store.save(job);return job;
 }
