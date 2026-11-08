@@ -24,3 +24,6 @@ scripts/models-3d/reports/*/wire-*.png
 
 # Whoush-hosted generated media (development store, lib/media-store.ts)
 .media/
+
+# A second dev server's build folder (next.config.ts WHOUSH_DIST_DIR)
+/.next-*/

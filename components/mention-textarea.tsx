@@ -188,7 +188,7 @@ export function MentionTextarea({id,value,onValueChange,options,handleRef,startA
  // The pads are written out by the callers with their `sm:` prefix, so Tailwind finds them.
  const pads="max-sm:pb-12 "+(startAction?startPad+" ":"")+(endAction?endPad:"");
  return <div className="relative">
-  <div className={"relative rounded-control border border-line-primary bg-transparent motion-state has-[[contenteditable]:focus-visible]:outline-2 has-[[contenteditable]:focus-visible]:outline-offset-2 has-[[contenteditable]:focus-visible]:outline-ring"}>
+  <div className={"relative rounded-control border border-line-primary bg-surface-base/45 motion-state has-[[contenteditable]:focus-visible]:outline-2 has-[[contenteditable]:focus-visible]:outline-offset-2 has-[[contenteditable]:focus-visible]:outline-ring"}>
   {startAction&&<div className="absolute bottom-1 start-1 z-10">{startAction}</div>}
   {endAction&&<div className="absolute bottom-1 end-1 z-10">{endAction}</div>}
   {top&&<div className="px-2 pt-2">{top}</div>}

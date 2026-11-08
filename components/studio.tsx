@@ -1053,7 +1053,8 @@ export function Studio(){
      </div>
      <p className="type-caption text-fg-secondary">{fa(characterCoverage(character.references).count)} عکس مرجع · فقط در این مرورگر. مشخصات کاراکتر همراه درخواست برای برنامه‌ریزی ارسال می‌شود؛ خود عکس‌ها هنوز به سرویس تولید فرستاده نمی‌شوند.</p>
     </div>}
-    <ScrollArea className="min-h-0 flex-1">
+    {/* Native scrolling (owner, 2026-11-08: laggy on the iPhone): momentum, and no script running on every frame under the glass bars. */}
+    <div className="scrollbar-right min-h-0 flex-1 overflow-y-auto overscroll-contain">
      <div aria-live="polite" aria-label="گفت‌وگو" role="log" style={{paddingBottom:composerH+16}} className={"mx-auto flex min-h-full w-full max-w-3xl flex-col gap-4 p-4"+(topBars?"":" max-md:pt-16")}>
       {!messages.length&&!loadingProject&&<ChatEmpty/>}
       {loadingProject&&<p role="status" className="type-body-sm text-fg-secondary">در حال باز کردن پروژه…</p>}
@@ -1142,7 +1143,7 @@ export function Studio(){
        done={thinking.done.map(d=>({text:STAGE_DONE_TEXT[thinking.script][d],details:thinking.notes[d]?.facts??[]}))} why={PLAN_FIRST_FA[thinking.script]}/>}
       <div ref={endRef}/>
      </div>
-    </ScrollArea>
+    </div>
     {/* The chip tray and the composer float over the chat as glass (owner, 2026-11-08) and scroll together, so on a short screen the prompt and the
         send button stay reachable; the chat scrolls under them (its bottom padding is their measured height). */}
     {/* Swipes on its empty parts reach the chat under it (owner, 2026-11-08: scrolling locked); only the controls take touches. */}

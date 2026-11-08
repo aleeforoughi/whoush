@@ -18,7 +18,8 @@ function useScrollActivity(){
   const timers=new WeakMap<Element,number>();
   const onScroll=(e:Event)=>{
    const el=e.target instanceof Element?e.target:document.scrollingElement;if(!el)return;
-   el.setAttribute("data-scrolling","");
+   // Only when it changes: a style recalculation on every scroll event made scrolling under the glass bars lag on the iPhone.
+   if(!el.hasAttribute("data-scrolling"))el.setAttribute("data-scrolling","");
    window.clearTimeout(timers.get(el));
    timers.set(el,window.setTimeout(()=>el.removeAttribute("data-scrolling"),SCROLLBAR_LINGER_MS));
   };
