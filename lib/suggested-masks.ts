@@ -18,10 +18,12 @@ export function paintSuggested(ctx:CanvasRenderingContext2D,slot:number,boxes:Su
  * Loads the photo and returns one mask per area (at most five) with its region (#ادیت-n, colour, comment): the exact object in each box, found on the
  * device (lib/segment.ts, owner 2026-11-08: no oval spilling over the photo); the soft oval only when the device cannot run it.
  */
-export async function suggestedMasks(photoUrl:string,areas:readonly SuggestedArea[]):Promise<{masks:HTMLCanvasElement[];regions:Region[]}>{
+export async function suggestedMasks(photoUrl:string,areas:readonly SuggestedArea[],waitMs=10_000):Promise<{masks:HTMLCanvasElement[];regions:Region[]}>{
  const img=new Image();img.src=photoUrl;await img.decode();
  const w=img.naturalWidth,h=img.naturalHeight,masks:HTMLCanvasElement[]=[],regions:Region[]=[];
- const exact=await (async()=>{try{await prepare(photoUrl,await (await fetch(photoUrl)).blob());return true;}catch{return false;}})();
+ // The exact outline waits at most `waitMs` for the model (a phone's first load can be slow); then the soft areas are used, so «بساز» always goes on.
+ const exact=await Promise.race([(async()=>{try{await prepare(photoUrl,await (await fetch(photoUrl)).blob());return true;}catch{return false;}})(),
+  new Promise<boolean>(r=>setTimeout(()=>r(false),waitMs))]);
  for(const [slot,a] of areas.slice(0,MAX_REGIONS).entries()){
   const c=document.createElement("canvas");c.width=w;c.height=h;
   const ctx=c.getContext("2d");if(!ctx)continue;

@@ -227,6 +227,8 @@ export function Studio(){
  const reviewJobs=useRef(new Map<string,Promise<PhotoReview>>());
  const [waitingFor,setWaitingFor]=useState<LocalAttachment[]|null>(null);
  // «ویرایش با قلم» (lib/region-edit.ts): the photo open in the full-screen editor, and whether it came from the chat box.
+ /** «بساز» on an edit card is preparing its masks: the card's tag (its button shows it is working). */
+ const [preparingEdit,setPreparingEdit]=useState<string|null>(null);
  const [editing,setEditing]=useState<{a:LocalAttachment;fromTray:boolean;suggested?:readonly SuggestedEdit[]}|null>(null);
  useEffect(()=>{let alive=true;void photoReviewEnabled().then(on=>{if(alive){setReviewOn(on.photos);setVideoReviewOn(on.videos);}});return()=>{alive=false;};},[]);
  const savedAssets=useRef(new Set<string>());
@@ -644,6 +646,11 @@ export function Studio(){
  async function generateSuggested(tag:string,suggested:readonly SuggestedEdit[]){
   // Nothing marked (a whole-photo edit): «بساز» is the answer that goes ahead with the request as asked.
   if(!suggested.length){answer(EDIT_AS_ASKED_FA);return;}
+  // The button shows it is working at once (the masks can take seconds on a phone) and cannot be pressed twice.
+  if(preparingEdit)return;setPreparingEdit(tag);
+  try{await generateSuggestedNow(tag,suggested);}finally{setPreparingEdit(null);}
+ }
+ async function generateSuggestedNow(tag:string,suggested:readonly SuggestedEdit[]){
   let a:LocalAttachment|undefined,fromTray=false;
   if(isGenerationTag(tag)){const g=await generationPhoto(tag);if("errorFa" in g){setError(g.errorFa);return;}a=g;}
   else{a=attachments.find(x=>x.tag===tag);fromTray=Boolean(a);a??=[...[...messages].reverse().flatMap(m=>m.attachments??[]),...genCopies.current.values()].find(x=>x.tag===tag);}
@@ -1213,7 +1220,7 @@ export function Studio(){
         {m.kind==="question"&&<AgentQuestion question={m.snapshot.question} repeated={m.text.trim()===m.snapshot.question.trim()} waiting={i===messages.length-1&&!busy} onAnswer={()=>promptRef.current?.focus()}
          choices={m.snapshot.choices} onChoose={reply=>answer(reply)}
          editCards={(m.snapshot.editCards??(m.snapshot.editCard?[m.snapshot.editCard]:[])).map((c:{tag:string;suggested?:SuggestedEdit[]})=>({tag:c.tag,thumbUrl:thumbFor(c.tag),...(c.suggested?{suggested:c.suggested}:{})}))}
-         onEdit={(tag,suggested)=>void openEditFor(tag,suggested)} onGenerate={busy?undefined:(tag,suggested)=>void generateSuggested(tag,suggested)}
+         onEdit={(tag,suggested)=>void openEditFor(tag,suggested)} onGenerate={busy?undefined:(tag,suggested)=>void generateSuggested(tag,suggested)} preparing={preparingEdit}
          references={m.snapshot.references} uploaded={m.snapshot.references?Object.fromEntries(m.snapshot.references.angles.map(a=>[a.id,Boolean(slots.find(s=>s.id==="ref-"+m.id+"-"+a.id)?.attachmentId)])):undefined}
          onUpload={m.snapshot.references?a=>uploadForRequest(m.id,m.snapshot.references!,a):undefined}
          onContinue={m.snapshot.references&&i===messages.length-1&&!busy?()=>answer(replyScriptFor(m.text)==="finglish"?"Aksa ro gozashtam":"عکس‌ها رو گذاشتم"):undefined}/>}

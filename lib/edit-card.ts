@@ -9,6 +9,8 @@ export const EDIT_CARD_FINGLISH="Aks ro baz kon, ruye hamun ghesmati ke mikhay a
 export const EDIT_CARD_OPEN_FA="ادیت";
 /** «بساز» on an edit card: the areas Whoush marked go as they are, without opening the editor. */
 export const EDIT_CARD_GENERATE_FA="بساز";
+/** While «بساز» prepares the exact areas (a few seconds on a phone). */
+export const EDIT_PREPARING_FA="دارم آماده‌ش می‌کنم…";
 /** More than one photo: one card each. */
 export const EDIT_CARDS_FA="هر عکس رو باز کن، روی جاهایی که می‌خوای عوض بشه بکش و بنویس چی بشه؛ بعدش خودم انجامش می‌دم.";
 /** Words that point at a place in the picture without naming it, or ask for the brush. */

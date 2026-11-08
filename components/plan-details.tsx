@@ -1,7 +1,7 @@
 "use client";
 import {TagText} from "@/components/message-text";
 import {useState,type ReactNode} from "react";
-import {Aperture,ArrowLeft,Brush,Camera,SlidersHorizontal,CircleCheck,CircleHelp,Clapperboard,ImagePlus,Image as ImageIcon,Film,Focus,Frame,Gauge,Layers,Lightbulb,ListChecks,MessageCircle,Move,Paperclip,RefreshCw,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Star,Thermometer,Timer,Upload,type LucideIcon} from "lucide-react";
+import {Aperture,ArrowLeft,Brush,Camera,SlidersHorizontal,CircleCheck,CircleHelp,Clapperboard,ImagePlus,Image as ImageIcon,Film,Focus,Frame,Gauge,Layers,Lightbulb,ListChecks,MessageCircle,Move,Paperclip,RefreshCw,RectangleHorizontal,Ruler,ShieldCheck,Sparkles,Star,Thermometer,Timer,Upload,type LucideIcon,LoaderCircle} from "lucide-react";
 import {Accordion,AccordionContent,AccordionItem,AccordionTrigger,Badge,Button,Icon} from "@aleeforoughi/feather-react";
 import type {ReferenceRequest} from "@/lib/reference-needs";
 import {StagingEditor} from "@/components/staging-editor";
@@ -10,7 +10,7 @@ import {STYLE_LABEL_FA,type PublicCreativePlan} from "@/lib/creative-plan";
 import {CHARACTER_VIEWS} from "@/lib/characters";
 import {displayTag} from "@/lib/attachments";
 import {TagBadge} from "@/components/attachment-chip";
-import {EDIT_CARD_GENERATE_FA,EDIT_CARD_OPEN_FA,type SuggestedEdit} from "@/lib/edit-card";
+import {EDIT_CARD_GENERATE_FA,EDIT_CARD_OPEN_FA,EDIT_PREPARING_FA,type SuggestedEdit} from "@/lib/edit-card";
 import {WIDGET_BUTTON,WidgetActions,WidgetHeader} from "@/components/widget";
 import {NEON_SHADOW,REGION_COLORS,regionTagFa} from "@/lib/region-edit";
 import {fa,faText,faAuto} from "@/lib/format";
@@ -197,9 +197,10 @@ const CHOICE_ICON:Record<string,LucideIcon>={image:ImageIcon,video:Clapperboard,
  * tattoos, logo, product...), it lists the angles it needs, each with «آپلود» (the photo lands in the chat input as a card with the right role) and a check
  * once it is in, then «ادامه» sends them with the original request.
  */
-export function AgentQuestion({question,repeated,waiting,onAnswer,references,uploaded,onUpload,onContinue,choices,onChoose,editCards,onEdit,onGenerate}:{question:string;waiting:boolean;onAnswer:()=>void;
+export function AgentQuestion({question,repeated,preparing,waiting,onAnswer,references,uploaded,onUpload,onContinue,choices,onChoose,editCards,onEdit,onGenerate}:{question:string;waiting:boolean;onAnswer:()=>void;
  /** The question is the message just above it word for word: the widget shows only its title and its content, not the same text twice. */repeated?:boolean;
  /** The edit cards (lib/edit-card.ts): one per picture to open full screen for «ادیت», maybe with the areas Whoush painted. */editCards?:readonly {tag:string;thumbUrl?:string;suggested?:readonly SuggestedEdit[]}[];onEdit?:(tag:string,suggested?:readonly SuggestedEdit[])=>void;
+ /** The tag whose «بساز» is preparing (its button shows it is working). */preparing?:string|null;
  /** «بساز» (owner, 2026-11-08): the areas Whoush marked go as they are, without opening the editor. */onGenerate?:(tag:string,suggested:readonly SuggestedEdit[])=>void;
  references?:ReferenceRequest;uploaded?:Record<string,boolean>;onUpload?:(angle:{id:string;titleFa:string})=>void;onContinue?:()=>void;
  /** One-tap answers («عکس»، «ویدیو»، «هر دو»): each sends its reply as the user's answer. */choices?:readonly QuestionChoice[];onChoose?:(reply:string)=>void}){
@@ -237,7 +238,8 @@ export function AgentQuestion({question,repeated,waiting,onAnswer,references,upl
    {c.suggested&&c.suggested.length>0&&<ul className="flex flex-col gap-1.5">{c.suggested.map((sg,i)=><li key={i} className="flex items-start gap-2 type-body-sm text-fg-primary">
     <RegionChip n={i+1} color={REGION_COLORS[i%REGION_COLORS.length].name}/><span className="min-w-0 break-words">{sg.note}</span></li>)}</ul>}
    {(onEdit||onGenerate)&&<WidgetActions label={displayTag(c.tag)}>
-    {onGenerate&&<Button type="button" onClick={()=>onGenerate(c.tag,c.suggested??[])} className={WIDGET_BUTTON}><Icon icon={Sparkles} aria-hidden="true"/>{EDIT_CARD_GENERATE_FA}</Button>}
+    {onGenerate&&<Button type="button" onClick={()=>onGenerate(c.tag,c.suggested??[])} disabled={Boolean(preparing)} aria-busy={preparing===c.tag||undefined} className={WIDGET_BUTTON}>
+     <Icon icon={preparing===c.tag?LoaderCircle:Sparkles} aria-hidden="true" className={preparing===c.tag?"animate-spin motion-reduce:animate-none":undefined}/>{preparing===c.tag?EDIT_PREPARING_FA:EDIT_CARD_GENERATE_FA}</Button>}
     {onEdit&&<Button type="button" variant={onGenerate?"outline":"default"} onClick={()=>onEdit(c.tag,c.suggested)} aria-label={EDIT_CARD_OPEN_FA+" "+displayTag(c.tag)} className={WIDGET_BUTTON}><Icon icon={Brush} aria-hidden="true"/>{EDIT_CARD_OPEN_FA}</Button>}
    </WidgetActions>}
   </li>)}</ul>}

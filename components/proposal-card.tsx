@@ -80,7 +80,7 @@ export function ProposalCard({embedded,proposal,tag,adjusted,selected,onSelect,a
   {/* The model's settings: Whoush's choice is selected (from the brief, «بوم» and the mode) until the user picks another. Only what this model really offers. */}
   {(ratios.length>0||resolutions.length>0||durations.length>0||chosen?.audio)&&<div className="flex flex-col gap-2">
    {ratios.length>0&&<Setting label="نسبت تصویر" wrap={allRatios}>
-    {autoAspect!==undefined&&<Opt on={auto} onClick={()=>onAspect?.(null)} disabled={!onAspect}><Icon icon={Sparkles} size={16} aria-hidden="true" className="size-3.5"/>اتوماتیک{autoShown&&<bdi dir="ltr" className="opacity-70">{autoShown}</bdi>}</Opt>}
+    {autoAspect!==undefined&&<Opt on={auto} onClick={()=>onAspect?.(null)} disabled={!onAspect}><Icon icon={Sparkles} size={16} aria-hidden="true" className="size-3.5"/>اتوماتیک{autoAspect==="source"?<span className="opacity-70">مثل عکس</span>:autoShown&&<bdi dir="ltr" className="opacity-70">{autoShown}</bdi>}</Opt>}
     {(allRatios||hidden<=0?byShape(others):popular).map(r=><Opt key={r} on={!auto&&shownAspect===r} onClick={()=>onAspect?.(r)} disabled={!onAspect}><bdi dir="ltr">{r}</bdi></Opt>)}
     {hidden>0&&onAspect&&<button type="button" onClick={()=>setAllRatios(v=>!v)} aria-expanded={allRatios} aria-label={allRatios?"نسبت‌های کمتر":"همهٔ نسبت‌ها"}
      className="flex h-8 shrink-0 items-center rounded-control px-2 type-caption text-fg-secondary motion-hover hover:bg-surface-hover hover:text-fg-primary">{allRatios?"کمتر":"+"+fa(hidden)}</button>}
