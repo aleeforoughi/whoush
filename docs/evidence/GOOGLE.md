@@ -102,10 +102,10 @@
 **Request:** the same `POST /v1beta/interactions` endpoint as images, with the key in the `x-goog-api-key` header.
 ```json
 {"model":"gemini-3.5-transcribe","input":[{"type":"audio","mime_type":"audio/webm","data":"<base64>"}],
- "generation_config":{"transcription_config":{"language_codes":["fa-IR","en-US"],"mode":"smart","custom_vocabulary":["…"]}},"store":false}
+ "generation_config":{"transcription_config":{"language_codes":["fa-IR","en-US"],"mode":"verbatim","custom_vocabulary":["…"]}},"store":false}
 ```
 - **Languages:** Farsi is `fa-IR`. Without `language_codes` the model detects the language and handles code-switching. Specifying the languages is Google's advice when they are known.
-- **`mode: "smart"`:** removes fillers and repetitions and resolves spoken self-corrections. The default is `verbatim`.
+- **`mode`:** `smart` removes fillers and repetitions and resolves spoken self-corrections; `verbatim` (the default) keeps every word. Whoush uses `verbatim` since 2026-11-08 (owner: the message must be exactly what was said).
 - **`custom_vocabulary`:** up to 1,000 terms, with best results at up to 100. It can't be combined with speaker diarization or word timestamps (Whoush uses neither).
 - **Audio types:** WAV, MP3, AIFF, AAC, OGG, FLAC, MPEG, M4A, L16, Opus, ALAW, MULAW and WebM. Inline audio is allowed up to 20 MB total request size. Recordings can be up to 1 hour long.
 - **Reply:** `steps[]` holds a step of `type:"model_output"`, whose `content[]` has `{type:"text",text}` blocks.

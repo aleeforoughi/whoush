@@ -15,12 +15,12 @@ function withEnv(env:Record<string,string|undefined>,fn:()=>Promise<void>|void){
 const DEV={GEMINI_API_KEY:"test-key",WHOUSH_DEV_LIVE_TEST:"true",NODE_ENV:"development",VOICE_TRANSCRIPTION_AUTHORIZED:undefined};
 const reply=(text:string)=>({status:"completed",steps:[{type:"user_input"},{type:"model_output",content:[{type:"text",text}]}]});
 
-test("voice: the request is Persian first, smart mode, with the jargon vocabulary, and never stored",()=>{
+test("voice: the request is Persian first, verbatim (owner, 2026-11-08: exactly what was said), with the jargon vocabulary, and never stored",()=>{
  const r=buildTranscribeRequest("QUJD","audio/webm") as {model:string;input:{type:string;mime_type:string;data:string}[];store:boolean;generation_config:{transcription_config:{language_codes:string[];mode:string;custom_vocabulary:string[]}}};
  assert.equal(r.model,"gemini-3.5-transcribe");assert.equal(r.store,false);
  assert.deepEqual(r.input,[{type:"audio",mime_type:"audio/webm",data:"QUJD"}]);
  const c=r.generation_config.transcription_config;
- assert.equal(c.language_codes[0],"fa-IR");assert.equal(c.mode,"smart");assert.deepEqual(c.custom_vocabulary,[...VOICE_VOCABULARY]);
+ assert.equal(c.language_codes[0],"fa-IR");assert.equal(c.mode,"verbatim");assert.deepEqual(c.custom_vocabulary,[...VOICE_VOCABULARY]);
 });
 
 test("voice vocabulary: at most 100 terms, every model family a customer may name, Persian loanword spellings, no provider or LLM vendor",()=>{

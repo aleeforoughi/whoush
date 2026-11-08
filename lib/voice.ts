@@ -21,10 +21,13 @@ const MIME_MAP:Record<string,string>={"audio/webm":"audio/webm","audio/ogg":"aud
 export const providerAudioMime=(browserMime:string):string|undefined=>MIME_MAP[browserMime.split(";")[0].trim().toLowerCase()];
 
 
-/** The transcription request: Persian first (users speak Persian, often with English model names), smart mode (fillers and self-corrections removed). */
+/**
+ * The transcription request: Persian first (users speak Persian, often with English model names), verbatim (owner, 2026-11-08: "it needs to be exactly what
+ * the user says"; smart mode removed fillers and self-corrections, so the sent text was not what was said), with the jargon vocabulary for spelling.
+ */
 export function buildTranscribeRequest(base64:string,mime:string):Record<string,unknown>{
  return {model:TRANSCRIBE_MODEL,input:[{type:"audio",mime_type:mime,data:base64}],
-  generation_config:{transcription_config:{language_codes:["fa-IR","en-US"],mode:"smart",custom_vocabulary:[...VOICE_VOCABULARY]}},store:false};
+  generation_config:{transcription_config:{language_codes:["fa-IR","en-US"],mode:"verbatim",custom_vocabulary:[...VOICE_VOCABULARY]}},store:false};
 }
 
 /** The transcript text from the provider's reply (model_output steps, text blocks), trimmed; empty when nothing was said. */
