@@ -69,7 +69,7 @@ export function RailShell({current,activeProjectId,onNewChat,onProjectDeleted,mo
  const rail={current,activeProjectId,onNewChat,onProjectDeleted};
  return <div className="relative flex h-dvh flex-col overflow-hidden md:grid md:grid-cols-[4.5rem_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)] lg:grid-cols-[16rem_minmax(0,1fr)]">
   {/* Mobile: top bar with brand and menu */}
-  <header className={"flex items-center justify-between px-4 py-1 md:hidden "+(floatingMobileHeader?"whoush-glass whoush-glass-top pointer-events-none absolute inset-x-0 top-0 z-30 transition-[translate] duration-300 ease-out motion-reduce:transition-none [&>*]:pointer-events-auto"+(mobileHeaderHidden?" -translate-y-[calc(100%+1.5rem)] [&>*]:pointer-events-none":""):"border-b border-line-tertiary")}>
+  <header className={"flex items-center justify-between px-4 py-1 md:hidden "+(floatingMobileHeader?"whoush-glass whoush-glass-top pointer-events-none absolute inset-x-0 top-0 z-30 transition-[translate] duration-300 ease-out motion-reduce:transition-none [&>*]:pointer-events-auto"+(mobileHeaderHidden?" -translate-y-[calc(100%+2.5rem)] [&>*]:pointer-events-none":""):"border-b border-line-tertiary")}>
    <BrandMark/>
    <div className="flex items-center gap-1">
    {mobileAction}

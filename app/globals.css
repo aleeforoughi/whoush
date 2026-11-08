@@ -197,15 +197,17 @@ html[dir="rtl"] [data-slot="scroll-area-scrollbar"][data-orientation="vertical"]
 html[lang="fa-Latn"] body:not([data-translated]){visibility:hidden}
 
 /* Glass bars (owner, 2026-11-08): the studio's phone top bar and the chat box float over the content, which scrolls under them, blurred like iOS:
-   a light tint so the blurred content shows through, a little darker for reading. One blur layer per bar, on the bar itself (never with a mask: Safari
-   drops a backdrop blur that shares its element with a mask), promoted to its own GPU layer so scrolling under it stays smooth. The soft edge is a tint
-   that fades out past the inner edge (no second blur: each blur layer costs every frame on a phone). No `position` here: this CSS is outside Tailwind's
-   layers, so it would beat the bars' own `absolute`. */
-.whoush-glass{
+   a light tint so the blurred content shows through, a little darker for reading. The blur and tint are one layer behind the bar that reaches past its
+   inner edge and fades out there (a mask), so the content goes from blurred to sharp gradually, never at a hard line. The bar is its own GPU layer and
+   stacking context, so the layer stays behind its controls. No `position` here: this CSS is outside Tailwind's layers and would beat the bars' `absolute`. */
+.whoush-glass{transform:translateZ(0);background:transparent}
+.whoush-glass::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;
   -webkit-backdrop-filter:blur(16px) saturate(150%);backdrop-filter:blur(16px) saturate(150%);
-  background:color-mix(in oklab,var(--color-surface-base) 35%,transparent);
-  transform:translateZ(0)}
-.whoush-glass::after{content:"";position:absolute;inset-inline:0;height:1.5rem;pointer-events:none}
-.whoush-glass-top::after{top:100%;background:linear-gradient(to bottom,color-mix(in oklab,var(--color-surface-base) 35%,transparent),transparent)}
-.whoush-glass-bottom::after{bottom:100%;background:linear-gradient(to top,color-mix(in oklab,var(--color-surface-base) 35%,transparent),transparent)}
-@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.whoush-glass{background:color-mix(in oklab,var(--color-surface-base) 92%,transparent)}}
+  background:color-mix(in oklab,var(--color-surface-base) 35%,transparent)}
+.whoush-glass-top::before{bottom:-2.5rem;
+  -webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 2.5rem),rgba(0,0,0,.6) calc(100% - 1.5rem),transparent);
+  mask-image:linear-gradient(to bottom,#000 calc(100% - 2.5rem),rgba(0,0,0,.6) calc(100% - 1.5rem),transparent)}
+.whoush-glass-bottom::before{top:-3rem;
+  -webkit-mask-image:linear-gradient(to top,#000 calc(100% - 3rem),rgba(0,0,0,.6) calc(100% - 1.75rem),transparent);
+  mask-image:linear-gradient(to top,#000 calc(100% - 3rem),rgba(0,0,0,.6) calc(100% - 1.75rem),transparent)}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.whoush-glass::before{background:color-mix(in oklab,var(--color-surface-base) 92%,transparent)}}
