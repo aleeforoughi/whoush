@@ -30,15 +30,16 @@ const item=(id:string)=>byId.get(id)!;
 const extendItem=(role:"continue"|"extend_back"):InsertItem=>({id:"video:"+role,titleFa:roleLabelFa(role,"video"),hintFa:role==="continue"?"ویدیو از آخرین فریمش ادامه پیدا می‌کنه":"یه تکه‌ی تازه قبل از شروع همین ویدیو ساخته می‌شه",icon:role==="continue"?"continue":"continue_back",action:{type:"role",kind:"video",role}});
 const FILE_ITEM:InsertItem={id:"file",titleFa:FILE_MENU_FA.labelFa,hintFa:FILE_MENU_FA.hintFa,icon:"document",action:{type:"file"}};
 /**
- * The menu in the owner's order (2026-11-08), four groups set apart by a line: references (automatic, photo, video, file); photo roles (edit, person,
- * the saved characters, hair and makeup, outfit, setting, objects and products, graphic, frame); video roles (edit, motion); audio roles (speech, music).
+ * The menu in the owner's order (2026-11-08), four groups set apart by a line: references (automatic, photo, video, then «ادیت عکس» and «ادیت ویدیو»
+ * just above file); photo roles (person, the saved characters, hair and makeup, outfit, setting, objects and products, graphic, frame); video roles
+ * (motion, continue); audio roles (speech, music).
  */
 export const INSERT_MENU:readonly InsertGroup[]=[
  {id:"popular",featured:true,labelFa:"پرکاربردترین",items:[{id:"popular:auto",...AUTO_UPLOAD_FA,icon:"auto",action:{type:"auto"}},...POPULAR_IDS.map(id=>({...byId.get(id)!,id:"popular:"+id}))]},
- {id:"references",labelFa:"رفرنس",items:[{id:"auto",...AUTO_UPLOAD_FA,icon:"auto",action:{type:"auto"}},item("image:reference"),item("video:reference"),FILE_ITEM]},
+ {id:"references",labelFa:"رفرنس",items:[{id:"auto",...AUTO_UPLOAD_FA,icon:"auto",action:{type:"auto"}},item("image:reference"),item("video:reference"),item("image:edit_reference"),item("video:edit_reference"),FILE_ITEM]},
  // The saved characters («کاراکتر») come right after the character role («شخص»).
- {id:"image",labelFa:"تصویر",items:[item("image:edit_reference"),...imageItems.slice(1,characterAt+1),{id:"characters",...MY_CHARACTERS_FA,icon:"characters",action:{type:"characters"}},...imageItems.slice(characterAt+1)]},
- {id:"video",labelFa:"ویدیو",items:[item("video:edit_reference"),item("video:motion_reference"),extendItem("continue"),extendItem("extend_back")]},
+ {id:"image",labelFa:"تصویر",items:[...imageItems.slice(1,characterAt+1),{id:"characters",...MY_CHARACTERS_FA,icon:"characters",action:{type:"characters"}},...imageItems.slice(characterAt+1)]},
+ {id:"video",labelFa:"ویدیو",items:[item("video:motion_reference"),extendItem("continue"),extendItem("extend_back")]},
  {id:"audio",labelFa:"صدا",items:roleItems("audio")}
 ];
 /** Every (kind, role) pair the menu uploads with, in menu order (the «پرکاربردترین» shortcuts are not counted twice). */

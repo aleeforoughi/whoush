@@ -611,6 +611,10 @@ export function Studio(){
   if(reviewOn)for(const a of added)if((a.kind==="image"||(a.kind==="video"&&videoReviewOn))&&reviewsRef.current[a.id]?.state!=="safe")void checkPhoto(a).then(r=>{
    // «Beautify it» on upload (owner, 2026-11-08): the check saw an everyday photo of a person that would look much better: Whoush offers it first.
    if(a.kind==="image"&&r.state==="safe"&&r.beautify)offerBeautifyOnUpload(a,{...r.beautify,tag:a.tag});
+   // The role the check detected, shown on the card (owner, 2026-11-08), only for a photo with no role yet; the user can change it, and the message's
+   // words still decide (roleAuto).
+   const detected=a.kind==="image"&&r.state==="safe"?r.role:undefined;
+   if(detected&&roleAllowed("image",detected as AttachmentRole))setAttachments(list=>list.map(x=>x.id===a.id&&!x.role?{...withRole(x,detected as AttachmentRole),roleAuto:true}:x));
   });
   setAnnounce((added.length?fa(added.length)+" فایل اضافه شد. ":"")+(bad.length?fa(bad.length)+" فایل رد شد.":""));
   readingRef.current=false;setReading(false);
@@ -828,6 +832,8 @@ export function Studio(){
   if(slot)openSlotPicker(slot);
  }
  function pickInsert(item:InsertItem){
+  // «رفرنس اتوماتیک» (owner, 2026-11-08): the file picker at once; the photo lands in the chat box and Whoush detects its role.
+  if(item.action.type==="auto"){const el=fileInput.current;if(!el)return;pendingUpload.current=undefined;pendingSlot.current=undefined;el.accept=ATTACHMENT_ACCEPT;el.multiple=true;el.click();return;}
   const slot=slotFor(item,crypto.randomUUID());
   if(!slot){setCharactersOpen(true);return;}
   if(!createSlot(slot))return;

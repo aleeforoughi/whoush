@@ -73,7 +73,9 @@ export type UploadCategory=(typeof UPLOAD_CATEGORIES)[number];
 const BeautifyAssessSchema=z.object({needed:z.boolean(),minor:z.boolean(),issues:z.array(z.object({part:z.enum(BEAUTIFY_PARTS),noteFa:z.string().max(120),noteEn:z.string().max(160)})).max(8)});
 /** What the photo shows of its main person (lib/drift.ts): so Whoush knows what it would have to invent. */
 const CoverageSchema=z.object({framing:z.enum(FRAMINGS),headAngle:z.enum(HEAD_ANGLES),teeth:z.boolean(),eyesOpen:z.boolean()});
-const UploadVerdictSchema=z.object({category:z.enum(UPLOAD_CATEGORIES),person:z.boolean(),fixFa:z.string().max(240),beautify:BeautifyAssessSchema,coverage:CoverageSchema});
+/** The role this photo most likely plays, from the picture alone (owner, 2026-11-08: «رفرنس اتوماتیک» shows the detected role). */
+export const DETECTABLE_ROLES=["character","environment","object","outfit","hairstyle","graphic","general"] as const;
+const UploadVerdictSchema=z.object({category:z.enum(UPLOAD_CATEGORIES),person:z.boolean(),fixFa:z.string().max(240),beautify:BeautifyAssessSchema,coverage:CoverageSchema,role:z.enum(DETECTABLE_ROLES)});
 export type BeautifyAssessment=z.infer<typeof BeautifyAssessSchema>;
 /** A video's verdict: the safety answer only (Beautify is for photos). */
 const FramesVerdictSchema=z.object({category:z.enum(UPLOAD_CATEGORIES),person:z.boolean(),fixFa:z.string().max(240)});
@@ -83,6 +85,7 @@ const BEAUTIFY_ASSESS=[
  "minor = true when the main person looks under 18 (when unsure, true).",
  "issues: what this photo needs, only what you actually see, at most one per part, each slight and natural: camera (lens and perspective distortion: shot from below or above, a close wide phone lens widening the face; a tilted or off-centre frame; focus), pose (always, for a person: read the emotion and vibe of the face, then suggest a slight editorial modelling gesture that keeps them; noteEn as «emotion: …; vibe: …; gesture: …», noteFa a short friendly line about the gesture; never suggest a smile with teeth, opening closed eyes or turning the head: Whoush never invents what the photo does not show), light (harsh, flat, backlit, uneven), skin (uneven tone, acne, bumps, irregular or enlarged pores, blemishes, shine, dark circles or tired, puffy under-eyes), grooming (untidy or thinning hair, an ungroomed beard edge: hairs high on the cheeks, below the neckline or scattered outside the beard's lines, untidy eyebrows), shape (a face that looks wider than it is, a soft jawline; only a very slight refinement), clothes (creases, lint, stains), background (a messy setting: clutter, rubbish, cables, stray or unwanted objects that make it look untidy; the place itself stays), color (exposure, contrast, saturation, white balance, highlights and shadows, sharpness). noteFa: a short, kind phrase in colloquial Persian (what you will improve, never an insult: «زاویه از پایینه و صورت پهن‌تر افتاده»); noteEn: the same, factual, for the editor. For a minor, only camera, light, clothes and color.",
  "When needed is false, return no issues.",
+ "role: what this photo would most likely be used for as a reference, from the picture alone: character (a person is the subject: their face and look), environment (a place, room, landscape or background), object (a product or thing), outfit (clothes as the subject), hairstyle (a hairstyle, makeup or grooming close-up), graphic (a logo, poster, text or illustration), general (anything else).",
  "coverage: what the photo shows of its main person (when there is no person, any values): framing = face (the face fills the frame), head_shoulders, half_body (to the waist or hips) or full_body (head to feet); headAngle = front, three_quarter, profile or back (the side of the head facing the camera); teeth = the teeth are visible; eyesOpen = the eyes are open and visible."
 ];
 const UPLOAD_INSTRUCTIONS_IRAN=[
@@ -116,7 +119,7 @@ function uploadInstructions():string{
 }
 /** Off, a verdict in a category the Iran Gov Filter alone uses is none (a backstop for the instructions above). */
 const regional=<T extends {category:UploadCategory}>(v:T):T=>!iranGovFilterOn()&&(["iran_political","iran_royal","alcohol","drugs","public_figure"] as UploadCategory[]).includes(v.category)?{...v,category:"none"}:v;
-export type UploadInspector=(img:{bytes:Uint8Array;mime:StoredMime})=>Promise<{category:UploadCategory;person:boolean;fixFa?:string;beautify?:BeautifyAssessment;coverage?:PhotoCoverage}>;
+export type UploadInspector=(img:{bytes:Uint8Array;mime:StoredMime})=>Promise<{category:UploadCategory;person:boolean;fixFa?:string;beautify?:BeautifyAssessment;coverage?:PhotoCoverage;role?:(typeof DETECTABLE_ROLES)[number]}>;
 export const inspectUpload:UploadInspector=async(img)=>{
  const model=inspectionModel();
  if(!llmGate().live||!model||!process.env.ANTHROPIC_API_KEY)throw new Error("Upload inspection unavailable");

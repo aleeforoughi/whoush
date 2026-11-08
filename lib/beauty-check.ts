@@ -30,6 +30,8 @@ export async function beautyVerdictFor(turnId:string,outputs:readonly {kind:stri
 }
 
 /**
+ * Neither check is a failure (owner, 2026-11-08): the job is already completed and paid, nothing is refunded or charged again; following a suggestion is
+ * a new request with its own quote.
  * The quality assessor on any other finished picture (owner, 2026-11-08): when it has a clear problem and its subject is a person, the «زیباسازی» offer for
  * it, with only the parts the problems name; else nothing. Never on a «زیباسازی» result itself (no fix-the-fix loops: that one gets its self-check above).
  * The studio decides whether to show it (once per picture; not in a chat where two offers were turned down).

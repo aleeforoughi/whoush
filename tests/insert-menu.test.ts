@@ -7,11 +7,11 @@ test("owner (2026-11-08): INSERT_MENU in four groups: references, photo roles, v
  assert.deepEqual(INSERT_MENU.map(g=>g.labelFa),["پرکاربردترین","رفرنس","تصویر","ویدیو","صدا"]);
  assert.deepEqual(INSERT_MENU[0].items.map(i=>[i.titleFa,i.action.type]),[["رفرنس اتوماتیک","auto"],["عکس رفرنس","role"],["شخص","role"],["فریم","role"],["پوشاک","role"],["الگوی گفتار","role"]]);
  const titles=(id:string)=>INSERT_MENU.find(g=>g.id===id)!.items.map(i=>i.titleFa);
- assert.deepEqual(titles("references"),["رفرنس اتوماتیک","عکس رفرنس","ویدیو رفرنس","فایل"]);
- assert.deepEqual(titles("image"),["ادیت عکس","شخص","کاراکتر","پیرایش و آرایش","پوشاک","محیط","اشیا و محصول","گرافیک","فریم"],"the owner's list, «فریم» kept last");
- assert.deepEqual(titles("video"),["ادیت ویدیو","الگوی حرکت","امتداد ویدیو به جلو","امتداد ویدیو از عقب"]);
+ assert.deepEqual(titles("references"),["رفرنس اتوماتیک","عکس رفرنس","ویدیو رفرنس","ادیت عکس","ادیت ویدیو","فایل"],"the two edits just above «فایل» (owner, 2026-11-08)");
+ assert.deepEqual(titles("image"),["شخص","کاراکتر","پیرایش و آرایش","پوشاک","محیط","اشیا و محصول","گرافیک","فریم"],"the owner's list, «فریم» kept last");
+ assert.deepEqual(titles("video"),["الگوی حرکت","امتداد ویدیو به جلو","امتداد ویدیو از عقب"]);
  assert.deepEqual(titles("audio"),["الگوی گفتار","موزیک"]);
- assert.equal(INSERT_MENU[1].items[3].hintFa,"متن یا سند (PDF، JSON یا Markdown) برای توضیح بیشتر");assert.equal(FILE_MENU_FA.labelFa,"فایل");
+ assert.equal(INSERT_MENU[1].items[5].hintFa,"متن یا سند (PDF، JSON یا Markdown) برای توضیح بیشتر");assert.equal(FILE_MENU_FA.labelFa,"فایل");
 });
 test("INSERT_MENU: every role of the role table appears exactly once, plus the edit and extend roles; nothing else, and voice_clone is absent",()=>{
  const pairs=menuRoles().map(r=>r.kind+":"+r.role);

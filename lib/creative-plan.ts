@@ -22,7 +22,8 @@ const speechSchema=z.object({hasSpeech:z.boolean(),language:z.enum(["fa","other"
 export const AttachmentSchema=z.object({
  id:z.uuid(),tag:z.string().regex(TAG_PATTERN),kind:z.enum(ATTACHMENT_KIND_IDS),mime:z.string().max(100),bytes:z.number().int().positive(),sha256:z.string().regex(/^[0-9a-f]{64}$/),
  width:z.number().int().min(1).max(20000).optional(),height:z.number().int().min(1).max(20000).optional(),durationSeconds:z.number().min(0).max(MAX_DURATION_SECONDS).optional(),
- textExcerpt:z.string().max(MAX_EXCERPT_CHARS).optional(),role:z.enum(ATTACHMENT_ROLE_IDS).optional(),consent:z.literal(true).optional(),speech:speechSchema.optional(),
+ textExcerpt:z.string().max(MAX_EXCERPT_CHARS).optional(),role:z.enum(ATTACHMENT_ROLE_IDS).optional(),
+ /** The role was detected by the photo check, not chosen: the brief's words still decide (lib/attachments.ts inferAttachmentRoles). */roleAuto:z.literal(true).optional(),consent:z.literal(true).optional(),speech:speechSchema.optional(),
  /** The server's safety check of this photo (POST /api/media/review): the id it gave. Only the server's record says whether it is safe. */
  reviewId:z.uuid().optional(),
  /** «ویرایش با قلم»: change only the painted area, as the note says; the marked copy is its own checked photo (lib/region-edit.ts). */
@@ -49,6 +50,7 @@ export const AttachmentSchema=z.object({
  if(a.reviewId!==undefined&&a.kind!=="image"&&a.kind!=="video")bad("reviewId","only images and videos are reviewed"); // videos too (owner, 2026-11-08: lib/video-review.ts)
  if(a.regionEdit!==undefined&&a.kind!=="image")bad("regionEdit","only photos are painted");
  if(a.beautify!==undefined&&(a.kind!=="image"||a.regionEdit!==undefined))bad("beautify","only an unpainted photo is beautified");
+ if(a.roleAuto!==undefined&&!a.role)bad("roleAuto","an automatic role needs a role");
  if((a.width!==undefined||a.height!==undefined)&&a.kind!=="image"&&a.kind!=="video")bad("width","only image and video carry dimensions");
  if(a.durationSeconds!==undefined&&a.kind!=="video"&&a.kind!=="audio")bad("durationSeconds","only video and audio carry a duration");
 });

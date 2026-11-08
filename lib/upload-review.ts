@@ -30,7 +30,8 @@ export type ReviewVideoMime=(typeof REVIEW_VIDEO_MIMES)[number];
 /** A video's review (lib/video-review.ts) is kept here too, under the same kind of id: `kind` says which; `messageFa`/`labelFa` override the photo wording. */
 export type UploadReview={reviewId:string;sha256:string;at:string;kind?:"video"}&({state:"safe";mediaId:string;mime:ReviewImageMime|ReviewVideoMime;person:boolean;
   /** «Beautify it» (lib/beautify.ts): this everyday photo of a person would clearly improve; what it needs, and whether the person looks under 18. */beautify?:{minor:boolean;issues:BeautifyIssue[]};
-  /** What the photo shows of its person (lib/drift.ts): the framing, the head's angle, teeth, open eyes. */coverage?:PhotoCoverage}
+  /** What the photo shows of its person (lib/drift.ts): the framing, the head's angle, teeth, open eyes. */coverage?:PhotoCoverage;
+  /** The role the photo most likely plays, from the picture alone (shown on its card as automatic). */role?:string}
  |{state:"blocked";category:Exclude<UploadCategory,"none">;fixFa:string;messageFa?:string;labelFa?:string});
 /** One short line per blocked category with its general reason (owner, 2026-11-07: say why in a word, never like an error; no details, no lecture), never naming a provider or model; the fix says what to do. */
 export const BLOCKED_FA:Record<Exclude<UploadCategory,"none">,string>={
@@ -77,7 +78,7 @@ export async function reviewUpload(bytes:Uint8Array,mime:ReviewImageMime,deps:{i
  const v=await (deps.inspect??inspectUpload)({bytes,mime});
  const base={reviewId:randomUUID(),sha256:createHash("sha256").update(bytes).digest("hex"),at:(deps.now?.()??new Date()).toISOString()};
  const r:UploadReview=v.category==="none"
-  ?{...base,state:"safe",mediaId:(await (deps.store??storeMedia)(bytes,mime)).id,mime,person:v.person,...(beautifyFindings(v.beautify,v.person)?{beautify:beautifyFindings(v.beautify,v.person)!}:{}),...(v.person&&v.coverage?{coverage:v.coverage}:{})}
+  ?{...base,state:"safe",mediaId:(await (deps.store??storeMedia)(bytes,mime)).id,mime,person:v.person,...(beautifyFindings(v.beautify,v.person)?{beautify:beautifyFindings(v.beautify,v.person)!}:{}),...(v.person&&v.coverage?{coverage:v.coverage}:{}),...(v.role&&v.role!=="general"?{role:v.role}:{})}
   :{...base,state:"blocked",category:v.category,fixFa:safeFix(v.fixFa,v.category)};
  keep(r);return r;
 }

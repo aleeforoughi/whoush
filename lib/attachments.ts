@@ -331,14 +331,16 @@ function mentionContext(text:string,tag:string):string|undefined{
  * A role the user chose is kept (`roleSource: "user"`). Otherwise the context is the clause around the attachment's mention (any accepted spelling),
  * or the whole text when it is not mentioned, and the first matching keyword group decides; no match is `general`. `voice_clone` is never inferred.
  */
-export function inferAttachmentRoles(text:string,attachments:readonly {tag:string;kind:AttachmentKind;role?:AttachmentRole}[]):InferredRole[]{
+export function inferAttachmentRoles(text:string,attachments:readonly {tag:string;kind:AttachmentKind;role?:AttachmentRole;roleAuto?:true}[]):InferredRole[]{
  const whole=normalizePersian(withoutMentions(text));
  const wordsFor=(tag:string)=>{const ctx=mentionContext(text,tag);return {words:ctx===undefined?whole:normalizePersian(ctx),mentioned:ctx!==undefined};};
  const frames=attachments.filter(a=>a.kind==="image"&&a.role==="frame");
  const framed=resolveFrames(frames.map(f=>({tag:f.tag,...wordsFor(f.tag)})),frames.length);
  return attachments.flatMap((a):InferredRole[]=>{
   if(!isMediaKind(a.kind))return [];
-  if(a.role==="frame"&&a.kind==="image")return [{tag:a.tag,role:framed.get(a.tag)??"start_frame",roleSource:"user"}];
+  // A role the photo check detected (`roleAuto`): the words of the brief decide when they name a role; otherwise the detected one.
+ if(a.role&&a.roleAuto){const {words}=wordsFor(a.tag),hit=INFER_RULES[a.kind as "image"|"video"|"audio"]?.find(([,re])=>re.test(words));return [{tag:a.tag,role:hit?hit[0]:a.role,roleSource:"inferred"}];}
+ if(a.role==="frame"&&a.kind==="image")return [{tag:a.tag,role:framed.get(a.tag)??"start_frame",roleSource:"user"}];
   if(a.role==="reference")return [{tag:a.tag,role:resolveReference(a.kind,wordsFor(a.tag).words),roleSource:"user"}];
   if(a.role)return [{tag:a.tag,role:a.role,roleSource:"user"}];
   const {words}=wordsFor(a.tag);
@@ -482,6 +484,7 @@ export function validateAttachmentSet(list:readonly {bytes:number}[]):{ok:true}|
 /** What the browser knows about one attached file. `name`, `previewUrl` and the File itself never leave the browser. A media `role` is optional: without one the server infers it. */
 export type LocalAttachment={
  id:string;tag:string;kind:AttachmentKind;mime:string;bytes:number;sha256:string;name:string;role?:AttachmentRole;
+ /** The role came from the photo check, not the user (owner, 2026-11-08: «رفرنس اتوماتیک» shows the role it detected): the message's words still win. */roleAuto?:true;
  width?:number;height?:number;durationSeconds?:number;textExcerpt?:string;speech?:AttachmentSpeech;previewUrl?:string;
  /** «ویرایش با قلم» (lib/region-edit.ts): each painted region (number, colour, what to change) and the marked copy (its blob kept by the studio under `guideId`). Memory only. */
  /** «Beautify it» with these parts (lib/beautify.ts). */beautify?:{parts:import("./beautify").BeautifyPart[]};
@@ -492,7 +495,7 @@ export type LocalAttachment={
 /** Goes back to "Whoush picks automatically": no role, and no speech details that belonged to one. */
 export function withoutRole(a:LocalAttachment):LocalAttachment{
  const next={...a};
- delete next.role;delete next.speech;
+ delete next.role;delete next.speech;delete next.roleAuto;
  return next;
 }
 /** Sets the role and drops what belongs to another role: speech details ride only with `lip_sync`. A role the UI does not offer for the kind is ignored. */
@@ -501,7 +504,7 @@ export function withRole(a:LocalAttachment,role:AttachmentRole):LocalAttachment{
  // resolved role outside the role menu's list); the voice clone, which needs consent, never this way.
  if(!roleAllowed(a.kind,role)||role==="voice_clone")return a;
  const next:LocalAttachment={...a,role};
- delete next.speech;
+ delete next.speech;delete next.roleAuto;
  if(role==="lip_sync")next.speech=a.role==="lip_sync"&&a.speech?a.speech:{hasSpeech:true,language:"unknown",accent:"unspecified"};
  return next;
 }
@@ -512,7 +515,7 @@ export const REGION_COLOR_NAMES=["red","blue","green","yellow","magenta"] as con
 export type RegionColorName=(typeof REGION_COLOR_NAMES)[number];
 export const REGION_COLOR_FA:Record<RegionColorName,string>={red:"قرمز",blue:"آبی",green:"سبز",yellow:"زرد",magenta:"بنفش"};
 export function toWireAttachment(a:LocalAttachment,reviewId?:string,guideReviewId?:string){
- return {...(reviewId&&(a.kind==="image"||a.kind==="video")?{reviewId}:{}),...(a.regionEdit&&guideReviewId&&a.kind==="image"?{regionEdit:{guideReviewId,regions:a.regionEdit.regions.map(r=>({n:r.n,color:r.color,note:r.note,...(r.target?{target:r.target}:{}),...(r.grow?{grow:true as const}:{})})),...(a.regionEdit.mask?{mask:a.regionEdit.mask}:{})}}:{}),...(a.beautify&&a.kind==="image"&&!a.regionEdit?{beautify:{parts:[...a.beautify.parts]}}:{}),id:a.id,tag:a.tag,kind:a.kind,mime:a.mime,bytes:a.bytes,sha256:a.sha256,...(a.role?{role:a.role}:{}),
+ return {...(reviewId&&(a.kind==="image"||a.kind==="video")?{reviewId}:{}),...(a.regionEdit&&guideReviewId&&a.kind==="image"?{regionEdit:{guideReviewId,regions:a.regionEdit.regions.map(r=>({n:r.n,color:r.color,note:r.note,...(r.target?{target:r.target}:{}),...(r.grow?{grow:true as const}:{})})),...(a.regionEdit.mask?{mask:a.regionEdit.mask}:{})}}:{}),...(a.beautify&&a.kind==="image"&&!a.regionEdit?{beautify:{parts:[...a.beautify.parts]}}:{}),id:a.id,tag:a.tag,kind:a.kind,mime:a.mime,bytes:a.bytes,sha256:a.sha256,...(a.role?{role:a.role,...(a.roleAuto?{roleAuto:true as const}:{})}:{}),
   ...(a.width!==undefined?{width:a.width}:{}),...(a.height!==undefined?{height:a.height}:{}),
   ...(a.durationSeconds!==undefined?{durationSeconds:a.durationSeconds}:{}),
   ...(a.textExcerpt!==undefined?{textExcerpt:a.textExcerpt}:{}),...(a.speech&&a.role==="lip_sync"?{speech:a.speech}:{})};
